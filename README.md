@@ -119,9 +119,9 @@ node scripts/browser-fetch.mjs --url "你自己的目标网址" --visible --webs
 
 ### 7. 可选：图片生成与发群图
 
-在管理控制台的 **E 层 → 图片生成** 填写兼容图片生成 API 的地址（通常以 `/v1` 结尾）、模型、尺寸、质量和每日额度，另在专用密码框保存自己的 API 密钥。密钥不会进入组件配置或 Git。保存后检查“已配置”状态。未配置时不会调用外部生图服务。
+在管理控制台的 **E 层 → 图片生成** 选择服务。使用 OpenAI 兼容接口时填写地址（通常以 `/v1` 结尾）、模型、尺寸和质量；使用火山方舟时填写在[开通管理](https://console.volcengine.com/ark/region:cn-beijing/open-management)中有可用额度的 Seedream 模型 ID，保留默认方舟 API 地址并按模型文档设置尺寸。先保存服务与参数，再在当前服务的专用密码框保存 API Key。可从[火山方舟 API Key 页面](https://ark.volcengine.com/region:cn-beijing/apikey)创建方舟 Key。两家密钥分开保存在本地，不进入组件配置或 Git。设置每日额度后检查“已启用”状态；未配置时不会调用外部生图服务。
 
-小鲸鱼可用 `qq_make_meme`（文字或当前会话的消息图片）→ `qq_get_meme_job`（取图片编号和预览）→ `qq_send_image`（发到原会话）完成梗图制作。工具不接受本机文件路径，不能把甲群生成的图发给乙群。每次提交先占每日额度，服务超时不会自动再次付费。提供商要分别实现图片生成与图片编辑接口；若只支持前者，文字生图可用，参考图编辑会得到清楚的错误。接口参数以[官方生成说明](https://developers.openai.com/api/reference/resources/images/methods/generate)和[官方编辑说明](https://developers.openai.com/api/reference/resources/images/methods/edit)为基准，第三方服务的实际兼容性需按其文档核对。
+小鲸鱼可用 `qq_make_meme`（文字或当前会话的消息图片）→ `qq_get_meme_job`（取图片编号和预览）→ `qq_send_image`（发到原会话）完成梗图制作。工具不接受本机文件路径，不能把甲群生成的图发给乙群。每次提交先占每日额度，服务超时不会自动再次付费。OpenAI 兼容接口的参考图走图片编辑接口；方舟的文字与参考图都走[图片生成接口](https://console.volcengine.com/ark/region:cn-beijing/docs/image-generation-api)。第三方兼容服务的实际参数需按其文档核对。
 
 ## 发布内容与本地数据
 

@@ -13,6 +13,10 @@ const readJson=(file,fallback)=>{try{return JSON.parse(fs.readFileSync(file,'utf
 const writeJson=(file,value)=>{const tmp=file+'.tmp';fs.writeFileSync(tmp,JSON.stringify(value),{mode:0o600});fs.renameSync(tmp,file);};
 function cleanJob(job){if(!job)return {ok:false,error:'JOB_NOT_FOUND'};return {ok:true,jobId:job.id,status:job.status,imageId:job.status==='ready'?job.id:undefined,error:job.error||undefined,createdAt:job.createdAt};}
 export function createImageEngine({root,config={},fetchImpl=fetch,readReferences=async()=>[],now=Date.now,signal}={}){
+ const provider=config.provider==='ark'?'ark':'openai';
+ const model=provider==='ark'?config.arkModel:config.model;
+ const size=provider==='ark'?(config.arkSize||'2K'):(config.size||'1024x1024');
+ const baseUrl=provider==='ark'?config.arkApiBase:config.apiBase;
  let providerDispatcher;
  const dispatcher=()=>{
   if(providerDispatcher)return providerDispatcher;
@@ -33,13 +37,15 @@ export function createImageEngine({root,config={},fetchImpl=fetch,readReferences
  writeJson(file,state);
  const save=()=>writeJson(file,state);
  const limit=()=>({global:bounded(config.dailyGlobalLimit,20,10000),session:bounded(config.dailySessionLimit,5,10000),mode:['global','session','both'].includes(config.quotaMode)?config.quotaMode:'both'});
- const apiUrl=endpoint=>{const base=new URL(String(config.apiBase||''));if(!['https:','http:'].includes(base.protocol)||base.username||base.password)throw Error('API_BASE_INVALID');return new URL(base.href.replace(/\/+$/,'')+'/'+endpoint).href;};
+ const apiUrl=endpoint=>{const base=new URL(String(baseUrl||''));if(!['https:','http:'].includes(base.protocol)||base.username||base.password)throw Error('API_BASE_INVALID');if(provider==='ark'&&(base.protocol!=='https:'||base.hostname!=='ark.cn-beijing.volces.com'))throw Error('API_BASE_INVALID');return new URL(base.href.replace(/\/+$/,'')+'/'+endpoint).href;};
+ const secretField=provider==='ark'?'arkApiKey':'apiKey';
  const secret=({op,apiKey}={})=>{
-  if(op==='set'){const key=String(apiKey||'').trim();if(!key||key.length>1000)return {ok:false,error:'API_KEY_INVALID'};writeJson(secretFile,{apiKey:key});return {ok:true,configured:true};}
-  if(op==='clear'){try{fs.unlinkSync(secretFile);}catch{}return {ok:true,configured:false};}
-  return {ok:true,configured:!!readJson(secretFile,{}).apiKey};
+  const saved=readJson(secretFile,{});
+  if(op==='set'){const key=String(apiKey||'').trim();if(!key||key.length>1000)return {ok:false,error:'API_KEY_INVALID'};writeJson(secretFile,{...saved,[secretField]:key});return {ok:true,provider,configured:true};}
+  if(op==='clear'){delete saved[secretField];if(Object.keys(saved).length)writeJson(secretFile,saved);else try{fs.unlinkSync(secretFile);}catch{}return {ok:true,provider,configured:false};}
+  return {ok:true,provider,configured:!!saved[secretField]};
  };
- const status=({key}={})=>{const today=dayAt(now()),todayJobs=state.jobs.filter(j=>j.day===today),counts=limit();return {ok:true,configured:secret({op:'status'}).configured&&!!config.model&&!!config.apiBase,day:today,globalUsed:todayJobs.length,globalLimit:counts.global,sessionUsed:key?todayJobs.filter(j=>j.key===key).length:undefined,sessionLimit:counts.session,quotaMode:counts.mode};};
+ const status=({key}={})=>{const today=dayAt(now()),todayJobs=state.jobs.filter(j=>j.day===today),counts=limit();return {ok:true,provider,configured:secret({op:'status'}).configured&&!!model&&!!baseUrl,day:today,globalUsed:todayJobs.length,globalLimit:counts.global,sessionUsed:key?todayJobs.filter(j=>j.key===key).length:undefined,sessionLimit:counts.session,quotaMode:counts.mode};};
  async function outputImage(data){
   if(data?.b64_json){const b64=String(data.b64_json);if(b64.length>bounded(config.maxOutputBytes,10485760,30000000)*1.4+32)throw Error('IMAGE_TOO_LARGE');return Buffer.from(b64,'base64');}
   if(data?.url){const url=new URL(data.url);if(url.protocol!=='https:'||url.username||url.password)throw Error('IMAGE_URL_NOT_ALLOWED');const fetched=await safeFetchBuffer(url.href,bounded(config.maxOutputBytes,10485760,30000000));return fetched.buffer;}
@@ -48,21 +54,25 @@ export function createImageEngine({root,config={},fetchImpl=fetch,readReferences
  async function run(job){
   try{
    if(signal?.aborted)throw Error('JOB_INTERRUPTED');
-   const apiKey=readJson(secretFile,{}).apiKey;if(!apiKey)throw Error('API_NOT_CONFIGURED');
+   const apiKey=readJson(secretFile,{})[secretField];if(!apiKey)throw Error('API_NOT_CONFIGURED');
    const maxRef=bounded(config.maxReferenceImages,1,5),maxRefBytes=bounded(config.maxReferenceBytes,10485760,30000000);
    const refs=job.referenceMessageId?await readReferences({key:job.key,messageId:job.referenceMessageId,maxImages:maxRef,maxBytes:maxRefBytes}):[];
    if(job.referenceMessageId&&(!Array.isArray(refs)||!refs.length))throw Error('REFERENCE_NOT_FOUND');
    if(refs.length>maxRef)throw Error('TOO_MANY_REFERENCES');
    let body,headers={authorization:`Bearer ${apiKey}`},endpoint='images/generations';
-   if(refs.length){endpoint='images/edits';body=new FormData();body.set('model',String(config.model));body.set('prompt',job.prompt);body.set('size',String(config.size||'1024x1024'));body.set('quality',String(config.quality||'auto'));for(let i=0;i<refs.length;i++){const bytes=Buffer.from(String(refs[i].data||''),'base64'),mime=imageType(bytes);if(!mime||bytes.length>maxRefBytes)throw Error('REFERENCE_INVALID');body.append(refs.length===1?'image':'image[]',new Blob([bytes],{type:mime}),`reference-${i}.${mime.split('/')[1]}`);}}
-   else{headers['content-type']='application/json';body=JSON.stringify({model:config.model,prompt:job.prompt,size:config.size||'1024x1024',quality:config.quality||'auto',n:1});}
+   if(provider==='ark'){
+    const images=refs.map(ref=>{const bytes=Buffer.from(String(ref.data||''),'base64'),mime=imageType(bytes);if(!mime||bytes.length>maxRefBytes)throw Error('REFERENCE_INVALID');return `data:${mime};base64,${bytes.toString('base64')}`;});
+    headers['content-type']='application/json';
+    body=JSON.stringify({model,prompt:job.prompt,size,response_format:'b64_json',...(images.length?{image:images.length===1?images[0]:images}:{})});
+   }else if(refs.length){endpoint='images/edits';body=new FormData();body.set('model',String(model));body.set('prompt',job.prompt);body.set('size',String(size));body.set('quality',String(config.quality||'auto'));for(let i=0;i<refs.length;i++){const bytes=Buffer.from(String(refs[i].data||''),'base64'),mime=imageType(bytes);if(!mime||bytes.length>maxRefBytes)throw Error('REFERENCE_INVALID');body.append(refs.length===1?'image':'image[]',new Blob([bytes],{type:mime}),`reference-${i}.${mime.split('/')[1]}`);}}
+   else{headers['content-type']='application/json';body=JSON.stringify({model,prompt:job.prompt,size,quality:config.quality||'auto',n:1});}
    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),bounded(config.timeoutSeconds,120,600)*1000);
    let response,parsed;
    try{
     response=await fetchImpl(apiUrl(endpoint),{method:'POST',headers,body,signal:controller.signal,redirect:'error',dispatcher:dispatcher()});
     if(!response.ok){
      let code='';
-     if(response.status===429&&response.body){try{const chunks=[];let length=0;for await(const chunk of response.body){length+=chunk.length;if(length>4096)break;chunks.push(Buffer.from(chunk));}const parsed=JSON.parse(Buffer.concat(chunks).toString('utf8'));const candidate=String(parsed?.error?.code||'');if(/^[a-z][a-z0-9_]{1,80}$/.test(candidate))code=candidate;}catch{}}
+     if(response.body){try{const chunks=[];let length=0;for await(const chunk of response.body){length+=chunk.length;if(length>4096)break;chunks.push(Buffer.from(chunk));}const parsed=JSON.parse(Buffer.concat(chunks).toString('utf8'));const candidate=String(parsed?.error?.code||'');if(/^[A-Za-z][A-Za-z0-9_-]{1,80}$/.test(candidate))code=candidate;}catch{}}
      throw Error('PROVIDER_HTTP_'+response.status+(code?'_'+code:''));
     }
     const jsonLimit=Math.ceil(bounded(config.maxOutputBytes,10485760,30000000)*1.4)+65536;
@@ -90,14 +100,14 @@ export function createImageEngine({root,config={},fetchImpl=fetch,readReferences
   if(prior)return prior.fingerprint===fingerprint?cleanJob(prior):{ok:false,error:'REQUEST_ID_CONFLICT'};
   if(automatic&&!config.allowAutomatic)return {ok:false,error:'AUTOMATIC_DISABLED'};
   if(Array.isArray(config.allowedSessions)&&config.allowedSessions.length&&!config.allowedSessions.includes(key))return {ok:false,error:'SESSION_NOT_ALLOWED'};
-  if(!secret({op:'status'}).configured||!config.model||!config.apiBase)return {ok:false,error:'API_NOT_CONFIGURED'};
+  if(!secret({op:'status'}).configured||!model||!baseUrl)return {ok:false,error:'API_NOT_CONFIGURED'};
   try{apiUrl('images/generations');}catch{return {ok:false,error:'API_BASE_INVALID'};}
   const limits=limit(),day=dayAt(now()),today=state.jobs.filter(j=>j.day===day);
   if(['global','both'].includes(limits.mode)&&today.length>=limits.global)return {ok:false,error:'GLOBAL_DAILY_LIMIT'};
   if(['session','both'].includes(limits.mode)&&today.filter(j=>j.key===key).length>=limits.session)return {ok:false,error:'SESSION_DAILY_LIMIT'};
   const last=state.jobs.filter(j=>j.key===key).at(-1),cooldown=bounded(config.cooldownSeconds,60,3600)*1000;
   if(last&&now()-last.createdAt<cooldown)return {ok:false,error:'COOLDOWN'};
-  const job={id:crypto.randomUUID(),key,requestId,prompt:input,referenceMessageId:ref,automatic:!!automatic,fingerprint,day,createdAt:now(),status:'pending'};
+  const job={id:crypto.randomUUID(),key,provider,requestId,prompt:input,referenceMessageId:ref,automatic:!!automatic,fingerprint,day,createdAt:now(),status:'pending'};
   state.jobs.push(job);save();void run(job);return cleanJob(job);
  }
  function get({key,jobId}={}){if(!validKey.test(String(key)))return {ok:false,error:'KEY_INVALID'};return cleanJob(state.jobs.find(j=>j.id===jobId&&j.key===key));}

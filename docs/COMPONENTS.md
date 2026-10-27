@@ -26,4 +26,4 @@
 
 ## 图片生成
 
-`exec-image-generation` 属于 E 层，提供 OpenAI 兼容生图与编辑、每日额度、参考图和生成图片本地保存。QQ MCP 工具 `qq_make_meme`、`qq_get_meme_job`、`qq_send_image` 由 `src/mcp-snowluma-safe.js` 注册，接口源文件与插件均包含在仓库中。生图结果以会话绑定的图片编号交给发图工具，不接收任意本机路径。控制台密钥存于忽略的 `state/image-generation/secret.json`，个人图片位于同目录的 `assets/`。
+`exec-image-generation` 属于 E 层，提供 OpenAI 兼容生图与编辑、火山方舟 Seedream 生图与参考图、每日额度和生成图片本地保存。QQ MCP 工具 `qq_make_meme`、`qq_get_meme_job`、`qq_send_image` 由 `src/mcp-snowluma-safe.js` 注册，接口源文件与插件均包含在仓库中。生图结果以会话绑定的图片编号交给发图工具，不接收任意本机路径。控制台分别保存 OpenAI 和火山方舟密钥于忽略的 `state/image-generation/secret.json`，个人图片位于同目录的 `assets/`。选择火山方舟后，填入有可用额度的 Seedream 模型 ID，并在当前服务的密码框保存方舟 API Key；切换服务不会把另一家的密钥发送过去。

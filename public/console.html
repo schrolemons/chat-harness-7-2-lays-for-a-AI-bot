@@ -6670,11 +6670,15 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     'exec-image-generation': {
       title: '图片生成设置',
       fields: [
-        { key: 'apiBase', label: 'API 地址', help: '兼容 OpenAI 图片接口的服务地址。', type: 'text' },
+        { key: 'provider', label: '生图服务', help: 'openai 为 OpenAI 兼容接口；ark 为火山方舟 Seedream。先保存设置，下方密钥框再对应所选服务。', type: 'select', options: ['openai', 'ark'] },
+        { key: 'apiBase', label: 'OpenAI API 地址', help: '兼容 OpenAI 图片接口的服务地址。', type: 'text' },
         { key: 'proxyUrl', label: '网络代理（可选）', help: '例如 http://127.0.0.1:7897；留空则读取系统代理环境变量。只用于生图供应商请求。', type: 'text' },
-        { key: 'model', label: '模型', type: 'text' },
-        { key: 'size', label: '图片尺寸', help: '例如 1024x1024，以服务商支持的尺寸为准。', type: 'text' },
-        { key: 'quality', label: '画质档位', help: '以服务商支持的值为准。', type: 'text' },
+        { key: 'model', label: 'OpenAI 模型', type: 'text' },
+        { key: 'size', label: 'OpenAI 图片尺寸', help: '例如 1024x1024，以服务商支持的尺寸为准。', type: 'text' },
+        { key: 'quality', label: 'OpenAI 画质档位', help: '以服务商支持的值为准。', type: 'text' },
+        { key: 'arkApiBase', label: '火山方舟 API 地址', help: '默认官方地址；仅接收 ark.cn-beijing.volces.com。', type: 'text' },
+        { key: 'arkModel', label: 'Seedream 模型 ID', help: '请填写你在火山方舟开通管理中有免费额度的模型 ID。', type: 'text' },
+        { key: 'arkSize', label: 'Seedream 图片尺寸', help: 'Seedream 5.0 lite 可用 2K；其他模型以方舟文档为准。', type: 'text' },
         { key: 'quotaMode', label: '每日额度模式', help: 'global 全局；session 每个会话；both 同时限制。按上海时间每天重置。', type: 'select', options: ['global', 'session', 'both'] },
         { key: 'dailyGlobalLimit', label: '全局每日请求上限', type: 'number', min: 0, max: 10000 },
         { key: 'dailySessionLimit', label: '每个会话每日请求上限', type: 'number', min: 0, max: 10000 },
@@ -6911,7 +6915,10 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
         if (id === 'exec-image-generation') {
           body.insertAdjacentHTML('beforeend', '<div class="quota-console image-generation-console"><div class="quota-console-head"><div><b>本地 API 密钥</b><div class="meta">密钥不会写入组件配置，状态查询也不会返回密钥内容。</div></div><span class="meta image-secret-state" role="status">正在读取保存状态…</span></div><div class="row" style="gap:8px;margin-top:10px"><input type="password" class="image-secret-input comp-form-text" autocomplete="new-password" aria-label="图片生成 API 密钥" placeholder="输入新密钥" style="flex:1;min-width:180px;max-width:420px"><button type="button" class="small image-secret-set">保存密钥</button><button type="button" class="small danger image-secret-clear">清除密钥</button></div><div class="meta image-secret-message" aria-live="polite"></div><div class="quota-console-head" style="margin-top:18px"><div><b>今日图片生成用量</b><div class="meta">按上海时间统计请求次数。</div></div><button type="button" class="small image-usage-refresh">刷新用量</button></div><div class="meta image-usage-result" aria-live="polite">正在读取…</div></div>');
           const panel = body.querySelector('.image-generation-console');
+          const imageProvider = p.config?.provider === 'ark' ? 'ark' : 'openai';
+          panel.querySelector('.quota-console-head b').textContent = imageProvider === 'ark' ? '火山方舟 API 密钥' : 'OpenAI API 密钥';
           const secretInput = panel.querySelector('.image-secret-input');
+          secretInput.setAttribute('aria-label', imageProvider === 'ark' ? '火山方舟 API 密钥' : 'OpenAI API 密钥');
           const secretState = panel.querySelector('.image-secret-state');
           const secretMessage = panel.querySelector('.image-secret-message');
           const usageResult = panel.querySelector('.image-usage-result');
@@ -6921,7 +6928,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
             if (result.ok !== true) throw Error('密钥操作失败');
             return result;
           };
-          const showSecretState = configured => { secretState.textContent = configured ? (p.config?.apiBase && p.config?.model ? '已启用' : '密钥已保存；请配置接口地址和模型') : '未配置密钥'; };
+          const showSecretState = configured => { const ready = imageProvider === 'ark' ? p.config?.arkApiBase && p.config?.arkModel : p.config?.apiBase && p.config?.model; secretState.textContent = configured ? (ready ? '已启用' : '密钥已保存；请配置接口地址和模型') : '未配置密钥'; };
           const refreshSecret = async () => {
             try { showSecretState((await secretCall({ op: 'status' })).configured === true); }
             catch { secretState.textContent = '状态读取失败'; }
@@ -7045,6 +7052,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
           const out = await api('/api/plugins/config', 'POST', { id, config: next });
           if (out.ok === false) throw Error(out.error || '保存失败');
           if (msg) msg.textContent = '已保存并重载';
+          if (id === 'exec-image-generation') { body.dataset.loaded = ''; await loadComponentDetail(id, el); }
         };
         body.querySelector('.comp-save')?.addEventListener('click', () => el.__saveComponent().catch(error => {
           const msg = body.querySelector('.comp-msg'); if (msg) msg.textContent = '保存失败：' + error.message;
