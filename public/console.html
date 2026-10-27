@@ -6904,7 +6904,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
       const resp = await api('/api/plugins/detail?id=' + encodeURIComponent(id));
       const p = resp && resp.plugin ? resp.plugin : resp;
       const form = renderComponentForm(p, el.dataset.inlineFields ? el.dataset.inlineFields.split(',') : null, !!el.dataset.inlineFields);
-      const enabled = el.dataset.hideToggle === '1' ? '' : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? ' checked' : '') + '> <span>' + esc(el.dataset.toggleLabel || '启用此功能') + '</span></label><span class="meta comp-toggle-msg"></span>';
+      const enabled = el.dataset.hideToggle === '1' || id === 'exec-image-generation' ? '' : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? ' checked' : '') + '> <span>' + esc(el.dataset.toggleLabel || '启用此功能') + '</span></label><span class="meta comp-toggle-msg"></span>';
       if (form) {
         body.innerHTML = enabled + form.html + (form.empty || el.dataset.deferSave === '1' ? '' : '<div class="row" style="gap:8px;margin-top:8px"><button class="small comp-save">保存设置</button><span class="meta comp-msg"></span></div>');
         if (id === 'exec-image-generation') {
@@ -6920,7 +6920,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
             if (result.ok !== true) throw Error('密钥操作失败');
             return result;
           };
-          const showSecretState = configured => { secretState.textContent = configured ? '已保存' : '未配置'; };
+          const showSecretState = configured => { secretState.textContent = configured ? (p.config?.apiBase && p.config?.model ? '已启用' : '密钥已保存；请配置接口地址和模型') : '未配置密钥'; };
           const refreshSecret = async () => {
             try { showSecretState((await secretCall({ op: 'status' })).configured === true); }
             catch { secretState.textContent = '状态读取失败'; }
@@ -6930,9 +6930,9 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
             try {
               const response = await api('/api/plugins/call', 'POST', { tool: 'image_generation_status', input: {} });
               const result = response?.result || response || {};
-              if (result.ok !== true) throw Error('用量读取失败');
+              if (response?.ok !== true || result.ok !== true) throw Error(result.error || response?.error || '接口返回了无效用量');
               usageResult.textContent = '日期 ' + (result.day || '—') + ' · 全局已用 ' + (result.globalUsed ?? '—') + ' / ' + (result.globalLimit ?? '—') + ' · 会话上限 ' + (result.sessionLimit ?? '—') + ' · 模式 ' + (result.quotaMode || '—');
-            } catch { usageResult.textContent = '用量读取失败'; }
+            } catch (error) { usageResult.textContent = '用量读取失败：' + (error?.message || '未知错误'); }
           };
           panel.querySelector('.image-secret-set').addEventListener('click', async () => {
             const apiKey = secretInput.value.trim();
@@ -7073,7 +7073,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return;
     const items = compCache.filter((p) => (ids || []).includes(p.id));
-    root.innerHTML = items.length ? items.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${['ctx-memory-profile-store', 'life-campus-watch'].includes(p.id) ? '1' : '0'}" data-toggle-label="${p.id === 'exec-browser-manager' ? '启用 DOM 操作' : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || '')}"><div class="comp-body">加载设置…</div></div>`).join('') : '';
+    root.innerHTML = items.length ? items.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${['ctx-memory-profile-store', 'life-campus-watch', 'exec-image-generation'].includes(p.id) ? '1' : '0'}" data-toggle-label="${p.id === 'exec-browser-manager' ? '启用 DOM 操作' : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || '')}"><div class="comp-body">加载设置…</div></div>`).join('') : '';
     root.querySelectorAll('.comp-card').forEach((d) => loadComponentDetail(d.dataset.id, d));
   };
 
