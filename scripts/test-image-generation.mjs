@@ -38,3 +38,12 @@ test('provider image URL cannot target local services and oversized chunked JSON
   }finally{fs.rmSync(root,{recursive:true,force:true});}
  }
 });
+
+test('provider 429 preserves safe error code for quota diagnosis',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'meme-provider-429-'));
+ try{const engine=createImageEngine({root,config,fetchImpl:async()=>new Response(JSON.stringify({error:{code:'credit_balance_exhausted',message:'private detail'}}),{status:429,headers:{'content-type':'application/json'}})});engine.secret({op:'set',apiKey:'test-key'});
+  const submitted=await engine.create({key:'private:10001',requestId:'quota-429',prompt:'图片'});
+  const result=await sleep(()=>engine.get({key:'private:10001',jobId:submitted.jobId}));
+  assert.equal(result.error,'PROVIDER_HTTP_429_credit_balance_exhausted');
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});

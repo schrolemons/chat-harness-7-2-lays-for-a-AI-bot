@@ -6671,6 +6671,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
       title: '图片生成设置',
       fields: [
         { key: 'apiBase', label: 'API 地址', help: '兼容 OpenAI 图片接口的服务地址。', type: 'text' },
+        { key: 'proxyUrl', label: '网络代理（可选）', help: '例如 http://127.0.0.1:7897；留空则读取系统代理环境变量。只用于生图供应商请求。', type: 'text' },
         { key: 'model', label: '模型', type: 'text' },
         { key: 'size', label: '图片尺寸', help: '例如 1024x1024，以服务商支持的尺寸为准。', type: 'text' },
         { key: 'quality', label: '画质档位', help: '以服务商支持的值为准。', type: 'text' },

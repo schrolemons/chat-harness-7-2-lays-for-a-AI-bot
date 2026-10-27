@@ -13,8 +13,16 @@ const readJson=(file,fallback)=>{try{return JSON.parse(fs.readFileSync(file,'utf
 const writeJson=(file,value)=>{const tmp=file+'.tmp';fs.writeFileSync(tmp,JSON.stringify(value),{mode:0o600});fs.renameSync(tmp,file);};
 function cleanJob(job){if(!job)return {ok:false,error:'JOB_NOT_FOUND'};return {ok:true,jobId:job.id,status:job.status,imageId:job.status==='ready'?job.id:undefined,error:job.error||undefined,createdAt:job.createdAt};}
 export function createImageEngine({root,config={},fetchImpl=fetch,readReferences=async()=>[],now=Date.now,signal}={}){
- const providerDispatcher=new EnvHttpProxyAgent();
- signal?.addEventListener('abort',()=>void providerDispatcher.close(),{once:true});
+ let providerDispatcher;
+ const dispatcher=()=>{
+  if(providerDispatcher)return providerDispatcher;
+  const proxy=String(config.proxyUrl||'').trim();
+  if(proxy){let url;try{url=new URL(proxy);}catch{throw Error('PROXY_URL_INVALID');}
+   if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('PROXY_URL_INVALID');}
+  providerDispatcher=new EnvHttpProxyAgent(proxy?{httpProxy:proxy,httpsProxy:proxy}:{});
+  return providerDispatcher;
+ };
+ signal?.addEventListener('abort',()=>void providerDispatcher?.close(),{once:true});
  const dir=path.join(root,'state','image-generation'),file=path.join(dir,'jobs.json'),secretFile=path.join(dir,'secret.json'),assets=path.join(dir,'assets');
  fs.mkdirSync(assets,{recursive:true,mode:0o700});
  const state=readJson(file,{jobs:[]});state.jobs=Array.isArray(state.jobs)?state.jobs:[];
@@ -51,8 +59,12 @@ export function createImageEngine({root,config={},fetchImpl=fetch,readReferences
    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),bounded(config.timeoutSeconds,120,600)*1000);
    let response,parsed;
    try{
-    response=await fetchImpl(apiUrl(endpoint),{method:'POST',headers,body,signal:controller.signal,redirect:'error',dispatcher:providerDispatcher});
-    if(!response.ok)throw Error('PROVIDER_HTTP_'+response.status);
+    response=await fetchImpl(apiUrl(endpoint),{method:'POST',headers,body,signal:controller.signal,redirect:'error',dispatcher:dispatcher()});
+    if(!response.ok){
+     let code='';
+     if(response.status===429&&response.body){try{const chunks=[];let length=0;for await(const chunk of response.body){length+=chunk.length;if(length>4096)break;chunks.push(Buffer.from(chunk));}const parsed=JSON.parse(Buffer.concat(chunks).toString('utf8'));const candidate=String(parsed?.error?.code||'');if(/^[a-z][a-z0-9_]{1,80}$/.test(candidate))code=candidate;}catch{}}
+     throw Error('PROVIDER_HTTP_'+response.status+(code?'_'+code:''));
+    }
     const jsonLimit=Math.ceil(bounded(config.maxOutputBytes,10485760,30000000)*1.4)+65536;
     if(Number(response.headers.get('content-length'))>jsonLimit)throw Error('IMAGE_RESPONSE_TOO_LARGE');
     const chunks=[];let size=0;
@@ -63,7 +75,7 @@ export function createImageEngine({root,config={},fetchImpl=fetch,readReferences
    if(!mime||!bytes.length||bytes.length>max)throw Error('OUTPUT_IMAGE_INVALID');
    if(signal?.aborted)throw Error('JOB_INTERRUPTED');
    const extension=mime==='image/png'?'png':mime==='image/jpeg'?'jpg':'webp';fs.writeFileSync(path.join(assets,job.id+'.'+extension),bytes,{mode:0o600});job.mimeType=mime;job.extension=extension;job.status='ready';save();
-  }catch(error){if(signal?.aborted)return;job.status='failed';job.error=/^(?:API_|IMAGE_|REFERENCE_|TOO_MANY_|OUTPUT_|PROVIDER_HTTP_|JOB_)/.test(error.message)?error.message:'PROVIDER_REQUEST_FAILED';save();}
+  }catch(error){if(signal?.aborted)return;job.status='failed';job.error=/^(?:API_|IMAGE_|REFERENCE_|TOO_MANY_|OUTPUT_|PROVIDER_HTTP_|PROXY_|JOB_)/.test(error.message)?error.message:'PROVIDER_REQUEST_FAILED';save();}
  }
  async function create({key,requestId,prompt,referenceMessageId,automatic=false}={}){
   prune();save();
