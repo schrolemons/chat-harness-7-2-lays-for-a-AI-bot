@@ -27,6 +27,7 @@ import { normalizeImageForModel } from './media-normalize.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken, readOneBotTokens } from './snowluma-conn.js';
 import { hardenDir, manualDirCommand } from './state-acl.mjs';
+import { checkImageSession, oneBotImageParams } from './image-generation-transport.mjs';
 import { extractForwardIds, forwardIdFromData, sanitizeForwardId, formatForwardResponse } from './forward.js';
 import { resolvePriceTable } from './model-prices.js';
 import { createTokenLedger } from './token-ledger.js';
@@ -866,6 +867,7 @@ function loadConfig() {
         socialState: true,
         sendGroup: true,
         sendPrivate: true,
+        imageGeneration: true,
         reply: true,
         sendBurst: true,
         sendMessage: true,
@@ -1038,6 +1040,7 @@ function loadConfig() {
     slangQuery: true,
     slangSubmit: true,
     getImages: true,
+    imageGeneration: true,
     getForwardMsg: true,
     sendPoke: true,
     listStickers: true,
@@ -4687,7 +4690,7 @@ async function main() {
             merged.autoReplyCheckMs = Number.isFinite(n) ? Math.max(1000, Math.round(n)) : (current.autoReplyCheckMs ?? 30000);
           }
           // tools：只接受布尔开关
-          const toolFlags = ['getPrompt', 'getUnread', 'getRecent', 'socialState', 'sendGroup', 'sendPrivate', 'reply', 'sendBurst', 'sendMessage', 'waitMessages', 'feedback', 'getMyRecent', 'getMessageDetail', 'getActiveMembers', 'setWakeConfig', 'markRead', 'memory', 'schedule', 'slangQuery', 'slangSubmit', 'getImages', 'getForwardMsg', 'sendPoke', 'listStickers', 'getStickerImage', 'sendSticker', 'setStickerRemark', 'stickerNote', 'collectSticker', 'getSelfImage', 'sendVoice'];
+          const toolFlags = ['getPrompt', 'getUnread', 'getRecent', 'socialState', 'sendGroup', 'sendPrivate', 'reply', 'sendBurst', 'sendMessage', 'waitMessages', 'feedback', 'getMyRecent', 'getMessageDetail', 'getActiveMembers', 'setWakeConfig', 'markRead', 'memory', 'schedule', 'slangQuery', 'slangSubmit', 'getImages', 'imageGeneration', 'getForwardMsg', 'sendPoke', 'listStickers', 'getStickerImage', 'sendSticker', 'setStickerRemark', 'stickerNote', 'collectSticker', 'getSelfImage', 'sendVoice'];
           if (body.tools && typeof body.tools === 'object') {
             merged.tools = { ...(current.tools ?? {}), ...body.tools };
             for (const k of toolFlags) {
@@ -5099,6 +5102,7 @@ async function main() {
             slangQuery: 'qq_slang_query',
             slangSubmit: 'qq_slang_submit',
             getImages: 'qq_get_message_images',
+            imageGeneration: 'qq_make_meme / qq_get_meme_job / qq_send_image',
             getForwardMsg: 'qq_get_forward_msg',
             sendPoke: 'qq_send_poke',
             listStickers: 'qq_list_stickers',
@@ -5240,6 +5244,9 @@ async function main() {
           // 调插件工具：{ tool: "name", input: {...} }
           let body = {};
           try { body = await readBody(); } catch { sendJson({ ok: false, error: 'body 必须是 JSON' }, 400); return; }
+          if (req.headers['x-agent-call'] !== undefined && body.tool === 'image_generation_secret') {
+            sendJson({ok:false,error:'生图密钥仅可由管理员控制台配置'},403);return;
+          }
           // 智能体调用：集中关卡对 /api/plugins/call 放行了「无 x-agent-token 头」的请求，
           // 但这里必须自己补上校验，否则任何模型都能免令牌调用插件工具（confused deputy）。
           // 兼容口径：只有 task_* 允许把令牌放在 body.input.token，且必须命中 owner 会话。
@@ -7838,6 +7845,39 @@ async function main() {
           sendJson({ ok: true, key });
           return;
         }
+        // 生图端点只接受当前会话的消息引用和托管图片 id；不接受本机路径。
+        if (req.method === 'POST' && url.pathname === '/api/images/generated') {
+          const body = await readBody();
+          const key = String(body.key || ''), token = String(body.token || '');
+          const access = checkImageSession({key,mode:currentMode,token,sameSessionToken:(k,t)=>{const st=socialV2.conversations.get(canonicalV2Key(k)??k);return tokenEq(t,st?.agentToken);},modeAllowed:(k,kind,id)=>modeAllowed(k,kind,id,cfg,currentMode),paused:socialV2.paused || cfg.socialV2?.enabled === false,silent:shouldBlockSilentReply(key),enabled:v2ToolEnabled('imageGeneration')});
+          if(!access.ok){sendJson(access,403);return;}
+          if(req.headers['x-agent-token'] && req.headers['x-agent-token']!==token){sendJson({ok:false,error:'TOKEN_MISMATCH'},403);return;}
+          const action=String(body.action||'');
+          if(action==='create'){
+            const out=await pluginHost.callService('imageGeneration','create',{key,requestId:body.requestId,prompt:body.prompt,referenceMessageId:body.referenceMessageId,automatic:body.automatic===true});
+            sendJson(out||{ok:false,error:'IMAGE_COMPONENT_UNAVAILABLE'},out?.ok?200:400);return;
+          }
+          if(action==='status'){
+            const out=pluginHost.callService('imageGeneration','get',{key,jobId:body.jobId});
+            if(out?.status==='ready'){const image=pluginHost.callService('imageGeneration','asset',{key,imageId:out.imageId});if(image?.ok)out.image=image.image;}
+            sendJson(out||{ok:false,error:'IMAGE_COMPONENT_UNAVAILABLE'},out?.ok?200:404);return;
+          }
+          if(action==='send'){
+            if(!v2ToolEnabled(access.kind==='group'?'sendGroup':'sendPrivate')){sendJson({ok:false,error:'SEND_TOOL_DISABLED'},403);return;}
+            const asset=pluginHost.callService('imageGeneration','asset',{key,imageId:body.imageId});
+            if(!asset?.ok){sendJson(asset||{ok:false,error:'IMAGE_NOT_FOUND'},404);return;}
+            const claim=pluginHost.callService('imageGeneration','claimSend',{key,imageId:body.imageId});
+            if(!claim?.ok){sendJson(claim||{ok:false,error:'IMAGE_COMPONENT_UNAVAILABLE'},409);return;}
+            try{
+              const outbound=oneBotImageParams(key,asset.image);
+              const sent=await onebotHttpAction(outbound.action,outbound.params);
+              pluginHost.callService('imageGeneration','finishSend',{key,imageId:body.imageId,success:true});
+              sendJson({ok:true,imageId:body.imageId,messageId:sent?.data?.message_id||null});
+            }catch(error){pluginHost.callService('imageGeneration','finishSend',{key,imageId:body.imageId,success:false});log('[image-generation] QQ 发图结果未知：'+String(error?.message||'').slice(0,120));sendJson({ok:false,error:'图片发送结果未知，请勿自动重试'},502);}
+            return;
+          }
+          sendJson({ok:false,error:'INVALID_IMAGE_ACTION'},400);return;
+        }
         // ── 图片/表情查询端点（MCP qq_get_message_images 走这里） ────────────
         if (req.method === 'GET' && url.pathname === '/api/images/message') {
           const key = String(url.searchParams.get('key') ?? '').trim();
@@ -9732,6 +9772,12 @@ async function main() {
   // setCostTier：cost 插件按会话设模型/思考档位（key -> { model, reasoningEffort, reason }）。
   taskCaps.setCostTier = () => true; // Legacy compatibility; selection is the cost-policy service.
   // spawnCampusWatch：L 层 campus-watch 调度插件用来拉起课程监管脚本（E 层只提供 spawn 能力，不含调度逻辑）。
+  taskCaps.readImageReferences = async ({key,messageId,maxImages=1,maxBytes=10485760}) => {
+    const media=findMessageMedia(key,messageId).filter(item=>item?.kind==='image'||item?.kind==='sticker').slice(0,Math.min(5,Math.max(0,maxImages)));
+    const out=[];let total=0;
+    for(const item of media){const image=await fetchOneBotImage(item);if(!image?.buffer)continue;total+=image.buffer.length;if(total>maxBytes)throw Error('REFERENCE_TOO_LARGE');out.push({mimeType:mimeFromBuffer(image.buffer),data:image.buffer.toString('base64')});}
+    return out;
+  };
   taskCaps.spawnCampusWatch = (args = []) => {
     try {
       const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'campus-watch.mjs'), ...args], { cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true });

@@ -3032,6 +3032,11 @@ button:active:not(:disabled) {
 
       <h3>浏览器环境</h3>
       <details class="comp-card env-card" open>
+        <summary><b>图片生成</b><span class="meta">模型、额度与本地密钥</span></summary>
+        <div class="meta">配置兼容图片生成接口的服务、每日额度和生成限制。密钥单独保存在本机。</div>
+        <div class="env-comp-root" id="envCompImageGeneration" data-ids="exec-image-generation"></div>
+      </details>
+      <details class="comp-card env-card" open>
         <summary><b>DOM 一般操作</b><span class="meta">真实 Edge（CDP）：导航/点击/填表</span></summary>
         <div class="meta">登录态、DOM 访问、页面操作（browser_navigate / click / type / snapshot）。</div>
         <div class="env-comp-root" id="envCompBrowserDom" data-ids="exec-browser-manager"></div>
@@ -6662,6 +6667,27 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
         { key: 'blockUrls', label: '禁止访问的网址（每行一个）', help: '优先于允许列表；当前用于告知 AI 避开这些地址。', type: 'lines' }
       ]
     },
+    'exec-image-generation': {
+      title: '图片生成设置',
+      fields: [
+        { key: 'apiBase', label: 'API 地址', help: '兼容 OpenAI 图片接口的服务地址。', type: 'text' },
+        { key: 'model', label: '模型', type: 'text' },
+        { key: 'size', label: '图片尺寸', help: '例如 1024x1024，以服务商支持的尺寸为准。', type: 'text' },
+        { key: 'quality', label: '画质档位', help: '以服务商支持的值为准。', type: 'text' },
+        { key: 'quotaMode', label: '每日额度模式', help: 'global 全局；session 每个会话；both 同时限制。按上海时间每天重置。', type: 'select', options: ['global', 'session', 'both'] },
+        { key: 'dailyGlobalLimit', label: '全局每日请求上限', type: 'number', min: 0, max: 10000 },
+        { key: 'dailySessionLimit', label: '每个会话每日请求上限', type: 'number', min: 0, max: 10000 },
+        { key: 'maxPromptChars', label: '提示词最大字符数', type: 'number', min: 1, max: 10000 },
+        { key: 'maxReferenceImages', label: '最多引用图片数', type: 'number', min: 0, max: 5 },
+        { key: 'maxReferenceBytes', label: '单张引用图片最大字节数', type: 'number', min: 1, max: 30000000 },
+        { key: 'maxOutputBytes', label: '生成图片最大字节数', type: 'number', min: 1, max: 30000000 },
+        { key: 'timeoutSeconds', label: '请求超时（秒）', type: 'number', min: 1, max: 600 },
+        { key: 'cooldownSeconds', label: '同一会话冷却（秒）', type: 'number', min: 0, max: 3600 },
+        { key: 'allowAutomatic', label: '允许按聊天语境自动生成图片', help: '开启后仍受会话权限、额度和冷却限制。', type: 'boolean' },
+        { key: 'allowedSessions', label: '允许使用的会话（每行一个）', help: '例如 private:12345 或 group:67890。', type: 'lines' },
+        { key: 'assetRetentionDays', label: '生成图片保留天数', type: 'number', min: 1, max: 365 }
+      ]
+    },
     'life-campus-watch': {
       title: '监控设置',
       fields: [
@@ -6841,7 +6867,8 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
   }
 
   function renderComponentForm(p, selectedKeys, showTitle = true) {
-    const cfg = p.config || {};
+    const cfg = { ...(p.config || {}) };
+    if (p.id === 'exec-image-generation') delete cfg.apiKey;
     const componentForm = COMPONENT_FORMS[p.id];
     // 同一组件可能被多个页面以不同字段子集渲染（例如网页监控与脚本协同）。
     // 必须复制 fields；直接筛选共享定义会让先渲染的面板删掉后续面板的字段。
@@ -6864,7 +6891,8 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     // 内联表单（inlineFields）才需要这行小标题来区分归属。
     return { html: (showTitle ? '<div class="meta" style="margin:6px 0">' + esc(form.title) + '</div>' : '') + fields, collect: (el) => {
       const out = selectedKeys ? {} : { ...cfg };
-      form.fields.forEach((f) => { const v = compFieldValue(f, el); if (v === undefined || v === '' ) delete out[f.key]; else out[f.key] = v; });
+      const fields = el.querySelectorAll('.comp-field');
+      form.fields.forEach((f, index) => { const v = compFieldValue(f, fields[index]); if (v === undefined || v === '' ) delete out[f.key]; else out[f.key] = v; });
       return out;
     } };
   }
@@ -6879,6 +6907,51 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
       const enabled = el.dataset.hideToggle === '1' ? '' : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? ' checked' : '') + '> <span>' + esc(el.dataset.toggleLabel || '启用此功能') + '</span></label><span class="meta comp-toggle-msg"></span>';
       if (form) {
         body.innerHTML = enabled + form.html + (form.empty || el.dataset.deferSave === '1' ? '' : '<div class="row" style="gap:8px;margin-top:8px"><button class="small comp-save">保存设置</button><span class="meta comp-msg"></span></div>');
+        if (id === 'exec-image-generation') {
+          body.insertAdjacentHTML('beforeend', '<div class="quota-console image-generation-console"><div class="quota-console-head"><div><b>本地 API 密钥</b><div class="meta">密钥不会写入组件配置，状态查询也不会返回密钥内容。</div></div><span class="meta image-secret-state" role="status">正在读取保存状态…</span></div><div class="row" style="gap:8px;margin-top:10px"><input type="password" class="image-secret-input comp-form-text" autocomplete="new-password" aria-label="图片生成 API 密钥" placeholder="输入新密钥" style="flex:1;min-width:180px;max-width:420px"><button type="button" class="small image-secret-set">保存密钥</button><button type="button" class="small danger image-secret-clear">清除密钥</button></div><div class="meta image-secret-message" aria-live="polite"></div><div class="quota-console-head" style="margin-top:18px"><div><b>今日图片生成用量</b><div class="meta">按上海时间统计请求次数。</div></div><button type="button" class="small image-usage-refresh">刷新用量</button></div><div class="meta image-usage-result" aria-live="polite">正在读取…</div></div>');
+          const panel = body.querySelector('.image-generation-console');
+          const secretInput = panel.querySelector('.image-secret-input');
+          const secretState = panel.querySelector('.image-secret-state');
+          const secretMessage = panel.querySelector('.image-secret-message');
+          const usageResult = panel.querySelector('.image-usage-result');
+          const secretCall = async input => {
+            const response = await api('/api/plugins/call', 'POST', { tool: 'image_generation_secret', input });
+            const result = response?.result || response || {};
+            if (result.ok !== true) throw Error('密钥操作失败');
+            return result;
+          };
+          const showSecretState = configured => { secretState.textContent = configured ? '已保存' : '未配置'; };
+          const refreshSecret = async () => {
+            try { showSecretState((await secretCall({ op: 'status' })).configured === true); }
+            catch { secretState.textContent = '状态读取失败'; }
+          };
+          const refreshUsage = async () => {
+            usageResult.textContent = '正在读取…';
+            try {
+              const response = await api('/api/plugins/call', 'POST', { tool: 'image_generation_status', input: {} });
+              const result = response?.result || response || {};
+              if (result.ok !== true) throw Error('用量读取失败');
+              usageResult.textContent = '日期 ' + (result.day || '—') + ' · 全局已用 ' + (result.globalUsed ?? '—') + ' / ' + (result.globalLimit ?? '—') + ' · 会话上限 ' + (result.sessionLimit ?? '—') + ' · 模式 ' + (result.quotaMode || '—');
+            } catch { usageResult.textContent = '用量读取失败'; }
+          };
+          panel.querySelector('.image-secret-set').addEventListener('click', async () => {
+            const apiKey = secretInput.value.trim();
+            if (!apiKey) { secretMessage.textContent = '请先输入新密钥。'; secretInput.focus(); return; }
+            secretInput.value = '';
+            secretMessage.textContent = '正在保存…';
+            try { showSecretState((await secretCall({ op: 'set', apiKey })).configured === true); secretMessage.textContent = '密钥已保存。'; }
+            catch { secretMessage.textContent = '密钥保存失败。'; }
+          });
+          panel.querySelector('.image-secret-clear').addEventListener('click', async () => {
+            secretInput.value = '';
+            secretMessage.textContent = '正在清除…';
+            try { showSecretState((await secretCall({ op: 'clear' })).configured === true); secretMessage.textContent = '密钥已清除。'; }
+            catch { secretMessage.textContent = '密钥清除失败。'; }
+          });
+          panel.querySelector('.image-usage-refresh').addEventListener('click', refreshUsage);
+          void refreshSecret();
+          void refreshUsage();
+        }
         if (id === 'ctx-knowledge-quota') {
           body.insertAdjacentHTML('beforeend', '<div class="quota-console"><div class="quota-console-head"><div><b>今日用量</b><div class="meta">留空查询全部会话，也可填写一个会话 key。</div></div><div class="quota-console-actions"><input class="quota-key" placeholder="例如 group:10001" aria-label="配额查询会话 key"><button class="small quota-query">查询用量</button><button class="small danger quota-reset">清空今日用量</button></div></div><div class="quota-result" aria-live="polite">选择会话后查询，或直接查询全部会话。</div></div>');
           const panel = body.querySelector('.quota-console'), keyInput = panel.querySelector('.quota-key'), result = panel.querySelector('.quota-result');

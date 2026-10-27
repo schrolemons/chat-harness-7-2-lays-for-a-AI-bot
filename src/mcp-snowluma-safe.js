@@ -342,6 +342,9 @@ const TOOL_CONFIG_FLAGS = {
   // （见 bridge.js 的 socialV2.tools 默认表），所以此前它一直是"默认关闭却仍然可见"。
   qq_send_poke: 'sendPoke',
   qq_get_message_images: 'getImages',
+  qq_make_meme: 'imageGeneration',
+  qq_get_meme_job: 'imageGeneration',
+  qq_send_image: 'imageGeneration',
   qq_get_forward_msg: 'getForwardMsg',
   qq_list_stickers: 'listStickers',
   qq_get_sticker_image: 'getStickerImage',
@@ -1326,6 +1329,26 @@ if (cfg.socialV2?.tools?.getImages !== false) {
     }
   );
 }
+
+// 托管图片工具：生成的图片只能回到创建它的当前会话，模型不传本机路径。
+server.tool('qq_make_meme','按提示词生成梗图；可用当前会话中真实消息 ID 的图片作参考。只提交一次，返回 jobId 后用 qq_get_meme_job 查询。requestId 应由当前消息 ID 加本次序号组成，重复调用不会重复计费。',{
+ key:z.string(),token:z.string().optional(),requestId:z.string().min(3).max(96),prompt:z.string().min(1),referenceMessageId:z.union([z.string(),z.number()]).optional(),automatic:z.boolean().optional()
+},async({key,token,requestId,prompt,referenceMessageId,automatic})=>{
+ try{const data=await agentApi('/api/images/generated',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'create',key,token:token||'',requestId,prompt,referenceMessageId,automatic:automatic===true}),timeoutMs:30000});return {content:[{type:'text',text:serializeModelData(data)}]};}
+ catch(error){return {content:[{type:'text',text:'生图提交失败：'+errorText(error?.message,'未知错误')}],isError:true};}
+});
+server.tool('qq_get_meme_job','查询已提交的梗图任务。完成时返回图片及 imageId；拿到 imageId 后可以调用 qq_send_image 发到原会话。',{
+ key:z.string(),token:z.string().optional(),jobId:z.string()
+},async({key,token,jobId})=>{
+ try{const data=await agentApi('/api/images/generated',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'status',key,token:token||'',jobId}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return {content};}
+ catch(error){return {content:[{type:'text',text:'查询生图失败：'+errorText(error?.message,'未知错误')}],isError:true};}
+});
+server.tool('qq_send_image','将 qq_get_meme_job 返回的已生成本地梗图发送到原 QQ 群或私聊。只接受 imageId，不接受本机路径；同一 imageId 只发送一次。',{
+ key:z.string(),token:z.string().optional(),imageId:z.string()
+},async({key,token,imageId})=>{
+ try{const data=await agentApi('/api/images/generated',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'send',key,token:token||'',imageId}),timeoutMs:30000});return {content:[{type:'text',text:serializeModelData(data)}]};}
+ catch(error){return {content:[{type:'text',text:'发图失败或结果未知，请勿自动重试：'+errorText(error?.message,'未知错误')}],isError:true};}
+});
 
 // ── 表情包体系工具（二代仿真模式） ─────────────────────────────────────────
 if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.listStickers !== false) {

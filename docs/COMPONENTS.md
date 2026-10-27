@@ -23,3 +23,7 @@
 `@playwright/mcp`、`@snowluma/sdk`、MCP SDK 等通过 `npm ci` 根据锁文件安装，不把 `node_modules` 上传。DSH、QQ、SnowLuma、Codex 本体由使用者另行安装。
 
 跨层服务与注册沿用源码的 `plugin.json + index.js + skill.md` 契约；使用者扩展应放在自己的插件目录或 `user-scripts/`，不要把个人数据写进通用插件代码。
+
+## 图片生成
+
+`exec-image-generation` 属于 E 层，提供 OpenAI 兼容生图与编辑、每日额度、参考图和生成图片本地保存。QQ MCP 工具 `qq_make_meme`、`qq_get_meme_job`、`qq_send_image` 由 `src/mcp-snowluma-safe.js` 注册，接口源文件与插件均包含在仓库中。生图结果以会话绑定的图片编号交给发图工具，不接收任意本机路径。控制台密钥存于忽略的 `state/image-generation/secret.json`，个人图片位于同目录的 `assets/`。

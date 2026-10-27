@@ -1,0 +1,5 @@
+{
+  "id":"exec-image-generation","name":"图片生成与梗图","version":"0.1.0","description":"带参考图、限额和会话绑定的图片生成及 QQ 发图资源","category":"执行环境与沙箱","layer":"E","order":54,"tags":["生图","梗图","图片"],"main":"index.js","enabled":true,"hooks":["beforePrompt"],
+  "config":{"apiBase":"","model":"","size":"1024x1024","quality":"auto","quotaMode":"both","dailyGlobalLimit":20,"dailySessionLimit":5,"maxPromptChars":1200,"maxReferenceImages":1,"maxReferenceBytes":10485760,"maxOutputBytes":10485760,"timeoutSeconds":120,"cooldownSeconds":60,"allowAutomatic":false,"allowedSessions":[],"assetRetentionDays":7},
+  "configSchema":{"quotaMode":{"enum":["global","session","both"]},"dailyGlobalLimit":{"min":0,"max":10000},"dailySessionLimit":{"min":0,"max":10000},"maxPromptChars":{"min":1,"max":10000},"maxReferenceImages":{"min":0,"max":5},"maxReferenceBytes":{"min":1,"max":30000000},"maxOutputBytes":{"min":1,"max":30000000},"timeoutSeconds":{"min":1,"max":600},"cooldownSeconds":{"min":0,"max":3600},"assetRetentionDays":{"min":1,"max":365}}
+}

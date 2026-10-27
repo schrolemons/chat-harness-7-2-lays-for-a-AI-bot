@@ -13,7 +13,7 @@
     "configure": "node scripts/configure.mjs",
     "setup": "node scripts/install.mjs",
     "doctor": "node scripts/doctor.mjs",
-    "test": "node --test scripts/test-release.mjs scripts/test-schedule-display.mjs scripts/test-whale-inner-world.mjs scripts/test-web-change-summary.mjs scripts/test-scheduler.mjs scripts/test-availability.mjs scripts/test-notification-delivery.mjs scripts/test-plugin-contract.mjs scripts/test-plugin-delivery.mjs scripts/test-task-tool-guard.mjs scripts/test-session-concurrency.mjs",
+    "test": "node --test scripts/test-release.mjs scripts/test-schedule-display.mjs scripts/test-whale-inner-world.mjs scripts/test-web-change-summary.mjs scripts/test-scheduler.mjs scripts/test-availability.mjs scripts/test-notification-delivery.mjs scripts/test-plugin-contract.mjs scripts/test-plugin-delivery.mjs scripts/test-task-tool-guard.mjs scripts/test-session-concurrency.mjs scripts/test-image-generation.mjs scripts/test-image-transport.mjs scripts/test-image-console.mjs",
     "privacy:check": "node scripts/privacy-check.mjs",
     "postinstall": "node scripts/patch-snowluma-sdk.mjs"
   },
