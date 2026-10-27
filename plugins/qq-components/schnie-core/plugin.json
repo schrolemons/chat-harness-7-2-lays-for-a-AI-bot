@@ -2,8 +2,8 @@
   "id": "schnie-core",
   "name": "本地参考与认真讨论",
   "version": "0.2.0",
-  "description": "可选的本地资料目录与逐轮讨论模式；发布包只含公开示例。",
-  "category": "SCHNIE 参考",
+  "description": "可选的 SCHNIE 思维模式介入与本地资料读取；发布包只含公开示例。",
+  "category": "SCHNIE 思维模式-介入层",
   "layer": "S",
   "order": 90,
   "tags": [

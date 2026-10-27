@@ -5,7 +5,7 @@
 | 位置 | 必需内容 |
 |---|---|
 | `src/` | 桥接内核、DSH 客户端、OneBot 连接、权限与发送机制 |
-| `plugins/qq-components/` | 七层组件、S 参考实现及横切注册中心 |
+| `plugins/qq-components/` | 七层组件、S · SCHNIE 思维模式-介入层及横切注册中心 |
 | `dsh/agent-presets/` | 四套 QQ/任务预设的源定义 |
 | `plugins/qq-agent-presets/` | 生成的 preset patch、QQ/任务/摘要工具守卫 |
 | `plugins/qq-mode-console/` | DSH 与桥接共享的模式设置 |
@@ -27,3 +27,15 @@
 ## 图片生成
 
 `exec-image-generation` 属于 E 层，提供 OpenAI 兼容生图与编辑、火山方舟 Seedream 生图与参考图、每日额度和生成图片本地保存。QQ MCP 工具 `qq_make_meme`、`qq_get_meme_job`、`qq_send_image` 由 `src/mcp-snowluma-safe.js` 注册，接口源文件与插件均包含在仓库中。生图结果以会话绑定的图片编号交给发图工具，不接收任意本机路径。控制台分别保存 OpenAI 和火山方舟密钥于忽略的 `state/image-generation/secret.json`，个人图片位于同目录的 `assets/`。选择火山方舟后，填入有可用额度的 Seedream 模型 ID，并在当前服务的密码框保存方舟 API Key；切换服务不会把另一家的密钥发送过去。
+
+入站图片与工具返回图片可暂存到当前会话，再由图像工具查看、发送或按传话白名单转交；本机路径导入限管理员私聊。
+
+## 生命周期与会话记忆
+
+`life-message-ack` 是 L 层未回复补话组件，四组话术各自启停、配置延迟和固定话术表。双时间戳以 `seenAt`/`repliedAt` 分别记录模型已看和成功回复，并在重启后继续处理未完成消息。人物档案卡固定显示本人明确提供的作息与口味，仅用于本人私聊。
+
+`ctx-interest-terms` 按群聊批次整理可公开查证的共同兴趣知识。候选在管理员确认前不会注入提示词；来源会话权限会在后台学习开始和结束时复核，词条及过程状态只保存在本机运行目录。
+
+## Bilibili 视频工具
+
+`tool-bilibili` 只访问公开内容，提供搜索、视频信息、字幕、受控 FFmpeg 抽帧和分析入口；MCP 工具通过当前会话令牌调用插件。插件不登录、不执行社交写操作，也不接受任意下载 URL、路径或系统命令。

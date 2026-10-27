@@ -1,0 +1,16 @@
+{
+  "id":"ctx-interest-terms",
+  "name":"词条学习（共同兴趣）",
+  "version":"1.0.0",
+  "description":"按群聊批次发现共同兴趣词汇，研究实际玩法、公开活动与文化知识；保留证据、来源和审核状态，仅按语境注入已确认内容。",
+  "layer":"C",
+  "category":"上下文与记忆",
+  "order":19,
+  "tags":["学习","词条","共同兴趣","游戏玩法","文化"],
+  "main":"index.js",
+  "enabled":true,
+  "hooks":["onIncoming","onTick","beforePrompt"],
+  "schedule":{"everyMs":60000},
+  "config":{"autoExtract":true,"autoResearch":true,"minMessages":12,"cooldownMs":1800000,"maxCallsPerHour":4,"injectMax":3},
+  "configSchema":{"minMessages":{"min":2,"max":60},"cooldownMs":{"min":60000,"max":86400000},"maxCallsPerHour":{"min":1,"max":12},"injectMax":{"min":1,"max":5}}
+}

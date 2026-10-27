@@ -16,6 +16,7 @@ import {createPluginHost} from '../src/plugin-host.js';
 import * as sensitive from '../src/sensitive.js';
 import * as wait from '../src/v2-wait.js';
 import * as safeFetch from '../src/safe-fetch.js';
+import * as imageAssetStore from '../src/image-asset-store.mjs';
 import * as mediaNormalize from '../src/media-normalize.js';
 import * as forward from '../src/forward.js';
 import * as slang from '../src/slang-learner.js';
@@ -167,7 +168,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     collectors, setupSleepTimerV2,
     getInitialPrompt, setInitialPrompt, loadInitialPrompts, formatInitialPromptV2,
     initialPrompts, initialPromptMaxChars,
-    extractMediaFromSegments, segmentsToText, fetchOneBotImage, fetchMediaData, resolveMediaList,
+    extractMediaFromSegments, segmentsToText, fetchOneBotImage, fetchMediaData, resolveMediaList, imageAssetStore,
     emojiCdnCandidates, getImageDimensions, acceptImageBuffer, MAX_MEDIA_BYTES, bot,
     isConversationBusyV2, v2TurnStartAt, turnLeaseNoted, TURN_BUSY_LEASE_MS,
     settingFromDshNamespace, selfIdentityTextV2, buildWakeReminderPromptV2,
@@ -202,7 +203,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     NodeApiClient: class { constructor() { return api; } },
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
-    ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
+    ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。

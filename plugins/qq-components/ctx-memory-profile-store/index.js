@@ -5,6 +5,7 @@
 
 import path from 'node:path';
 import { createUserProfileStore } from '../../../src/user-profile.js';
+import { collectRoutineEntries, routineView, routineBlockLines, foodTaste } from '../../../src/user-routines.js';
 
 const BAD_NAMES = new Set(['私聊', '群聊', '我']);
 
@@ -27,6 +28,49 @@ export function createPlugin(ctx) {
         .some((name) => String(name).trim().toLocaleLowerCase() === wanted));
   }
 
+  function routineUser(key) {
+    const convKey = String(key || '');
+    if (!convKey.startsWith('private:')) return null;
+    const user = store.snapshot().users['u:' + convKey.slice(8)];
+    return user && user.fields ? user : null;
+  }
+
+  // 固定作息 → 定时冒泡槽位。解析交给 user-profile.js 的 parseRoutine，旧短句也能读出时间。
+  function routineSlots({ key } = {}) {
+    const user = routineUser(key);
+    if (!user) return [];
+    const view = routineView(user.fields.routines);
+    const slots = [];
+    const labels = { breakfast: '早餐时间', morning: '起床时间', lunch: '午饭点', dinner: '晚饭点', sleep: '睡觉时间', work: '工作/上课' };
+    const push = (id, item) => {
+      if (!item || !item.start || slots.some((slot) => slot.id === id)) return;
+      const span = item.display || `${String(item.start.hour).padStart(2, '0')}:${String(item.start.minute).padStart(2, '0')}`;
+      slots.push({
+        id,
+        hour: item.start.hour,
+        minute: item.start.minute,
+        label: labels[id],
+        hint: `对方明确分享的作息（${span}${item.taste ? '，' + item.taste : ''}）；只在本私聊顺口贴合一句，不要催促，也不要假设对方有空。`,
+        enabled: true
+      });
+    };
+    push('breakfast', view.breakfast);
+    push('morning', view.wake);
+    push('lunch', view.lunch);
+    push('dinner', view.dinner);
+    push('sleep', view.sleep);
+    for (const item of view.work) push('work', item);
+    return slots;
+  }
+
+  // 作息块 / 口味单独可查（只对本人私聊 key 生效，别的会话一律空）。
+  function routineCard({ key } = {}) {
+    const user = routineUser(key);
+    if (!user) return { ok: false, lines: [], taste: { likes: [], dislikes: [] } };
+    const lines = routineBlockLines(user.fields.routines, { fields: user.fields });
+    return { ok: true, lines, taste: foodTaste(user.fields), slots: routineSlots({ key }) };
+  }
+
   function cleanName(name) {
     const n = String(name || '').trim();
     return BAD_NAMES.has(n) ? '' : n;
@@ -40,9 +84,28 @@ export function createPlugin(ctx) {
     }
   });
   ctx.registerTool('profile_record_facts', {
-    description: '写入结构化画像字段：{ aliases, likes, dislikes, recents, quotes }',
+    description: '写入结构化画像字段：{ aliases, likes, dislikes, recents, quotes, routines, workWindows }；作息（三餐时间＋口味、起床/入睡、工作上课时段）仅允许写入本人对应私聊档案。',
     handler: ({ userId, name, key, at, facts } = {}) => {
-      const changed = store.recordFacts({ userId, name: cleanName(name), key, at, facts });
+      const safeFacts = facts && typeof facts === 'object' ? { ...facts } : facts;
+      const isOwnPrivate = String(key || '') === 'private:' + String(userId || '');
+      const routineFields = ['routines', 'workWindows', 'breakfast', 'lunch', 'dinner', 'wake', 'sleep'];
+      if (safeFacts && !isOwnPrivate) {
+        for (const field of routineFields) {
+          if (Object.prototype.hasOwnProperty.call(safeFacts, field)) delete safeFacts[field];
+        }
+      }
+      if (safeFacts && isOwnPrivate) {
+        // 先在插件侧归一成字符串短句：热加载时旧版 user-profile 模块可能仍在内存里（只认字符串）。
+        const merged = collectRoutineEntries(facts);
+        for (const field of routineFields) {
+          if (field !== 'routines' && Object.prototype.hasOwnProperty.call(safeFacts, field)) delete safeFacts[field];
+        }
+        if (merged.length) safeFacts.routines = merged;
+      }
+      const changed = store.recordFacts({ userId, name: cleanName(name), key, at, facts: safeFacts });
+      if (changed && isOwnPrivate && routineFields.some((field) => facts?.[field] != null)) {
+        try { ctx.capabilities.refreshTimeBubble?.({ key: String(key) }); } catch {}
+      }
       return { ok: true, changed };
     }
   });
@@ -54,7 +117,7 @@ export function createPlugin(ctx) {
       properties: {
         userId: { type: 'string', description: '当前群聊实际发言者的 QQ 号，必须来自消息元数据' },
         name: { type: 'string', description: '当前群聊消息元数据中的实际昵称' },
-        key: { type: 'string', description: '当前群会话 key，如 group:10001' },
+        key: { type: 'string', description: '当前群会话 key，如 group:<群号>' },
         target: { type: 'string', description: '轻量记忆里原印象使用的目标名字，必须是该用户已知昵称' },
         traits: { type: 'array', items: { type: 'string' }, description: '要迁入档案的原印象条目，最多10条' }
       }
@@ -93,7 +156,7 @@ export function createPlugin(ctx) {
   });
 
   return {
-    services: { profileStore: { isWarmTarget } },
+    services: { profileStore: { isWarmTarget, routineSlots, routineCard } },
     hooks: {
       onIncoming(payload) {
         const text = String(payload?.text ?? '');
@@ -134,7 +197,8 @@ export function createPlugin(ctx) {
         }
         if (key.startsWith('private:')) participants.push(key.slice(8));
         const excludeTexts = Object.values(st?.memberImpressions || {}).flatMap((im) => Array.isArray(im?.traits) ? im.traits : []);
-        const block = store.blockFor({ participants, includeParticipants: false, excludeTexts, maxShare: Number(cfg.maxShare) || 3, includeOthers: cfg.shareAcrossConversations !== false });
+        const block = store.blockFor({ participants, includeParticipants: false, excludeTexts, maxShare: Number(cfg.maxShare) || 3, includeOthers: cfg.shareAcrossConversations !== false,
+          allowPrivateRoutines: key.startsWith('private:') && participants.includes(key.slice(8)) });
         return block && block.text ? block.text : '';
       }
     }

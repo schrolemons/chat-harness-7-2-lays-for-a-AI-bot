@@ -15,7 +15,7 @@ const MAX_USERS = 500;
 const MAX_NOTES_PER_USER = 20;
 const MAX_NAMES_PER_USER = 5;
 const MAX_KEYS_PER_USER = 10;
-const FIELD_MAX = { aliases: 3, likes: 5, dislikes: 4, recents: 4, quotes: 3 };
+const FIELD_MAX = { aliases: 3, likes: 5, dislikes: 4, recents: 4, quotes: 3, routines: 8 };
 
 const FORBIDDEN_RE = /(QQ|qq|微信|vx|VX|电话|手机|地址|住址|密码|验证码|身份证|银行卡|真实姓名|真名|学号|工号|邮箱)/;
 const CONTACT_RE = /(@|https?:\/\/|www\.|\.com|\.cn|[\w.+-]+@[\w-]+\.[\w.]+)/;
@@ -54,8 +54,12 @@ function cleanArr(list, max) {
 }
 
 function emptyFields() {
-  return { aliases: [], likes: [], dislikes: [], recents: [], quotes: [] };
+  return { aliases: [], likes: [], dislikes: [], recents: [], quotes: [], routines: [] };
 }
+
+// 作息解析与固定展示块在 src/user-routines.js（单独模块：插件热加载时不会被旧模块缓存挡住）。
+export { ROUTINE_LABELS, routineKind, parseRoutine, normalizeRoutineEntry, collectRoutineEntries, routineView, foodTaste, routineBlockLines } from './user-routines.js';
+import { routineKind, collectRoutineEntries, routineBlockLines } from './user-routines.js';
 
 function ensureShape(raw) {
   const base = blank();
@@ -83,7 +87,8 @@ function ensureShape(raw) {
         likes: cleanArr(f.likes, FIELD_MAX.likes),
         dislikes: cleanArr(f.dislikes, FIELD_MAX.dislikes),
         recents: cleanArr(f.recents, FIELD_MAX.recents),
-        quotes: cleanArr(f.quotes, FIELD_MAX.quotes)
+        quotes: cleanArr(f.quotes, FIELD_MAX.quotes),
+        routines: cleanArr(f.routines, FIELD_MAX.routines)
       }
     };
   }
@@ -254,8 +259,23 @@ export function createUserProfileStore(opts = {}) {
         if (!facts) return false;
         const u = touch({ userId: meta.userId, name: meta.name, key: meta.key, at: meta.at });
         if (!u) return false;
+        // 作息入口统一收口（routines 短句/对象、workWindows、breakfast/lunch/dinner/wake/sleep）。
+        const routineInputs = collectRoutineEntries(facts);
         let changed = false;
-        for (const field of Object.keys(FIELD_MAX)) changed = mergeField(u, field, facts[field]) || changed;
+        for (const field of Object.keys(FIELD_MAX)) {
+          if (field !== 'routines') { changed = mergeField(u, field, facts[field]) || changed; continue; }
+          if (!routineInputs.length) continue;
+          if (!Array.isArray(u.fields.routines)) u.fields.routines = [];
+          for (const value of routineInputs) {
+            if (!value) continue;
+            const kind = routineKind(value);
+            const previous = kind ? u.fields.routines.findIndex((item) => routineKind(item) === kind) : -1;
+            if (previous >= 0) {
+              if (u.fields.routines[previous] !== value) { u.fields.routines[previous] = value; changed = true; }
+            } else if (!u.fields.routines.includes(value)) { u.fields.routines.push(value); changed = true; }
+          }
+          if (u.fields.routines.length > FIELD_MAX.routines) u.fields.routines = u.fields.routines.slice(-FIELD_MAX.routines);
+        }
         if (changed) { dirty = true; save(); }
         return changed;
       } catch { return false; }
@@ -311,10 +331,18 @@ export function createUserProfileStore(opts = {}) {
             if (f.likes.length) bits.push('喜欢：' + f.likes.join('、'));
             if (f.dislikes.length) bits.push('讨厌：' + f.dislikes.join('、'));
             if (f.recents.length) bits.push('最近：' + f.recents.slice(-2).join('；'));
+            const routineLines = opts.allowPrivateRoutines === true && u.userId && participants.includes(u.userId)
+              ? routineBlockLines(f.routines, { fields: f })
+              : [];
             const noteText = u.notes.slice(-2).map((n) => n.text).join('；');
             lines.push(`- ${name}${u.isOwner ? '（管理员）' : ''}：互动 ${u.messageCount} 次，${where}，最近 ${last}`
               + (bits.length ? `；${bits.join('；')}` : '')
               + (noteText ? `；我记下的：${noteText}` : ''));
+            if (routineLines.length) {
+              // 固定「作息」块：只在这个人自己的私聊里出现，没有数据就整块不出现。
+              lines.push('  〔作息·仅本私聊〕本人明确分享过；到点附近顺口贴合一句即可，不催促、不假定对方有空：');
+              for (const line of routineLines) lines.push('    · ' + line);
+            }
           }
         }
 

@@ -164,14 +164,17 @@ export async function resolveSafeHost(hostname) {
   return first;
 }
 
-export async function validateFetchUrl(raw) {
+export async function validateFetchUrl(raw, { allowedProtocols = ['http:', 'https:'] } = {}) {
   let url;
   try {
     url = new URL(String(raw ?? '').trim());
   } catch {
     throw new Error('URL 无效');
   }
-  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('仅允许 http/https');
+  if (!Array.isArray(allowedProtocols) || !allowedProtocols.includes(url.protocol)) {
+    const allowed = Array.isArray(allowedProtocols) ? allowedProtocols.join('/') : '';
+    throw new Error(`仅允许 ${allowed || '受限协议'}`);
+  }
   if (url.username || url.password) throw new Error('URL 不能包含凭据');
   const addresses = await resolveSafeAddresses(url.hostname);
   return { url, ip: addresses[0], addresses };
@@ -381,16 +384,16 @@ export async function safeFetchBytes(urlString, maxBytes = 8 * 1024 * 1024, opti
 }
 
 /** 抓取图片字节并返回 Buffer（带 SSRF 防护，且校验确实为图片）。 */
-export async function safeFetchBuffer(urlString, maxBytes = 8 * 1024 * 1024) {
+export async function safeFetchBuffer(urlString, maxBytes = 8 * 1024 * 1024, options = {}) {
   validateLimit(maxBytes, 'maxBytes');
   const MAX_REDIRECTS = 5;
-  let { url, addresses } = await validateFetchUrl(urlString);
+  let { url, addresses } = await validateFetchUrl(urlString, options);
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
     const result = await requestOnce(url, addresses, maxBytes, true);
     if ([301, 302, 303, 307, 308].includes(result.statusCode)) {
       if (!result.redirect) throw new Error(`重定向缺少 Location: ${result.statusCode}`);
       const next = new URL(result.redirect, url).toString();
-      ({ url, addresses } = await validateFetchUrl(next));
+      ({ url, addresses } = await validateFetchUrl(next, options));
       continue;
     }
     if (result.statusCode < 200 || result.statusCode >= 300) {

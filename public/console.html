@@ -2057,8 +2057,8 @@ button:active:not(:disabled) {
       <div class="nav-label">G · 治理与安全</div>
       <button data-view="access" class="nav-item"><span class="nav-icon" aria-hidden="true">⊙</span>访问与安全</button>
       <div class="component-nav" data-component-nav-layer="G"></div>
-      <div class="nav-label">S · SCHNIE 参考</div>
-      <button data-view="layer-s" class="nav-item"><span class="nav-icon" aria-hidden="true">▣</span>资料参考</button>
+      <div class="nav-label">S · SCHNIE 思维模式-介入层</div>
+      <button data-view="layer-s" class="nav-item"><span class="nav-icon" aria-hidden="true">▣</span>思维模式介入</button>
       <div class="component-nav" data-component-nav-layer="S"></div>
       <div class="nav-label">组件注册层</div>
       <button data-view="registry" class="nav-item"><span class="nav-icon" aria-hidden="true">⌗</span>注册中心</button>
@@ -2424,6 +2424,7 @@ button:active:not(:disabled) {
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getMyRecent"> <span><b>qq_get_my_recent_messages</b><span class="meta">查看自己最近发过的消息，避免重复</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getMessageDetail"> <span><b>qq_get_message_detail</b><span class="meta">按 message_id 查看单条消息完整内容</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getImages"> <span><b>qq_get_message_images</b><span class="meta">查看消息中的图片/表情内容</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="imageTransfer"> <span><b>qq_import_image / qq_send_image / qq_relay_image</b><span class="meta">暂存、发送和传话图片</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getForwardMsg"> <span><b>qq_get_forward_msg</b><span class="meta">查看当前会话收到的合并转发消息内容</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getActiveMembers"> <span><b>qq_get_active_members</b><span class="meta">查看最近活跃成员列表</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="setWakeConfig"> <span><b>qq_set_wake_config</b><span class="meta">设置唤醒/潜水条件：无限期、有限时间、@/名字/关键词/概率等</span></span></label>
@@ -2432,6 +2433,8 @@ button:active:not(:disabled) {
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="availability"> <span><b>qq_availability</b><span class="meta">登记/查询/取消免打扰与稍后联系（AI 自己理解时间，不靠关键词）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="slangQuery"> <span><b>qq_slang_query</b><span class="meta">查询已确认黑话/梗/网络表达</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="slangSubmit"> <span><b>qq_slang_submit</b><span class="meta">AI 提交陌生词/黑话给管理员筛选</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="termQuery"> <span><b>qq_term_query</b><span class="meta">查询有来源的共同兴趣知识</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="termSubmit"> <span><b>qq_term_submit</b><span class="meta">提交玩法、文化与活动知识候选</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="listStickers"> <span><b>qq_list_stickers</b><span class="meta">查看/搜索 QQ 收藏表情（含备注和本地笔记）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getStickerImage"> <span><b>qq_get_sticker_image</b><span class="meta">看图理解没有备注的收藏表情</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendSticker"> <span><b>qq_send_sticker</b><span class="meta">发送收藏表情（一条消息只能一张，不能带文字）</span></span></label>
@@ -2519,8 +2522,16 @@ button:active:not(:disabled) {
         </div>
       </details>
 
+      <details class="settings-group" open>
+        <summary><span class="layer-tag" data-layer="L">L</span>未回复补话（四组独立设置）</summary>
+        <div class="settings-content">
+          <div class="meta">四组分别控制启用状态、激活延迟和固定话术表；延迟从本批合并窗口结束后起算。正常回复开始出站时会取消尚未激活的话术。</div>
+          <div id="messageAckComponentRoot"><div class="meta">正在读取组件设置…</div></div>
+        </div>
+      </details>
+
       
-<h3 class="layer-group-head" data-layer="L"><span class="layer-tag" data-layer="L">L</span>生命周期与编排（11）</h3>
+<h3 class="layer-group-head" data-layer="L"><span class="layer-tag" data-layer="L">L</span>生命周期与编排（12）</h3>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>唤醒推荐值（仅参考，AI 可不遵守）</summary><div class="settings-content">
       <div class="row">
         <label style="flex:1">默认模式</label>
@@ -2726,6 +2737,15 @@ button:active:not(:disabled) {
       </div>
       <pre id="v2StateOutput">（空）</pre>
       <pre id="v2AllStatesOutput" style="margin-top:6px">（全部会话状态：空）</pre>
+    </div></details>
+<details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>已读/已回复双时间戳（重启不重刷、不漏条）</summary><div class="settings-content">
+      <div class="row">
+        <input type="text" id="v2ReceiptKey" placeholder="group:<群号>" style="flex:1">
+        <button id="v2ReceiptLoad" class="small">查看双戳状态</button>
+        <span class="meta" id="v2ReceiptMsg"></span>
+      </div>
+      <div class="meta">每条入站消息在消息窗口内记录 <b>seenAt</b>（第一次被模型读到）与 <b>repliedAt</b>（这一批回复成功、或 qq_mark_read / qq_set_wake_config 带 throughSeq 收尾）。两戳齐全＝已处理：重启后不再展示、不再要求回复；只有 seenAt＝「已接收未回复」，会重新出现在快照里。throughSeq 只给已有 seenAt 的消息补 repliedAt，没看过的旧消息不会被水位误盖。</div>
+      <pre id="v2ReceiptOutput">（空）</pre>
     </div></details>
 <div class="row" style="margin-top:10px"><button class="small v2-save" data-page="v2-l" style="font-weight:bold;padding:8px 16px">保存当前参数（写入 config.json）</button><span class="meta v2-save-msg" id="v2ConfigMsg"></span></div>
 </section>
@@ -3061,7 +3081,7 @@ button:active:not(:disabled) {
       <div id="vLayerRoot"></div>
     </section>
 <section id="section-layer-s" data-page="layer-s" class="card span-all">
-      <h2>SCHNIE 资料参考</h2>
+      <h2>SCHNIE 思维模式-介入层</h2>
       <div class="meta">AI 根据对话需要自主调用只读工具浏览目录并读取原文；这里管理功能开关和查看工具用途。</div>
       <div class="tool-reference-list"><div class="tool-reference-item"><code>schnie_status</code><span>查看资料目录状态</span></div><div class="tool-reference-item"><code>schnie_topics</code><span>按需筛选主题并判断是否相关</span></div><div class="tool-reference-item"><code>schnie_read</code><span>读取选中的原文卡及出处</span></div></div>
       <div class="row" style="gap:8px;margin:8px 0"><button id="sLayerRefresh" class="small">刷新</button></div>
@@ -5149,6 +5169,36 @@ document.getElementById('v2StatesList').addEventListener('click', async () => {
   const r = await api('/api/socialV2/states');
   document.getElementById('v2AllStatesOutput').textContent = JSON.stringify(r.conversations || [], null, 2);
 });
+// ── 已读/已回复双时间戳（seenAt + repliedAt）────────────────────────────────
+// 索引号登记在 splitParameterPages 的「唤醒与会话」组里（12 = 本 details 在 section-v2-l 内的序号）。
+function loadV2Receipts() {
+  const key = document.getElementById('v2ReceiptKey').value.trim();
+  const msg = document.getElementById('v2ReceiptMsg');
+  const out = document.getElementById('v2ReceiptOutput');
+  if (!key) { msg.textContent = '请输入会话 key'; msg.className = 'meta err'; return; }
+  msg.textContent = '加载中…';
+  msg.className = 'meta';
+  return api('/api/socialV2/state?key=' + encodeURIComponent(key)).then((r) => {
+    if (!r || r.ok !== true) throw new Error((r && r.error) || '失败');
+    const rows = Array.isArray(r.pendingMessages) ? r.pendingMessages : [];
+    const fmt = (t) => (t ? new Date(Number(t)).toLocaleTimeString() : '—');
+    const lines = [
+      `会话：${r.key || key}`,
+      `待回复：${Number(r.pendingReplyCount) || 0} 条｜已接收未回复：${Number(r.awaitingReplyCount) || 0} 条｜首条未完成 seq：${r.firstPendingSeq == null ? '—' : r.firstPendingSeq}｜已读水位：${r.lastReadThroughSeq == null ? '—' : r.lastReadThroughSeq}`
+    ];
+    if (!rows.length) lines.push('（窗口内没有未完成的消息：都拿到了 seenAt + repliedAt）');
+    for (const m of rows) {
+      lines.push(`seq ${m.seq} · ${m.sender || '未知'} · seenAt=${fmt(m.seenAt)} · repliedAt=${fmt(m.repliedAt)}${m.awaitingReply ? ' · 已接收未回复' : ''}`);
+    }
+    out.textContent = lines.join('\n');
+    msg.textContent = '✅ 已加载';
+    msg.className = 'meta ok';
+  }).catch((e) => {
+    msg.textContent = '❌ ' + (e && e.message ? e.message : (e || '失败'));
+    msg.className = 'meta err';
+  });
+}
+document.getElementById('v2ReceiptLoad').addEventListener('click', loadV2Receipts);
 document.getElementById('v2FeedbackLoad').addEventListener('click', async () => {
   const [r, q] = await Promise.all([api('/api/socialV2/feedback'), api('/api/socialV2/self-review-feedback')]);
   const entries = r.entries || [];
@@ -5755,7 +5805,7 @@ const consolePages = {
   operations: ['调试与运维', '让桥接，始终井然有序。', '测试消息、引导 AI，或维护桥接进程与会话工作区。'],
   environments: ['环境与执行', '四种环境，各司其职。', '一般群友、管理员模式、私聊模式、浏览器——各自的预设、组件与能力入口。'],
   'layer-v': ['失败回归', '失败回归', '将失败记录整理为可复查的用例。'],
-  'layer-s': ['资料参考', '资料参考', 'AI 按需读取 SCHNIE 原文资料。'],
+  'layer-s': ['思维模式介入', '思维模式介入', '按需读取 SCHNIE 原文资料，提供思维引导与对话介入。'],
   reference: ['工具参考', '每一种能力，都清晰可见。', '查看桥接提供给 DSH 的 MCP 工具与用途。'],
   components: ['组件与参数', '九层之下，每个能力各就各位。', '按层查看并配置全部组件：参数留空即用默认值，个性化文本留空即视为无该组件。'],
   registry: ['扩展组件', '扩展组件', '查看接入的扩展项目。']
@@ -5788,12 +5838,14 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   // 语音库按需加载：进入二代仿真页时才探测（避免每次开控制台都压网关）。
   if (page === 'v2-e' && typeof loadVoiceLibrary === 'function') loadVoiceLibrary();
   if (page === 'v2-l' && typeof loadAvailability === 'function') loadAvailability();
+  if (page === 'v2-l' && typeof window.__loadMessageAckComponent === 'function') window.__loadMessageAckComponent();
   if (page === 'components' && typeof loadComponents === 'function') loadComponents();
   if (page === 'registry' && typeof loadRegistry === 'function') loadRegistry();
   if (page === 'layer-v' && typeof loadVLayer === 'function') loadVLayer();
   if (page === 'layer-s' && typeof loadSLayer === 'function') loadSLayer();
   if (page === 'environments' && typeof loadEnvironments === 'function') loadEnvironments();
   if (page === 'alias' && typeof loadAliases === 'function') loadAliases();
+  if (page === 'terms' && typeof loadTerms === 'function') loadTerms();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
     document.getElementById(target || 'mainContent')?.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -6587,7 +6639,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
   const COMP_LAYERS = [
     { id: 'C', name: '上下文与记忆' }, { id: 'T', name: '工具接口与协议' }, { id: 'E', name: '环境与执行' },
     { id: 'L', name: '生命周期与编排' }, { id: 'O', name: '可观测与运维' }, { id: 'V', name: '验证与评估' },
-    { id: 'G', name: '治理与安全' }, { id: 'S', name: 'SCHNIE 参考' }, { id: '', name: '组件注册中心' }
+    { id: 'G', name: '治理与安全' }, { id: 'S', name: 'SCHNIE 思维模式-介入层' }, { id: '', name: '组件注册中心' }
   ];
   let compCache = [];
 
@@ -6689,7 +6741,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
         { key: 'timeoutSeconds', label: '请求超时（秒）', type: 'number', min: 1, max: 600 },
         { key: 'cooldownSeconds', label: '同一会话冷却（秒）', type: 'number', min: 0, max: 3600 },
         { key: 'allowAutomatic', label: '允许按聊天语境自动生成图片', help: '开启后仍受会话权限、额度和冷却限制。', type: 'boolean' },
-        { key: 'allowedSessions', label: '允许使用的会话（每行一个）', help: '例如 private:12345 或 group:67890。', type: 'lines' },
+        { key: 'allowedSessions', label: '允许使用的会话（每行一个）', help: '例如 private:<私聊QQ> 或 group:<群号>。', type: 'lines' },
         { key: 'assetRetentionDays', label: '生成图片保留天数', type: 'number', min: 1, max: 365 }
       ]
     },
@@ -6732,7 +6784,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     },
     'life-relay-message': {
       title: '传话组件',
-      fields: [{ key: 'pendingTtlMin', label: '待转达话的最长保留（分钟）', type: 'number', min: 1, max: 10080 }]
+      fields: [{ key: 'minIntervalMin', label: '每次传话最短间隔（分钟）', help: '按发起会话计算；管理员不受限制。', type: 'number', min: 1, max: 1440 }]
     },
     'life-task-session': {
       title: '任务委派会话',
@@ -6756,6 +6808,12 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
       { key: 'maxPromptItems', label: '每轮最多注入日程数', type: 'number', min: 1, max: 20 }
     ] },
     'life-user-availability': { title: '用户空闲判断', fields: [{ key: 'contactGraceMinutes', label: '最近联系保护期（分钟）', help: '用户刚联系过时，在这段时间内减少主动打扰。', type: 'number', min: 0, max: 1440 }] },
+    'life-message-ack': { title: '四组话术分别设置启用状态、激活延迟和固定话术表。延迟从合并窗口结束后起算。', fields: [
+      { key: 'privateWait', label: '私聊 · 等待中', type: 'ackGroup' },
+      { key: 'privateApology', label: '私聊 · 抱歉', type: 'ackGroup' },
+      { key: 'groupWait', label: '群聊 · 等待中', type: 'ackGroup' },
+      { key: 'groupApology', label: '群聊 · 抱歉', type: 'ackGroup' }
+    ] },
     'obs-health-monitor': { title: '运行异常提醒', fields: [{ key: 'staleAlertCooldownMs', label: '重复提醒冷却（毫秒）', help: '同一类异常两次提醒的最短间隔。', type: 'number', min: 1000 }] },
     'eval-regression': { title: '失败回归', fields: [{ key: 'maxCases', label: '最多保留的回归用例', help: '用于限制回归记录数量，避免无限增长。', type: 'number', min: 1, max: 1000 }] },
     'gov-policy': { title: '治理策略', fields: [{ key: 'rules', label: '行为规则（每行一条）', help: '这些规则将作为治理提示提供给 AI。请写清允许范围、禁止事项及需要询问用户的动作。', type: 'lines' }] },
@@ -6788,6 +6846,17 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
 
   function compFieldHtml(field, value) {
     const hint = field.help ? '<small class="meta comp-help">' + esc(field.help) + '</small>' : '';
+    if (field.type === 'ackGroup') {
+      const group = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+      const lines = Array.isArray(group.lines) ? group.lines : [];
+      return '<fieldset class="comp-field comp-ack-group" style="border:1px solid var(--border-subtle);border-radius:12px;padding:12px 14px;margin:10px 0;background:var(--surface)">'
+        + '<legend style="padding:0 6px;font-weight:650">' + esc(field.label) + '</legend>'
+        + '<div class="row" style="gap:14px;align-items:center"><label><input type="checkbox" class="comp-ack-enabled"' + (group.enabled !== false ? ' checked' : '') + '> 启用这组</label>'
+        + '<label>激活延迟（秒） <input type="number" class="comp-ack-delay" value="' + esc(String(Number(group.delayMs ?? 0) / 1000)) + '" min="0" max="600" step="0.1" style="width:110px"></label></div>'
+        + '<label class="meta" style="display:block;margin-top:8px">固定话术表（每行一条，激活时随机选一条）</label>'
+        + '<textarea class="comp-ack-lines" rows="' + Math.max(4, Math.min(8, lines.length)) + '" style="width:100%;min-height:100px">' + esc(lines.join('\n')) + '</textarea>'
+        + '<small class="meta comp-help">清空话术表会让此组不发送；延迟上限为 600 秒。</small></fieldset>';
+    }
     if (field.type === 'flags') {
       const set = new Set(String(value || '').split('|').filter(Boolean));
       const opts = (field.options || []).map(([v, label]) => '<label class="comp-flag"><input type="checkbox" data-flag="' + esc(v) + '"' + (set.has(v) ? ' checked' : '') + '> ' + esc(label) + '</label>').join('');
@@ -6826,6 +6895,14 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
   }
 
   function compFieldValue(field, el) {
+    if (field.type === 'ackGroup') {
+      const seconds = Number(el.querySelector('.comp-ack-delay').value);
+      return {
+        enabled: el.querySelector('.comp-ack-enabled').checked,
+        delayMs: Number.isFinite(seconds) ? Math.round(Math.max(0, Math.min(600, seconds)) * 1000) : 0,
+        lines: el.querySelector('.comp-ack-lines').value.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 100)
+      };
+    }
     if (field.type === 'flags') {
       const vals = [];
       el.querySelectorAll('input[data-flag]').forEach((c) => { if (c.checked) vals.push(c.dataset.flag); });
@@ -6968,7 +7045,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
           panel.querySelector('.quota-reset').addEventListener('click', async () => { const key = keyInput.value.trim(); if (!confirm(key ? `清空 ${key} 今天的专业问答用量？` : '清空所有会话今天的专业问答用量？')) return; result.textContent = '正在清空…'; try { const d = await call('reset'); if (d.ok !== true) throw Error(d.error || '清空失败'); result.textContent = '今日用量已清空。'; } catch (e) { result.textContent = '清空失败：' + e.message; } });
         }
         if (id === 'ctx-member-card') {
-          body.insertAdjacentHTML('beforeend', '<div class="member-card-preview"><div class="quota-console-head"><div><b>档案预览</b><div class="meta">输入群或私聊 key，查看该会话对应的具体人物档案。</div></div><div class="quota-console-actions"><input class="member-key" placeholder="例如 private:10001" aria-label="档案预览会话 key"><button class="small member-preview">查看档案</button></div></div><div class="member-card-results" aria-live="polite">填写会话 key 后查看档案。</div></div>');
+          body.insertAdjacentHTML('beforeend', '<div class="member-card-preview"><div class="quota-console-head"><div><b>档案预览</b><div class="meta">输入群或私聊 key，查看该会话对应的具体人物档案。</div></div><div class="quota-console-actions"><input class="member-key" placeholder="例如 private:<私聊QQ>" aria-label="档案预览会话 key"><button class="small member-preview">查看档案</button></div></div><div class="member-card-results" aria-live="polite">填写会话 key 后查看档案。</div></div>');
           const panel = body.querySelector('.member-card-preview'), keyInput = panel.querySelector('.member-key'), result = panel.querySelector('.member-card-results');
           panel.querySelector('.member-preview').addEventListener('click', async () => { const key = keyInput.value.trim(); if (!key) { result.textContent = '请先填写会话 key。'; keyInput.focus(); return; } result.textContent = '正在读取档案…'; try { const r = await api('/api/plugins/call', 'POST', { tool: 'member_card', input: { key } }); const d = r?.result || r || {}; if (d.ok !== true) throw Error(d.error || '读取失败'); const cards = Array.isArray(d.cards) ? d.cards : []; if (!cards.length) { result.textContent = '该会话暂无可展示的人物档案。'; return; } result.innerHTML = '<div class="member-card-meta">显示 ' + cards.length + ' 张 · 上限 ' + esc(d.maxCards) + ' 张 / ' + esc(d.maxChars) + ' 字</div>' + cards.map(x => '<article class="member-profile-card"><div class="member-profile-id">QQ ' + esc(x.userId || '') + '</div><div class="member-profile-text">' + esc(x.text || '') + '</div></article>').join(''); } catch (e) { result.textContent = '读取失败：' + e.message; } });
         }
@@ -7086,6 +7163,19 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     root.querySelectorAll('.comp-card').forEach((d) => loadComponentDetail(d.dataset.id, d));
   };
 
+  window.__loadMessageAckComponent = async () => {
+    const root = document.getElementById('messageAckComponentRoot');
+    if (!root || root.dataset.loaded === '1') return;
+    try {
+      await window.__renderComponentsByIds(['life-message-ack'], root);
+      root.dataset.loaded = '1';
+      if (!root.children.length) root.innerHTML = '<div class="meta">组件尚未加载；桥接重新启动后刷新此页。</div>';
+    } catch (error) {
+      root.innerHTML = '<div class="meta">读取组件失败：' + esc(error.message) + ' <button class="small" type="button" data-retry-message-ack>重试</button></div>';
+      root.querySelector('[data-retry-message-ack]')?.addEventListener('click', () => { root.dataset.loaded = ''; void window.__loadMessageAckComponent(); });
+    }
+  };
+
   // 每个组件按实际效果进入已有功能页，不再出现“本层组件”汇总框。
   window.mountComponentNavigation = async () => {
     const data = await api('/api/plugins');
@@ -7137,10 +7227,10 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     for (const [name, description] of external) if (!inventory.has(name)) inventory.set(name, { description, source: '外部 MCP 服务' });
     document.getElementById('toolReferenceRoot').innerHTML = [...inventory].sort(([a], [b]) => a.localeCompare(b)).map(([name, entry]) =>
       '<div class="tool-reference-item"><code>' + esc(name) + '</code><span>' + esc(entry.description) + '<br><small>' + esc(entry.source) + '</small></span></div>').join('');
-    const extraPlugins = compCache.filter(p => (p.tools || []).length && !['ctx-member-alias', 'ctx-chat-slang', 'tool-registry', 'tool-codex-chat', 'tool-injection-lab'].includes(p.id));
+    const extraPlugins = compCache.filter(p => (p.tools || []).length && !['ctx-member-alias', 'ctx-interest-terms', 'ctx-chat-slang', 'tool-registry', 'tool-codex-chat', 'tool-injection-lab'].includes(p.id));
     document.getElementById('v2Tools').insertAdjacentHTML('beforeend', extraPlugins.map(p =>
       '<label class="v2-tool-item"><input type="checkbox" data-plugin-tool-toggle="' + esc(p.id) + '"' + (p.enabled ? ' checked' : '') + '><span><b>' + esc((p.tools || []).map(t => t.name).join(' / ') || (p.id === 'tool-injection-lab' ? 'qq_attack' : p.name)) + '</b><span class="meta">' + esc(p.description || p.name) + '</span><small class="meta tool-toggle-msg"></small></span></label>').join(''));
-    document.getElementById('toolSwitchExtras').innerHTML = '<p class="meta">成员绰号与黑话的自动提取在对应栏目控制；已确认词条持续注入。外部 MCP 工具：' + external.map(([name]) => esc(name)).join(' · ') + '。外部服务的工具可见性由各服务管理。</p>';
+    document.getElementById('toolSwitchExtras').innerHTML = '<p class="meta">成员绰号、黑话与兴趣词条的自动提取在对应栏目控制；已确认词条持续注入。外部 MCP 工具：' + external.map(([name]) => esc(name)).join(' · ') + '。外部服务的工具可见性由各服务管理。</p>';
     document.querySelectorAll('[data-plugin-tool-toggle]').forEach(input => input.addEventListener('change', async () => {
       const old = !input.checked;
       const msg = input.closest('.v2-tool-item').querySelector('.tool-toggle-msg');
@@ -7179,6 +7269,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
       'ctx-context-session': 'setting-c-1',
       'ctx-media-sticker-pick': 'setting-c-0',
       'ctx-member-alias': 'alias',
+      'ctx-interest-terms': 'terms',
       'life-daily-worklog': 'setting-o-1',
       'life-proactive-startup-greeting': 'setting-l-2',
       'life-task-session': 'setting-l-0',
@@ -7191,7 +7282,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
       'tool-injection-lab': 'injection-lab'
     };
     for (const p of compCache) {
-      if (mergedIds.has(p.id) || ['ctx-role-card', 'ctx-memory-profile-store', 'life-relay-message', 'life-campus-watch', 'ctx-chat-style', 'ctx-context-dynamics', 'ctx-context-lifecycle', 'ctx-context-runtime', 'ctx-context-session', 'ctx-memory-store', 'ctx-memory-update', 'ctx-member-alias', 'tool-registry'].includes(p.id)) continue;
+      if (mergedIds.has(p.id) || ['ctx-role-card', 'ctx-memory-profile-store', 'life-relay-message', 'life-campus-watch', 'ctx-chat-style', 'ctx-context-dynamics', 'ctx-context-lifecycle', 'ctx-context-runtime', 'ctx-context-session', 'ctx-memory-store', 'ctx-memory-update', 'ctx-member-alias', 'ctx-interest-terms', 'tool-registry'].includes(p.id)) continue;
       // /api/plugins 的 summary 不再返回 config（值可能含敏感信息，只在 detail 里给），
       // 所以这里不能再用 p.config 判断“有没有可配置项”，否则所有纯配置组件（如成本策略）
       // 都会从页面消失。改为看控制台自己声明的表单（COMPONENT_FORMS）或组件工具。
@@ -7269,57 +7360,169 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
   document.getElementById('sLayerRefresh').addEventListener('click', () => loadSLayer());
 })();
 
-// ── 成员绰号表（谁是谁）：手动添加 + 自动候选确认 ───────────────────────────
+async function learningCall(tool,input={}) {
+  const out=await api('/api/plugins/call','POST',{tool,input});
+  if(out.ok===false||out.result?.ok===false)throw Error(out.error||out.result?.error||'操作失败');
+  return out.result||out;
+}
+function learningEvidence(rows) {
+  if(!rows?.length)return '<div class="meta">暂无采集语境；此记录可能来自手动维护。</div>';
+  return '<details><summary>查看采集语境（'+rows.length+'）</summary><ul class="learning-evidence">'+rows.map(e=>'<li><small>'+esc(e.key||'手动')+' · '+esc(e.time?new Date(e.time).toLocaleString():'')+'</small><p>'+esc(e.text||'')+'</p></li>').join('')+'</ul></details>';
+}
+function learningLinks(urls) {
+  return (urls||[]).map(value=>{try{const u=new URL(value);return /^https?:$/.test(u.protocol)?'<a href="'+esc(u.href)+'" target="_blank" rel="noopener noreferrer">'+esc(u.hostname+u.pathname)+'</a>':'';}catch{return '';}}).filter(Boolean).join(' · ');
+}
+// Alias review is per entry, never per QQ: one person may retain many names.
 (() => {
-  const call = (tool, input) => api('/api/plugins/call', 'POST', { tool, input });
-  window.loadAliases = async () => {
-    const root = document.getElementById('aliasRoot');
-    if (!root) return;
-    api('/api/plugins/detail?id=ctx-member-alias').then(r => {
-      const p = r.plugin || r;
-      document.getElementById('aliasAutoExtract').checked = p.config?.autoExtract !== false;
-    }).catch(() => {});
-    root.innerHTML = '<div class="meta">加载中…</div>';
+  const message=document.getElementById('aliasMsg');let rows=[],active='candidate',selected=new Set();
+  const statusLabel={candidate:'待判断',confirmed:'已确认',rejected:'已拒绝'};
+  function search(){const suffix=active==='candidate'?'Cand':active[0].toUpperCase()+active.slice(1);return document.getElementById('aliasSearch'+suffix).value.trim().toLowerCase();}
+  function openEditor(entry){
+    document.getElementById('aliasEditId').value=entry.id;document.getElementById('aliasModalName').value=entry.alias||'';document.getElementById('aliasModalQq').value=entry.qq||'';document.getElementById('aliasModalNote').value=entry.note||entry.reason||'';
+    document.getElementById('aliasModalTitle').textContent=entry.status==='candidate'?'审核绰号：'+entry.alias:'编辑绰号：'+entry.alias;
+    document.getElementById('aliasModalContent').textContent=(entry.targetName?'被称呼者线索：'+entry.targetName+' · ':'')+(entry.sourceKey||'');
+    document.getElementById('aliasModalEvidence').innerHTML=learningEvidence(entry.evidence);
+    document.getElementById('aliasModalConfirm').textContent=entry.status==='candidate'?'确认映射':'保存修改';
+    document.getElementById('aliasModalReject').style.display=entry.status==='candidate'?'':'none';document.getElementById('aliasModalOverlay').classList.add('open');
+  }
+  function render(){
+    const suffix=active==='candidate'?'Cand':active[0].toUpperCase()+active.slice(1),target=document.getElementById('alias'+active[0].toUpperCase()+active.slice(1)+'List'),q=search(),limit=Number(document.getElementById('aliasLimit'+suffix).value)||100;
+    const list=rows.filter(x=>x.status===active),filtered=list.filter(x=>!q||[x.alias,x.qq,x.note,x.reason,x.targetName,x.sourceKey,...(x.evidence||[]).map(y=>y.text)].join(' ').toLowerCase().includes(q)),shown=filtered.slice(0,limit);
+    if(!shown.length){target.innerHTML='<div class="meta" style="padding:8px">'+(list.length?'没有符合条件的绰号':active==='candidate'?'暂无候选；可刷新近期群消息或手动添加':'暂无'+statusLabel[active]+'绰号')+'</div>';return;}
+    let html='<div class="meta" style="padding:6px 8px">共 '+filtered.length+' 条，显示 '+shown.length+' 条</div><table><tr><th>选择</th><th>绰号</th><th>被称呼者</th><th>对应 QQ</th><th>来源 / 语境证据</th><th>备注</th><th>操作</th></tr>';
+    for(const e of shown){const actions=active==='candidate'?'<button class="small" data-alias-edit="'+esc(e.id)+'">查看 / 编辑</button><button class="small primary" data-alias-confirm="'+esc(e.id)+'">确认</button><details class="compact-actions"><summary>更多</summary><div class="compact-actions-menu"><button class="small" data-alias-reject="'+esc(e.id)+'">拒绝</button></div></details>':active==='confirmed'?'<button class="small" data-alias-edit="'+esc(e.id)+'">编辑</button><button class="small danger" data-alias-delete="'+esc(e.id)+'">删除</button>':'<span class="meta">已记入拒绝记录</span>';
+      html+='<tr data-alias-id="'+esc(e.id)+'"><td>'+(active!=='rejected'?'<input type="checkbox" data-alias-select="'+esc(e.id)+'" '+(selected.has(e.id)?'checked':'')+'>':'—')+'</td><td><b>'+esc(e.alias)+'</b><br><span class="'+(active==='candidate'?'pill b':active==='confirmed'?'pill g':'pill r')+'">'+statusLabel[active]+'</span></td><td>'+esc(e.targetName||'—')+'</td><td>'+esc(e.qq||'未绑定')+'</td><td>'+esc(e.sourceKey||'手动')+(e.evidence?.length?'<br>'+learningEvidence(e.evidence):'')+'</td><td>'+esc(e.note||e.reason||'—')+'</td><td class="row">'+actions+'</td></tr>';
+    }target.innerHTML=html+'</table>';
+    target.querySelectorAll('[data-alias-select]').forEach(cb=>cb.addEventListener('change',()=>{cb.checked?selected.add(cb.dataset.aliasSelect):selected.delete(cb.dataset.aliasSelect);}));
+    target.querySelectorAll('[data-alias-edit],[data-alias-confirm]').forEach(button=>button.addEventListener('click',()=>openEditor(rows.find(x=>x.id===(button.dataset.aliasEdit||button.dataset.aliasConfirm)))));
+    target.querySelectorAll('[data-alias-reject],[data-alias-delete]').forEach(button=>button.addEventListener('click',async()=>{try{await learningCall('alias_reject',{id:button.dataset.aliasReject||button.dataset.aliasDelete});message.textContent='已处理此条绰号';await loadAliases();}catch(e){message.textContent=e.message;}}));
+  }
+  window.loadAliases=async()=>{
+    if(!document.getElementById('aliasCandidateList'))return;
     try {
-      const r = await call('alias_list', {});
-      const entries = (r && r.result && r.result.entries) || [];
-      const confirmed = entries.filter((e) => e.status === 'confirmed');
-      const candidates = entries.filter((e) => e.status !== 'confirmed');
-      const tConfirmed = confirmed.length
-        ? '<table><tr><th>绰号</th><th>QQ</th><th>备注</th><th></th></tr>' + confirmed.map((e) => '<tr><td>' + esc(e.alias) + '</td><td>' + esc(e.qq) + '</td><td>' + esc(e.note || '') + '</td><td><button class="small alias-del" data-q="' + esc(e.qq) + '">删除</button></td></tr>').join('') + '</table>'
-        : '<div class="meta">（无）</div>';
-      const tCandidates = candidates.length
-        ? '<table><tr><th>绰号</th><th>QQ</th><th></th></tr>' + candidates.map((e) => '<tr><td>' + esc(e.alias) + '</td><td>' + esc(e.qq) + '</td><td><button class="small alias-ok" data-a="' + esc(e.alias) + '" data-q="' + esc(e.qq) + '">确认</button> <button class="small alias-del" data-q="' + esc(e.qq) + '">删除</button></td></tr>').join('') + '</table>'
-        : '<div class="meta">（无）</div>';
-      root.innerHTML = '<h3>已确认（注入提示词）</h3>' + tConfirmed + '<h3 style="margin-top:14px">候选（自动提取，待确认）</h3>' + tCandidates;
-      root.querySelectorAll('.alias-ok').forEach((b) => b.addEventListener('click', async () => { await call('alias_confirm', { alias: b.dataset.a, qq: b.dataset.q }); loadAliases(); }));
-      root.querySelectorAll('.alias-del').forEach((b) => b.addEventListener('click', async () => { await call('alias_reject', { qq: b.dataset.q }); loadAliases(); }));
-    } catch (e) { root.innerHTML = '<div class="err">读取失败：' + esc(e.message) + '</div>'; }
+      const [data,detail]=await Promise.all([learningCall('alias_list'),api('/api/plugins/detail?id=ctx-member-alias')]);
+      document.getElementById('aliasAutoExtract').checked=(detail.plugin||detail).config?.autoExtract!==false;
+      rows=[...(data.entries||[]),...(data.rejected||[])];render();
+    } catch(e){document.getElementById('aliasCandidateList').innerHTML='<span class="err">读取失败：'+esc(e.message)+'</span>';}
   };
-  document.getElementById('aliasRefresh').addEventListener('click', () => loadAliases());
-  document.getElementById('aliasAutoExtract').addEventListener('change', async event => {
-    const input = event.currentTarget;
-    const msg = document.getElementById('aliasAutoExtractMsg');
-    const previous = !input.checked;
-    msg.textContent = '保存中…';
-    try {
-      const detail = await api('/api/plugins/detail?id=ctx-member-alias');
-      const p = detail.plugin || detail;
-      const result = await api('/api/plugins/config', 'POST', { id: 'ctx-member-alias', config: { ...(p.config || {}), autoExtract: input.checked } });
-      if (result.ok === false) throw Error(result.error || '保存失败');
-      msg.textContent = input.checked ? '已允许自动提取' : '已停止自动提取；手动词条仍会注入';
-    } catch (error) { input.checked = previous; msg.textContent = '保存失败：' + error.message; }
+  document.querySelectorAll('#aliasTabs [data-alias-tab]').forEach(button=>button.addEventListener('click',()=>{active=button.dataset.aliasTab;document.querySelectorAll('#aliasTabs [data-alias-tab]').forEach(x=>x.classList.toggle('active',x===button));document.querySelectorAll('#section-alias .alias-panel').forEach(panel=>panel.classList.toggle('active',panel.id==='aliasPanel'+active[0].toUpperCase()+active.slice(1)));render();}));
+  for(const status of ['candidate','confirmed','rejected']){const suffix=status==='candidate'?'Cand':status[0].toUpperCase()+status.slice(1);document.getElementById('aliasSearch'+suffix).addEventListener('input',render);document.getElementById('aliasLimit'+suffix).addEventListener('change',render);}
+  for(const status of ['candidate','confirmed'])document.getElementById('alias'+status[0].toUpperCase()+status.slice(1)+'SelectAll').addEventListener('change',event=>{for(const e of rows.filter(x=>x.status===status)){if(event.target.checked)selected.add(e.id);else selected.delete(e.id);}render();});
+  document.getElementById('aliasRejectSelected').addEventListener('click',async()=>{for(const id of selected){const e=rows.find(x=>x.id===id);if(e?.status==='candidate')try{await learningCall('alias_reject',{id});}catch(error){message.textContent=error.message;}}selected.clear();await loadAliases();});
+  document.getElementById('aliasConfirmSelected').addEventListener('click',async()=>{let confirmed=0,skipped=0;for(const id of selected){const e=rows.find(x=>x.id===id);if(e?.status!=='candidate')continue;if(!/^\d{5,12}$/.test(String(e.qq||''))){skipped++;continue;}try{await learningCall('alias_confirm',{id:e.id,alias:e.alias,qq:e.qq,note:e.note||''});confirmed++;}catch{skipped++;}}selected.clear();message.textContent='批量确认 '+confirmed+' 条；'+skipped+' 条缺少有效 QQ 或确认失败，请单独编辑。';await loadAliases();});
+  document.getElementById('aliasDeleteSelected').addEventListener('click',async()=>{for(const id of selected){const e=rows.find(x=>x.id===id);if(e?.status==='confirmed')try{await learningCall('alias_reject',{id});}catch(error){message.textContent=error.message;}}selected.clear();await loadAliases();});
+  document.getElementById('aliasAutoExtract').addEventListener('change',async event=>{
+    const input=event.currentTarget,previous=!input.checked,msg=document.getElementById('aliasAutoExtractMsg');
+    try{const out=await api('/api/plugins/detail?id=ctx-member-alias');await api('/api/plugins/config','POST',{id:'ctx-member-alias',config:{...(out.plugin||out).config,autoExtract:input.checked}});msg.textContent=input.checked?'已启用候选收集':'已停止自动收集；确认的绰号仍可查询';}catch(e){input.checked=previous;msg.textContent='保存失败：'+e.message;}
   });
-  document.getElementById('aliasAdd').addEventListener('click', async () => {
-    const msg = document.getElementById('aliasMsg');
-    const name = document.getElementById('aliasName').value.trim();
-    const qq = document.getElementById('aliasQq').value.trim();
-    const note = document.getElementById('aliasNote').value.trim();
-    if (!name || !qq) { msg.textContent = '绰号与 QQ 都要填'; return; }
-    msg.textContent = '保存中…';
-    try { const r = await call('alias_add', { alias: name, qq, note }); msg.textContent = r.result && r.result.ok ? '已保存' : ('失败：' + (r.result && r.result.error || '未知')); loadAliases(); }
-    catch (e) { msg.textContent = '失败：' + e.message; }
+  document.getElementById('aliasAdd').addEventListener('click',async()=>{
+    try{const result=await learningCall('alias_add',{alias:document.getElementById('aliasName').value,qq:document.getElementById('aliasQq').value,note:document.getElementById('aliasNote').value});message.textContent=result.ok?'已添加；不会覆盖该用户其他绰号':'保存失败';await loadAliases();}catch(e){message.textContent=e.message;}
   });
+  document.getElementById('aliasRefreshCandidates').addEventListener('click',async event=>{
+    const button=event.currentTarget;button.disabled=true;message.textContent='正在补扫近期群消息并筛选一个高置信度绰号候选……';
+    try{const r=await learningCall('alias_refresh');message.textContent='刷新完成：扫描 '+(r.scanned||0)+' 条消息，新增 '+(r.processed||0)+' 条候选证据；结果仍需管理员审核。';await loadAliases();}
+    catch(e){message.textContent=e.message;}finally{button.disabled=false;}
+  });
+  document.getElementById('aliasModalConfirm').addEventListener('click',async()=>{const id=document.getElementById('aliasEditId').value,entry=rows.find(x=>x.id===id);if(!entry)return;try{await learningCall('alias_confirm',{id,alias:document.getElementById('aliasModalName').value,qq:document.getElementById('aliasModalQq').value,note:document.getElementById('aliasModalNote').value});message.textContent='已确认并保存；同一用户的其他绰号保留';document.getElementById('aliasModalOverlay').classList.remove('open');await loadAliases();}catch(e){document.getElementById('aliasModalContent').textContent=e.message;}});
+  document.getElementById('aliasModalReject').addEventListener('click',async()=>{const id=document.getElementById('aliasEditId').value;try{await learningCall('alias_reject',{id});document.getElementById('aliasModalOverlay').classList.remove('open');message.textContent='已拒绝此条绰号';await loadAliases();}catch(e){document.getElementById('aliasModalContent').textContent=e.message;}});
+  document.getElementById('aliasModalCancel').addEventListener('click',()=>document.getElementById('aliasModalOverlay').classList.remove('open'));
+  document.getElementById('aliasModalOverlay').addEventListener('click',event=>{if(event.target.id==='aliasModalOverlay')event.currentTarget.classList.remove('open');});
+})();
+(() => {
+  let entries=[],config={},active='candidate',selected=new Set();const msg=document.getElementById('termsMsg');
+  const statuses={candidate:'待审核',confirmed:'已确认',rejected:'已拒绝'},researchLabels={pending:'待研究',running:'研究中',researched:'已取得公开来源',failed:'研究失败',manual:'手动编辑',rejected:'已拒绝'};
+  function search(){return document.getElementById('termsSearch'+(active==='candidate'?'Cand':active[0].toUpperCase()+active.slice(1))).value.trim().toLowerCase();}
+  function render(){
+    const suffix=active==='candidate'?'Candidate':active[0].toUpperCase()+active.slice(1),box=document.getElementById('terms'+suffix+'List'),q=search(),limit=Number(document.getElementById('termsLimit'+(active==='candidate'?'Cand':active[0].toUpperCase()+active.slice(1))).value)||100;
+    const list=entries.filter(e=>e.status===active),filtered=list.filter(e=>!q||[e.term,e.topic,e.category,e.summary,e.sourceKey,...(e.aliases||[]),...(e.sources||[]),...(e.evidence||[]).map(x=>x.text)].join(' ').toLowerCase().includes(q)),shown=filtered.slice(0,limit);
+    if(!shown.length){box.innerHTML='<div class="meta" style="padding:8px">'+(list.length?'没有符合条件的词条':active==='candidate'?'暂无候选；可刷新群消息或手动添加':'暂无'+statuses[active]+'词条')+'</div>';return;}
+    let html='<div class="meta" style="padding:6px 8px">共 '+filtered.length+' 条，显示 '+shown.length+' 条（可滚动查找）</div><table><tr><th>选择</th><th>词条</th><th>次数</th><th>来源</th><th>摘要 / 主题</th><th>参考来源</th><th>语境证据</th><th>操作</th></tr>';
+    for(const e of shown){const actions=active==='candidate'?'<button class="small" data-term-edit="'+esc(e.id)+'">查看 / 编辑</button><button class="small primary" data-term-confirm="'+esc(e.id)+'" '+(!e.summary?'disabled title="确认前需要摘要"':'')+'>确认</button><details class="compact-actions"><summary>更多</summary><div class="compact-actions-menu"><button class="small" data-term-research="'+esc(e.id)+'" '+(e.research?.status==='running'?'disabled':'')+'>研究来源</button><button class="small" data-term-reject="'+esc(e.id)+'">拒绝</button></div></details>':active==='confirmed'?'<button class="small" data-term-edit="'+esc(e.id)+'">编辑</button><button class="small danger" data-term-reject="'+esc(e.id)+'">撤销确认</button>':'<button class="small" data-term-restore="'+esc(e.id)+'">恢复候选</button>';
+      const unverified=active==='candidate'&&!e.sources?.length,sourceStatus=e.research?.status==='failed'?'研究失败：'+(e.research.error||'未取得摘要'):e.research?.status==='running'?'正在研究':e.research?.status==='pending'?'待研究':'未附参考来源';
+      html+='<tr data-term-id="'+esc(e.id)+'"><td>'+(active!=='rejected'?'<input type="checkbox" data-term-select="'+esc(e.id)+'" '+(selected.has(e.id)?'checked':'')+'>':'—')+'</td><td><b>'+esc(e.term)+'</b><br><span class="'+(active==='candidate'?'pill b':active==='confirmed'?'pill g':'pill r')+'">'+statuses[active]+'</span></td><td>'+esc(e.count||1)+'</td><td>'+esc(!e.sourceKey||e.sourceKey==='*'?'手动 / 公共':e.sourceKey)+'</td><td>'+(unverified&&e.summary?'<span class="meta">待核实摘要：</span>':'')+esc(e.summary||'待补充摘要')+'<br><span class="meta">'+esc(e.topic||'未分类')+' · '+esc(e.category||'兴趣知识')+' · '+esc(researchLabels[e.research?.status]||'未研究')+'</span></td><td>'+(e.sources?.length?learningLinks(e.sources):'<span class="meta">'+esc(sourceStatus)+'</span>')+'</td><td>'+learningEvidence(e.evidence)+'</td><td class="row">'+actions+'</td></tr>';
+    }box.innerHTML=html+'</table>';
+    box.querySelectorAll('[data-term-select]').forEach(cb=>cb.addEventListener('change',()=>{cb.checked?selected.add(cb.dataset.termSelect):selected.delete(cb.dataset.termSelect);}));
+    box.querySelectorAll('[data-term-edit]').forEach(b=>b.addEventListener('click',()=>edit(entries.find(e=>e.id===b.dataset.termEdit))));
+    for(const [attr,tool,label] of [['research','term_research','研究完成，结果仍待管理员审核'],['confirm','term_confirm','词条已确认'],['reject','term_reject','词条已拒绝']])box.querySelectorAll('[data-term-'+attr+']').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;msg.textContent=attr==='research'?'正在核实公开资料；不会自动确认……':'正在保存……';try{await learningCall(tool,{id:b.dataset['term'+attr[0].toUpperCase()+attr.slice(1)]});msg.textContent=label;await loadTerms(false);}catch(e){msg.textContent=e.message;}finally{b.disabled=false;}}));
+    box.querySelectorAll('[data-term-restore]').forEach(b=>b.addEventListener('click',async()=>{const e=entries.find(x=>x.id===b.dataset.termRestore);try{await learningCall('term_save',{...e,status:'candidate'});msg.textContent='已恢复为候选';await loadTerms(false);}catch(error){msg.textContent=error.message;}}));
+  }
+  function edit(entry={}) {
+    document.getElementById('termEditId').value=entry.id||'';
+    document.getElementById('termName').value=entry.term||'';
+    document.getElementById('termTopic').value=entry.topic||'';
+    document.getElementById('termCategory').value=entry.category||'兴趣知识';
+    document.getElementById('termGroup').value=/^group:\d+$/.test(entry.sourceKey||'')?entry.sourceKey.slice(6):'';
+    document.getElementById('termAliases').value=(entry.aliases||[]).join('，');
+    document.getElementById('termSummary').value=entry.summary||'';
+    document.getElementById('termSources').value=(entry.sources||[]).join('\n');
+    document.getElementById('termEditMsg').textContent='';
+    document.getElementById('termEditorTitle').textContent=entry.id?'编辑词条：'+(entry.term||''):'新增词条';
+    document.getElementById('termEditorOverlay').classList.add('open');
+  }
+  window.loadTerms=async(withConfig=true)=>{
+    try{
+      const data=await learningCall('term_list');entries=data.entries||[];config=data.config||config;
+      const categoryOptions=document.getElementById('termCategoryOptions'),existing=new Set([...categoryOptions.options].map(x=>x.value));
+      for(const entry of entries)if(entry.category&&!existing.has(entry.category)){const option=document.createElement('option');option.value=entry.category;categoryOptions.append(option);existing.add(entry.category);}
+      if(withConfig){
+        document.getElementById('termsAutoExtract').checked=config.autoExtract!==false;
+        document.getElementById('termsAutoResearch').checked=config.autoResearch!==false;
+        document.getElementById('termsMinMessages').value=config.minMessages??12;
+        document.getElementById('termsCooldown').value=Math.max(1,Number(config.cooldownMs||1800000)/60000);
+        document.getElementById('termsMaxCalls').value=config.maxCallsPerHour??4;
+        document.getElementById('termsInjectMax').value=config.injectMax??3;
+      }
+      const counts={candidate:entries.filter(e=>e.status==='candidate').length,confirmed:entries.filter(e=>e.status==='confirmed').length,rejected:entries.filter(e=>e.status==='rejected').length};
+      document.getElementById('termsStats').textContent='待审核 '+counts.candidate+' · 已确认 '+counts.confirmed+' · 已拒绝 '+counts.rejected+' · 待提取群消息 '+Object.values(data.windows||{}).reduce((a,b)=>a+Number(b||0),0);render();
+    }catch(e){document.getElementById('termsCandidateList').innerHTML='<p class="err">词条读取失败：'+esc(e.message)+'</p>';}
+  };
+  document.querySelectorAll('#termsTabs [data-term-tab]').forEach(button=>button.addEventListener('click',()=>{active=button.dataset.termTab;document.querySelectorAll('#termsTabs [data-term-tab]').forEach(x=>x.classList.toggle('active',x===button));document.querySelectorAll('#section-terms .terms-panel').forEach(panel=>panel.classList.toggle('active',panel.id==='termsPanel'+active[0].toUpperCase()+active.slice(1)));render();}));
+  for(const status of ['candidate','confirmed','rejected']){const suffix=status==='candidate'?'Cand':status[0].toUpperCase()+status.slice(1);document.getElementById('termsSearch'+suffix).addEventListener('input',render);document.getElementById('termsLimit'+suffix).addEventListener('change',render);}
+  for(const status of ['candidate','confirmed'])document.getElementById('terms'+status[0].toUpperCase()+status.slice(1)+'SelectAll').addEventListener('change',event=>{const q=status==='candidate'?search():'';for(const e of entries.filter(x=>x.status===status&&(!q||[x.term,x.topic,x.category,x.summary,x.sourceKey,...(x.aliases||[]),...(x.sources||[]),...(x.evidence||[]).map(y=>y.text)].join(' ').toLowerCase().includes(q)))){if(event.target.checked)selected.add(e.id);else selected.delete(e.id);}render();});
+  document.getElementById('termsResearchSelected').addEventListener('click',async event=>{
+    const button=event.currentTarget,targets=[...selected].map(id=>entries.find(e=>e.id===id)).filter(e=>e?.status==='candidate'&&e.research?.status!=='running');
+    if(!targets.length){msg.textContent='请先勾选待审核词条';return;}
+    button.disabled=true;
+    try{
+      let success=0,failed=0;const errors=[];
+      for(let i=0;i<targets.length;i++){
+        const entry=targets[i];msg.textContent='正在研究来源（'+(i+1)+'/'+targets.length+'）：'+entry.term+'；结果仍待审核';
+        try{await learningCall('term_research',{id:entry.id});success++;selected.delete(entry.id);}
+        catch(error){failed++;errors.push(entry.term+'：'+error.message);selected.delete(entry.id);}
+      }
+      msg.textContent='批量研究完成：成功 '+success+' 条，失败 '+failed+' 条；研究结果仍需管理员确认。'+(errors.length?' '+errors.join('；'):'');
+      await loadTerms(false);
+    }catch(error){msg.textContent='批量研究未开始：'+error.message;}
+    finally{button.disabled=false;}
+  });
+  async function rejectSelected(status){for(const id of selected){if(entries.some(x=>x.id===id&&x.status===status))try{await learningCall('term_reject',{id});}catch(error){msg.textContent=error.message;}}selected.clear();await loadTerms(false);}
+  document.getElementById('termsConfirmSelected').addEventListener('click',async()=>{let confirmed=0,skipped=0;for(const id of selected){const e=entries.find(x=>x.id===id);if(e?.status!=='candidate')continue;if(!e.summary){skipped++;continue;}try{await learningCall('term_confirm',{id});confirmed++;}catch{skipped++;}}selected.clear();msg.textContent='批量确认 '+confirmed+' 条；'+skipped+' 条缺少摘要或确认失败，请单独编辑。';await loadTerms(false);});
+  document.getElementById('termsRejectSelected').addEventListener('click',()=>rejectSelected('candidate'));
+  document.getElementById('termsRejectConfirmedSelected').addEventListener('click',()=>rejectSelected('confirmed'));
+  document.getElementById('termsRefresh').addEventListener('click',async event=>{
+    const button=event.currentTarget;button.disabled=true;msg.textContent='正在补扫近期群消息并提取一个候选……';
+    try{const result=await learningCall('term_refresh');msg.textContent=result.processed?'刷新完成：扫描 '+(result.scanned||0)+' 条消息，新增 1 个待审核词条。':'刷新完成：扫描 '+(result.scanned||0)+' 条消息，暂未发现足够明确的兴趣词条。';await loadTerms(false);}
+    catch(e){msg.textContent=e.message;}finally{button.disabled=false;}
+  });
+  document.getElementById('termsNew').addEventListener('click',()=>edit());
+  async function quickAdd(status){const ids=['termManualName','termManualTopic','termManualSummary','termManualSource','termManualCategory'],values=Object.fromEntries(ids.map(id=>[id,document.getElementById(id).value.trim()]));const input={term:values.termManualName,topic:values.termManualTopic,category:values.termManualCategory,summary:values.termManualSummary,sources:values.termManualSource?[values.termManualSource]:[],sourceKey:'*',status};try{await learningCall('term_save',input);msg.textContent=status==='confirmed'?'自定义词条已确认入库':'自定义词条已加入候选';for(const id of ids.slice(0,4))document.getElementById(id).value='';await loadTerms(false);}catch(error){msg.textContent=error.message;}}
+  document.getElementById('termManualDraft').addEventListener('click',()=>quickAdd('candidate'));
+  document.getElementById('termManualConfirm').addEventListener('click',()=>quickAdd('confirmed'));
+  async function save(status) {
+    const editMsg=document.getElementById('termEditMsg'),group=document.getElementById('termGroup').value.trim();
+    if(group&&!/^\d+$/.test(group)){editMsg.textContent='群号只能包含数字；留空为公共知识';return;}
+    const input={id:document.getElementById('termEditId').value||undefined,term:document.getElementById('termName').value,topic:document.getElementById('termTopic').value,category:document.getElementById('termCategory').value,sourceKey:group?'group:'+group:'*',aliases:document.getElementById('termAliases').value.split(/[,，、]/).map(x=>x.trim()).filter(Boolean),summary:document.getElementById('termSummary').value,sources:document.getElementById('termSources').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),status};
+    try{const r=await learningCall('term_save',input);document.getElementById('termEditId').value=r.entry.id;editMsg.textContent=status==='confirmed'?'已保存并确认':'草稿已保存';await loadTerms(false);document.getElementById('termEditorOverlay').classList.remove('open');}catch(e){editMsg.textContent=e.message;}
+  }
+  document.getElementById('termSaveDraft').addEventListener('click',()=>save('candidate'));
+  document.getElementById('termSaveConfirmed').addEventListener('click',()=>save('confirmed'));
+  document.getElementById('termsConfigSave').addEventListener('click',async()=>{
+    const configMsg=document.getElementById('termsConfigMsg');
+    const patch={autoExtract:document.getElementById('termsAutoExtract').checked,autoResearch:document.getElementById('termsAutoResearch').checked,minMessages:Number(document.getElementById('termsMinMessages').value),cooldownMs:Number(document.getElementById('termsCooldown').value)*60000,maxCallsPerHour:Number(document.getElementById('termsMaxCalls').value),injectMax:Number(document.getElementById('termsInjectMax').value)};
+    try{const out=await api('/api/plugins/config','POST',{id:'ctx-interest-terms',config:patch});if(out.ok===false)throw Error(out.error);configMsg.textContent='学习设置已保存';await loadTerms(false);}catch(e){configMsg.textContent=e.message;}
+  });
+  document.getElementById('termEditorCancel').addEventListener('click',()=>document.getElementById('termEditorOverlay').classList.remove('open'));
+  document.getElementById('termEditorOverlay').addEventListener('click',event=>{if(event.target.id==='termEditorOverlay')event.currentTarget.classList.remove('open');});
 })();
 
 // ── 环境与执行：给每种环境内嵌其组件的可编辑配置 ─────────────────────────────

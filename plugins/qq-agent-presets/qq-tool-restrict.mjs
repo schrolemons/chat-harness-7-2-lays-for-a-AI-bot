@@ -232,6 +232,10 @@ const SAFE_PREFIXES = [
 // 无害模型侧工具：ask_user_question 用于把问题转给管理员/用户，
 // todo_write 仅维护任务列表。若后续 preset 不再挂载这些工具，保留无害。
 const SAFE_EXACT = new Set([
+  'mcp__snowluma__qq_list_staged_images',
+  'mcp__snowluma__qq_import_image',
+  'mcp__snowluma__qq_send_image',
+  'mcp__snowluma__qq_relay_image',
   'mcp__schnie-private-phi__schnie_status',
   'mcp__schnie-private-phi__schnie_topics',
   'mcp__schnie-private-phi__schnie_read',

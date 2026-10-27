@@ -13,7 +13,7 @@
     "configure": "node scripts/configure.mjs",
     "setup": "node scripts/install.mjs",
     "doctor": "node scripts/doctor.mjs",
-    "test": "node --test scripts/test-release.mjs scripts/test-schedule-display.mjs scripts/test-whale-inner-world.mjs scripts/test-web-change-summary.mjs scripts/test-scheduler.mjs scripts/test-availability.mjs scripts/test-notification-delivery.mjs scripts/test-plugin-contract.mjs scripts/test-plugin-delivery.mjs scripts/test-task-tool-guard.mjs scripts/test-session-concurrency.mjs scripts/test-image-generation.mjs scripts/test-image-transport.mjs scripts/test-image-console.mjs",
+    "test": "node --test scripts/test-release.mjs scripts/test-schedule-display.mjs scripts/test-whale-inner-world.mjs scripts/test-web-change-summary.mjs scripts/test-scheduler.mjs scripts/test-availability.mjs scripts/test-notification-delivery.mjs scripts/test-plugin-contract.mjs scripts/test-plugin-delivery.mjs scripts/test-task-tool-guard.mjs scripts/test-session-concurrency.mjs scripts/test-read-receipts.mjs plugins/qq-components/tool-bilibili/test/bili-cache.test.mjs plugins/qq-components/tool-bilibili/test/bili-client.test.mjs plugins/qq-components/tool-bilibili/test/bili-core.test.mjs plugins/qq-components/tool-bilibili/test/plugin-tools.test.mjs plugins/qq-components/tool-bilibili/test/video-frames.test.mjs scripts/test-image-generation.mjs scripts/test-image-transport.mjs scripts/test-image-console.mjs scripts/test-image-asset-store.mjs scripts/test-image-ingress.mjs scripts/test-relay-image.mjs scripts/test-safe-fetch-protocol.mjs",
     "privacy:check": "node scripts/privacy-check.mjs",
     "postinstall": "node scripts/patch-snowluma-sdk.mjs"
   },

@@ -7,9 +7,11 @@
 //   · 只看当前会话最近说话的人（unread + recentMessages 的发送者），按 lastSeenAt 倒序；
 //   · 每人一张卡，最多 maxCards 张、每张最多 maxNotes 条最近记录；
 //   · 群聊里同一个人只出现一次；总长受 maxChars 控制，超了就少放几张，绝不截半句。
+//   · 本人明确分享的作息（三餐时间＋口味、起床/入睡、工作上课时段）只在该用户的私聊里单独成块。
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { routineBlockLines } from '../../../src/user-routines.js';
 
 function readProfiles(root) {
   try {
@@ -63,13 +65,20 @@ export function createPlugin(ctx) {
     const likes = Array.isArray(fields.likes) ? fields.likes.filter(Boolean).slice(0, 2) : [];
     const dislikes = Array.isArray(fields.dislikes) ? fields.dislikes.filter(Boolean).slice(0, 2) : [];
     const quotes = Array.isArray(fields.quotes) ? fields.quotes.filter(Boolean).slice(-1) : [];
+    const routines = Array.isArray(fields.routines) ? fields.routines.filter(Boolean) : [];
     if (likes.length) bits.push('喜欢' + likes.join('、'));
     if (dislikes.length) bits.push('不喜欢' + dislikes.join('、'));
     if (quotes.length) bits.push('说过「' + clip(quotes[0], 30) + '」');
 
+    // 固定「作息」块：只在这个人自己的私聊里出现；有数据才出现，空的不占位、不输出占位符。
+    const routineLines = opts.showPrivateRoutine ? routineBlockLines(routines, { fields }).slice(0, 8) : [];
+    const routineBlock = routineLines.length
+      ? '\n  〔作息·仅本私聊〕' + routineLines.map((line) => '\n    · ' + clip(line, 60)).join('')
+      : '';
+
     const head = `- ${display}${bits.length ? '（' + bits.join('；') + '）' : ''}`;
     const noteLine = notes.length ? '\n  · ' + notes.map((n) => clip(n, 46)).join('\n  · ') : '';
-    return head + noteLine;
+    return head + routineBlock + noteLine;
   }
 
   /** 控制台用：按会话 key 预览会挑哪几个人、卡片原文 */
@@ -93,7 +102,14 @@ export function createPlugin(ctx) {
       const p = profiles['u:' + id];
       if (!p) continue;
       if (p.isOwner && c.skipOwner) continue;
-      cards.push({ userId: id, text: buildCard(p, { ...opts, showWarmConnection: String(key).startsWith('group:') }) });
+      cards.push({
+        userId: id,
+        text: buildCard(p, {
+          ...opts,
+          showWarmConnection: String(key).startsWith('group:'),
+          showPrivateRoutine: String(key) === 'private:' + id
+        })
+      });
     }
     return {
       ok: true,
@@ -150,13 +166,15 @@ export function createPlugin(ctx) {
         const lines = [];
         let used = 0;
         for (const p of picked.slice(0, maxCards)) {
-          const card = buildCard(p, { ...opts, showWarmConnection: key.startsWith('group:') });
+          const card = buildCard(p, { ...opts, showWarmConnection: key.startsWith('group:'), showPrivateRoutine: key === 'private:' + String(p.userId || '') });
           if (used + card.length > maxChars) break;
           lines.push(card);
           used += card.length;
         }
         if (!lines.length) return '';
-        return '【人物小档案】这几个人最近说过话，称呼和偏好可以直接用，不用现问：\n' + lines.join('\n');
+        return '【人物小档案】这几个人最近说过话，称呼和偏好可以直接用，不用现问。'
+          + '作息块（三餐时间＋口味、起床/入睡、工作上课时段）只在该用户自己的私聊里出现：只按本人明确说过的时间，到点附近可以顺口贴合一句，不催吃饭、不催睡觉、不说教，不假定对方有空，刚聊完不叠加；临时变动只写当前会话轻量记忆，不改稳定作息；绝不跨会话、绝不在群里提他的作息。\n'
+          + lines.join('\n');
       }
     }
   };

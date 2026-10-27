@@ -332,6 +332,8 @@ const TOOL_CONFIG_FLAGS = {
   qq_availability: 'availability',
   qq_slang_query: 'slangQuery',
   qq_slang_submit: 'slangSubmit',
+  qq_term_query: 'termQuery',
+  qq_term_submit: 'termSubmit',
   qq_send_voice: 'sendVoice',
   qq_send_file: 'sendFile',
   qq_list_voices: 'sendVoice',
@@ -344,7 +346,10 @@ const TOOL_CONFIG_FLAGS = {
   qq_get_message_images: 'getImages',
   qq_make_meme: 'imageGeneration',
   qq_get_meme_job: 'imageGeneration',
-  qq_send_image: 'imageGeneration',
+  qq_list_staged_images: 'imageTransfer',
+  qq_import_image: 'imageTransfer',
+  qq_send_image: 'imageTransfer',
+  qq_relay_image: 'imageTransfer',
   qq_get_forward_msg: 'getForwardMsg',
   qq_list_stickers: 'listStickers',
   qq_get_sticker_image: 'getStickerImage',
@@ -353,6 +358,11 @@ const TOOL_CONFIG_FLAGS = {
   qq_get_self_image: 'getSelfImage',
   qq_sticker_note: 'stickerNote',
   qq_set_sticker_remark: 'setStickerRemark',
+  bili_search: 'bilibili',
+  bili_video_info: 'bilibili',
+  bili_video_content: 'bilibili',
+  bili_video_frames: 'bilibili',
+  bili_analyze_video: 'bilibili',
 };
 const disabledTools = [];
 {
@@ -1288,6 +1298,15 @@ server.tool(
   }
 );
 
+server.tool('qq_term_query','查询已确认的共同兴趣知识，如游戏玩法、术语、公开活动与文化；按词条或主题检索。',{key:z.string(),token:z.string().min(1),q:z.string().optional()},async({key,token,q})=>{
+  try{const data=await agentApi('/api/socialV2/term/query?key='+encodeURIComponent(key)+'&q='+encodeURIComponent(q||''),{headers:{'x-agent-token':token}});return {content:[{type:'text',text:serializeModelData(data)}]};}
+  catch(error){return {isError:true,content:[{type:'text',text:'查询词条失败：'+error.message}]};}
+});
+server.tool('qq_term_submit','提交共同兴趣词条候选，保留语境/公开来源，待管理员确认。游戏只收玩法机制，不收录入圈退圈；文化知识不把个人观点泛化到整个群体。',{key:z.string(),token:z.string().min(1),term:z.string().max(60),topic:z.string().max(60),category:z.enum(['游戏玩法','文化与活动','兴趣知识']).optional(),summary:z.string().max(2000).optional(),context:z.string().max(300).optional(),sources:z.array(z.string()).max(8).optional()},async({key,token,...input})=>{
+  try{const data=await agentApi('/api/socialV2/term/submit',{method:'POST',headers:{'x-agent-token':token},body:JSON.stringify({key,...input})});return {content:[{type:'text',text:serializeModelData(data)}]};}
+  catch(error){return {isError:true,content:[{type:'text',text:'提交词条失败：'+error.message}]};}
+});
+
 // ── 图片/表情查看工具（一代/二代仿真共用） ─────────────────────────────────
 if (cfg.socialV2?.tools?.getImages !== false) {
   server.tool(
@@ -1337,17 +1356,35 @@ server.tool('qq_make_meme','按提示词生成梗图；可用当前会话中真�
  try{const data=await agentApi('/api/images/generated',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'create',key,token:token||'',requestId,prompt,referenceMessageId,automatic:automatic===true}),timeoutMs:30000});return {content:[{type:'text',text:serializeModelData(data)}]};}
  catch(error){return {content:[{type:'text',text:'生图提交失败：'+errorText(error?.message,'未知错误')}],isError:true};}
 });
-server.tool('qq_get_meme_job','查询已提交的梗图任务。完成时返回图片及 imageId；拿到 imageId 后可以调用 qq_send_image 发到原会话。',{
+server.tool('qq_get_meme_job','查询已提交的梗图任务。完成时返回图片；图片会进入统一暂存清单，需要发送时调用 qq_list_staged_images 获取可复用 imageId。',{
  key:z.string(),token:z.string().optional(),jobId:z.string()
 },async({key,token,jobId})=>{
  try{const data=await agentApi('/api/images/generated',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'status',key,token:token||'',jobId}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return {content};}
  catch(error){return {content:[{type:'text',text:'查询生图失败：'+errorText(error?.message,'未知错误')}],isError:true};}
 });
-server.tool('qq_send_image','将 qq_get_meme_job 返回的已生成本地梗图发送到原 QQ 群或私聊。只接受 imageId，不接受本机路径；同一 imageId 只发送一次。',{
+server.tool('qq_list_staged_images','列出当前会话暂存的图片：包括 QQ 收到的图片、MCP/tool 返回的图片、以及刚导入的图片。返回 imageId、图片名和来源；资源只属于当前会话并会自动过期。',{
+ key:z.string(),token:z.string().optional()
+},async({key,token})=>{
+ try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'list',key,token:token||''})});return {content:[{type:'text',text:serializeModelData(data)}]};}
+ catch(error){return {content:[{type:'text',text:'查询暂存图片失败：'+errorText(error?.message,'未知错误')}],isError:true};}
+});
+server.tool('qq_import_image','把图片导入统一暂存目录。url 只允许 HTTPS 图片地址；filePath 仅限管理员私聊读取任意本机路径。二者只能提供一个。成功后返回 imageId、名称和图像内容。',{
+ key:z.string(),token:z.string().optional(),url:z.string().optional(),filePath:z.string().optional(),name:z.string().optional()
+},async({key,token,url,filePath,name})=>{
+ try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'import',key,token:token||'',url,filePath,name}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return {content};}
+ catch(error){return {content:[{type:'text',text:'导入图片失败：'+errorText(error?.message,'未知错误')}],isError:true};}
+});
+server.tool('qq_send_image','把暂存图片发到当前 QQ 会话。对话里刚出现 MCP/tool 图片时，先用 qq_list_staged_images 找到对应名称和 imageId；发送成功后工具会回传名称、来源、QQ 消息 ID 与图片本身。同一图片只允许尝试发送一次。',{
  key:z.string(),token:z.string().optional(),imageId:z.string()
 },async({key,token,imageId})=>{
- try{const data=await agentApi('/api/images/generated',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'send',key,token:token||'',imageId}),timeoutMs:30000});return {content:[{type:'text',text:serializeModelData(data)}]};}
+ try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'send',key,token:token||'',imageId}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return {content};}
  catch(error){return {content:[{type:'text',text:'发图失败或结果未知，请勿自动重试：'+errorText(error?.message,'未知错误')}],isError:true};}
+});
+server.tool('qq_relay_image','把当前私聊暂存图片传到另一个白名单 QQ 会话；沿用现有传话白名单、限频和内容闸门。管理员本机路径图片不能跨会话传送。刚从 MCP/tool 收到图片时先 qq_list_staged_images 查 imageId。',{
+ key:z.string(),token:z.string().optional(),target:z.string().min(1),imageId:z.string(),message:z.string().optional()
+},async({key,token,target,imageId,message})=>{
+ try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'relay',key,token:token||'',target,imageId,message}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return {content};}
+ catch(error){return {content:[{type:'text',text:'图片传话失败：'+errorText(error?.message,'未知错误')}],isError:true};}
 });
 
 // ── 表情包体系工具（二代仿真模式） ─────────────────────────────────────────
@@ -1811,6 +1848,51 @@ server.tool(
 );
 
 // ── 自查与桌面便签（tool-user-checking 插件；机主授权的一点点本机权限） ──
+const biliToken = z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）');
+const biliVideo = z.string().min(1).max(2048);
+function registerBilibiliTool(name, description, inputSchema, timeoutMs = 30000) {
+  server.tool(name, description, { token: biliToken, ...inputSchema }, async ({ token, ...input }) => {
+    try {
+      const data = await agentApi('/api/plugins/call', {
+        method: 'POST',
+        headers: { 'x-agent-token': token },
+        body: JSON.stringify({ tool: name, input }),
+        timeoutMs
+      });
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `${name} 失败：${error?.message ?? error}` }], isError: true };
+    }
+  });
+}
+
+// Bilibili plugin owns public-data retrieval, caching and constrained FFmpeg work.
+// The MCP surface adds only the current session token and forwards calls unchanged.
+registerBilibiliTool('bili_search', '匿名搜索 Bilibili 公开视频；只读。', {
+  keyword: z.string().min(1).max(100),
+  page: z.number().int().min(1).max(20).optional(),
+  sort: z.enum(['relevance', 'play', 'pubdate']).optional(),
+  excludeBvids: z.array(z.string().regex(/^BV[0-9A-Za-z]{10}$/)).max(100).optional()
+});
+registerBilibiliTool('bili_video_info', '读取 Bilibili 公开视频元数据和分 P；只读，不下载视频。', {
+  video: biliVideo, page: z.number().int().min(1).max(100).optional()
+});
+registerBilibiliTool('bili_video_content', '读取公开视频字幕及时间戳；评论会单独标记为观众观点。', {
+  video: biliVideo, page: z.number().int().min(1).max(100).optional(), includeComments: z.boolean().optional()
+});
+registerBilibiliTool('bili_video_frames', '用受控 FFmpeg 对公开视频抽取关键帧；只读，不接受任意命令或下载地址。', {
+  video: biliVideo, page: z.number().int().min(1).max(100).optional(),
+  startSeconds: z.number().min(0).optional(), endSeconds: z.number().min(0.1).optional(),
+  frameCount: z.number().int().min(1).max(18).optional(), width: z.number().int().min(320).max(1280).optional(),
+  sampleMode: z.enum(['scene', 'interval']).optional(), subtitleStrip: z.boolean().optional()
+}, 200000);
+registerBilibiliTool('bili_analyze_video', '组合视频元数据、字幕与关键帧供当前模型分析，结论区分观察、字幕、评论和推断。', {
+  video: biliVideo, question: z.string().max(1000).optional(), page: z.number().int().min(1).max(100).optional(),
+  startSeconds: z.number().min(0).optional(), endSeconds: z.number().min(0.1).optional(),
+  frameCount: z.number().int().min(1).max(18).optional(), width: z.number().int().min(320).max(1280).optional(),
+  sampleMode: z.enum(['scene', 'interval']).optional(), includeComments: z.boolean().optional()
+}, 200000);
+
 server.tool(
   'user_checking',
   '自查与桌面便签（机主已授权，不用每次讨许可）。action=status 读本机运行状态（只读指标：负载/内存/磁盘/进程，不含任何本机路径）；action=note 往桌面上机主指定的 txt 追加一句你想说的话（只追加，不覆盖不删除，一次一句、别太长）。',

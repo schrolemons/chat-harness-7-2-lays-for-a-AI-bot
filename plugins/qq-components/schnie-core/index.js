@@ -1,4 +1,4 @@
-// SCHNIE S 层：按需阅读本地参考资料，保持原稿可追溯，不写入心理画像。
+// SCHNIE S 层：提供思维模式介入，并按需阅读本地原文；保持来源可追溯，不写入心理画像。
 
 export async function createPlugin(ctx) {
   const { createRuntime } = await import(new URL(`./runtime.mjs?reload=${Date.now()}`, import.meta.url));

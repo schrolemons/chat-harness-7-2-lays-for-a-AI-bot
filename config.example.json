@@ -138,6 +138,7 @@
       "slangQuery": true,
       "slangSubmit": true,
       "getImages": true,
+      "imageTransfer": true,
       "getForwardMsg": true,
       "sendPoke": true,
       "listStickers": true,
@@ -147,7 +148,8 @@
       "stickerNote": true,
       "collectSticker": true,
       "getSelfImage": false,
-      "sendVoice": false
+      "sendVoice": false,
+      "bilibili": true
     },
     "wake": {
       "defaultMode": "diving",

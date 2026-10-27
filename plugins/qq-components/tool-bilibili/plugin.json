@@ -1,0 +1,26 @@
+{
+  "id": "tool-bilibili",
+  "name": "Bilibili 公共视频工具",
+  "version": "0.1.0",
+  "description": "匿名只读公开视频搜索、信息、字幕与受控 FFmpeg 抽帧；视觉结论由当前模型分析。",
+  "category": "工具接口与协议",
+  "layer": "T",
+  "order": 35,
+  "tags": ["Bilibili", "视频搜索", "字幕", "FFmpeg", "只读"],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [],
+  "config": {
+    "ffmpegPath": "",
+    "ffmpegUseSystemProxy": false,
+    "defaultFrameCount": 9,
+    "maxVideoSeconds": 3600,
+    "maxSegmentSeconds": 600,
+    "cacheDir": "bilibili",
+    "maxConcurrentJobs": 2,
+    "maxFrameWidth": 720,
+    "cacheTtlMs": 300000,
+    "requestTimeoutMs": 12000,
+    "ffmpegTimeoutMs": 180000
+  }
+}

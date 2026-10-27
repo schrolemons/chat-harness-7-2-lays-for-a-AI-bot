@@ -42,10 +42,24 @@ const TOOLS = [
   { name: 'qq_sticker_note', category: 'media', level: 'write', desc: '记表情含义/标签' },
   { name: 'qq_collect_sticker', category: 'media', level: 'write', desc: '收藏别人的表情' },
   { name: 'qq_get_message_images', category: 'media', level: 'read', desc: '看消息里的图片/表情' },
+  { name: 'qq_list_staged_images', category: 'media', level: 'read', desc: '列出当前会话暂存图片' },
+  { name: 'qq_import_image', category: 'media', level: 'write', desc: '导入 HTTPS 图片或管理员本机图片' },
+  { name: 'qq_send_image', category: 'media', level: 'write', desc: '发送当前会话暂存图片' },
+  { name: 'qq_relay_image', category: 'media', level: 'write', desc: '向白名单会话传话发图' },
+  // Bilibili 公开数据工具（只读）
+  { name: 'bili_search', category: 'video', level: 'read', desc: '搜索公开视频并去重' },
+  { name: 'bili_video_info', category: 'video', level: 'read', desc: '读取视频元数据和分 P' },
+  { name: 'bili_video_content', category: 'video', level: 'read', desc: '读取公开视频字幕/时间戳' },
+  { name: 'bili_video_frames', category: 'video', level: 'read', desc: '受控抽帧并返回关键画面' },
+  { name: 'bili_analyze_video', category: 'video', level: 'read', desc: '组合视频资料供当前模型分析' },
   { name: 'qq_get_self_image', category: 'media', level: 'read', desc: '看自己的默认形象' },
   // 学习/反馈
   { name: 'qq_slang_query', category: 'learn', level: 'read', desc: '查群聊黑话' },
   { name: 'qq_slang_submit', category: 'learn', level: 'write', desc: '提交候选黑话' },
+  { name: 'qq_alias_query', category: 'learn', level: 'read', desc: '查询已确认和疑似绰号' },
+  { name: 'qq_alias_submit', category: 'learn', level: 'write', desc: '提交可不绑定 QQ 的疑似绰号' },
+  { name: 'qq_term_query', category: 'learn', level: 'read', desc: '查询共同兴趣知识' },
+  { name: 'qq_term_submit', category: 'learn', level: 'write', desc: '提交兴趣词条候选' },
   { name: 'qq_report_feedback', category: 'learn', level: 'write', desc: '向管理端反馈问题' }
 ];
 
@@ -79,7 +93,7 @@ export function createPlugin(ctx) {
       beforePrompt(payload) {
         // 默认不往提示词里塞工具清单（MCP 已提供 schema，多了是噪音）。
         if (!(ctx.config || {}).injectPrompt) return '';
-        return '【工具注册表】可用 qq 工具共 ' + TOOLS.length + ' 个；用 tool_list / tool_describe 查询声明与权限等级。';
+        return '【工具注册表】可用工具共 ' + TOOLS.length + ' 个；用 tool_list / tool_describe 查询声明与权限等级。';
       }
     }
   };

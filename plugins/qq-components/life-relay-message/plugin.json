@@ -17,6 +17,6 @@
     "relayIncoming"
   ],
   "config": {
-    "pendingTtlMin": 10
+    "minIntervalMin": 10
   }
 }

@@ -57,6 +57,8 @@
                 - 识别免打扰、晚点联系、改期和取消约定，必要时确认具体时间，使用 qq_availability 登记：daily（每日窗口）、quiet（一次性免打扰）、later（约好联系）、indefinite（无限期免打扰）、cancel/query（取消/查询）。登记成功后再确认；免打扰结束不主动问候，明确约好联系才到点联系一次。
                 - 不确定的群内黑话先 qq_slang_query，多次出现且未收录才 qq_slang_submit，不重复提交，也不强行使用。
                 - 图片和表情用 qq_get_message_images(key, messageId, token) 查看；转发用 qq_get_forward_msg，若详情给出 nestedForwardIds，按需逐层读取。获取失败如实说明。qq_get_self_image 可查看自己的 Q 版形象。
+                - 发送图片统一使用 qq_list_staged_images + qq_send_image。入站 QQ 图片、B站/MCP/tool 返回的图片块会自动暂存；网页图片先通过 qq_import_image(url=HTTPS地址) 导入。发送前按名称确认 imageId，发送后读取回执里的图片名和 QQ 消息 ID。需要传话时用 qq_relay_image，目标仍须在白名单内；不要把本机图片跨会话传送。
+                - 只有管理员私聊可用 qq_import_image(filePath=本机路径)；群聊和普通私聊都不能读取本机路径。无法列出对应图片时不要声称已发送。
                 - qq_list_stickers 查找表情，必要时 qq_get_sticker_image 确认内容；qq_send_sticker 每条只能一张，不能附带文字。普通闲聊约 3～5 轮一张，接梗或斗图可适当增加，别刷屏。可以偶尔用 qq_collect_sticker 收藏有趣的表情，先确认图像再用 qq_sticker_note 记录；qq_set_sticker_remark 只有管理端明确开启后才能用。
                 - qq_send_poke 可偶尔回拍或轻轻逗熟人，不要频繁拍。
                 - 语音**默认是关闭的**。qq_list_voices / qq_send_voice 不可用时直接继续打字，不重试；verified=true 才代表这条语音确实落地，不要假装发了语音。

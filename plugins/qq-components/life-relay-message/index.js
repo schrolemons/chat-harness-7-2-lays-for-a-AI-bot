@@ -11,12 +11,13 @@
 
 import { parseRelayCommand } from '../../../src/relay-intent.js';
 
-const DEFAULT_PENDING_TTL_MIN = 10;
+const PENDING_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_MIN_INTERVAL_MIN = 10;
 
 export function createPlugin(ctx) {
   const cap = ctx.capabilities || {};
-  const ttlMin = Math.max(1, Math.min(60, Number((ctx.config || {}).pendingTtlMin) || DEFAULT_PENDING_TTL_MIN));
-  const ttlMs = ttlMin * 60 * 1000;
+  const minIntervalMin = Math.max(1, Math.min(1440, Number((ctx.config || {}).minIntervalMin) || DEFAULT_MIN_INTERVAL_MIN));
+  const minIntervalMs = minIntervalMin * 60 * 1000;
 
   function readPending() {
     const st = ctx.state.get();
@@ -31,13 +32,24 @@ export function createPlugin(ctx) {
     try { return await cap.sendSessionText(key, text); } catch (error) { ctx.warn('传话提示发送失败：' + (error?.message ?? error)); return false; }
   }
 
-  function deliver(fromKey, targetKey, name, body) {
+  function deliver(fromKey, targetKey, name, body, isOwner, imageIds = []) {
     if (typeof cap.relaySend !== 'function') {
       ctx.warn('桥接未提供 relaySend 能力，传话无法执行');
-      return;
+      return false;
     }
-    Promise.resolve(cap.relaySend({ fromKey, targetKey, name, body }))
+    if (!isOwner) {
+      const st = ctx.state.get() || {};
+      const lastRelayAt = st.lastRelayAt && typeof st.lastRelayAt === 'object' ? st.lastRelayAt : {};
+      const elapsed = Date.now() - Number(lastRelayAt[fromKey] || 0);
+      if (elapsed < minIntervalMs) {
+        void sendText(fromKey, '传话间隔还差 ' + Math.ceil((minIntervalMs - elapsed) / 60000) + ' 分钟，请稍后再发。');
+        return false;
+      }
+      ctx.state.set({ lastRelayAt: { ...lastRelayAt, [fromKey]: Date.now() } });
+    }
+    Promise.resolve().then(() => cap.relaySend({ fromKey, targetKey, name, body, imageIds }))
       .catch((error) => ctx.warn('传话发送失败：' + (error?.message ?? error)));
+    return true;
   }
 
   function resolveTarget(name) {
@@ -51,7 +63,8 @@ export function createPlugin(ctx) {
         if (!payload || payload.allowed !== true) return null;
         const key = String(payload.key || '');
         const text = String(payload.plainContent || '').trim();
-        if (!key || !text) return null;
+        const imageIds = Array.isArray(payload.imageIds) ? payload.imageIds.slice(0, 5) : [];
+        if (!key || (!text && imageIds.length === 0)) return null;
 
         const pending = readPending();
         const pr = pending[key] && typeof pending[key] === 'object' ? pending[key] : null;
@@ -65,9 +78,9 @@ export function createPlugin(ctx) {
           if (target && target !== key) {
             delete pending[key];
             writePending(pending);
-            if (content) {
-              deliver(key, target, cmd.name, content);
-              return { handled: true, action: 'relay', target };
+            if (content || imageIds.length) {
+              const queued = deliver(key, target, cmd.name, content, payload.isOwner === true, imageIds);
+              return queued ? { handled: true, action: 'relay', target } : { handled: true, action: 'relay-rate-limited', target };
             }
             pending[key] = { target, name: cmd.name, awaitingContent: true, at: now };
             writePending(pending);
@@ -91,7 +104,7 @@ export function createPlugin(ctx) {
 
         // 2) 上一条待补充的传话
         if (pr) {
-          if (now - Number(pr.at || 0) > ttlMs) {
+          if (now - Number(pr.at || 0) > PENDING_TTL_MS) {
             delete pending[key];
             writePending(pending);
             return null;
@@ -99,7 +112,7 @@ export function createPlugin(ctx) {
           if (pr.target && pr.awaitingContent) {
             delete pending[key];
             writePending(pending);
-            deliver(key, pr.target, pr.name, text);
+            deliver(key, pr.target, pr.name, text, payload.isOwner === true, imageIds);
             return { handled: true, action: 'relay-pending-content', target: pr.target };
           }
           if (!pr.target) {
@@ -108,8 +121,8 @@ export function createPlugin(ctx) {
               const content = String(pr.content || '').trim();
               delete pending[key];
               writePending(pending);
-              if (content) {
-                deliver(key, target, pr.name, content);
+              if (content || imageIds.length) {
+                deliver(key, target, pr.name, content, payload.isOwner === true, imageIds);
                 return { handled: true, action: 'relay-pending-target', target };
               }
               pending[key] = { target, name: pr.name, awaitingContent: true, at: now };
