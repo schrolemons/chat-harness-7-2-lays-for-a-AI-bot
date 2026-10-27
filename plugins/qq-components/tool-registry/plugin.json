@@ -1,0 +1,21 @@
+{
+  "id": "tool-registry",
+  "name": "工具注册表（声明层）",
+  "version": "0.1.0",
+  "description": "把 QQ 工具面的名称、分类、权限等级、能力描述从 MCP 实现里抽出来做声明；当前提供查询，后续作为桥接代理注册的权威源。",
+  "category": "工具接口与协议",
+  "layer": "T",
+  "order": 50,
+  "tags": [
+    "工具",
+    "schema",
+    "权限"
+  ],
+  "main": "index.js",
+  "enabled": false,
+  "hooks": [],
+  "config": {
+    "injectPrompt": false
+  },
+  "implementation": "declaration"
+}

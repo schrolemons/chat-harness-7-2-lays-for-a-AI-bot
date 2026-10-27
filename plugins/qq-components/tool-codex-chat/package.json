@@ -1,0 +1,1 @@
+{"name":"tool-codex-chat","version":"0.1.0","private":true,"type":"module","engines":{"node":">=22.13.0"},"scripts":{"test":"node --test test/*.test.mjs"},"dependencies":{"@modelcontextprotocol/sdk":"^1.30.0","js-yaml":"^4.3.2","zod":"^4.4.3"}}

@@ -1,0 +1,17 @@
+{
+  "id": "gov-admin-dev-mode",
+  "name": "管理员开发模式提示",
+  "version": "1.0.0",
+  "description": "owner 私聊专属：管理员开发模式说明、昵称对照、本机工具/浏览器/GitHub 工作流与安全边界；桥接只调 services.adminDev.line 并把别名表与根路径传进来。",
+  "layer": "E",
+  "category": "环境与执行",
+  "order": 20,
+  "tags": [
+    "管理员",
+    "开发模式",
+    "治理"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": []
+}

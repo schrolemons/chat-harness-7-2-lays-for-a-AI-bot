@@ -1,0 +1,32 @@
+{
+  "id": "ctx-knowledge-quota",
+  "name": "专业问答配额",
+  "version": "0.1.0",
+  "description": "C 层上下文管理：非管理员提问「专业知识」时按天限额；用完后不改口径硬答，而是用符合当前人设的借口自然带过。配额与判定都落在插件 state 里，重启不丢。",
+  "category": "上下文与记忆",
+  "order": 26,
+  "tags": [
+    "配额",
+    "上下文",
+    "专业问答"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "beforePrompt"
+  ],
+  "config": {
+    "enabled": true,
+    "dailyLimit": 3,
+    "resetHour": 0,
+    "exemptOwner": true,
+    "countBy": "session",
+    "deflectStyle": "用当前人设的语气自然带过：可以说自己一时说不清、脑袋有点转不动、让对方先自己查查或晚点再说；不道歉长篇、不说教、不给半个答案，也别说「配额用完了」这种系统词。",
+    "keywords": [
+      "算法", "复杂度", "代码", "报错", "调试", "bug", "Bug", "BUG", "数学", "证明", "推导", "定理", "公式",
+      "论文", "编译", "接口", "协议", "架构", "性能", "优化", "模型", "梯度", "数据库", "并发", "内存",
+      "正则", "递归", "排序", "线程", "进程", "git", "Git", "docker", "Docker", "SQL", "sql", "python", "Python"
+    ]
+  },
+  "layer": "C"
+}

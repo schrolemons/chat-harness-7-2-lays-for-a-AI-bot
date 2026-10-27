@@ -1,0 +1,8 @@
+{
+  "memoryWrite": ["ctx-memory-store", "ctx-memory-update"],
+  "selfReview": ["obs-self-review"],
+  "selfOptimize": ["obs-self-review"],
+  "timeBubble": ["life-proactive-time-bubble"],
+  "startupGreeting": ["life-proactive-startup-greeting"],
+  "taskDone": ["life-task-session"]
+}

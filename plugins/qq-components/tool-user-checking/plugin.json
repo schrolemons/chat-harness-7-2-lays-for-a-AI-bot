@@ -1,0 +1,25 @@
+{
+  "id": "tool-user-checking",
+  "name": "自查与桌面便签",
+  "version": "0.1.0",
+  "description": "机器主授权的一点点本机权限：不用每次讨授权，就能查本机运行状态（只读指标），并往桌面指定 txt 里追加一句话。不能改文件、不能读别人文件、不能发出去。",
+  "category": "工具",
+  "order": 41,
+  "tags": [
+    "本机状态",
+    "桌面便签",
+    "自查"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "beforePrompt"
+  ],
+  "config": {
+    "enabled": true,
+    "noteFileName": "小鲸鱼想说的话.txt",
+    "maxNoteChars": 500,
+    "timestampNote": true
+  },
+  "layer": "C"
+}

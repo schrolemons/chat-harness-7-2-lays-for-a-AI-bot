@@ -1,0 +1,22 @@
+{
+  "id": "ctx-memory-context",
+  "name": "记忆注入（轻/中/长期）",
+  "version": "1.0.0",
+  "description": "把当前会话话题、待说想法、未发言成员临时印象，以及长期和中期记忆格式化成提示词块；桥接只提供 st 与读到的文本。",
+  "layer": "C",
+  "category": "上下文与记忆",
+  "order": 13,
+  "tags": [
+    "记忆",
+    "注入"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "beforePrompt"
+  ],
+  "config": {
+    "maxChars": 4000,
+    "midTermSlice": 1500
+  }
+}

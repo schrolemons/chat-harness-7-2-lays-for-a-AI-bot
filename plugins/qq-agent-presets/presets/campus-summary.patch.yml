@@ -1,0 +1,11 @@
+- insert:
+    - id: preset-campus-summary
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: campus-summary
+        name: 网页更新整理（后台）
+        description: 仅整理网页差异，无工具，不发送消息，不读取聊天历史。
+        order: 30
+        plugins:
+          - id: summary-tool-restrict
+            name: qq-agent-presets/summary-tool-restrict.mjs

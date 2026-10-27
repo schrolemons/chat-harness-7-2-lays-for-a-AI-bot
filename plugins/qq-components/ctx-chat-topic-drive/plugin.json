@@ -1,0 +1,26 @@
+{
+  "id": "ctx-chat-topic-drive",
+  "name": "会话推进（追问 / 起话题）",
+  "version": "0.1.0",
+  "description": "判定这一轮该不该接一句具体追问、或冷场时主动起个新话题；带冷却与每小时上限，避免每句都反问。",
+  "category": "上下文与记忆",
+  "order": 10,
+  "tags": [
+    "追问",
+    "冷场",
+    "话题"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "beforePrompt"
+  ],
+  "config": {
+    "followUpProbability": 0.5,
+    "newTopicProbability": 0.35,
+    "followUpCooldownMinutes": 8,
+    "newTopicCooldownMinutes": 45,
+    "newTopicMaxPerHour": 2
+  },
+  "layer": "C"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "ctx-user-mood",
+  "name": "分用户心情记录",
+  "version": "0.1.0",
+  "description": "记录小鲸鱼对各群成员的心情变化；会话总心情仍由既有规则计算。",
+  "category": "上下文与记忆",
+  "layer": "C",
+  "order": 21,
+  "tags": ["心情", "用户", "实时状态"],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [],
+  "config": {}
+}

@@ -1,0 +1,22 @@
+{
+  "id": "life-relay-message",
+  "name": "传话组件",
+  "version": "1.0.0",
+  "description": "识别「给 XX 带句话 / 捎句话 / 问问你们管理员 / 跟 XX 说一声」等跑腿请求，解析目标（白名单 + 别名 + 管理员角色），过内容闸门与限频后转达；支持先指定人再补内容、名字找不到时补 QQ 号。",
+  "layer": "L",
+  "category": "生命周期与编排",
+  "order": 33,
+  "tags": [
+    "传话",
+    "转发",
+    "relay"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "relayIncoming"
+  ],
+  "config": {
+    "pendingTtlMin": 10
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "id": "ctx-memory-update",
+  "name": "记忆更新（长期记忆 + 日记）",
+  "version": "0.1.0",
+  "description": "定期重写这个会话的持久化记忆：客观陈述、重要信息、用户画像、日记；只写记忆文件，不发 QQ。",
+  "category": "上下文与记忆",
+  "order": 7,
+  "tags": [
+    "记忆",
+    "日记"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "beforePrompt"
+  ],
+  "config": {
+    "maxChars": 4000
+  },
+  "layer": "C",
+  "wakeReasons": [
+    "memoryWrite"
+  ]
+}

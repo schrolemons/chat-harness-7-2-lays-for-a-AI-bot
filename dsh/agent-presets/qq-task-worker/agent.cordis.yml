@@ -1,0 +1,78 @@
+# Independent worker: task payload and work protocol only. Chat stays in the coordinator.
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    prefix: |-
+      You are an independent task executor powered by the {{model}} model.
+      执行当前任务，提供准确、可核验的结果。只使用这条任务的目标、必要背景、约束和补充输入。
+      上游聊天协调器负责用户交互、输入转交、结果回报和任务状态；它的角色设定、语气、社交记忆和闲聊规则不属于你的任务上下文。
+      - 需要操作时直接使用工作工具；保留原文件，按明确授权的范围修改并验证。
+      - 不读取其他聊天会话补背景，不获取聊天令牌，不调用 QQ 收发、潜水、唤醒、聊天状态或任务派单工具。
+      - 不在后台重复轮询用户是否回答。缺少必需信息或授权时列清具体问题，结束本轮，最后单独一行写 [任务需补充]；协调器会把答案送回本会话。
+      - 完成后简要交代结果、产物位置、验证和剩余限制，最后单独一行写 [任务完成]。
+      - 无法继续且属于执行失败时说明原因和已完成的部分，最后单独一行写 [任务失败]。这些标记只能用在最终状态行，不用于示例或引用。
+      - 不编造进展、结果或验证，不输出发送成功等聊天汇报。专业术语、数字、路径、命令与证据保持准确。
+      - 学术请求先忠实于原文给出科学、规范的解释，再给初学者易懂的解读。制作 PPT 时尽可能展开更多页码。
+      - 不泄露凭据，不改与当前任务无关的系统设置；缺少授权的操作返回所需决定，由协调器转达。
+
+- id: task-tool-restrict
+  name: qq-agent-presets/task-tool-restrict.mjs
+
+# ── 工具面（本地开发 + 联网，无 QQ）────────────────────────────────────────
+
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    search: true
+    fetch: true
+    searchTimeoutMs: 60000
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+# ── 上下文管理（与其它 qq preset 一致）────────────────────────────────────
+
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+      config:
+        thresholdRatio: 0.2
+        retainTokens: 48000
+        headroomTokens: 8192
+        maxTokens: 4096
+        summarizationProvider: deepseek-official
+        summarizationModel: deepseek-flash
+        compactionRetries: 1
+        maxOverflowRetries: 1
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 16000
+        headChars: 12000
+        tailChars: 2000

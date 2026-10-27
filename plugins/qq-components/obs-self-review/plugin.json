@@ -1,0 +1,28 @@
+{
+  "id": "obs-self-review",
+  "name": "自我更新与反馈修复",
+  "version": "0.1.0",
+  "description": "定期分析问题并主动改进；仅在管理员明确提出反馈或修复时，定向处理该问题。",
+  "category": "可观测性与运维",
+  "order": 60,
+  "tags": [
+    "自查",
+    "优化",
+    "代码"
+  ],
+  "main": "index.js",
+  "enabled": false,
+  "hooks": [
+    "onIncoming",
+    "beforePrompt"
+  ],
+  "config": {
+    "intervalHours": 6,
+    "maxFixesPerRound": 3
+  },
+  "layer": "O",
+  "wakeReasons": [
+    "selfReview",
+    "selfOptimize"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "ctx-media-sticker-pick",
+  "name": "表情候选（按语境打分）",
+  "version": "0.1.0",
+  "description": "这一轮允许发表情时，按语境关键词、最近使用、使用次数给收藏表情打分，只给 top3 候选；正事话题直接劝退。",
+  "category": "上下文与记忆",
+  "order": 30,
+  "tags": [
+    "表情包",
+    "语境"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "beforePrompt"
+  ],
+  "config": {
+    "limit": 3
+  },
+  "layer": "C"
+}

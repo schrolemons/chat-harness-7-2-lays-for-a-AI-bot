@@ -1,0 +1,15 @@
+{
+  "id": "obs-health-monitor",
+  "name": "健康巡检（组件心跳）",
+  "version": "0.1.0",
+  "description": "每 5 分钟巡检各组件心跳，掉线（如课程监管超时）QQ 告警 owner",
+  "category": "可观测性与运维",
+  "layer": "O",
+  "order": 61,
+  "tags": ["巡检", "心跳", "告警"],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": ["onTick"],
+  "schedule": { "everyMs": 300000 },
+  "config": { "staleAlertCooldownMs": 1800000 }
+}

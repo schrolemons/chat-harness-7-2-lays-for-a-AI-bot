@@ -1,0 +1,57 @@
+{
+  "id": "obs-cost-policy",
+  "name": "成本策略（调用档位）",
+  "version": "0.2.1",
+  "description": "默认 Flash+low；可关闭复杂任务自动升 Pro，明确指定仍可升级；内部维护不继承高档位",
+  "category": "可观测性与运维",
+  "layer": "O",
+  "order": 62,
+  "tags": [
+    "成本",
+    "档位",
+    "路由"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "onIncoming"
+  ],
+  "config": {
+    "defaultModel": "deepseek-flash",
+    "defaultEffort": "low",
+    "upgradeModel": "deepseek-v4-pro",
+    "upgradeEffort": "high",
+    "autoUpgradeComplexTasks": true
+  },
+  "configSchema": {
+    "autoUpgradeComplexTasks": { "type": "boolean" },
+    "defaultModel": {
+      "enum": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    },
+    "upgradeModel": {
+      "enum": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    },
+    "defaultEffort": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ]
+    },
+    "upgradeEffort": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ]
+    }
+  }
+}

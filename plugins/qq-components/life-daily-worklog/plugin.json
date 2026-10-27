@@ -1,0 +1,28 @@
+{
+  "id": "life-daily-worklog",
+  "name": "运维日报",
+  "version": "1.0.0",
+  "description": "每天固定时间把当天的中期任务进度、任务会话、工具调用与 token 用量汇总成 Markdown 运维日报（state/memory/worklog/<日期>.md），可选私聊发给 owner。",
+  "layer": "L",
+  "category": "生命周期与编排",
+  "order": 32,
+  "tags": [
+    "日报",
+    "工作总结",
+    "记忆"
+  ],
+  "main": "index.js",
+  "enabled": false,
+  "hooks": [
+    "onTick"
+  ],
+  "schedule": {
+    "everyMs": 60000
+  },
+  "config": {
+    "hour": 23,
+    "minute": 0,
+    "sendToOwner": false,
+    "maxChars": 6000
+  }
+}

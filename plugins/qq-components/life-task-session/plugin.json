@@ -1,0 +1,24 @@
+{
+  "id": "life-task-session",
+  "name": "任务委派会话",
+  "version": "1.1.0",
+  "description": "聊天协调器使用既有独立任务会话执行工作，负责派单、补充输入、查询结果和取消；任务不携带聊天人格或社交提示词。",
+  "layer": "L",
+  "category": "生命周期与编排",
+  "order": 30,
+  "tags": [
+    "task",
+    "delegate",
+    "multi-agent",
+    "session"
+  ],
+  "hooks": [
+    "beforePrompt"
+  ],
+  "enabled": true,
+  "config": {
+    "maxConcurrentTasks": 3,
+    "maxTasks": 20,
+    "ownerQQ": ""
+  }
+}

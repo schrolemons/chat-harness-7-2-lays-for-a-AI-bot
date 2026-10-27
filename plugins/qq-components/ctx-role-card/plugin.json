@@ -1,0 +1,16 @@
+{
+  "id": "ctx-role-card",
+  "name": "角色卡清洗",
+  "version": "1.0.0",
+  "description": "二代模式角色卡文本清洗服务：去掉第一代专属指令行、把「回复示例」里的中文空格改写为逗号；桥接读取角色卡后调用 services.roleCard.clean。",
+  "layer": "C",
+  "category": "上下文与记忆",
+  "order": 19,
+  "tags": [
+    "角色卡",
+    "人格"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": []
+}

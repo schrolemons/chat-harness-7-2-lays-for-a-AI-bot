@@ -1,0 +1,26 @@
+{
+  "id": "exec-browser-manager",
+  "name": "浏览器管理（双模：无头监控 + 可见授权）",
+  "version": "0.2.0",
+  "description": "监控与操控走无头（headless），复用本机登录态不重登；需要激活登录态或关键授权（如购物、验证码、支付确认）时弹出可见窗口让用户看到并操作。",
+  "category": "执行环境与沙箱",
+  "layer": "E",
+  "order": 53,
+  "tags": ["浏览器", "无头", "可见授权", "防风控"],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": ["beforePrompt"],
+  "config": {
+    "headlessFor": "monitor|automate|scrape-readonly",
+    "visibleFor": "login|auth|purchase|checkout|captcha|payment-confirm",
+    "allowUrls": [],
+    "blockUrls": [],
+    "rules": [
+      "监控/操控/只读抓取走无头，复用本机登录态，不自动填账号密码",
+      "登录态激活、关键授权（登录、验证码、购物结算、支付确认）弹出可见窗口，让用户看到并亲自操作",
+      "一次一页、慢一点、读结构优先，不批量翻页/爬取",
+      "含身份证、银行卡、密码的页面不截图、不发内容",
+      "节奏拟人：随机间隔、失败退避，避免被风控"
+    ]
+  }
+}

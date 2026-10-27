@@ -1,0 +1,27 @@
+{
+  "id": "ctx-member-card",
+  "name": "人物小档案",
+  "version": "0.1.0",
+  "description": "C 层上下文管理：把当前会话里最近说话的人，从 state/user-profiles.json 里摘成一张张「小档案」（称呼、消息量、最近值得记的事、喜好/雷点/口头禅），每轮挑两三张压进提示词，让称呼和偏好用得上、不用现猜。",
+  "category": "上下文与记忆",
+  "order": 24,
+  "tags": [
+    "记忆",
+    "人物档案",
+    "群聊"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "beforePrompt"
+  ],
+  "config": {
+    "enabled": true,
+    "maxCards": 3,
+    "maxNotes": 2,
+    "maxChars": 900,
+    "skipOwner": false,
+    "includeGroups": true
+  },
+  "layer": "C"
+}

@@ -1,0 +1,17 @@
+node_modules/
+state/
+audio/
+user-scripts/
+private/
+config.json
+campus-watch.json
+browser-sites.json
+privacy-rules.json
+.env*
+*.log
+*.bak*
+*.db*
+*.sqlite*
+*.har
+.playwright-mcp/
+artifacts/

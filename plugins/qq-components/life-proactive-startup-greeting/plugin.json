@@ -1,0 +1,25 @@
+{
+  "id": "life-proactive-startup-greeting",
+  "name": "开机起床问候",
+  "version": "0.1.0",
+  "description": "桥接刚启动（等于刚睡醒）时主动冒一句起床话；不是回复谁，也不接旧话题。",
+  "category": "生命周期与编排",
+  "order": 41,
+  "tags": [
+    "开机",
+    "主动开口"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "beforePrompt"
+  ],
+  "config": {
+    "hint": "刚开机算刚睡醒：早安、还有点困、想喝牛奶",
+    "cooldownMinutes": 180
+  },
+  "layer": "L",
+  "wakeReasons": [
+    "startupGreeting"
+  ]
+}

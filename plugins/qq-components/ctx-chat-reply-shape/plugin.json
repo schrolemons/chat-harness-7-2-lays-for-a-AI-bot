@@ -1,0 +1,24 @@
+{
+  "id": "ctx-chat-reply-shape",
+  "name": "回复形态（条数节奏）",
+  "version": "0.1.0",
+  "description": "按话题性质、心情、刚连发与否，给这一轮定条数上限：正事 1 条、普通 2 条、闲聊 3 条、心情低或刚连发压到 1 条。",
+  "category": "上下文与记忆",
+  "order": 20,
+  "tags": [
+    "条数",
+    "节奏"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "beforePrompt"
+  ],
+  "config": {
+    "maxMessagesNormal": 2,
+    "maxMessagesCasual": 3,
+    "maxMessagesSerious": 1,
+    "longIncomingChars": 60
+  },
+  "layer": "C"
+}

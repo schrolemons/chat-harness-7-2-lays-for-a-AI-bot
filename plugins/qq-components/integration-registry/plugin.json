@@ -1,0 +1,19 @@
+{
+  "id": "integration-registry",
+  "name": "集成注册中心（八层之上的统一管理）",
+  "version": "0.1.0",
+  "description": "不属于第九层，而是八层之上的横切注册中心：第三方插件/项目（自助逛哔站、自助刷网课等）只要放进 user 插件目录并声明 layer，就能注册进八层模型，统一管参数、配置与开关。",
+  "category": "集成注册中心",
+  "layer": "",
+  "order": 100,
+  "tags": [
+    "注册中心",
+    "第三方",
+    "八层适配"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [],
+  "config": {},
+  "implementation": "declaration"
+}

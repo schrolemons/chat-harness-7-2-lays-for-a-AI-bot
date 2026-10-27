@@ -1,0 +1,29 @@
+{
+  "id": "life-schedule-reminder",
+  "name": "日程工具与提醒调度",
+  "version": "0.1.0",
+  "description": "L 层统一日程：通过 qq_schedule 增删查，独立存储（跨会话重置保留），并在到点前唤醒 AI 提醒。",
+  "layer": "L",
+  "category": "生命周期与编排",
+  "order": 35,
+  "tags": ["日程", "提醒", "工具", "定时"],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": ["onTick", "beforePrompt"],
+  "schedule": { "everyMs": 60000 },
+  "config": {
+    "enabled": true,
+    "advanceMinutes": 30,
+    "lateMinutes": 120,
+    "horizonDays": 14,
+    "maxItems": 200,
+    "maxPromptItems": 8
+  },
+  "configSchema": {
+    "advanceMinutes": { "min": 1, "max": 1440 },
+    "lateMinutes": { "min": 1, "max": 1440 },
+    "horizonDays": { "min": 1, "max": 90 },
+    "maxItems": { "min": 10, "max": 1000 },
+    "maxPromptItems": { "min": 1, "max": 20 }
+  }
+}

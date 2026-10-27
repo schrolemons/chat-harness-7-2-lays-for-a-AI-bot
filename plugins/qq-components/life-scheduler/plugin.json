@@ -1,0 +1,1 @@
+{"id":"life-scheduler","name":"统一定时任务与发送凭据","description":"统一调度日程、冒泡等定时任务，并记录消息发送凭据；发送结果不确定时暂停重试，避免重复发送。","version":"1.0.0","layer":"L","category":"生命周期与编排","order":1,"main":"index.js","enabled":true,"hooks":["onTick"],"schedule":{"everyMs":1000},"config":{"maxJobs":1000}}

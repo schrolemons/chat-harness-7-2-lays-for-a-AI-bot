@@ -1,0 +1,41 @@
+{
+  "id": "life-campus-watch",
+  "name": "网页监控与脚本协同",
+  "version": "0.2.0",
+  "description": "调度使用者自配的通用网页监控；个人脚本只显示主动上报的心跳，不预装任何个人项目。",
+  "category": "生命周期与编排",
+  "layer": "L",
+  "order": 31,
+  "tags": [
+    "定时",
+    "课程",
+    "调度"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "onTick"
+  ],
+  "schedule": {
+    "everyMs": 60000
+  },
+  "config": {
+    "fastCheckMinutes": 1,
+    "fullCheckMinutes": 30,
+    "webWatchEnabled": false,
+    "watchUrls": [],
+    "watchUrlsConfigured": false,
+    "scriptCollabEnabled": false,
+    "scriptPaths": [],
+    "bbCourses": [],
+    "bbCoursesDisabled": [],
+    "bbCoursesConfigured": false,
+    "enabledScripts": "bookmarks",
+    "lecturesEnabled": false,
+    "lecturesLocation": "",
+    "lecturesIntervalMinutes": 10,
+    "lecturesPortalUrl": "",
+    "lecturesApi": "",
+    "aiWebSummary": true
+  }
+}

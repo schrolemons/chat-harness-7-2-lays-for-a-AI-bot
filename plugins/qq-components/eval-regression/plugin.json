@@ -1,0 +1,14 @@
+{
+  "id": "eval-regression",
+  "name": "失败转回归用例",
+  "version": "0.1.0",
+  "description": "把真实对话里暴露的失败（漏回/重复/语气不对/工具误用）记成可重复的回归用例，用来验证修复是否有效、有没有引入新问题。",
+  "category": "验证与评估",
+  "layer": "V",
+  "order": 80,
+  "tags": ["评估", "回归", "用例"],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [],
+  "config": { "maxCases": 50 }
+}

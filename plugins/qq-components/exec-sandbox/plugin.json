@@ -1,0 +1,19 @@
+{
+  "id": "exec-sandbox",
+  "name": "执行后端声明（沙箱）",
+  "version": "0.1.0",
+  "description": "声明本机可用的执行后端（DSH 沙箱 / 管理端危险模式 / 浏览器 CDP）与它们的边界、审批要求；供 AI 在动手前查询选路。",
+  "category": "执行环境与沙箱",
+  "layer": "E",
+  "order": 51,
+  "tags": [
+    "沙箱",
+    "执行",
+    "审批"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [],
+  "config": {},
+  "implementation": "declaration"
+}

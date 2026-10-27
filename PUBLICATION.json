@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "source": "upstream QQ bridge plus generic harness extensions",
+  "upstream": "https://github.com/Derpyu520/qq-bridge",
+  "excluded": [
+    "operator runtime data",
+    "private knowledge",
+    "personal scripts",
+    "actual account configuration",
+    "browser storage",
+    "screenshots and live reports",
+    "original git history"
+  ],
+  "referenceMaterial": "one newly authored public example"
+}

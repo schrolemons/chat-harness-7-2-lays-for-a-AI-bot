@@ -1,0 +1,1 @@
+{"id":"obs-bridge-health","name":"桥接实时健康诊断","version":"0.1.0","description":"区分正常、鉴权失败、动态端口、QQ离线、上游退化与未知；检查不启动、不重启、不改配置。","category":"可观测性与运维","layer":"O","order":59,"main":"index.js","enabled":true,"hooks":["beforePrompt"],"config":{}}
