@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import {EnvHttpProxyAgent} from 'undici';
 import {safeFetchBuffer} from '../../../src/safe-fetch.js';
 
 const validKey=/^(?:private|group):[1-9]\d*$/;
@@ -12,6 +13,8 @@ const readJson=(file,fallback)=>{try{return JSON.parse(fs.readFileSync(file,'utf
 const writeJson=(file,value)=>{const tmp=file+'.tmp';fs.writeFileSync(tmp,JSON.stringify(value),{mode:0o600});fs.renameSync(tmp,file);};
 function cleanJob(job){if(!job)return {ok:false,error:'JOB_NOT_FOUND'};return {ok:true,jobId:job.id,status:job.status,imageId:job.status==='ready'?job.id:undefined,error:job.error||undefined,createdAt:job.createdAt};}
 export function createImageEngine({root,config={},fetchImpl=fetch,readReferences=async()=>[],now=Date.now,signal}={}){
+ const providerDispatcher=new EnvHttpProxyAgent();
+ signal?.addEventListener('abort',()=>void providerDispatcher.close(),{once:true});
  const dir=path.join(root,'state','image-generation'),file=path.join(dir,'jobs.json'),secretFile=path.join(dir,'secret.json'),assets=path.join(dir,'assets');
  fs.mkdirSync(assets,{recursive:true,mode:0o700});
  const state=readJson(file,{jobs:[]});state.jobs=Array.isArray(state.jobs)?state.jobs:[];
@@ -48,7 +51,7 @@ export function createImageEngine({root,config={},fetchImpl=fetch,readReferences
    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),bounded(config.timeoutSeconds,120,600)*1000);
    let response,parsed;
    try{
-    response=await fetchImpl(apiUrl(endpoint),{method:'POST',headers,body,signal:controller.signal,redirect:'error'});
+    response=await fetchImpl(apiUrl(endpoint),{method:'POST',headers,body,signal:controller.signal,redirect:'error',dispatcher:providerDispatcher});
     if(!response.ok)throw Error('PROVIDER_HTTP_'+response.status);
     const jsonLimit=Math.ceil(bounded(config.maxOutputBytes,10485760,30000000)*1.4)+65536;
     if(Number(response.headers.get('content-length'))>jsonLimit)throw Error('IMAGE_RESPONSE_TOO_LARGE');
