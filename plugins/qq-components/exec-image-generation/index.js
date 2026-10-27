@@ -1,5 +1,6 @@
-import {createImageEngine} from './engine.mjs';
-export function createPlugin(ctx){
+import crypto from 'node:crypto';
+export async function createPlugin(ctx){
+ const {createImageEngine}=await import('./engine.mjs?generation='+crypto.randomUUID());
  const engine=createImageEngine({root:ctx.root,config:ctx.config,signal:ctx.signal,readReferences:(request)=>ctx.capabilities.readImageReferences?.(request)||[]});
  ctx.registerTool('image_generation_secret',{description:'仅管理员配置生图密钥；状态不返回密钥',handler:input=>engine.secret(input)});
  ctx.registerTool('image_generation_status',{description:'查询生图服务设置与当天使用量',handler:input=>engine.status(input)});
