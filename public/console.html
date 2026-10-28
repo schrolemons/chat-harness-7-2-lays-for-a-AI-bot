@@ -5838,7 +5838,8 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   // 语音库按需加载：进入二代仿真页时才探测（避免每次开控制台都压网关）。
   if (page === 'v2-e' && typeof loadVoiceLibrary === 'function') loadVoiceLibrary();
   if (page === 'v2-l' && typeof loadAvailability === 'function') loadAvailability();
-  if (page === 'v2-l' && typeof window.__loadMessageAckComponent === 'function') window.__loadMessageAckComponent();
+  const messageAckPage = document.getElementById('messageAckComponentRoot')?.closest('section[data-page]')?.dataset.page;
+  if (page === messageAckPage && typeof window.__loadMessageAckComponent === 'function') window.__loadMessageAckComponent();
   if (page === 'components' && typeof loadComponents === 'function') loadComponents();
   if (page === 'registry' && typeof loadRegistry === 'function') loadRegistry();
   if (page === 'layer-v' && typeof loadVLayer === 'function') loadVLayer();
@@ -7160,19 +7161,25 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     if (!root) return;
     const items = compCache.filter((p) => (ids || []).includes(p.id));
     root.innerHTML = items.length ? items.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${['ctx-memory-profile-store', 'life-campus-watch', 'exec-image-generation'].includes(p.id) ? '1' : '0'}" data-toggle-label="${p.id === 'exec-browser-manager' ? '启用 DOM 操作' : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || '')}"><div class="comp-body">加载设置…</div></div>`).join('') : '';
-    root.querySelectorAll('.comp-card').forEach((d) => loadComponentDetail(d.dataset.id, d));
+    await Promise.all([...root.querySelectorAll('.comp-card')].map((d) => loadComponentDetail(d.dataset.id, d)));
   };
 
   window.__loadMessageAckComponent = async () => {
     const root = document.getElementById('messageAckComponentRoot');
-    if (!root || root.dataset.loaded === '1') return;
+    if (!root || root.dataset.loaded === '1' || root.dataset.loading === '1') return;
+    root.dataset.loading = '1';
     try {
+      // 进入此栏时重新查询清单；桥接热加载组件后，旧清单不应让表单一直空着。
+      compCache = (await api('/api/plugins')).plugins || [];
       await window.__renderComponentsByIds(['life-message-ack'], root);
+      if (!root.children.length) throw Error('未找到 life-message-ack 组件，请确认桥接已加载该组件');
+      if (root.querySelector('.comp-body')?.dataset.loaded !== '1') throw Error('组件参数读取失败');
       root.dataset.loaded = '1';
-      if (!root.children.length) root.innerHTML = '<div class="meta">组件尚未加载；桥接重新启动后刷新此页。</div>';
     } catch (error) {
       root.innerHTML = '<div class="meta">读取组件失败：' + esc(error.message) + ' <button class="small" type="button" data-retry-message-ack>重试</button></div>';
       root.querySelector('[data-retry-message-ack]')?.addEventListener('click', () => { root.dataset.loaded = ''; void window.__loadMessageAckComponent(); });
+    } finally {
+      root.dataset.loading = '';
     }
   };
 
