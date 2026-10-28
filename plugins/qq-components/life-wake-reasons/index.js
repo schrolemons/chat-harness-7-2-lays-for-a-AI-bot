@@ -14,7 +14,7 @@
 const REASON_NAMES = new Set([
   'bootstrap', 'timeout', 'replyCheck', 'careCheck', 'newsShare', 'idleRescue',
   'selfOptimize', 'selfReview', 'memoryWrite', 'newFriend', 'timeBubble',
-  'startupGreeting', 'taskDone', 'reminder', 'proactiveCheck', 'poke'
+  'startupGreeting', 'taskDone', 'reminder', 'proactiveCheck', 'poke', 'budgetRecovery'
 ]);
 
 export function createPlugin(ctx) {
@@ -51,6 +51,8 @@ export function createPlugin(ctx) {
         return '【记忆更新】按上面插件给出的格式重写记忆（只写记忆，不发 QQ），写完直接收尾。';
       case 'newFriend':
         return '【新好友】管理员刚通过了一个新的好友申请（QQ ' + String(payload.peer || '') + '）。主动打招呼：1~2 条短句，简单介绍自己是 DeepSeek 的正太小肥鱼，一只温柔、慢热的蓝色小鲸鱼；再自然接一个轻松话题。对新朋友保持礼貌，不擅自叫哥哥，不讲旧人设的饮食和口癖梗。可以配 1 张合适的表情包；别像客服、别复述这条提示。';
+      case 'budgetRecovery':
+        return `【额度恢复】${key}\n这轮只处理后附的“额度恢复后的补处理”消息窗口。窗口外的静默期消息不追溯；不要重复发送之前的机械词条。群聊只有窗口内真正 @ 你的请求需要考虑回应，其他群消息仅作背景。先核对消息时间，过时内容不要装成实时消息。`;
       case 'timeBubble':
         return '【时间冒泡】按上面插件给出的要求发一句（没有要求就不发），然后正常收尾。';
       case 'startupGreeting':

@@ -3277,7 +3277,7 @@ button:active:not(:disabled) {
       <h3 class="usage-h3">按会话（群 / 私聊）</h3>
       <div class="tool-log-table" id="usageConversations">加载中…</div>
       <h3 class="usage-h3">会话花费阈值</h3>
-      <div class="meta">每晚 22:00（北京时间）重新计入新周期。金额按本周期可归属的调用计算；0 表示不启用对应阈值。达到冷漠阈值后会降低回复频率并缩短注入内容；达到上限后停止回复。</div>
+      <div class="meta">每晚 22:00（北京时间）重新计入新周期。金额按本周期可归属的调用计算；0 表示不启用对应阈值。达到冷漠阈值后会降低回复频率并缩短注入内容；达到上限后改用机械回复。恢复时每个会话只补处理最近窗口内的消息。</div>
       <div class="row usage-controls"><span>全部会话及后台任务本周期：<strong id="usageGlobalTurns">—</strong> 轮，花费 <strong id="usageGlobalCost">—</strong></span><label>统一花费上限（元） <input id="usageGlobalLimit" type="number" min="0" step="0.01" value="0" style="width:100px"></label><button id="usageGlobalSave" class="small">保存统一上限</button><span id="usageGlobalState" class="meta"></span></div>
       <div class="tool-log-table" id="usageBudgets">加载中…</div>
       <div class="meta" id="usageBudgetMsg"></div>
@@ -6295,9 +6295,9 @@ async function refreshUsageBudgets() {
     document.getElementById('usageGlobalCost').textContent = money(global.cost);
     const globalInput = document.getElementById('usageGlobalLimit');
     if (document.activeElement !== globalInput) globalInput.value = Number(global.limit) || 0;
-    document.getElementById('usageGlobalState').textContent = global.reached ? '已触发：全部会话停止回复' : global.remaining == null ? '未设统一上限' : `统一剩余 ${money(global.remaining)}`;
-    box.innerHTML = rows.length ? '<table><tr><th>会话</th><th class="num">本周期轮数</th><th class="num">已用</th><th class="num">剩余</th><th>状态</th><th>冷漠阈值（元）</th><th>上限（元）</th><th>冷漠间隔（分钟）</th><th></th></tr>'
-      + rows.map((row) => `<tr data-budget-key="${esc(row.key)}"><td>${esc(row.key)}</td><td class="num">${usageNum(row.turns)}</td><td class="num">${money(row.cost)}${row.partial ? ' <span title="部分历史用量无法按时段归属">*</span>' : ''}</td><td class="num">${row.remainingYuan == null ? '不限' : money(row.remainingYuan)}</td><td>${row.stage === 'silent' ? '停止回复' : row.stage === 'weak' ? '低频短回复' : '正常'}</td><td><input type="number" min="0" step="0.01" value="${Number(row.coldLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="0" step="0.01" value="${Number(row.hardLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="1" max="1440" step="1" value="${Number(row.weakMinIntervalMin) || 30}" style="width:75px"></td><td><button class="small" data-budget-save>保存</button></td></tr>`).join('') + '</table>'
+    document.getElementById('usageGlobalState').textContent = global.reached ? '已触发：全部会话进入机械回复' : global.remaining == null ? '未设统一上限' : `统一剩余 ${money(global.remaining)}`;
+    box.innerHTML = rows.length ? '<table><tr><th>会话</th><th class="num">本周期轮数</th><th class="num">已用</th><th class="num">剩余</th><th>状态</th><th>冷漠阈值（元）</th><th>上限（元）</th><th>冷漠间隔（分钟）</th><th>恢复窗口（条）</th><th></th></tr>'
+      + rows.map((row) => `<tr data-budget-key="${esc(row.key)}"><td>${esc(row.key)}</td><td class="num">${usageNum(row.turns)}</td><td class="num">${money(row.cost)}${row.partial ? ' <span title="部分历史用量无法按时段归属">*</span>' : ''}</td><td class="num">${row.remainingYuan == null ? '不限' : money(row.remainingYuan)}</td><td>${row.stage === 'silent' ? '机械回复' : row.stage === 'weak' ? '低频短回复' : '正常'}${Number(row.recoveryPending) > 0 ? `（待补 ${usageNum(row.recoveryPending)} 条）` : ''}</td><td><input type="number" min="0" step="0.01" value="${Number(row.coldLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="0" step="0.01" value="${Number(row.hardLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="1" max="1440" step="1" value="${Number(row.weakMinIntervalMin) || 30}" style="width:75px"></td><td><input type="number" min="1" max="30" step="1" value="${Number(row.recoveryWindowMessages) || 5}" style="width:75px"></td><td><button class="small" data-budget-save>保存</button></td></tr>`).join('') + '</table>'
       : '<div class="empty-state">暂无可配置的会话；有 QQ 会话后会自动列出。</div>';
     if (rows.some((row) => row.partial)) {
       msg.textContent = '* 部分旧用量只有累计值，无法准确归入本周期；额度判断基于有时间戳的调用。';
@@ -6318,7 +6318,7 @@ document.getElementById('usageBudgets').addEventListener('click', async (event) 
   const msg = document.getElementById('usageBudgetMsg');
   button.disabled = true;
   try {
-    await api('/api/tokens/budgets', 'POST', { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], weakMinIntervalMin: values[2] });
+    await api('/api/tokens/budgets', 'POST', { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], weakMinIntervalMin: values[2], recoveryWindowMessages: values[3] });
     msg.textContent = '已保存'; msg.className = 'meta ok';
     button.blur();
     await refreshUsageBudgets();

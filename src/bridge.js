@@ -7187,7 +7187,8 @@ async function main() {
               global: { cost: all.globalCost || 0, turns: all.globalTurns || 0, remaining: all.globalRemainingYuan ?? null,
                 limit: all.globalHardLimitYuan || 0, partial: all.globalPartial || false, resetAt: all.resetAt || 0,
                 reached: all.stage === 'silent' && Number(all.globalHardLimitYuan) > 0 && all.globalCost >= all.globalHardLimitYuan },
-              rows: keys.map((key) => ({ key, ...tokenBudgetOf(key, at, snapshot) })) });
+              rows: keys.map((key) => ({ key, ...tokenBudgetOf(key, at, snapshot),
+                recoveryPending: pluginHost.callService('tokenBudget', 'recoveryPending', { key }) || 0 })) });
             return;
           }
           if (req.method === 'POST' && url.pathname === '/api/tokens/budgets/global') {
@@ -7205,13 +7206,15 @@ async function main() {
             const key = String(body.key || '');
             if (!/^(private|group):[1-9]\d*$/.test(key)) { sendJson({ ok: false, error: '无效会话' }, 400); return; }
             const numbers = ['coldLimitYuan', 'hardLimitYuan', 'weakMinIntervalMin'].map((field) => Number(body[field]));
+            const current = pluginHost.get('life-token-budget')?.config?.sessions || {};
+            const recoveryWindowMessages = Number(body.recoveryWindowMessages ?? current[key]?.recoveryWindowMessages ?? 5);
             if (numbers.some((value) => !Number.isFinite(value) || value < 0 || value > 100000)
-                || (numbers[2] !== 0 && (numbers[2] < 1 || numbers[2] > 1440))) {
+                || (numbers[2] !== 0 && (numbers[2] < 1 || numbers[2] > 1440))
+                || !Number.isSafeInteger(recoveryWindowMessages) || recoveryWindowMessages < 1 || recoveryWindowMessages > 30) {
               sendJson({ ok: false, error: '阈值或间隔超出范围' }, 400); return;
             }
-            const current = pluginHost.get('life-token-budget')?.config?.sessions || {};
             const sessions = Object.fromEntries(Object.entries(current).filter(([name]) => /^(private|group):[1-9]\d*$/.test(name)));
-            sessions[key] = { coldLimitYuan: numbers[0], hardLimitYuan: numbers[1], weakMinIntervalMin: numbers[2] || 30 };
+            sessions[key] = { coldLimitYuan: numbers[0], hardLimitYuan: numbers[1], weakMinIntervalMin: numbers[2] || 30, recoveryWindowMessages };
             const result = pluginHost.setConfig('life-token-budget', { sessions });
             if (!result.ok) { sendJson(result, 400); return; }
             await pluginHost.reload('life-token-budget');
@@ -11785,7 +11788,7 @@ async function main() {
       // 保证人设每轮都真正参与决策。
       const roleHintNow = currentRoleHintV2();
       if (roleHintNow) promptText = `${roleHintNow.trim()}\n\n${promptText}`;
-      wakeSnapshot = buildWakeSnapshotV2(key, budgetStage === 'weak');
+      wakeSnapshot = opts.wakeReason === 'budgetRecovery' ? null : buildWakeSnapshotV2(key, budgetStage === 'weak');
       if (wakeSnapshot) {
         promptText += `\n\n【本次消息快照】\n${JSON.stringify(wakeSnapshot)}\n【逐条看完，别只回最后一条】以上消息已提供，无需重复查询；snapshot.pendingFromSeq 是窗口内第一个还没双戳（seenAt+repliedAt）齐全的消息，重启后从它开始处理、不会重刷已回复过的旧消息；awaitingReply=true 或出现在 awaitingReplySeqs 里的消息是「已接收未回复」的旧账，必须逐条处理（回复，或在确认不接时用 qq_mark_read(throughSeq=…) 收尾）。snapshot.partial=true 或 includedUnreadCount < unreadCount 时，必须先用 qq_get_unread_messages(afterSeq=readThroughSeq) 把剩余未读读完再回复。这一批里如果有多条**意思互不相同**的消息（不同问题、不同话题、不同人找你——哪怕它们挨得很近），要逐条回应：一次唤醒可以发 2~3 条文字分别对应不同消息（用 qq_send_message 的 messages 数组），最后只配 1 张表情包；不要把几个话题并成一句笼统回复，也不要只回最新那条、把前面当没看见。回复前如需确认对方是否说完，用 qq_wait_for_messages(purpose="reply") 补足短静默，已安静够久会立即返回。收尾只确认你真正处理过的 readThroughSeq（本地 seq，非 QQ messageId），传给 qq_mark_read 或 qq_set_wake_config 的 throughSeq；没回过的消息不要跟着一起标记已读。`;
       }
@@ -11794,11 +11797,33 @@ async function main() {
         if (detailAt >= 0) promptText = promptText.slice(0, detailAt)
           + '\n【本周期低频模式】只处理本次快照列出的待回复消息，简短回应；未列出的消息保留未读，不要为它们调用工具或标记已回复。';
       }
+      if (opts.wakeReason === 'budgetRecovery' && opts.recoveryText) promptText += '\n\n' + String(opts.recoveryText).slice(0, 80000);
     }
     let content = [{ type: 'text', text: withSlangContext(promptText) }];
     if (Array.isArray(opts.media) && opts.media.length > 0) {
       const imageParts = await resolveMediaList(opts.media, key, opts.messageId);
       content = [{ type: 'text', text: withSlangContext(promptText) }, ...imageParts];
+    }
+    if (Array.isArray(opts.recoveryMessages) && opts.recoveryMessages.length) {
+      const seenImages = new Set();
+      let imageCount = 0, totalBytes = 0;
+      for (const message of opts.recoveryMessages) {
+        for (const ref of Array.isArray(message.imageIds) ? message.imageIds : []) {
+          if (imageCount >= 4) break;
+          const imageId = String(ref?.imageId || '');
+          if (!imageId || seenImages.has(imageId)) continue;
+          seenImages.add(imageId);
+          const asset = imageAssetStore.get({ key, imageId });
+          if (!asset.ok) { content.push({ type: 'text', text: `[恢复图片 ${String(ref?.name || imageId).slice(0, 120)} 已过期，无法查看]` }); continue; }
+          const prep = await toModelMedia(asset.image.data, asset.image.mimeType, asset.name);
+          if (!prep?.ok || totalBytes + prep.buffer.length > MAX_MEDIA_BYTES) {
+            content.push({ type: 'text', text: `[恢复图片 ${asset.name} 无法载入模型]` }); continue;
+          }
+          totalBytes += prep.buffer.length; imageCount++;
+          content.push({ type: 'text', text: `[恢复图片：消息 ${String(message.id || '')}，名称 ${asset.name}]` });
+          content.push({ type: 'image', mediaType: prep.mimeType, data: prep.buffer.toString('base64'), name: asset.name });
+        }
+      }
     }
     // 媒体解析成功后再标记退场，避免解析异常时残留退场标记。
     if (!isCurrentSession(key, sessionId)) throw new Error('投递前会话已重置或权限已变化');
@@ -11839,6 +11864,24 @@ async function main() {
   }
 
   const pluginPromptCooldowns=new Map();
+  taskCaps.budgetRecoveryStatus = (key) => {
+    const budget = tokenBudgetOf(key);
+    const allowed = dshReady && isSessionAllowedInCurrentMode(key)
+      && !(currentMode === 'reserved2' && (socialV2.paused || cfg.socialV2?.enabled === false))
+      && pluginHost.callService('tokenBudget', 'canDispatch', { key, stage: budget.stage }) !== false;
+    return { stage: budget.stage, allowed };
+  };
+  taskCaps.dispatchBudgetRecovery = async ({ key, prompt, messages } = {}) => {
+    key = String(key || '');
+    const body = String(prompt || '').trim();
+    if (!/^(private|group):[1-9]\d*$/.test(key) || !Array.isArray(messages) || !messages.length || !body || body.length > 80000
+        || taskCaps.budgetRecoveryStatus(key).allowed !== true) return { ok: false };
+    const result = await deliverPrompt(key, currentMode === 'reserved2' ? '' : body, {
+      ...(currentMode === 'reserved2' ? { wakeReason: 'budgetRecovery', recoveryText: body } : {}),
+      recoveryMessages: messages, pluginId: 'life-token-budget', pluginMode: currentMode
+    });
+    return { ok: result?.ok === true && result.skipped !== true && result.queued !== true };
+  };
   taskCaps.requestPluginPrompt=(prompt,opts={})=>{
     const key=String(opts.key||''),id=String(opts.plugin||''),text=String(prompt||'').trim().slice(0,2000);
     if(!text || !dshReady || !pluginHost.isEnabled(id) || opts.signal?.aborted || !isSessionAllowedInCurrentMode(key))return false;
@@ -14075,7 +14118,10 @@ async function main() {
     const incomingBudget = tokenBudgetOf(key);
     const mechanical = pluginHost.callService('tokenBudget', 'onSilentIncoming', {
       key, kind, stage: incomingBudget.stage, periodStart: incomingBudget.periodStart,
-      messageId: messageRef,
+      messageId: messageRef, text: textContent,
+      sender: event.sender?.card || event.sender?.nickname || String(event.user_id ?? ''),
+      userId: event.user_id ?? '', at: incomingAt,
+      imageIds: stagedIncomingImages.map(({ imageId, name }) => ({ imageId, name })),
       atSelf: kind === 'group' && Array.isArray(event.message)
         && event.message.some((segment) => segment?.type === 'at' && String(segment.data?.qq) === String(event.self_id ?? ''))
     });
