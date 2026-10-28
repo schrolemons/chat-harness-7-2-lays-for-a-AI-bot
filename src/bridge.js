@@ -2554,7 +2554,8 @@ async function main() {
   function tokenBudgetOf(key, at = Date.now(), periodSnapshot = null) {
     const period = pluginHost.callService('tokenBudget', 'period', { now: at });
     if (!period) return { stage: 'normal', cost: 0, resetAt: 0 };
-    const globalUsage = periodSnapshot || tokenLedger.periodUsage({ since: period.since, until: at });
+    // periodUsage 的 until 为开区间；纳入与本次判断同一毫秒完成的计费步骤。
+    const globalUsage = periodSnapshot || tokenLedger.periodUsage({ since: period.since, until: at + 1 });
     const usage = globalUsage.byKey?.[key] || { cost: 0, tokens: 0, turns: 0, steps: 0, partial: false };
     return { ...usage, globalPartial: globalUsage.partial, globalTurns: globalUsage.turns,
       ...(pluginHost.callService('tokenBudget', 'assess', { key, cost: usage.cost, globalCost: globalUsage.cost, now: at }) || { stage: 'normal' }) };
@@ -7143,7 +7144,7 @@ async function main() {
           if (req.method === 'GET' && url.pathname === '/api/tokens/budgets') {
             const at = Date.now();
             const period = pluginHost.callService('tokenBudget', 'period', { now: at });
-            const snapshot = period ? tokenLedger.periodUsage({ since: period.since, until: at }) : null;
+            const snapshot = period ? tokenLedger.periodUsage({ since: period.since, until: at + 1 }) : null;
             const saved = pluginHost.get('life-token-budget')?.config?.sessions || {};
             const known = tokenLedger.summary({ limit: 500 }).conversations.map((item) => item.key);
             const keys = [...new Set([...known, ...Object.keys(saved), ...Object.keys(state.sessions)])]

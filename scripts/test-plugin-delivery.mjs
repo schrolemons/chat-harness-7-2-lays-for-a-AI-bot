@@ -1,5 +1,25 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
+test('token budget blocks DSH prompt and outgoing reply after a billed round',async()=>{
+ for(const scope of ['session','global']){
+  const config=scope==='session'
+   ? {sessions:{'private:123':{coldLimitYuan:0,hardLimitYuan:0.1,weakMinIntervalMin:30}},globalHardLimitYuan:0}
+   : {sessions:{},globalHardLimitYuan:0.1};
+  const h=await bridgeHarness({files:{'state/plugins/config/life-token-budget.json':config}});
+  try{
+   h.setMode('reserved2');
+   const sid=await h.ensureSession('private:123');
+   const billedAt=Date.now();
+   assert.equal(h.tokenLedger.ingestEvent({sessionId:sid,at:billedAt,model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1_000_000,outputTokens:100}}}}),true);
+   assert.equal(h.tokenBudgetOf('private:123',billedAt).stage,'silent');
+   assert.equal(h.shouldBlockSilentReply('private:123'),true);
+   const result=await h.deliverPrompt('private:123','MUST_NOT_REACH_DSH');
+   assert.equal(result.skipped,true);
+   assert.equal(h.calls.prompts.length,0);
+  }finally{await h.close();}
+ }
+});
+
 test('one real wake preserves reminder and unmute data through actual DSH delivery',async()=>{
  const h=await bridgeHarness({config:{socialV2:{curfew:{enabled:false},wake:{maxWakePerHour:100},proactive:{enabled:false}}}});
  try{h.setMode('reserved2');const st=h.getSocialV2State('private:123');st.pendingReminderItems=[{text:'FIXTURE_REMINDER'}];st.mutedJustCleared=true;await h.sendWakePromptV2('private:123','reminder');assert.equal(h.calls.prompts.length,1);const text=JSON.stringify(h.calls.prompts[0].content);assert.ok(text.includes('FIXTURE_REMINDER'));assert.ok(text.includes('刚解除静音'));assert.ok(text.includes('会话令牌'));}finally{await h.close();}
