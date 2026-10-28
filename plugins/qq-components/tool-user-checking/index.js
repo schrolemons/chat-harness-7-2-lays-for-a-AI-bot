@@ -6,7 +6,7 @@
 // 所以这里刻意做窄：
 //   · action=status：只读。os 层面的负载/内存/磁盘/进程指标，不扫进程、不看网络、不读文件内容；
 //   · action=note  ：只在桌面**追加**一行，永远不覆盖、不删除、不改名、不能指定别的目录；
-//   · 两个动作都被 config.enabled 总开关挡着，控制台关掉即失效；
+//   · 两个动作都由组件总开关统一控制；
 //   · 提示词只注入边界说明（能做什么/不能做什么），不教它去探别人隐私。
 import fs from 'node:fs';
 import os from 'node:os';
@@ -79,7 +79,6 @@ function collectStatus() {
 
 export function createPlugin(ctx) {
   const conf = () => (ctx.config && typeof ctx.config === 'object' ? ctx.config : {});
-  const enabled = () => conf().enabled !== false;
 
   function appendNote(rawText) {
     const c = conf();
@@ -88,7 +87,7 @@ export function createPlugin(ctx) {
     const max = Math.max(20, Math.min(2000, Number(c.maxNoteChars) || 500));
     if (text.length > max) return { ok: false, error: `一次最多写 ${max} 字，这次太长了` };
     const file = path.join(desktopDir(), safeFileName(c.noteFileName, '小鲸鱼想说的话.txt'));
-    const body = (c.timestampNote === false ? '' : '[' + stamp() + '] ') + text + '\n';
+    const body = '[' + stamp() + '] ' + text + '\n';
     try {
       fs.appendFileSync(file, body, 'utf8');
       ctx.log('已往桌面便签追加一句：' + file);
@@ -100,7 +99,7 @@ export function createPlugin(ctx) {
   }
 
   ctx.registerTool('user_checking', {
-    description: '自查与桌面便签（机主已授权，不用再讨许可）。action=status 读本机运行状态（只读：负载/内存/磁盘/进程），action=note 往桌面那个指定的 txt 追加一句话（只追加，不覆盖不删）。config 里 enabled=false 时整个工具不可用。',
+    description: '自查与桌面便签（机主已授权，不用再讨许可）。action=status 读本机运行状态（只读：负载/内存/磁盘/进程），action=note 往桌面指定 txt 追加一条带时间戳的便签（只追加，不覆盖不删）。控制台关闭此组件后，工具和提示词都会停用。',
     schema: {
       type: 'object',
       properties: {
@@ -110,7 +109,6 @@ export function createPlugin(ctx) {
       required: ['action']
     },
     handler: (input) => {
-      if (!enabled()) return { ok: false, error: 'user-checking 已在控制台关闭' };
       const action = String(input?.action || '').trim();
       if (action === 'status') {
         return { ok: true, action: 'status', status: collectStatus() };
@@ -126,12 +124,11 @@ export function createPlugin(ctx) {
   return {
     hooks: {
       beforePrompt() {
-        if (!enabled()) return '';
         const c = conf();
         const name = safeFileName(c.noteFileName, '小鲸鱼想说的话.txt');
         return '【自查与桌面便签】机主开了 user_checking 这个工具，不用每次讨授权就能用：\n'
           + '- 想知道机器/桥接状态好不好（卡不卡、内存紧不紧、跑了多久），直接调用 user_checking(action="status")，它只读指标，不扫进程、不看文件、不碰网络。\n'
-          + '- 有想对哥哥说、又不适合当场刷屏的话，可以 user_checking(action="note", text="…") 追加到桌面的「' + name + '」里，只追加一行，不覆盖、不删除。\n'
+          + '- 有想对哥哥说、又不适合当场刷屏的话，可以 user_checking(action="note", text="…") 追加到桌面的「' + name + '」里，自动带时间戳，只追加一行，不覆盖、不删除。\n'
           + '- 边界：不能改任何文件、不能读别人文件、不能把便签内容或本机路径发到群里；别把机器指标一股脑念出来，挑一两个真的有关的说。';
       }
     }

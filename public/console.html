@@ -2801,7 +2801,7 @@ button:active:not(:disabled) {
       </div>
       <div class="row">
         <label style="flex:0 0 150px">推荐主题关键词</label>
-        <textarea id="v2NewsKeywords" rows="3" maxlength="10600" style="flex:1;min-width:260px" placeholder="每行一个主题，基础权重 1，例如：鲸鱼、海洋纪录片、少年成长"></textarea>
+        <textarea id="v2NewsKeywords" rows="3" maxlength="600" style="flex:1;min-width:260px" placeholder="每行一个主题，基础权重 1，例如：鲸鱼、海洋纪录片、少年成长"></textarea>
       </div>
       <div class="row">
         <label style="flex:0 0 150px">主题关联 UP 主（权重）</label>
@@ -7284,6 +7284,10 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
 
   // ── 组件配置表单：把「大黑框 + {}」换成勾选/下拉/数字的可视化编辑 ──────────
   const COMPONENT_FORMS = {
+    'tool-user-checking': { title: '桌面便签', fields: [
+      { key: 'noteFileName', label: '便签文件名', help: '固定写入桌面；这里只能设置文件名，不能选择其他目录。便签始终自动添加时间戳。', type: 'text' },
+      { key: 'maxNoteChars', label: '单条便签最大字数', help: '限制每次追加的便签长度。', type: 'number', min: 20, max: 2000 }
+    ] },
     'ctx-member-card': { title: '人物档案注入', fields: [
       { key: 'enabled', label: '启用档案注入', help: '关闭后，档案仍可在下方预览，但不会随每轮对话发送给 AI。', type: 'boolean' },
       { key: 'maxCards', label: '每轮最多注入人数', help: '限制一轮对话中加入上下文的人物卡数量；人数越多，占用的上下文越多。', type: 'number', min: 1, max: 20 },
@@ -7460,7 +7464,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
       return '<fieldset class="comp-field comp-ack-group" style="border:1px solid var(--border-subtle);border-radius:12px;padding:12px 14px;margin:10px 0;background:var(--surface)">'
         + '<legend style="padding:0 6px;font-weight:650">' + esc(field.label) + '</legend>'
         + '<div class="row" style="gap:14px;align-items:center"><label><input type="checkbox" class="comp-ack-enabled"' + (group.enabled !== false ? ' checked' : '') + '> 启用这组</label>'
-        + '<label>激活延迟（秒） <input type="number" class="comp-ack-delay" value="' + esc(String(Number(group.delayMs ?? 0) / 1000)) + '" min="0" max="10600" step="0.1" style="width:110px"></label></div>'
+        + '<label>激活延迟（秒） <input type="number" class="comp-ack-delay" value="' + esc(String(Number(group.delayMs ?? 0) / 1000)) + '" min="0" max="600" step="0.1" style="width:110px"></label></div>'
         + '<label class="meta" style="display:block;margin-top:8px">固定话术表（每行一条，激活时随机选一条）</label>'
         + '<textarea class="comp-ack-lines" rows="' + Math.max(4, Math.min(8, lines.length)) + '" style="width:100%;min-height:100px">' + esc(lines.join('\n')) + '</textarea>'
         + '<small class="meta comp-help">清空话术表会让此组不发送；延迟上限为 600 秒。</small></fieldset>';
@@ -7599,7 +7603,8 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
         return;
       }
       const form = renderComponentForm(p, el.dataset.inlineFields ? el.dataset.inlineFields.split(',') : null, !!el.dataset.inlineFields);
-      const enabled = el.dataset.hideToggle === '1' || id === 'exec-image-generation' ? '' : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? ' checked' : '') + '> <span>' + esc(el.dataset.toggleLabel || '启用此功能') + '</span></label><span class="meta comp-toggle-msg"></span>';
+      const toggleLabel = id === 'tool-user-checking' ? '启用自查与桌面便签' : (el.dataset.toggleLabel || '启用此功能');
+      const enabled = el.dataset.hideToggle === '1' || id === 'exec-image-generation' ? '' : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? ' checked' : '') + '> <span>' + esc(toggleLabel) + '</span></label><span class="meta comp-toggle-msg"></span>';
       if (form) {
         body.innerHTML = enabled + form.html + (form.empty || el.dataset.deferSave === '1' ? '' : '<div class="row" style="gap:8px;margin-top:8px"><button class="small comp-save">保存设置</button><span class="meta comp-msg"></span></div>');
         if (id === 'life-proactive-time-bubble') {
