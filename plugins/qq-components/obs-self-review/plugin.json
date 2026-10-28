@@ -11,7 +11,7 @@
     "代码"
   ],
   "main": "index.js",
-  "enabled": false,
+  "enabled": true,
   "hooks": [
     "onIncoming",
     "beforePrompt"

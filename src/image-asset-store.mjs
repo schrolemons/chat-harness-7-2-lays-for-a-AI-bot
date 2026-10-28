@@ -68,6 +68,11 @@ export function createImageAssetStore({
   if (!Array.isArray(state.assets)) state.assets = [];
   let recoveredDelivery = false;
   for (const item of state.assets) {
+    // Deployed versions stored `ext`; keep reading their existing image cache.
+    if (item && !item.extension && ['png', 'jpg', 'gif', 'webp'].includes(item.ext)) {
+      item.extension = item.ext;
+      recoveredDelivery = true;
+    }
     if (item?.delivery === 'sending') {
       item.delivery = 'unknown';
       recoveredDelivery = true;
@@ -127,6 +132,7 @@ export function createImageAssetStore({
       sourceRef: normalizedSourceRef,
       mimeType: image.mimeType,
       extension: image.extension,
+      ext: image.extension,
       sizeBytes: bytes.length,
       createdAt,
       expiresAt: createdAt + Math.max(1000, Number(retentionMs) || DEFAULT_RETENTION_MS),

@@ -24,7 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, '..');
 
 /** 由桥接托管的 preset（顺序即 patch 层顺序）。 */
-export const PRESETS = ['qq-chat', 'qq-chat-v2', 'qq-chat-dev', 'qq-task-worker'];
+export const PRESETS = ['qq-chat', 'qq-chat-v2', 'qq-chat-dev', 'qq-task-worker', 'qq-learning'];
 
 /** preset 行 id：与 config.id（桥接解析的 preset 名）区分开，方便在 profile patch 里按行定位。 */
 export function presetRowId(name) {
@@ -109,9 +109,10 @@ function normalizeRows(rows, preset) {
   // qq-chat-dev（管理员开发）与 qq-task-worker（任务工作会话）刻意不挂 qq-tool-restrict：
   // 前者只由桥接挂到 owner 私聊，后者只由桥接在主人委派任务时创建（会话创建权在桥接手里，
   // 且任务会话对本地工具的授权本身就是设计目标）。
-  if (preset !== 'qq-chat-dev' && preset !== 'qq-task-worker' && !seen.has('qq-tool-restrict')) {
+  if (preset !== 'qq-chat-dev' && preset !== 'qq-task-worker' && preset !== 'qq-learning' && !seen.has('qq-tool-restrict')) {
     throw new Error(`${preset}: 行列表缺少 qq-tool-restrict 行（仿真会话不允许缺少本地工具守卫）`);
   }
+  if(preset === 'qq-learning' && !seen.has('learning-tool-restrict'))throw new Error('qq-learning 缺少只读学习守卫');
   return normalized;
 }
 

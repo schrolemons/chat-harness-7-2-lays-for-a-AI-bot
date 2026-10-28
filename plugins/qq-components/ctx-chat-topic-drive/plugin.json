@@ -2,7 +2,7 @@
   "id": "ctx-chat-topic-drive",
   "name": "会话推进（追问 / 起话题）",
   "version": "0.1.0",
-  "description": "判定这一轮该不该接一句具体追问、或冷场时主动起个新话题；带冷却与每小时上限，避免每句都反问。",
+  "description": "私聊内与群聊内由模型判断是否自然追问；另提供群聊后跨私聊的关系校验与限频发送能力。",
   "category": "上下文与记忆",
   "order": 10,
   "tags": [
@@ -13,9 +13,15 @@
   "main": "index.js",
   "enabled": true,
   "hooks": [
-    "beforePrompt"
+    "beforePrompt",
+    "onIncoming",
+    "afterSend"
   ],
   "config": {
+    "privateFollowupEnabled": true,
+    "minIntervalMinutes": 180,
+    "dailyLimit": 1,
+    "sessionLimits": {},
     "followUpProbability": 0.5,
     "newTopicProbability": 0.35,
     "followUpCooldownMinutes": 8,

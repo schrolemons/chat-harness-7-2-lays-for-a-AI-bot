@@ -2,7 +2,7 @@
   "id": "life-proactive-time-bubble",
   "name": "时间冒泡",
   "version": "0.1.0",
-  "description": "到点主动冒个泡（午饭点/起床/该睡了），文案要求由本插件产出；不是回复谁，也不接旧话题。",
+  "description": "由小鲸鱼根据本人私聊分享的作息和饮食习惯规划冒泡时段；服从锁定、免打扰、会话状态与每日次数上限。",
   "category": "生命周期与编排",
   "order": 40,
   "tags": [
@@ -15,7 +15,7 @@
     "beforePrompt"
   ],
   "config": {
-    "maxBubblesPerDay": 4
+    "maxBubblesPerDay": 3
   },
   "layer": "L",
   "wakeReasons": [

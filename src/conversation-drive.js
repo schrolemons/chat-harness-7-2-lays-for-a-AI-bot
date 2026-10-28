@@ -1,14 +1,14 @@
 // 会话推进组件（conversation drive）
 //
 // 把「接住话题并反问」「冷场时主动起新话题」从模型的临场发挥，变成桥接层的确定性组件：
-//   · 每轮唤醒时由桥接判定这一轮该不该「往下追」或「抛新话题」，并把具体要求写进 prompt；
-//   · 判定带冷却/频率上限，避免每轮都反问、每句话都开新话题（那样更像客服话术）。
+//   · 每轮唤醒时过滤收尾语境、冷却和连续追问，再把可选追问提示交给模型自行判断；
+//   · 冷场开新话题仍按概率、冷却与频率上限控制。
 //
 // 只做判定与提示词文本，不发消息；状态补丁由调用方合并进 socialV2 会话状态后落盘。
 
 export const DEFAULT_CONVERSATION_DRIVE = {
   enabled: true,
-  // 回复时追加一句具体追问的概率（0~1）
+  // 旧配置兼容字段；追问是否发生现由模型自行判断，不按概率抽签。
   followUpProbability: 0.5,
   // 冷场/无未读时主动起新话题的概率（0~1）
   newTopicProbability: 0.35,
@@ -148,10 +148,10 @@ export function planConversationDrive(opts = {}) {
     const followAllowed = now - lastDriveAt >= cfg.followUpCooldownMinutes * 60000
       && !aiAskedLast
       && lastKind !== 'followup';
-    if (incoming && followAllowed && Math.random() < cfg.followUpProbability) {
-      const line = '【会话推进｜往下追一句】这一轮回完对方之后，顺带接一个**具体**的追问：问细节、问后来怎样、问对方的看法都行，'
+    if (incoming && followAllowed) {
+      const line = '【会话推进｜可选追问】你先正常回复对方，再由你判断此刻是否适合自然追问；若值得继续，可问一个具体细节、后来怎样或对方的看法；若对方在收尾、气氛不合适或你没有真心想问的，就不要追问。'
         + (incomingIsQuestion ? '（他刚问了你什么，答完再反问一句他那边的情况）' : '')
-        + '别用「然后呢/还有呢」这种空追问，也别把话题绕回你自己。追问最多一句，不能变成审问。';
+        + '别用「然后呢/还有呢」这种空追问，也别把话题绕回你自己。最多问一句，不要变成审问。';
       return {
         kind: 'followup',
         line,

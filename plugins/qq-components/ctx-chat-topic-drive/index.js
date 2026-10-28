@@ -4,12 +4,59 @@
 
 import { planConversationDrive } from '../../../src/conversation-drive.js';
 import { createTurnPolicy } from '../schnie-core/turn-policy.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { effectiveFollowupLimits, isFollowupAllowed } from './followup-policy.mjs';
+import { PRIVATE_FOLLOWUP_POLICY } from '../../../src/qq-reply-policy.js';
 
 const NON_CHAT_REASONS = /^(selfReview|selfOptimize|memoryWrite|timeBubble|startupGreeting|reminder|newFriend|newsShare|careCheck|idleRescue|proactiveCheck|replyCheck)/;
 
 export function createPlugin(ctx) {
   const phi = createTurnPolicy(ctx);
   const cfg = ctx.config || {};
+  const state = ctx.state;
+  const root = ctx.root || process.cwd();
+  const profileFor = (userId) => {
+    try { return JSON.parse(fs.readFileSync(path.join(root, 'state', 'user-profiles.json'), 'utf8')).users?.['u:' + String(userId)]; }
+    catch { return null; }
+  };
+  const dayKey = (at = Date.now()) => new Date(at).toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+  const eligible = (groupKey, userId) => {
+    if (!/^group:\d+$/.test(String(groupKey || '')) || !/^\d{1,20}$/.test(String(userId || ''))) return false;
+    const profile = profileFor(userId);
+    return !!profile && Array.isArray(profile.keys)
+      && profile.keys.includes(groupKey) && profile.keys.includes('private:' + userId);
+  };
+  const sessionSettings = () => cfg.sessionLimits && typeof cfg.sessionLimits === 'object' ? cfg.sessionLimits : {};
+  ctx.registerTool('private_followup_send', {
+    description: '群聊回复完成后，如果本轮实际发言者值得关心，或你对其具体经历/话题确实感兴趣且自然想了解后续，应使用本工具向其私聊追问一句。只问一个简短、具体的问题，不复述群里回复；必须使用本轮群聊 key 和实际发言者 QQ。系统会校验真实私聊关系、会话白名单、当前发言者和冷却/日上限，不要尝试绕过限制。',
+    schema: { type: 'object', required: ['groupKey', 'userId', 'text'], properties: {
+      groupKey: { type: 'string', description: '本轮群聊 key，例如 group:10607' },
+      userId: { type: 'string', description: '本轮群消息实际发送者 QQ 号' },
+      text: { type: 'string', description: '一条简短的私聊追问，不复述群聊回复' }
+    } },
+    handler: async ({ groupKey, userId, text } = {}) => {
+      const group = String(groupKey || ''), id = String(userId || ''), body = String(text || '').trim();
+      if (!eligible(group, id)) return { ok: false, reason: 'no_private_relationship' };
+      const recent = state.get().recentGroupSpeakers || {};
+      const activity = recent[group];
+      if (!activity || activity.userId !== id || activity.followupUsed === true || Date.now() - Number(activity.at) > 30 * 60000) return { ok: false, reason: 'not_current_group_speaker' };
+      if (!body || body.length > 300 || /[\r\n]/.test(body)) return { ok: false, reason: 'invalid_message' };
+      const global = { minIntervalMinutes: cfg.minIntervalMinutes, dailyLimit: cfg.dailyLimit };
+      const perSession = sessionSettings()['private:' + id] || {};
+      const limits = effectiveFollowupLimits(global, perSession);
+      const sent = state.get().followupSent || {};
+      const entry = sent[id] || {};
+      const today = dayKey();
+      if (!isFollowupAllowed({ limits, lastSentAt: entry.lastSentAt, sentToday: entry.day === today ? entry.count : 0 })) {
+        return { ok: false, reason: 'rate_limited', limits };
+      }
+      const now = Date.now();
+      const next = { ...sent, [id]: { day: today, count: (entry.day === today ? Number(entry.count) || 0 : 0) + 1, lastSentAt: now } };
+      state.set({ followupSent: next, recentGroupSpeakers: { ...recent, [group]: { ...activity, followupUsed: true } }, pendingFollowup: { groupKey: group, userId: id, sourceAt: Number(activity.at), text: body, queuedAt: now } });
+      return { ok: true, queued: true, limits, note: '将在本轮群聊回复成功送达后发送私聊追问' };
+    }
+  });
   return {
     hooks: {
       beforePrompt(payload) {
@@ -17,15 +64,51 @@ export function createPlugin(ctx) {
         if (payload?.reason && NON_CHAT_REASONS.test(String(payload.reason))) return '';
         const st = payload?.st;
         if (!st) return '';
+        const key = String(payload?.key || '');
+        const lines = [];
+        if (key.startsWith('group:') && cfg.privateFollowupEnabled !== false) {
+          const unread = Array.isArray(st.unread) ? st.unread.filter((m) => m && !m.isSelf) : [];
+          const speaker = unread.at(-1);
+          const userId = String(speaker?.userId || speaker?.user_id || '');
+          if (eligible(key, userId)) {
+            const limits = effectiveFollowupLimits({ minIntervalMinutes: cfg.minIntervalMinutes, dailyLimit: cfg.dailyLimit }, sessionSettings()['private:' + userId] || {});
+            lines.push(`${PRIVATE_FOLLOWUP_POLICY}
+【本轮可用工具与限制】仅对当前群会话本轮实际发言者调用：groupKey=${key}、userId=${userId}。先成功完成群聊回复，再调用 private_followup_send；不得用私聊追问替代群内回复。只发一句简短、具体的私聊追问，不复述群里的回复。当前硬限制：两次私聊跟进至少间隔 ${limits.minIntervalMinutes} 分钟，每天最多 ${limits.dailyLimit} 次。`);
+          }
+        }
         const plan = planConversationDrive({
           state: st,
           config: cfg,
           now: Date.now(),
           isGroup: String(payload?.key || '').startsWith('group:')
         });
-        if (!plan || plan.kind === 'none' || !plan.line) return '';
-        if (typeof payload.patchSession === 'function') payload.patchSession(plan.patch || {});
-        return plan.line;
+        if (plan && plan.kind !== 'none' && plan.line) {
+          if (typeof payload.patchSession === 'function') payload.patchSession(plan.patch || {});
+          lines.unshift(plan.line);
+        }
+        return lines.join('\n\n');
+      }
+      ,onIncoming(payload = {}) {
+        const key = String(payload.key || ''), userId = String(payload.userId || '');
+        if (!key.startsWith('group:') || !/^\d{1,20}$/.test(userId)) return;
+        const recent = state.get().recentGroupSpeakers || {};
+        const next = { ...recent, [key]: { userId, messageId: String(payload.messageId || ''), at: Number(payload.at) || Date.now(), followupUsed: false } };
+        for (const [groupKey, item] of Object.entries(next)) if (Date.now() - Number(item?.at) > 30 * 60000) delete next[groupKey];
+        const pending = state.get().pendingFollowup;
+        state.set({ recentGroupSpeakers: next, ...(pending?.groupKey === key ? { pendingFollowup: null } : {}) });
+      },
+      afterSend(payload = {}) {
+        const key = String(payload.key || '');
+        if (!payload.success || !key.startsWith('group:')) return;
+        const current = state.get();
+        const pending = current.pendingFollowup;
+        const activity = current.recentGroupSpeakers?.[key];
+        if (!pending || pending.groupKey !== key || !activity || activity.userId !== pending.userId
+          || Number(activity.at) !== Number(pending.sourceAt) || Date.now() - Number(pending.queuedAt) > 5 * 60000) return;
+        state.set({ pendingFollowup: null });
+        Promise.resolve(ctx.capabilities.sendPrivateFollowup?.({ userId: pending.userId, text: pending.text }))
+          .then((result) => { if (!result || result.ok !== true) ctx.log?.('群聊后私聊追问未确认送达：' + String(result?.error || '未知')); })
+          .catch((error) => ctx.warn?.('群聊后私聊追问发送失败：' + (error?.message || error)));
       }
     }
   };

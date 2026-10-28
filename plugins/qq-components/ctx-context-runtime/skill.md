@@ -1,5 +1,5 @@
-# 参与度与时间感
+# ctx-context-runtime
 
-参与度参考（我最近说了多少/群里热度/该不该接）与时间感（最近来信多久前、按实时/可接/别接分档）；桥接只传 st、directUnread 和 wake 配置。
+按会话事实生成参与度和时间感提示；维护回合不注入，不自主调用模型。
 
-层：C。运行数据在本地 state/，不属于仓库内容。配置通过控制台维护，详细安装见根目录 README。
+插拔、配置和验收参见 docs/guides/PLUGIN_RUNTIME_CONTRACT.md。运行 npm run test:plugin-audit，测试使用隔离文件和模拟端点。

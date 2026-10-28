@@ -1,0 +1,14 @@
+{
+  "id": "human",
+  "name": "human",
+  "version": "1.0.0",
+  "description": "HUMAN IN THE LOOP — 我也是一个组件。",
+  "category": "验证与评估",
+  "layer": "V",
+  "order": 90,
+  "tags": ["human", "human in the loop", "人工参与"],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [],
+  "config": {}
+}

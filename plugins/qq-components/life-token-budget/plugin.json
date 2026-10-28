@@ -10,5 +10,5 @@
   "enabled": true,
   "hooks": ["onTick"],
   "schedule": { "everyMs": 60000 },
-  "config": { "sessions": {}, "globalHardLimitYuan": 0, "mechanicalPrivateReplies": [], "mechanicalGroupReplies": [] }
+  "config": { "sessions": {}, "ownerBudgetEnabled": true, "globalHardLimitYuan": 0, "recoveryWindows": { "privateMessages": 5, "groupMessages": 5, "groupAtMessages": 5 }, "mechanicalPrivateReplies": [], "mechanicalGroupReplies": [] }
 }

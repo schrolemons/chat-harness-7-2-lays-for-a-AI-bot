@@ -2,7 +2,7 @@
   "id": "ctx-memory-profile-facts",
   "name": "用户画像记忆插件",
   "version": "0.1.0",
-  "description": "从新的来信里筛选值得长期保留的稳定人物信息，由 AI 写入人物小档案；对未发言成员的临时印象留在会话轻量记忆。",
+  "description": "从新来信提取稳定人物事实；本人明确分享的作息进入私聊专属字段，临时印象留在会话轻量记忆。",
   "main": "index.js",
   "enabled": true,
   "category": "上下文与记忆",
@@ -20,9 +20,9 @@
     "everyMs": 1800000
   },
   "config": {
-    "cooldownMs": 600000,
-    "maxSnippets": 6,
-    "maxCharsPerSnippet": 120
+    "cooldownMs": 0,
+    "maxSnippets": 12,
+    "maxCharsPerSnippet": 240
   },
   "layer": "C"
 }

@@ -17,6 +17,11 @@ import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readBridgeHealth, resolveConsoleToken } from '../../qq-components/obs-bridge-health/health.mjs';
+import { readLauncherSettings, saveLauncherSettings, validateBotUin } from '../../../scripts/launcher-settings.mjs';
+import { NodeApiClient, unwrap } from '../../../src/dsh-client.js';
+import { createGatewayRecovery } from '../../../scripts/gateway-recovery.mjs';
+import { processRunsFile } from '../../../scripts/launcher-process-identity.mjs';
+import { resolveSnowHome } from '../../../scripts/snow-runtime-location.mjs';
 
 export const name = 'qq-launcher';
 export const inject = [];
@@ -27,9 +32,7 @@ const SNOWLUMA_WS_PORT = 3001;
 const BRIDGE_CONSOLE_PORT = 3100;
 
 /** 启动流程最长占用多久的“黄灯”，超时后回到红/绿实测状态。 */
-const STARTING_TTL_MS = 300_000;
-/** QQ 刚被拉起后等它把 hook 挂上，再启动 SnowLuma/桥接。 */
-const QQ_BOOT_WAIT_MS = 12_000;
+const STARTING_TTL_MS = 420_000;
 
 function log(...args) {
   try {
@@ -58,7 +61,7 @@ function tcpProbe(port, timeoutMs = 700) {
 function execFileText(file, args, timeoutMs = 4000) {
   return new Promise((resolve) => {
     try {
-      execFile(file, args, { timeout: timeoutMs, windowsHide: true }, (error, stdout) => {
+      execFile(file, args, { timeout: timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => {
         resolve(error ? '' : String(stdout || ''));
       });
     } catch {
@@ -71,6 +74,58 @@ async function isQqRunning() {
   if (process.platform !== 'win32') return false;
   const out = await execFileText('tasklist.exe', ['/FI', 'IMAGENAME eq QQ.exe', '/NH']);
   return /QQ\.exe/i.test(out);
+}
+
+async function resolveQqExe(config, fallback) {
+  const running = process.platform === 'win32' ? await execFileText('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    "Get-CimInstance Win32_Process -Filter \"Name = 'QQ.exe'\" | Select-Object -ExpandProperty ExecutablePath -Unique"
+  ]) : '';
+  const candidates = [
+    typeof config?.qqExe === 'string' ? config.qqExe.trim() : '',
+    process.env.QQ_EXE || '',
+    ...running.split(/\r?\n/),
+    path.join(process.env.ProgramW6432 || process.env.ProgramFiles || 'C:\\Program Files', 'Tencent', 'QQNT', 'QQ.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Tencent', 'QQNT', 'QQ.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Tencent', 'QQNT', 'QQ.exe'),
+    fallback
+  ].filter(Boolean);
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch {}
+  }
+  for (const key of [
+    'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\QQ.exe',
+    'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\QQ.exe',
+    'HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\App Paths\\QQ.exe'
+  ]) {
+    const value = await execFileText('reg.exe', ['query', key, '/ve']);
+    const match = value.match(/REG_(?:SZ|EXPAND_SZ)\s+(.+)\s*$/imu);
+    if (match?.[1]) {
+      const resolved = match[1].trim().replace(/^"|"$/gu, '');
+      try { if (fs.statSync(resolved).isFile()) return resolved; } catch {}
+    }
+  }
+  return '';
+}
+
+async function resolveNodeBinary(config) {
+  const candidates = [
+    typeof config?.nodeExe === 'string' ? config.nodeExe.trim() : '',
+    process.env.DSH_NODE_BINARY || '',
+    process.env.NODE_BINARY || '',
+    ...(process.platform === 'win32'
+      ? (await execFileText('where.exe', ['node.exe'])).split(/\r?\n/u)
+      : (await execFileText('which', ['node'])).split(/\r?\n/u)),
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node.exe'),
+    ...(process.versions.electron ? [] : [process.execPath])
+  ].map(value => String(value).trim()).filter(Boolean);
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch {}
+  }
+  throw new Error('找不到可用的 Node.js。请安装 Node.js 或在启动器配置 nodeExe');
 }
 
 function pidAlive(pid) {
@@ -94,7 +149,6 @@ function resolveBridgeDir(config) {
     const here = path.dirname(fileURLToPath(import.meta.url));
     candidates.push(path.resolve(here, '..', '..', '..'));
   } catch {}
-  candidates.push(path.join(process.cwd(), 'qq-bridge-0.2.1-r1'));
   candidates.push(process.cwd());
   for (const dir of candidates) {
     try {
@@ -114,45 +168,79 @@ function readBridgeLockPid(bridgeDir) {
   }
 }
 
-function readDshPort(bridgeDir) {
+function readBridgeConfig(bridgeDir) {
   try {
-    const cfg = JSON.parse(fs.readFileSync(path.join(bridgeDir, 'config.json'), 'utf8'));
-    const raw = String(cfg?.dsh?.baseUrl || '');
-    const match = /:(\d+)/.exec(raw);
-    return match ? Number.parseInt(match[1], 10) : null;
+    return JSON.parse(fs.readFileSync(path.join(bridgeDir, 'config.json'), 'utf8'));
   } catch {
-    return null;
+    return {};
   }
 }
 
-function createLauncher(ctx, config) {
-  const port = Number.isInteger(config?.servicePort) && config.servicePort > 0 ? config.servicePort : DEFAULT_PORT;
-  const qqExe = typeof config?.qqExe === 'string' && config.qqExe.trim() ? config.qqExe.trim() : (process.env.QQ_EXE || '');
+function urlPort(value, fallback) {
+  try {
+    const url = new URL(String(value));
+    if (url.port) return Number(url.port);
+    return url.protocol === 'https:' || url.protocol === 'wss:' ? 443 : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function createLauncher(ctx, config, deps = {}) {
+  const port = Number.isInteger(config?.servicePort) && config.servicePort >= 0 ? config.servicePort : DEFAULT_PORT;
+  const qqExe = typeof config?.qqExe === 'string' ? config.qqExe.trim() : '';
   const bridgeDir = resolveBridgeDir(config);
+  const settingsRoot = deps.settingsRoot || bridgeDir;
+  const getSettings = () => readLauncherSettings(settingsRoot);
+  const requireBot = () => {
+    try { if (getSettings().botUin) return null; }
+    catch (error) { return { ok: false, code: 'BOT_QQ_REQUIRED', error: error.message }; }
+    return { ok: false, code: 'BOT_QQ_REQUIRED', error: '请先设置机器人 QQ 号' };
+  };
 
   let startingSince = 0;
   let lastStartAt = 0;
   let lastError = '';
+  let startPromise = null;
+  let controlPromise = null;
+  let operation = '';
+  let generation = 0;
+  let stopped = false;
+  let runner = null;
+  let replacedBridgePid = null;
+  let disposed = false;
+  let savingSettings = false;
+  let gatewayPromise = null;
+  let gatewayRunner = null;
+  let gatewayError = '';
+  const checkQq = deps.isQqRunning || isQqRunning;
+  const checkHealth = deps.health || readBridgeHealth;
+  const probe = deps.tcpProbe || tcpProbe;
 
   const starting = () => startingSince > 0 && Date.now() - startingSince < STARTING_TTL_MS;
 
   async function status() {
+    const cfg = bridgeDir ? readBridgeConfig(bridgeDir) : {};
+    let botUin = '', settingsError = '';
+    try { botUin = getSettings().botUin; } catch (error) { settingsError = error.message; }
+    const httpPort = urlPort(cfg?.snowluma?.httpUrl, SNOWLUMA_HTTP_PORT);
+    const wsPort = urlPort(cfg?.snowluma?.wsUrl, SNOWLUMA_WS_PORT);
+    const consolePort = Number(cfg?.consolePort) || BRIDGE_CONSOLE_PORT;
     const [qq, snowluma, snowlumaWs, bridge] = await Promise.all([
-      isQqRunning(),
-      tcpProbe(SNOWLUMA_HTTP_PORT),
-      tcpProbe(SNOWLUMA_WS_PORT),
-      tcpProbe(BRIDGE_CONSOLE_PORT)
+      checkQq(),
+      probe(httpPort),
+      probe(wsPort),
+      probe(consolePort)
     ]);
     const lockPid = bridgeDir ? readBridgeLockPid(bridgeDir) : null;
     const bridgePidAlive = pidAlive(lockPid);
     // QQ 进程探测是 best-effort（tasklist 在受限上下文里会 EPERM）；
     // 真正的判据用 SnowLuma 与桥接是否在监听：SnowLuma 起得来就说明 QQ 挂着。
-    const health = bridgeDir ? await readBridgeHealth({ root: bridgeDir, timeoutMs: 1500 }) : null;
+    const health = bridgeDir ? await checkHealth({ root: bridgeDir, timeoutMs: 1500 }) : null;
     let presetsReady = false;
     if (health?.healthy) {
       try {
-        const cfg = JSON.parse(fs.readFileSync(path.join(bridgeDir, 'config.json'), 'utf8'));
-        const response = await fetch(`http://127.0.0.1:${cfg.consolePort || 3100}/api/presets`, {
+        const response = await fetch(`http://127.0.0.1:${consolePort}/api/presets`, {
           headers: { 'x-console-token': resolveConsoleToken(bridgeDir, cfg) },
           signal: AbortSignal.timeout(2000)
         });
@@ -161,8 +249,22 @@ function createLauncher(ctx, config) {
         presetsReady = response.ok && ['qq-chat', 'qq-chat-v2', 'qq-chat-dev', 'qq-task-worker'].every(id => ids.has(id));
       } catch {}
     }
-    const ready = health?.healthy === true && presetsReady;
-    if (ready) startingSince = 0;
+    const replacementPending = starting() && (!runner || (replacedBridgePid && lockPid === replacedBridgePid));
+    const ready = health?.healthy === true && presetsReady && operation !== 'stopping' && !stopped && !replacementPending;
+    let progress = null;
+    try {
+      const saved = JSON.parse(fs.readFileSync(path.join(bridgeDir, 'state', 'startup-progress.json'), 'utf8'));
+      if (saved.pid === runner?.pid && saved.at >= lastStartAt) progress = saved;
+    } catch {}
+    if (ready) {
+      startingSince = 0;
+      lastError = '';
+      operation = '';
+    } else if (startingSince > 0 && Date.now() - startingSince >= STARTING_TTL_MS) {
+      startingSince = 0;
+      lastError = '启动超时：请检查 DSH、SnowLuma 和 state/start-da-feiyu.log';
+      operation = '';
+    }
     let light = 'red';
     if (starting() && !ready) light = 'amber';
     else if (ready) light = 'green';
@@ -171,7 +273,16 @@ function createLauncher(ctx, config) {
       at: new Date().toISOString(),
       light,
       starting: starting(),
+      stopped,
+      operation,
+      phase: ready ? 'ready' : starting() ? progress?.phase || 'starting' : stopped ? 'stopped' : gatewayPromise ? 'recovering_gateway' : health?.verdict || 'unknown',
+      message: ready ? 'bot 已就绪' : starting() ? progress?.message || '' : stopped ? 'bot 已关闭' : gatewayPromise ? '正在恢复 SnowLuma 网关，保留桥接' : health?.reason || '',
       ready,
+      botUin,
+      settingsRequired: !botUin,
+      settingsError,
+      gatewayRecovering: !!gatewayPromise,
+      gatewayError,
       checks: {
         qq,
         snowluma,
@@ -181,7 +292,8 @@ function createLauncher(ctx, config) {
         bridgePidAlive,
         presetsReady,
         health: health?.verdict || 'unknown',
-        dshPort: bridgeDir ? readDshPort(bridgeDir) : null
+        dshPort: urlPort(cfg?.dsh?.baseUrl, null),
+        ports: { snowlumaHttp: httpPort, snowlumaWs: wsPort, bridgeConsole: consolePort }
       },
       bridgeDir,
       lastStartAt: lastStartAt ? new Date(lastStartAt).toISOString() : null,
@@ -189,62 +301,258 @@ function createLauncher(ctx, config) {
     };
   }
 
-  async function startBridge() {
+  function startBridge() {
+    const required = requireBot();
+    if (required) return required;
+    if (disposed) return { ok: false, error: '启动器已卸载，请刷新页面' };
     if (!bridgeDir) {
       lastError = '找不到桥接仓库（缺少 scripts/start-da-feiyu.mjs）';
       return { ok: false, error: lastError };
     }
-    if (starting()) return { ok: true, already: true, startedAt: new Date(startingSince).toISOString() };
-    // 已运行的实例不重复启动，更不因红灯而强杀进程。
-    if (pidAlive(readBridgeLockPid(bridgeDir))) return { ok: true, already: true };
+    // Keep duplicate requests from starting a second supervisor while the detached first
+    // supervisor is still discovering DSH, recovering SnowLuma, or reconnecting the bridge.
+    if (starting() || startPromise || controlPromise) return { ok: true, already: true };
 
+    const attempt = ++generation;
+    replacedBridgePid = readBridgeLockPid(bridgeDir);
+    runner = null;
+    stopped = false;
+    operation = 'starting';
     startingSince = Date.now();
     lastStartAt = startingSince;
     lastError = '';
 
-    try {
-      if (!(await isQqRunning())) {
-        if (!qqExe || !fs.existsSync(qqExe)) {
-          startingSince = 0;
-          lastError = '请先启动并登录 QQ，或安装时用 --qq-exe 配置自己的 QQ 路径';
-          return { ok: false, error: lastError };
-        }
-        log('QQ 未运行，先拉起', qqExe);
+    startPromise = (async () => {
+      try {
+      if (!(await checkQq())) {
+        if (attempt !== generation) return;
+        const resolvedQqExe = await resolveQqExe(config, qqExe);
+        if (!resolvedQqExe) throw new Error('找不到 QQ.exe；请安装 QQ 或在 qq-launcher 配置 qqExe');
+        if (attempt !== generation) return;
+        log('QQ 未运行，先拉起', resolvedQqExe);
         try {
-          const child = spawn(qqExe, [], { detached: true, stdio: 'ignore', windowsHide: false });
-          child.once('error', error => { startingSince = 0; lastError = error.message; });
+          const child = spawn(resolvedQqExe, [], { detached: process.platform !== 'win32', stdio: 'ignore', windowsHide: true });
+          await new Promise((resolve, reject) => {
+            child.once('spawn', resolve);
+            child.once('error', reject);
+          });
           child.unref();
         } catch (error) {
-          lastError = `拉起 QQ 失败：${error?.message ?? error}`;
-          log(lastError);
+          throw new Error(`拉起 QQ 失败：${error?.message ?? error}`);
         }
-        await new Promise((resolve) => setTimeout(resolve, QQ_BOOT_WAIT_MS));
+        const qqDeadline = Date.now() + 60_000;
+        while (attempt === generation && Date.now() < qqDeadline && !(await checkQq())) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        if (attempt !== generation) return;
+        if (!(await checkQq())) throw new Error('QQ 启动超时（60 秒），未检测到 QQ.exe');
       }
 
+      if (attempt !== generation) return;
       log('启动 SnowLuma + 桥接', bridgeDir);
-      const nodeBinary = config?.nodePath || (process.versions.electron
-        ? path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node.exe')
-        : process.execPath);
-      if (!fs.existsSync(nodeBinary)) throw new Error('找不到 Node.js：' + nodeBinary);
-      const child = spawn(nodeBinary, [path.join('scripts', 'start-da-feiyu.mjs')], {
+      const nodeBinary = deps.nodeBinary || await resolveNodeBinary(config);
+      if (attempt !== generation) return;
+      const child = (deps.spawnRunner || spawn)(nodeBinary, [path.join(bridgeDir, 'scripts', 'start-da-feiyu.mjs'), '--force', '--force-now'], {
         cwd: bridgeDir,
-        detached: true,
+        detached: process.platform !== 'win32',
         stdio: 'ignore',
         windowsHide: true,
-        env: { ...process.env, QQL_AUTOSTARTED_BY: 'dsh-titlebar' }
+        env: { ...process.env, QQL_AUTOSTARTED_BY: 'dsh-titlebar', QQL_BOT_UIN: getSettings().botUin }
       });
-      child.once('error', error => {
-        startingSince = 0;
-        lastError = `启动失败：${error.message}`;
+      runner = child;
+      await new Promise((resolve, reject) => {
+        child.once('spawn', resolve);
+        child.once('error', reject);
+      });
+      child.once('exit', (code, signal) => {
+        if (attempt !== generation) return;
+        void status().then(current => {
+          if (attempt !== generation) return;
+          if (!current.ready && startingSince > 0) {
+            startingSince = 0;
+            operation = '';
+            lastError = current.phase === 'failed' && current.message ? current.message : `启动脚本提前退出（code=${code ?? 'null'} signal=${signal ?? 'null'}），查看 state/start-da-feiyu.log`;
+            log(lastError);
+          }
+        }).catch(error => {
+          if (attempt !== generation) return;
+          startingSince = 0;
+          lastError = `启动脚本退出后无法检查状态：${error?.message ?? error}`;
+        });
       });
       child.unref();
-      return { ok: true, startedAt: new Date(startingSince).toISOString(), bridgeDir };
-    } catch (error) {
-      startingSince = 0;
-      lastError = `启动失败：${error?.message ?? error}`;
-      log(lastError);
-      return { ok: false, error: lastError };
+      return { ok: true, startedAt: new Date(startingSince).toISOString(), bridgeDir, restarted: true };
+      } catch (error) {
+        if (attempt !== generation) return;
+        startingSince = 0;
+        operation = '';
+        lastError = `启动失败：${error?.message ?? error}`;
+        log(lastError);
+        return { ok: false, error: lastError };
+      } finally {
+        startPromise = null;
+      }
+    })();
+    return { ok: true, startedAt: new Date(startingSince).toISOString(), bridgeDir };
+  }
+
+  async function stopRuntime() {
+    if (deps.stop) return deps.stop();
+    const nodeBinary = await resolveNodeBinary(config);
+    await new Promise((resolve, reject) => {
+      execFile(nodeBinary, [path.join(bridgeDir, 'scripts', 'start-da-feiyu.mjs'), '--stop'],
+        { cwd: bridgeDir, windowsHide: true, timeout: 45000 }, (error, stdout) => {
+          if (error) reject(new Error(String(stdout || '').trim().split(/\r?\n/).slice(-2).join(' ') || error.message));
+          else resolve();
+        });
+    });
+    runner = null;
+    gatewayRunner = null;
+  }
+
+  function gatewayLog(message) {
+    log(message);
+    try { fs.appendFileSync(path.join(bridgeDir, 'state', 'gateway-recovery.log'), `[${new Date().toISOString()}] ${message}\n`); } catch {}
+  }
+
+  function recoverGateway() {
+    if (gatewayPromise) return gatewayPromise;
+    const attempt = generation;
+    gatewayPromise = (async () => {
+      const required = requireBot();
+      if (required) throw new Error(required.error);
+      const nodeBinary = deps.nodeBinary || await resolveNodeBinary(config);
+      if (disposed || stopped || operation === 'stopping' || attempt !== generation) return;
+      gatewayError = '';
+      gatewayLog('SnowLuma 进程消失：单独恢复网关，保留当前桥接');
+      const output = fs.openSync(path.join(bridgeDir, 'state', 'gateway-recovery.log'), 'a');
+      let proc;
+      try {
+        proc = spawn(nodeBinary, [path.join(bridgeDir, 'scripts', 'start-da-feiyu.mjs'), '--gateway-only'], {
+          cwd: bridgeDir, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', output, output],
+          env: { ...process.env, QQL_BOT_UIN: getSettings().botUin, QQL_AUTOSTARTED_BY: 'gateway-recovery' }
+        });
+      } finally { fs.closeSync(output); }
+      gatewayRunner = proc;
+      await new Promise((resolve, reject) => { proc.once('spawn', resolve); proc.once('error', reject); });
+      proc.once('exit', (code, signal) => {
+        gatewayLog(`网关守护退出：PID=${proc.pid} code=${code} signal=${signal}`);
+        if (gatewayRunner === proc) gatewayRunner = null;
+        if (!disposed && !stopped && operation !== 'stopping' && attempt === generation && code !== 0)
+          gatewayError = `SnowLuma 守护退出（${code ?? signal}），查看 gateway-recovery.log`;
+      });
+      proc.unref();
+    })().catch(error => { gatewayError = error.message; gatewayLog('网关恢复失败：' + error.message); })
+      .finally(() => { gatewayPromise = null; });
+    return gatewayPromise;
+  }
+
+  const gatewayRecovery = createGatewayRecovery({
+    inspect: async () => {
+      if (disposed || stopped || starting() || operation === 'stopping' || controlPromise || startPromise || deps.settingsRoot) return {};
+      const health = await checkHealth({ root: bridgeDir, timeoutMs: 1500 });
+      if (health?.components?.console !== 'ok') return {};
+      const cfg = readBridgeConfig(bridgeDir);
+      const configured = !requireBot();
+      const [http, ws] = await Promise.all([
+        probe(urlPort(cfg.snowluma?.httpUrl, SNOWLUMA_HTTP_PORT)), probe(urlPort(cfg.snowluma?.wsUrl, SNOWLUMA_WS_PORT))
+      ]);
+      if (http || ws || !configured) return { http, ws, configured };
+      const home = resolveSnowHome(cfg);
+      if (gatewayRunner && pidAlive(gatewayRunner.pid)) return { gatewayRunning: true };
+      const raw = await execFileText('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        'ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine)'], 10000);
+      if (!raw) return {}; // Unknown process evidence must not trigger a restart.
+      const processes = JSON.parse(raw);
+      const entry = path.join(bridgeDir, 'scripts', 'start-da-feiyu.mjs');
+      const gatewayRunning = processes.some(p => processRunsFile(p.CommandLine, path.join(home, 'index.mjs'))
+        || (processRunsFile(p.CommandLine, entry) && /(?:^|\s)--gateway-only(?:\s|$)/.test(p.CommandLine)));
+      return { bridgeRunning: true, configured, qqRunning: await checkQq(), gatewayRunning, http, ws };
+    },
+    recover: recoverGateway,
+    onError: error => { gatewayError = error.message; }
+  });
+  const gatewayTimer = setInterval(() => { void gatewayRecovery.tick(); }, 15000);
+  gatewayTimer.unref?.();
+
+  function control(restart) {
+    if (restart) { const required = requireBot(); if (required) return required; }
+    if (!bridgeDir) return { ok: false, error: '找不到桥接仓库' };
+    if (controlPromise) return { ok: true, already: true };
+    ++generation; // Cancel QQ checks and ignore late exit events before doing any stop work.
+    startingSince = 0;
+    operation = 'stopping';
+    stopped = false;
+    lastError = '';
+    controlPromise = (async () => {
+      try {
+        // The generation guard prevents a cancelled pending start from spawning after stop.
+        await stopRuntime();
+        stopped = true;
+        operation = '';
+      } catch (error) {
+        lastError = `关闭失败：${error?.message || error}`;
+        operation = '';
+      } finally {
+        controlPromise = null;
+      }
+      if (restart && stopped) {
+        if (startPromise) await startPromise;
+        startBridge();
+      }
+    })();
+    return { ok: true, status: restart ? 'restarting' : 'stopping' };
+  }
+
+  async function liveWhitelist(method = 'GET', payload) {
+    if (deps.settingsRoot) return null; // Isolated test fixtures must never touch the live bot.
+    const cfg = readBridgeConfig(bridgeDir);
+    const port = Number(cfg.consolePort) || BRIDGE_CONSOLE_PORT;
+    const response = await fetch(`http://127.0.0.1:${port}/api/whitelist`, {
+      method, headers: { 'x-console-token': resolveConsoleToken(bridgeDir, cfg), 'content-type': 'application/json' },
+      ...(payload ? { body: JSON.stringify(payload) } : {}), signal: AbortSignal.timeout(1800)
+    });
+    if (!response.ok) throw new Error(`桥接配置接口 HTTP ${response.status}`);
+    return response.json();
+  }
+
+  async function settingsView() {
+    const settings = getSettings();
+    let runtime = null;
+    try { runtime = await liveWhitelist(); } catch {}
+    return { ...settings, ...(runtime ? { ownerQQ: runtime.ownerQQ, allow: runtime.allow } : {}),
+      ok: true, configured: !!settings.botUin, live: !!runtime, source: runtime ? 'config.json + bridge /api/whitelist' : 'config.json' };
+  }
+
+  async function saveSettings(body) {
+    if (starting() || operation === 'stopping' || savingSettings) {
+      const error = new Error('启动或关闭正在进行，请完成后再修改设置'); error.status = 409; throw error;
     }
+    validateBotUin(body.botUin);
+    savingSettings = true;
+    try {
+      const saved = saveLauncherSettings(settingsRoot, body);
+      let applied = false, ownerSynced = false;
+      try { applied = !!(await liveWhitelist('POST', { ownerQQ: saved.ownerQQ, allow: saved.allow })); } catch {}
+      const cfg = readBridgeConfig(bridgeDir);
+      if (!deps.settingsRoot && cfg.dsh?.baseUrl && body.ownerQQ !== undefined) {
+        try {
+          const api = new NodeApiClient(cfg.dsh.baseUrl, 2500, {});
+          unwrap(await api.settings.update({ ns: 'qq-mode', patch: { ownerQQ: String(saved.ownerQQ ?? '') } }), 'settings.update');
+          ownerSynced = true;
+        } catch {}
+      }
+      return { ...saved, ok: true, configured: true, live: applied,
+        message: applied ? (ownerSynced ? '管理员和白名单已实时生效；机器人 QQ 在下次启动时使用' : '白名单已实时更新；管理员同步状态待确认，机器人 QQ 在下次启动时使用')
+          : '已保存到真实配置；bot 下次启动时生效' };
+    } finally { savingSettings = false; }
+  }
+
+  async function readBody(req) {
+    if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw new Error('请使用 JSON 提交设置');
+    let text = '';
+    for await (const chunk of req) { text += chunk; if (Buffer.byteLength(text) > 16384) throw new Error('设置内容过长'); }
+    return JSON.parse(text);
   }
 
   function send(res, code, body) {
@@ -260,6 +568,15 @@ function createLauncher(ctx, config) {
   }
 
   const server = http.createServer((req, res) => {
+    if (req.headers.origin) {
+      let local = false;
+      try {
+        const origin = new URL(req.headers.origin);
+        local = ['http:', 'https:'].includes(origin.protocol) && ['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname);
+        local ||= origin.protocol === 'dsh-app:' && origin.hostname === 'app';
+      } catch {}
+      if (!local) { send(res, 403, { ok: false, error: '仅允许本机 DSH 页面访问启动器设置' }); return; }
+    }
     const url = String(req.url || '');
     const route = url.split('?')[0];
     if (req.method === 'OPTIONS') {
@@ -272,10 +589,30 @@ function createLauncher(ctx, config) {
         .catch((error) => send(res, 500, { ok: false, error: String(error?.message ?? error) }));
       return;
     }
+    if (req.method === 'GET' && route === '/config') {
+      settingsView().then(body => send(res, 200, body)).catch(error => send(res, 500, { ok: false, error: error.message }));
+      return;
+    }
+    if (req.method === 'POST' && route === '/config') {
+      readBody(req).then(saveSettings).then(body => send(res, 200, body))
+        .catch(error => send(res, error.status || 400, { ok: false, error: error.message }));
+      return;
+    }
+    if (req.method === 'POST' && route === '/recover-gateway') {
+      const required = requireBot();
+      if (required) { send(res, 409, required); return; }
+      void gatewayRecovery.tick();
+      send(res, 202, { ok: true, status: 'gateway_check' });
+      return;
+    }
     if (req.method === 'POST' && route === '/start') {
-      startBridge()
-        .then((body) => send(res, body.ok ? 200 : 500, { ...body, status: 'started' }))
-        .catch((error) => send(res, 500, { ok: false, error: String(error?.message ?? error) }));
+      const body = startBridge();
+      send(res, body.ok ? 202 : body.code === 'BOT_QQ_REQUIRED' ? 409 : 500, { ...body, status: body.ok ? 'starting' : 'failed' });
+      return;
+    }
+    if (req.method === 'POST' && (route === '/restart' || route === '/stop')) {
+      const body = control(route === '/restart');
+      send(res, body.ok ? 202 : body.code === 'BOT_QQ_REQUIRED' ? 409 : 500, body);
       return;
     }
     send(res, 404, { ok: false, error: 'not found' });
@@ -290,11 +627,17 @@ function createLauncher(ctx, config) {
     log(`监听 http://127.0.0.1:${port} ; bridgeDir=${bridgeDir ?? '(未找到)'} ; qqExe=${qqExe}`);
   });
 
-  return () => {
+  const dispose = () => {
+    disposed = true;
+    clearInterval(gatewayTimer);
+    gatewayRecovery.dispose();
+    ++generation; // Cancel pending QQ checks without terminating a running bridge.
     try {
       server.close();
     } catch {}
   };
+  dispose.server = server;
+  return dispose;
 }
 
 export function apply(ctx, config) {

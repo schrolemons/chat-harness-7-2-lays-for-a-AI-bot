@@ -77,19 +77,29 @@ export function createPlugin(ctx) {
   }
 
   ctx.registerTool('profile_record_note', {
-    description: '给某个用户记一条画像备注（自动脱敏决定能不能跨会话分享）',
+    description: '给目标用户记一条画像备注。普通会话只能操作当前会话；管理员私聊可在用户明确要求时跨会话修改指定档案。',
     handler: ({ userId, name, trait, key, at } = {}) => {
       const shareable = store.recordNote({ userId, name: cleanName(name), trait, key, at });
       return { ok: true, shareable };
     }
   });
   ctx.registerTool('profile_record_facts', {
-    description: '写入结构化画像字段：{ aliases, likes, dislikes, recents, quotes, routines, workWindows }；作息（三餐时间＋口味、起床/入睡、工作上课时段）仅允许写入本人对应私聊档案。',
-    handler: ({ userId, name, key, at, facts } = {}) => {
+    description: '写入目标用户的结构化画像字段：{ aliases, likes, dislikes, hobbies, recents, quotes, routines, workWindows }。普通会话只能写当前会话；管理员私聊在用户明确要求时可跨会话查看/修改指定档案。作息饮食的稳定资料只写入目标用户的 private:<QQ> 档案。',
+    schema: {
+      type: 'object', required: ['userId', 'key', 'facts'],
+      properties: {
+        userId: { type: 'string', description: '档案所属 QQ 号' },
+        name: { type: 'string', description: '档案所属用户昵称' },
+        key: { type: 'string', description: '目标会话 key；跨会话修改作息时使用 private:<QQ>' },
+        facts: { type: 'object', description: '可写 aliases、likes、dislikes、hobbies、recents、quotes、routines、workWindows 等字段' }
+      }
+    },
+    handler: ({ userId, name, key, at, facts, adminCrossSession } = {}) => {
       const safeFacts = facts && typeof facts === 'object' ? { ...facts } : facts;
       const isOwnPrivate = String(key || '') === 'private:' + String(userId || '');
+      const isManagedPrivate = adminCrossSession === true && isOwnPrivate;
       const routineFields = ['routines', 'workWindows', 'breakfast', 'lunch', 'dinner', 'wake', 'sleep'];
-      if (safeFacts && !isOwnPrivate) {
+      if (safeFacts && !isOwnPrivate && !isManagedPrivate) {
         for (const field of routineFields) {
           if (Object.prototype.hasOwnProperty.call(safeFacts, field)) delete safeFacts[field];
         }
@@ -117,7 +127,7 @@ export function createPlugin(ctx) {
       properties: {
         userId: { type: 'string', description: '当前群聊实际发言者的 QQ 号，必须来自消息元数据' },
         name: { type: 'string', description: '当前群聊消息元数据中的实际昵称' },
-        key: { type: 'string', description: '当前群会话 key，如 group:<群号>' },
+        key: { type: 'string', description: '当前群会话 key，如 group:10607' },
         target: { type: 'string', description: '轻量记忆里原印象使用的目标名字，必须是该用户已知昵称' },
         traits: { type: 'array', items: { type: 'string' }, description: '要迁入档案的原印象条目，最多10条' }
       }
@@ -145,8 +155,23 @@ export function createPlugin(ctx) {
     }
   });
   ctx.registerTool('profile_snapshot', {
-    description: '查看完整用户画像（管理端用）',
-    handler: () => store.snapshot()
+    description: '查看用户画像。普通会话不可调用；管理员私聊可按 userId 或 key 查看指定用户/会话，也可按明确请求查看完整索引。',
+    schema: {
+      type: 'object', properties: {
+        userId: { type: 'string', description: '指定 QQ 号，只返回该用户档案' },
+        key: { type: 'string', description: '指定会话 key，只返回关联到该会话的用户档案' }
+      }
+    },
+    handler: ({ userId, key } = {}) => {
+      const snapshot = store.snapshot();
+      const wantedId = String(userId || '').trim();
+      const wantedKey = String(key || '').trim();
+      if (!wantedId && !wantedKey) return snapshot;
+      const users = Object.fromEntries(Object.entries(snapshot.users || {}).filter(([, profile]) =>
+        (!wantedId || String(profile.userId || '') === wantedId)
+        && (!wantedKey || (Array.isArray(profile.keys) && profile.keys.includes(wantedKey)))));
+      return { ...snapshot, users };
+    }
   });
 
   ctx.registerTool('profile_sync_impressions', {

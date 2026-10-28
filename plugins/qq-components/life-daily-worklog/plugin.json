@@ -12,7 +12,7 @@
     "记忆"
   ],
   "main": "index.js",
-  "enabled": false,
+  "enabled": true,
   "hooks": [
     "onTick"
   ],

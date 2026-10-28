@@ -15,7 +15,7 @@ const MAX_USERS = 500;
 const MAX_NOTES_PER_USER = 20;
 const MAX_NAMES_PER_USER = 5;
 const MAX_KEYS_PER_USER = 10;
-const FIELD_MAX = { aliases: 3, likes: 5, dislikes: 4, recents: 4, quotes: 3, routines: 8 };
+const FIELD_MAX = { aliases: 3, likes: 5, dislikes: 4, hobbies: 8, recents: 4, quotes: 3, routines: 8 };
 
 const FORBIDDEN_RE = /(QQ|qq|微信|vx|VX|电话|手机|地址|住址|密码|验证码|身份证|银行卡|真实姓名|真名|学号|工号|邮箱)/;
 const CONTACT_RE = /(@|https?:\/\/|www\.|\.com|\.cn|[\w.+-]+@[\w-]+\.[\w.]+)/;
@@ -54,7 +54,7 @@ function cleanArr(list, max) {
 }
 
 function emptyFields() {
-  return { aliases: [], likes: [], dislikes: [], recents: [], quotes: [], routines: [] };
+  return { aliases: [], likes: [], dislikes: [], hobbies: [], recents: [], quotes: [], routines: [] };
 }
 
 // 作息解析与固定展示块在 src/user-routines.js（单独模块：插件热加载时不会被旧模块缓存挡住）。
@@ -86,6 +86,7 @@ function ensureShape(raw) {
         aliases: cleanArr(f.aliases, FIELD_MAX.aliases),
         likes: cleanArr(f.likes, FIELD_MAX.likes),
         dislikes: cleanArr(f.dislikes, FIELD_MAX.dislikes),
+        hobbies: cleanArr(f.hobbies, FIELD_MAX.hobbies),
         recents: cleanArr(f.recents, FIELD_MAX.recents),
         quotes: cleanArr(f.quotes, FIELD_MAX.quotes),
         routines: cleanArr(f.routines, FIELD_MAX.routines)

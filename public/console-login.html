@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<title>控制台访问验证</title>
+<p>正在验证控制台访问权限…</p>
+<noscript>请启用 JavaScript 后重新打开控制台。</noscript>
+<script>
+(function () {
+  const url = new URL(location.href);
+  const attempted = url.searchParams.get('token');
+  let saved = '';
+  try { saved = localStorage.getItem('consoleToken') || ''; } catch {}
+
+  function enter(token) {
+    url.searchParams.set('token', token);
+    location.replace(url.pathname + url.search + url.hash);
+  }
+
+  // The HTML navigation cannot send localStorage as a request header. Retry with
+  // the remembered token; the authenticated console removes it from the URL.
+  if (saved && saved !== attempted) {
+    enter(saved);
+    return;
+  }
+
+  // A token reaching this page has already failed server authentication.
+  // Discard only that rejected token, so a newer value from another tab survives.
+  if (saved && saved === attempted) {
+    try { localStorage.removeItem('consoleToken'); } catch {}
+  }
+  if (attempted !== null) {
+    url.searchParams.delete('token');
+    history.replaceState({}, '', url.pathname + url.search + url.hash);
+  }
+  const token = prompt(attempted ? '控制台访问令牌已失效，请输入新令牌：' : '请输入控制台访问令牌：');
+  if (token && token.trim()) enter(token.trim());
+})();
+</script>
+</html>

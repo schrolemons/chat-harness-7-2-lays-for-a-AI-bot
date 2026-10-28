@@ -403,11 +403,11 @@ export function createPluginHost(opts = {}) {
      * 入站消息「拦截」钩子：插件可以抢先处理一条消息并声明 handled（例如传话组件）。
      * 返回 handled 时桥接不再把这条消息交给后续流程（AI 回合）；没声明 handled 的插件不影响别的插件。
      */
-    relayIncoming(payload) {
+    async relayIncoming(payload) {
       for (const p of orderedPlugins()) {
         if (p.disabled || typeof p.hooks.relayIncoming !== 'function') continue;
         try {
-          const out = invoke(p,'relayIncoming',p.hooks.relayIncoming,{ ...(payload || {}), pluginState: p.ctx.state });
+          const out = await invoke(p,'relayIncoming',p.hooks.relayIncoming,{ ...(payload || {}), pluginState: p.ctx.state });
           if (out && (out === true || out.handled === true)) return { handled: true, plugin: p.id, result: out };
         } catch (error) {
           warnings.push('relayIncoming 失败 ' + p.id + ': ' + (error?.message ?? error));

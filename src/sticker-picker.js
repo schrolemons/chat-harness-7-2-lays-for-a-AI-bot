@@ -4,7 +4,7 @@
 // 或者挑一张完全不搭的。这里按语境关键词给收藏表情打分排序，直接给出本轮 top 3
 // （带一句为什么合适），模型只需在候选里选或全部不用。
 //
-// 只排序、不发送；不改变「这轮要不要发表情」的开关（那在 bridge.js 里按概率掷）。
+// 只排序、不发送；每轮给模型提供语境候选，由统一表情策略尽量选一张发送。
 
 const CONTEXT_RULES = [
   { re: /(吃|饭|饿|馋|鸡腿|奶茶|夜宵|外卖|午饭|晚饭|早饭)/, tags: ['吃', '馋', '饭'], weight: 3 },
@@ -83,6 +83,6 @@ export function pickStickers(opts = {}) {
   const picks = scored.slice(0, limit);
   if (!picks.length) return { picks: [], line: '' };
   const lines = picks.map((p) => `- ${p.entry.desc || p.entry.localNote || '（无备注）'}（${p.reason}）`);
-  const line = '【表情候选（按语境排好，挑一张或不发）】\n' + lines.join('\n') + '\n（只能从这里挑；都不合适就别发，别硬凑。）';
+  const line = '【本轮抽出的表情候选】\n' + lines.join('\n') + '\n（优先挑最贴切的一张用 qq_send_sticker 发送；只有都明显不合适时才不发，普通轻松对话可用正文 emoji/颜文字补位。）';
   return { picks, line };
 }

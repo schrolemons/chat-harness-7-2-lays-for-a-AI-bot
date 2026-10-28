@@ -120,7 +120,7 @@ export function parseRelayCommand(text, opts = {}) {
   }
 
   // 2) 传话给/捎话给/带话给/递话给 X
-  m = /^(?:传话|捎话|带话|递话)(?:给)?\s*([\s\S]*)$/.exec(s);
+  m = /^(?:传话|捎话|带话|递话)给\s*([\s\S]*)$/.exec(s);
   if (m) {
     const hit = splitTarget(m[1], resolve, false);
     if (hit) return hit;

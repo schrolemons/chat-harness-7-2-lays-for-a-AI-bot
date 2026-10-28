@@ -11,6 +11,15 @@ export function periodStart(now = Date.now()) {
 }
 
 export function createPlugin(ctx) {
+  function ownerPolicy() {
+    const ownerQQ = String(ctx.capabilities?.getOwnerQQ?.() ?? '');
+    return { key: /^[1-9]\d*$/.test(ownerQQ) ? 'private:' + ownerQQ : null,
+      budgetEnabled: ctx.config?.ownerBudgetEnabled !== false };
+  }
+  function isExempt(key) {
+    const owner = ownerPolicy();
+    return owner.budgetEnabled === false && owner.key !== null && key === owner.key;
+  }
   const sessions = () => ctx.config?.sessions && typeof ctx.config.sessions === 'object' && !Array.isArray(ctx.config.sessions) ? ctx.config.sessions : {};
   const entries = (kind) => {
     const configured = kind === 'private' ? ctx.config?.mechanicalPrivateReplies : ctx.config?.mechanicalGroupReplies;
@@ -23,25 +32,32 @@ export function createPlugin(ctx) {
     const coldLimitYuan = Math.max(0, Number(raw.coldLimitYuan) || 0);
     const hardLimitYuan = Math.max(0, Number(raw.hardLimitYuan) || 0);
     const weakMinIntervalMin = Math.max(1, Math.min(1440, Number(raw.weakMinIntervalMin) || 30));
-    const windowSize = Number(raw.recoveryWindowMessages);
-    const recoveryWindowMessages = Number.isSafeInteger(windowSize)
-      ? Math.max(1, Math.min(MAX_RECOVERY_MESSAGES, windowSize)) : 5;
-    return { coldLimitYuan, hardLimitYuan, weakMinIntervalMin, recoveryWindowMessages };
+    return { coldLimitYuan, hardLimitYuan, weakMinIntervalMin };
+  }
+  function recoveryWindows() {
+    const raw = ctx.config?.recoveryWindows || {};
+    const windowFor = (field) => {
+      const size = Number(raw[field]);
+      return Number.isSafeInteger(size) ? Math.max(1, Math.min(MAX_RECOVERY_MESSAGES, size)) : 5;
+    };
+    return { privateMessages: windowFor('privateMessages'), groupMessages: windowFor('groupMessages'), groupAtMessages: windowFor('groupAtMessages') };
   }
   function assess({ key, cost = 0, globalCost = 0, now = Date.now() } = {}) {
     const limits = policy(key);
     const spent = Math.max(0, Number(cost) || 0);
     const allSpent = Math.max(0, Number(globalCost) || 0);
     const globalHardLimitYuan = Math.max(0, Number(ctx.config?.globalHardLimitYuan) || 0);
-    const stage = (globalHardLimitYuan > 0 && allSpent >= globalHardLimitYuan)
+    const exempt = isExempt(key);
+    const stage = exempt ? 'normal' : (globalHardLimitYuan > 0 && allSpent >= globalHardLimitYuan)
       || limits.hardLimitYuan > 0 && spent >= limits.hardLimitYuan ? 'silent'
       : limits.coldLimitYuan > 0 && spent >= limits.coldLimitYuan ? 'weak' : 'normal';
-    return { key, ...limits, cost: spent, globalCost: allSpent, globalHardLimitYuan,
-      remainingYuan: limits.hardLimitYuan > 0 ? Math.max(0, limits.hardLimitYuan - spent) : null,
+    return { key, ...limits, exempt, cost: spent, globalCost: allSpent, globalHardLimitYuan,
+      remainingYuan: !exempt && limits.hardLimitYuan > 0 ? Math.max(0, limits.hardLimitYuan - spent) : null,
       globalRemainingYuan: globalHardLimitYuan > 0 ? Math.max(0, globalHardLimitYuan - allSpent) : null,
       stage, periodStart: periodStart(now), resetAt: periodStart(now) + DAY_MS };
   }
   function canDispatch({ key, stage, now = Date.now() } = {}) {
+    if (isExempt(key)) return true;
     if (stage === 'silent') return false;
     if (stage !== 'weak') return true;
     const last = Number(ctx.state.get().lastWeakDispatch?.[String(key)]) || 0;
@@ -71,7 +87,7 @@ export function createPlugin(ctx) {
     const recovery = state.recovery || {};
     const saved = Array.isArray(recovery[key]?.messages) ? recovery[key].messages : [];
     const message = {
-      id, at: Number.isFinite(Number(at)) ? Number(at) : Date.now(),
+      id, at: Number.isFinite(Number(at)) ? Number(at) : Date.now(), kind,
       sender: String(sender).slice(0, 80), userId: String(userId).slice(0, 32),
       text: String(text).slice(0, 500), atSelf: atSelf === true,
       mechanicalAnswered: shouldReply,
@@ -97,15 +113,21 @@ export function createPlugin(ctx) {
       if (!/^(private|group):[1-9]\d*$/.test(key) || !Array.isArray(value?.messages) || !value.messages.length) continue;
       const status = await ctx.capabilities?.budgetRecoveryStatus?.(key);
       if (!status || status.stage === 'silent' || status.allowed !== true) continue;
-      const messages = value.messages.slice(-policy(key).recoveryWindowMessages);
-      if (key.startsWith('group:') && !messages.some((message) => message.atSelf === true)) {
+      const limits = recoveryWindows();
+      const messages = key.startsWith('group:')
+        ? value.messages.filter((message) => message.atSelf !== true).slice(-limits.groupMessages)
+        : value.messages.slice(-limits.privateMessages);
+      const mentions = key.startsWith('group:')
+        ? value.messages.filter((message) => message.atSelf === true).slice(-limits.groupAtMessages) : [];
+      const selected = [...messages, ...mentions].sort((a, b) => a.at - b.at);
+      if (key.startsWith('group:') && !mentions.length) {
         const latest = ctx.state.get().recovery || {};
         if (latest[key] === value || JSON.stringify(latest[key]) === JSON.stringify(value)) {
           const next = { ...latest }; delete next[key]; ctx.state.set({ recovery: next });
         }
         continue;
       }
-      const result = await ctx.capabilities?.dispatchBudgetRecovery?.({ key, messages, prompt: recoveryPrompt(key, messages) });
+      const result = await ctx.capabilities?.dispatchBudgetRecovery?.({ key, messages: selected, prompt: recoveryPrompt(key, selected) });
       if (result?.ok !== true) return;
       const latest = ctx.state.get().recovery || {};
       if (JSON.stringify(latest[key]) === JSON.stringify(value)) {
@@ -115,7 +137,7 @@ export function createPlugin(ctx) {
     }
   }
   return {
-    services: { tokenBudget: { policy, assess, canDispatch, noteDispatch, onSilentIncoming,
+    services: { tokenBudget: { policy, assess, canDispatch, noteDispatch, onSilentIncoming, recoveryWindows, ownerPolicy,
       recoveryPending: ({ key } = {}) => (ctx.state.get().recovery?.[String(key)]?.messages || []).length,
       mechanicalReplies: () => ({ private: entries('private'), group: entries('group') }),
       period: ({ now = Date.now() } = {}) => ({ since: periodStart(now), until: now, resetAt: periodStart(now) + DAY_MS }) } },

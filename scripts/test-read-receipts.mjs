@@ -28,10 +28,11 @@ async function open({ savedState } = {}) {
   const server = h.startConsoleServer();
   if (!server.listening) await new Promise((resolve) => server.once('listening', resolve));
   const port = server.address().port;
-  const call = (route, { body, query = '', token } = {}) => new Promise((resolve, reject) => {
+  const call = (route, { body, query = '', token, agent = true } = {}) => new Promise((resolve, reject) => {
     const st = h.getSocialV2State(KEY);
     // 控制台服务端即使对 agent 调用也会先过 x-console-token 鉴权，缺了就是 401。
-    const headers = { 'x-console-token': 'fixture-console-token', 'x-agent-token': token ?? st.agentToken };
+    const headers = { 'x-console-token': 'fixture-console-token' };
+    if (agent) headers['x-agent-token'] = token ?? st.agentToken;
     if (body !== undefined) headers['content-type'] = 'application/json';
     const req = http.request({
       hostname: '127.0.0.1', port,
@@ -81,6 +82,63 @@ const message = (seq, fields = {}) => ({
 });
 
 // ── 1. 读取 = seenAt；回复 = repliedAt；回复后重启不重刷 ─────────────────────
+await test('each normal incoming message records its count-based receipt window', async () => {
+  const c = await open();
+  try {
+    c.append('first inbound');
+    assert.equal(c.st().doubleStampCheck?.triggerSeq, 1, 'normal text arrival must create a receipt audit');
+    assert.deepEqual(Array.from(c.st().doubleStampCheck?.windowSeqs ?? []), [1]);
+
+    c.append('second inbound');
+    assert.equal(c.st().doubleStampCheck?.triggerSeq, 2);
+    assert.deepEqual(Array.from(c.st().doubleStampCheck?.windowSeqs ?? []), [1, 2], 'the previous A messages and current trigger belong to the window');
+    assert.deepEqual(Array.from(c.st().doubleStampCheck?.receipts ?? [], (item) => item.state), ['unseen', 'unseen']);
+    const snapshot = c.h.buildWakeSnapshotV2(KEY);
+    assert.equal(snapshot.conversationId, KEY);
+    assert.deepEqual(JSON.parse(JSON.stringify(snapshot.receiptWindow.map((item) => item.seq))), [1]);
+    assert.deepEqual(JSON.parse(JSON.stringify(snapshot.messages.map((item) => item.seq))), [1, 2]);
+  } finally { await c.close(); }
+});
+
+await test('messages-purpose wait is rejected while any inbound receipt is still pending', async () => {
+  const c = await open();
+  try {
+    const seq = c.append('inbound must be answered before waiting for another user turn');
+    const wait = await c.call('wait', { body: { purpose: 'messages', timeoutMs: 1000 } });
+    assert.equal(wait.status, 409, JSON.stringify(wait.data));
+    assert.deepEqual(wait.data.pendingSeqs, [seq]);
+    assert.match(wait.data.error, /先读取并处理/);
+  } finally { await c.close(); }
+});
+
+await test('messages-purpose wait remains available after the reply receipt closes the inbound turn', async () => {
+  const c = await open();
+  try {
+    c.append('inbound to answer');
+    assert.equal((await c.call('unread')).status, 200);
+    const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'completed answer' } });
+    assert.equal(sent.status, 200);
+    const receipt = await c.call('/api/socialV2/receipt-report', { body: { conversationId: KEY, receipts: [{ seq: 1, status: 'replied' }] } });
+    assert.equal(receipt.status, 200);
+    const wait = await c.call('wait', { body: { purpose: 'messages', timeoutMs: 100 } });
+    assert.equal(wait.status, 200, JSON.stringify(wait.data));
+    assert.equal(wait.data.purpose, 'messages');
+    assert.deepEqual(seqs(c.st().unread), []);
+  } finally { await c.close(); }
+});
+
+await test('legacy mark-read cannot infer repliedAt while JSON receipt reporting is enabled', async () => {
+  const c = await open();
+  try {
+    c.append('reply status must come from the JSON receipt report');
+    assert.equal((await c.call('unread')).status, 200);
+    const marked = await c.call('mark-read', { body: { throughSeq: 1 } });
+    assert.equal(marked.status, 200);
+    assert.deepEqual(seqs(c.st().unread), [1], 'mark-read may not remove the message before a replied JSON receipt');
+    assert.ok(!Number(c.st().unread[0].repliedAt), 'legacy acknowledgment must not forge repliedAt');
+  } finally { await c.close(); }
+});
+
 await test('reading stamps seenAt and a batch reply stamps repliedAt', async () => {
   const c = await open();
   try {
@@ -95,6 +153,8 @@ await test('reading stamps seenAt and a batch reply stamps repliedAt', async () 
     const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply' } });
     assert.equal(sent.status, 200, `send must succeed: ${JSON.stringify(sent.data)}`);
     assert.equal(sent.data.sent, 1);
+    const report = await c.call('/api/socialV2/receipt-report', { body: { conversationId: KEY, receipts: [{ seq: 1, status: 'replied' }] } });
+    assert.equal(report.status, 200, `JSON receipt must succeed: ${JSON.stringify(report.data)}`);
     assert.deepEqual(seqs(c.st().unread), [], 'a replied message leaves the unread buffer');
     assert.equal(c.st().lastReadThroughSeq, 1);
 
@@ -114,11 +174,43 @@ await test('a reply does not stamp a newer message the model never saw', async (
     c.append('unseen new arrival');
     const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply' } });
     assert.equal(sent.status, 200);
+    const report = await c.call('/api/socialV2/receipt-report', { body: { conversationId: KEY, receipts: [{ seq: 1, status: 'replied' }] } });
+    assert.equal(report.status, 200, JSON.stringify(report.data));
     assert.deepEqual(seqs(c.st().unread), [2], 'the unseen arrival must stay pending');
     const unseen = c.st().unread[0];
-    assert.ok(!Number(unseen.seenAt), 'unseen message must not be marked seen by the reply');
-    assert.ok(!Number(unseen.repliedAt), 'unseen message must not be marked replied by the reply');
-    assert.equal(c.st().lastReadThroughSeq, 1, 'the watermark stops before the unseen message');
+    assert.ok(!Number(unseen.repliedAt), 'a follow-up check may read it, but this reply must not mark it replied');
+    assert.equal(c.st().doubleStampCheck?.enabled, true, 'reply-time window check must be enabled by default');
+    assert.ok(c.st().doubleStampCheck?.checkedAt > 0, 'reply-time window check must record when it ran');
+    assert.equal(c.st().doubleStampCheck?.triggerSeq, 2, 'the new message is the current check trigger');
+    assert.deepEqual(Array.from(c.st().doubleStampCheck?.windowSeqs ?? []), [1, 2]);
+  } finally { await c.close(); }
+});
+
+await test('plain-text agent replies run the configured double-stamp window check', async () => {
+  const c = await open();
+  try {
+    c.append('message seen before the turn');
+    assert.equal((await c.call('unread')).status, 200);
+    c.append('message arrived while the agent was generating');
+
+    await c.h.sendAgentReplyV2(KEY, 'the agent plain-text reply');
+
+    assert.equal(c.st().doubleStampCheck?.enabled, true);
+    assert.ok(c.st().doubleStampCheck?.checkedAt > 0);
+    assert.equal(c.st().doubleStampCheck?.triggerSeq, 2);
+    assert.deepEqual(Array.from(c.st().doubleStampCheck?.windowSeqs ?? []), [1, 2]);
+    assert.deepEqual(seqs(c.st().unread), [1, 2], 'a sent response without a JSON receipt must leave both messages pending');
+  } finally { await c.close(); }
+});
+
+await test('double-stamp window setting is exposed and bounded by the config API', async () => {
+  const c = await open();
+  try {
+    const saved = await c.call('/api/socialV2/config', { agent: false, body: { doubleStamp: { enabled: false, windowCount: 999 } } });
+    assert.equal(saved.status, 200, JSON.stringify(saved.data));
+    const loaded = await c.call('/api/socialV2/config', { agent: false });
+    assert.equal(loaded.data.config.doubleStamp.enabled, false);
+    assert.equal(loaded.data.config.doubleStamp.windowCount, 100);
   } finally { await c.close(); }
 });
 
@@ -166,8 +258,8 @@ await test('restart drops fully stamped messages and resumes at the first missin
   } finally { await c.close(); }
 });
 
-// ── 4. 老状态无戳：水位以下的按兜底归一化，水位以上的保持未读、不被标成已回复 ──
-await test('legacy messages without stamps only fall back to the persisted watermark', async () => {
+// ── 4. 老状态无戳：不能仅凭水位假装消息已读或已回复 ────────────────────────
+await test('legacy messages without stamps remain pending regardless of the persisted watermark', async () => {
   const c = await open({ savedState: savedConversation({
     unread: [message(1), message(2)],
     recentMessages: [message(1), message(2)],
@@ -176,27 +268,28 @@ await test('legacy messages without stamps only fall back to the persisted water
   }) });
   try {
     const st = c.st();
-    assert.deepEqual(seqs(st.unread), [2], 'legacy message at or below the watermark is treated as processed');
-    assert.ok(!Number(st.unread[0].seenAt), 'message above the watermark must not get seenAt on load');
-    assert.ok(!Number(st.unread[0].repliedAt), 'message above the watermark must not get repliedAt on load');
+    assert.deepEqual(seqs(st.unread), [1, 2], 'legacy messages without timestamps are not inferred complete');
+    assert.ok(!Number(st.unread[0].seenAt), 'messages are not marked seen on load');
+    assert.ok(!Number(st.unread[0].repliedAt), 'messages are not marked replied on load');
 
     // /state 只读：未看过的消息不会被标成 seen，更不会被标成 replied。
     const state = await c.call('state');
     assert.equal(state.data.awaitingReplyCount, 0, 'never-seen legacy message must not be reported as seen');
-    assert.equal(state.data.firstPendingSeq, 2);
-    assert.equal(state.data.lastReadThroughSeq, 1, 'watermark keeps its legacy value');
+    assert.equal(state.data.firstPendingSeq, 1);
+    assert.equal(state.data.lastReadThroughSeq, 1, 'watermark keeps its legacy value without completing messages');
     assert.equal(state.data.pendingMessages[0].seenAt, null);
     assert.equal(state.data.pendingMessages[0].repliedAt, null);
 
     const view = await c.call('unread');
-    assert.equal(view.data.awaitingReplyCount, 1, 'reading marks it seen, so it becomes awaiting-reply');
+    assert.equal(view.data.awaitingReplyCount, 2, 'reading marks both messages seen, so both await JSON reply receipts');
     assert.equal(view.data.readThroughSeq, 2, 'the watermark advances only now that the message was seen');
-    assert.deepEqual(seqs(view.data.messages), [2]);
+    assert.deepEqual(seqs(view.data.messages), [1, 2]);
+    assert.ok(view.data.messages.every((item) => item.seenAt > 0 && !Number(item.repliedAt)));
   } finally { await c.close(); }
 });
 
-// ── 5. mark_read(throughSeq) 只给已有 seenAt 的补 repliedAt，绝不越权盖章 ────
-await test('mark-read only stamps messages that already carry seenAt', async () => {
+// ── 5. mark_read(throughSeq) 不替代逐条 JSON 回复回执 ───────────────────────
+await test('mark-read preserves seen messages until the JSON receipt reports replied', async () => {
   const c = await open();
   try {
     c.append('older unseen');
@@ -211,12 +304,19 @@ await test('mark-read only stamps messages that already carry seenAt', async () 
     assert.deepEqual(seqs(c.st().unread), [1, 2]);
     assert.ok(!Number(c.st().unread[0].seenAt));
 
-    // 补读那条老消息之后，水位才能推进，两条一起双戳并摘除。
+    // 补读那条老消息之后，水位才能推进；mark-read 本身不能替代 JSON 回复回执。
     const full = await c.call('unread');
     assert.equal(full.data.readThroughSeq, 2);
     assert.ok(full.data.messages.every((m) => m.seenAt > 0));
     const marked = await c.call('mark-read', { body: { throughSeq: 2 } });
     assert.equal(marked.status, 200);
+    assert.deepEqual(seqs(c.st().unread), [1, 2]);
+    assert.ok(c.st().unread.every((m) => m.seenAt > 0 && !Number(m.repliedAt)));
+
+    const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply to both' } });
+    assert.equal(sent.status, 200);
+    const report = await c.call('/api/socialV2/receipt-report', { body: { conversationId: KEY, receipts: [{ seq: 1, status: 'replied' }, { seq: 2, status: 'replied' }] } });
+    assert.equal(report.status, 200, JSON.stringify(report.data));
     assert.deepEqual(seqs(c.st().unread), []);
     const saved = c.readSavedState().conversations[KEY];
     assert.deepEqual(seqs(saved.unread), []);

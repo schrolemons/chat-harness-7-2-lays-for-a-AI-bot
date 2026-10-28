@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { registerBilibiliTools } from './mcp-bilibili-tools.mjs';
 // 出站文本的敏感信息拦截**统一由桥接负责**（bridge.js 的 auditAndSend / 各发送端点的
 // SENSITIVE_RE 校验）：所有 QQ 发送都经由桥接 HTTP API，因此 MCP 侧不再重复实现一遍。
 // 这里 import 只用于「出站审计口径一致」的说明，不在 MCP 内做拦截——
@@ -314,6 +315,7 @@ const TOOL_CONFIG_FLAGS = {
   qq_get_recent_messages: 'getRecent',
   qq_social_state: 'socialState',
   qq_mark_read: 'markRead',
+  qq_report_message_receipts: 'reportReceipts',
   qq_set_wake_config: 'setWakeConfig',
   qq_send_burst: 'sendBurst',
   qq_send_message: 'sendMessage',
@@ -329,6 +331,7 @@ const TOOL_CONFIG_FLAGS = {
   qq_memory_remove: 'memory',
   qq_memory_clear: 'memory',
   qq_schedule: 'schedule',
+  time_bubble_manage: 'timeBubbleManage',
   qq_availability: 'availability',
   qq_slang_query: 'slangQuery',
   qq_slang_submit: 'slangSubmit',
@@ -346,9 +349,9 @@ const TOOL_CONFIG_FLAGS = {
   qq_get_message_images: 'getImages',
   qq_make_meme: 'imageGeneration',
   qq_get_meme_job: 'imageGeneration',
+  qq_send_image: 'imageTransfer',
   qq_list_staged_images: 'imageTransfer',
   qq_import_image: 'imageTransfer',
-  qq_send_image: 'imageTransfer',
   qq_relay_image: 'imageTransfer',
   qq_get_forward_msg: 'getForwardMsg',
   qq_list_stickers: 'listStickers',
@@ -358,11 +361,6 @@ const TOOL_CONFIG_FLAGS = {
   qq_get_self_image: 'getSelfImage',
   qq_sticker_note: 'stickerNote',
   qq_set_sticker_remark: 'setStickerRemark',
-  bili_search: 'bilibili',
-  bili_video_info: 'bilibili',
-  bili_video_content: 'bilibili',
-  bili_video_frames: 'bilibili',
-  bili_analyze_video: 'bilibili',
 };
 const disabledTools = [];
 {
@@ -537,7 +535,7 @@ server.tool(
 
 server.tool(
   'qq_reply',
-  '在指定 QQ 群里引用/回复某条消息，并发送一条文本。适合群消息很多、需要明确“我回的是哪条”时使用；replyToMessageId 是被引用消息的 id（非零整数，QQ 消息 id 可能为负数），可先用 qq_get_recent_messages / qq_get_unread_messages / qq_get_message_detail 查到具体消息内容和 id。发送前桥接会校验该 id 存在且属于当前会话。二代模式下这是你正常可用的引用工具，但不要每条都引用。只有以下情况才需要引用：① 你这条消息指向的人或消息并非最新一条别人的消息（也就是你在回更早的某条）；② 你连续几句话里不同消息指代的是不同的消息或不同的人。其他情况（上下文唯一、刚在接同一条最新消息）不要引用，别让对方猜，也别为了用工具而用。reserved2 下调用时必须携带会话令牌 token。目标群必须命中系统白名单（config.json 的 allow.groups），否则拒绝。',
+  '在指定 QQ 群里引用/回复某条消息，并发送一条文本。多条待处理消息语义不同、对象不同或需要分别回应时，每条被回应的原消息都必须单独调用本工具并传入对应 messageId；不可用 qq_send_message 数组、qq_send_burst 或一次引用替代。若只有一条待处理消息，或多条消息本质含义相同且一个回答可完整回应，可用 qq_send_message 发送一条，不必为了引用而引用。需要引用时先核对原消息发送者、内容和 id，回复文本必须切实回应被引用消息；引用错对象或回复内容不对应都视为错误。可通过 qq_get_recent_messages / qq_get_unread_messages / qq_get_message_detail 查询消息内容和 id；messageId 不能用本地 seq/readThroughSeq 替代。发送前桥接会校验 id 存在且属于当前会话。reserved2 下必须携带会话令牌 token。目标群必须命中白名单（config.json 的 allow.groups），否则拒绝。',
   {
     groupId: z.union([z.number(), z.string()]).describe('群号（必须在白名单内）'),
     replyToMessageId: z.union([z.number(), z.string()]).describe('被引用/回复的消息 id（非零整数，可为负数）'),
@@ -652,11 +650,11 @@ server.tool(
 
 server.tool(
   'qq_mark_read',
-  '将指定会话已查看的未读消息标记为已读。throughSeq 使用最近读取结果的 readThroughSeq，避免清除读取后才到达的新消息；省略 throughSeq 会按旧行为清空当前全部未读，因此推荐始终带上水位。注意：每次设置潜水/下一次唤醒前，桥接要求先用 qq_wait_for_messages(timeoutMs=300000) 完成一次沉睡前观察：5 分钟内没人说话可 mark_read 收尾沉睡；期间有人发新消息则先查看 newMessages，判断不需要你参与也可直接 mark_read 收尾；若你参与了回复，则下次想睡需重新等待观察窗口。',
+  '将指定会话已查看的未读消息标记为已读。双戳回查启用时，此工具只确认 seenAt，不能代替逐条 JSON 回复回执；完成回复后必须调用 qq_report_message_receipts 报 replied，消息才会闭合。throughSeq 使用最近读取结果的 readThroughSeq，避免清除读取后才到达的新消息；双戳关闭时保留旧版收尾语义。注意：每次设置潜水/下一次唤醒前，桥接要求先用 qq_wait_for_messages(timeoutMs=300000) 完成一次沉睡前观察：5 分钟内没人说话可 mark_read 收尾沉睡；期间有人发新消息则先查看 newMessages，判断不需要你参与也可直接 mark_read 收尾；若你参与了回复，则下次想睡需重新等待观察窗口。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    throughSeq: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional().describe('本次确认已读的消息水位，使用已查看结果中的 readThroughSeq；不会清除更晚到达的消息')
+    throughSeq: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional().describe('本次确认已读的消息水位，使用已查看结果中的 readThroughSeq；不会清除更晚到达的消息。双戳启用时只确认已读，已回复状态必须由 qq_report_message_receipts 提交')
   },
   async ({ key, token, throughSeq }) => {
     try {
@@ -669,12 +667,38 @@ server.tool(
 );
 
 server.tool(
+  'qq_report_message_receipts',
+  '向 Harness 回报本轮逐条消息处理结果的 JSON。每条必须使用已读到的 seq：seen=已看但未回复，replied=本轮已成功发出回复，complete=本来就有双戳，anomaly=戳状态异常并需上报。Harness 会验证消息属于该会话且 replied 有成功发送凭据，然后立即更新 seenAt/repliedAt；不要把整个窗口统一标为 replied。',
+  {
+    conversationId: z.string().describe('会话 ID，格式 group:群号 或 private:QQ号，与唤醒快照的 key 相同'),
+    token: z.string().describe('当前会话令牌'),
+    receipts: z.array(z.object({
+      seq: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      status: z.enum(['seen', 'replied', 'complete', 'anomaly']),
+      note: z.string().max(300).optional().describe('anomaly 的简要原因')
+    })).min(1).max(100).describe('按消息 seq 逐条报告；相似消息可合并回复，但每条都要有自己的状态')
+  },
+  async ({ conversationId, token, receipts }) => {
+    try {
+      const data = await agentApi('/api/socialV2/receipt-report', {
+        method: 'POST',
+        body: JSON.stringify({ conversationId, receipts }),
+        headers: { 'x-agent-token': token }
+      });
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `双戳回执更新失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
   'qq_set_wake_config',
-  '设置指定会话的二代唤醒配置：mode/无限期或有限时间/提前唤醒条件（@、名字、关键词、提问、拍一拍、概率、anyMessage、指定成员）。triggers.speakerIds 是可选的“指定群友发言唤醒”：填一个或多个群友 QQ 号后，只要其中任意一位在群里发言就会唤醒你；不设置则不启用。适合在等某个人回复、或某人反应慢怕错过时使用。triggers.poke 开启后，群里有人拍一拍（包括拍你或拍别人）会唤醒你。注意：每次设置潜水/下一次唤醒前需先用 qq_wait_for_messages(timeoutMs=300000) 完成一次沉睡前观察：5 分钟内没人说话可设置并沉睡；期间有人发新消息则先查看 newMessages，判断不需要你参与可直接设置并沉睡；若你参与了回复，则下次想睡需重新等待观察窗口。',
+  '设置指定会话的二代唤醒配置：mode/无限期或有限时间/提前唤醒条件（@、名字、关键词、提问、拍一拍、概率、anyMessage、指定成员）。triggers.speakerIds 是可选的“指定群友发言唤醒”：填一个或多个群友 QQ 号后，只要其中任意一位在群里发言就会唤醒你；不设置则不启用。适合在等某个人回复、或某人反应慢怕错过时使用。triggers.poke 开启后，群里有人拍一拍（包括拍你或拍别人）会唤醒你。双戳回查启用时，throughSeq 只确认已读；已回复必须调用 qq_report_message_receipts 逐条提交 JSON。注意：每次设置潜水/下一次唤醒前需先用 qq_wait_for_messages(timeoutMs=300000) 完成一次沉睡前观察：5 分钟内没人说话可设置并沉睡；期间有人发新消息则先查看 newMessages，判断不需要你参与可直接设置并沉睡；若你参与了回复，则下次想睡需重新等待观察窗口。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    throughSeq: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional().describe('可同时确认已读：使用已查看结果中的 readThroughSeq，省去额外 qq_mark_read；不传则只设置唤醒配置。若 markRead 工具被关闭，该水位会被忽略，本工具只设置唤醒配置'),
+    throughSeq: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional().describe('可同时确认已读：使用已查看结果中的 readThroughSeq，省去额外 qq_mark_read；不传则只设置唤醒配置。双戳启用时不能借此设置 repliedAt；若 markRead 工具被关闭，该水位会被忽略'),
     config: z.object({
       mode: z.enum(['diving', 'active']).optional().describe('diving=潜水，active=活跃（anyMessage 开启）'),
       infinite: z.boolean().optional().describe('true=无限期，只有条件命中才唤醒；false=有限时间'),
@@ -747,7 +771,7 @@ server.tool(
 
 server.tool(
   'qq_send_message',
-  '统一发送工具：可发一条或多条，可引用某条消息，可自定义/按字数计算条间时间差。二代仿真模式专用。注意：字符串=一条消息，数组=多条消息；每个字符串内部不要用空格分隔中文短句，需要多条请用数组元素；每条消息要读起来完整，不要把同一句话拆到两条里。只有以下情况才需要传 replyToMessageId 引用：① 你这条消息指向的人或消息并非最新一条别人的消息（也就是你在回更早的某条）；② 你连续几句话里不同消息指代的是不同的消息或不同的人。其他情况（上下文唯一、刚在接同一条最新消息）不要引用，别让对方猜，也别为了用工具而用。',
+  '统一发送工具：可发一条或多条，二代仿真模式专用。字符串=一条消息，数组=多条气泡。若只有一条入站消息，或多条消息本质含义相同且一个回答能完整回应，用本工具发送一条即可。若多条入站消息语义不同、对象不同或需要分别回应，对每条分别用 qq_reply 引用准确原消息；不要用数组代替多条引用回复。数组仍可用于拆分一段连续回复或主动发言。每条发送内容应完整、清楚，不要把同一句话拆碎。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -920,11 +944,11 @@ if (cfg.socialV2?.tools?.sendPoke !== false) {
 
 server.tool(
   'qq_wait_for_messages',
-  '等待分两种用途。首答前已读消息、只想确认有没有补充：用 purpose="reply"，按最后来信时间补足 quietMs 静默，已安静足够就立即返回；读取/思考时新到的消息也会返回，新消息重算静默。timeoutMs 是最长预算，不要求等满；预算到但 quiet=false 不代表对方已说完。此用途绝不代替沉睡前观察。等对方继续说、等回复或睡前观察：用默认 purpose="messages"；先等新消息，收到后才按 quietMs 等静默，没有新消息会等到 timeoutMs，单传 quietMs 不会缩短总等待。静默下限由后台配置，默认 10000ms。**返回里的 canSleepNow / countsAsObservation / hint 直接告诉你现在能不能收尾、该用多大的 timeoutMs——照它做，不要反复试**：canSleepNow=true 就可以直接 mark_read / set_wake_config；false 时按 hint 给的 timeoutMs 一次等满（更短的等待不算沉睡前观察，满足不了闸门）。直接看 newMessages、unreadCount 和 readThroughSeq，返回消息无需重复查询；仍有未展示未读才补读。决定潜水/收尾时才用默认用途加 timeoutMs=300000 完成沉睡前观察，不能把 5 分钟观察放在首答之前；短等待不能代替。全程无人说话返回 preSleepWaitSatisfied=true；观察期间来了新消息返回 preSleepWaitObserved=true，读后不需参与可收尾，参与回复则下次收尾重新观察。',
+  '等待用途必须显式指定。存在待处理来信时必须先处理来信：有未回复消息、当前回复尚未成功发送或回执尚未闭合时，不能用 purpose="messages" 等待；需要确认对方是否还会补充时用 purpose="reply"，按最后来信时间补足 quietMs 静默，已安静足够就立即返回，等待期间新到消息也会返回。timeoutMs 是最长预算，不要求等满；预算到但 quiet=false 不代表对方已说完。purpose="messages" 只有回复已完成且没有待处理来信时才用于等待用户后续交互；睡前观察也使用此用途且必须传 timeoutMs=300000。messages 会先等新消息，收到后才按 quietMs 等静默；没有新消息会等到 timeoutMs，单传 quietMs 不会缩短总等待。静默下限由后台配置，默认至少 10000ms。**返回里的 canSleepNow / countsAsObservation / hint 直接告诉你现在能不能收尾、该用多大的 timeoutMs——照它做，不要反复试**：canSleepNow=true 就可以直接 mark_read / set_wake_config；false 时按 hint 给的 timeoutMs 一次等满（更短的等待不算沉睡前观察，满足不了闸门）。直接看 newMessages、unreadCount 和 readThroughSeq，返回消息无需重复查询；仍有未展示未读才补读。全程无人说话返回 preSleepWaitSatisfied=true；观察期间来了新消息返回 preSleepWaitObserved=true，读后不需参与可收尾，参与回复则下次收尾重新观察。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    purpose: z.enum(['messages', 'reply']).optional().describe('默认 messages：等新消息/回复/睡前观察；reply：回复前短静默，计入最后来信后已过去的时间，绝不授予睡前观察资格'),
+    purpose: z.enum(['messages', 'reply']).describe('必填：存在未回复来信或回复尚未发出/回执未闭合时必须先处理消息，不能用 messages 等待；reply 用于回复前短静默；messages 仅用于回复已完成且没有待处理来信后等待用户互动或睡前观察。'),
     timeoutMs: z.number().optional().describe('等待预算毫秒数，默认 30000、最大 600000；reply 达到静默即返回，不必等满；沉睡前观察用 messages 并传 300000'),
     minNewMessages: z.number().optional().describe('仅 messages 用途：至少等到多少条新消息才进入静默窗口，默认 1；reply 用途会忽略它'),
     quietMs: z.number().optional().describe('静默窗口毫秒数，建议 10000~12000；reply 从最后来信开始计时，messages 只在等到新消息后计时；后台默认至少 10000')
@@ -1180,30 +1204,62 @@ server.tool(
 );
 
 server.tool(
+  'time_bubble_manage',
+  '读取或调整当前会话的每日定时冒泡时段（时间、时段名和文案）。action=get 先读取完整计划与锁定状态；action=set 提交完整目标列表，未列出的未锁定项会删除，锁定项由桥接保留且不会被修改。整栏锁定时拒绝全部修改。只有用户明确分享或修改本人作息/饮食时间、且适合安排时才使用；不要推断、跨会话读取或代别人修改。',
+  {
+    key: z.string().describe('当前会话 key，格式 group:群号 或 private:QQ号'),
+    token: z.string().min(1).describe('当前会话令牌（见唤醒提示中的【会话令牌】）'),
+    action: z.enum(['get', 'set']).describe('get=读取时段和锁定状态；set=创建、修改或删除未锁定时段'),
+    slots: z.array(z.object({
+      id: z.string().optional(),
+      hour: z.number().int().min(0).max(23),
+      minute: z.number().int().min(0).max(59),
+      label: z.string().max(20),
+      hint: z.string().max(120).optional(),
+      enabled: z.boolean().optional()
+    })).max(20).optional().describe('set 时传入完整目标时段列表；不要传 locked 字段，锁由桥接保护')
+  },
+  async ({ key, token, action, slots }) => {
+    try {
+      const data = await agentApi('/api/plugins/call', {
+        method: 'POST',
+        body: JSON.stringify({ tool: 'time_bubble_manage', input: { key, action, slots } }),
+        headers: { 'x-agent-token': token }
+      });
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `定时冒泡设置失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
   'qq_schedule',
-  '日程工具（讲座/考试/课程/活动/截止日期/和别人的约定/回访）。用户提到未来某件事时，先自己把时间理解成具体时刻再 action=add 登记；桥接会提前 30 分钟自动唤醒你提醒，你不用自己盯时间。'
+  '日程工具（讲座/考试/课程/活动/截止日期/和别人的约定/回访）。用户提到未来某件事时，先把时间理解成具体时刻再 action=add 登记；从日程时间前 leadMinutes 分钟（默认 30）开始，每 intervalMinutes 分钟（默认 30）唤醒并提醒，直到用户明确说“我已经去做这事了”。'
   + 'action=add 必填 title + when：when 用 ISO（带时区，如 2026-11-22T23:59:00+08:00）或「YYYY-MM-DD HH:MM」；只知道日期就省略时刻（按当天 09:00）。时间含糊（“下周”“过几天”“回头”）先补问，不要猜。'
-  + 'action=list 看当前会话还没提醒的日程（含 id）；改期 = 先 list 拿 id，再 cancel + add；取消用 action=cancel（id 或 match 标题关键词）。'
+  + 'action=list 查看当前会话未完成日程（含 id、提醒开始时刻 remindAt、间歇周期和下次提醒时间）；action=update 用 id/match 修改标题、时间、地点、描述、重复、leadMinutes、intervalMinutes；只有用户明确说“我已经去做这事了”后，才用 action=complete 确认；action=cancel 取消。不要把沉默、“知道了”或“谢谢”当作完成。'
   + '只有确实需要到点提醒的事才登记，普通话题不要记成日程。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    action: z.enum(['add', 'list', 'cancel']).optional().describe('默认 add'),
+    action: z.enum(['add', 'list', 'cancel', 'update', 'complete']).optional().describe('默认 add'),
     title: z.string().optional().describe('add 时必填：事情本身，如「计算机系统大作业截止」'),
     when: z.string().optional().describe('add 时必填：ISO 时间（带时区）或 YYYY-MM-DD HH:MM；只有日期按当天 09:00'),
     place: z.string().optional().describe('地点/平台，如「bb 平台」「3A 楼 101」'),
     detail: z.string().optional().describe('补充要点，如「满分 20，提交 pdf」'),
     repeat: z.enum(['none', 'daily', 'weekly']).optional().describe('重复：none（默认）/daily/weekly'),
-    id: z.string().optional().describe('cancel 时的日程 id（list 返回）'),
-    match: z.string().optional().describe('cancel 时按标题关键词匹配（不知道 id 时用）'),
+    leadMinutes: z.number().min(0).max(1440).optional().describe('add/update 用：提前多少分钟开始提醒（0–1440；0 = 到点开始；不填用全局默认）'),
+    intervalMinutes: z.number().int().min(1).max(1440).optional().describe('add/update 用：提醒开始后每隔多少分钟重复一次，1–1440；不填用全局默认，直到用户明确确认“我已经去做这事了”'),
+    id: z.string().optional().describe('cancel/update/complete 时的日程 id（list 返回）'),
+    match: z.string().optional().describe('cancel/update/complete 时按标题关键词匹配（不知道 id 时用）'),
     includePast: z.boolean().optional().describe('list 时是否包含已提醒过的条目'),
     limit: z.number().optional().describe('list 最多返回几条，默认 50')
   },
-  async ({ key, token, action, title, when, place, detail, repeat, id, match, includePast, limit }) => {
+  async ({ key, token, action, title, when, place, detail, repeat, leadMinutes, intervalMinutes, id, match, includePast, limit }) => {
     try {
       const data = await agentApi('/api/socialV2/schedules', {
         method: 'POST',
-        body: JSON.stringify({ key, action: action || 'add', title, when, place, detail, repeat, id, match, includePast, limit }),
+        body: JSON.stringify({ key, action: action || 'add', title, when, place, detail, repeat, leadMinutes, intervalMinutes, id, match, includePast, limit }),
         headers: { 'x-agent-token': token }
       });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
@@ -1276,13 +1332,13 @@ server.tool(
 
 server.tool(
   'qq_alias_submit',
-  '把你在会话里遇到并确认的「绰号 = QQ号」提交给管理员筛选。提交后进入候选，管理员确认后 AI 就能按此表认人/传话。',
+  '把明确或疑似称呼提交到控制台候选；一个用户可有多个绰号。QQ 无证据可留空，note 写语境；管理员编辑确认后才成为身份映射。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().min(1).describe('会话令牌（见唤醒提示中的【会话令牌】）'),
     alias: z.string().describe('绰号（如 管理员）'),
-    qq: z.string().describe('对应的 QQ 号'),
-    note: z.string().optional().describe('可选备注')
+    qq: z.string().optional().describe('有证据的对应 QQ；不确定可省略或留空，不能默认填发言者'),
+    note: z.string().optional().describe('疑似称呼的原话语境与被称呼者线索')
   },
   async ({ key, token, alias, qq, note }) => {
     try {
@@ -1356,35 +1412,29 @@ server.tool('qq_make_meme','按提示词生成梗图；可用当前会话中真�
  try{const data=await agentApi('/api/images/generated',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'create',key,token:token||'',requestId,prompt,referenceMessageId,automatic:automatic===true}),timeoutMs:30000});return {content:[{type:'text',text:serializeModelData(data)}]};}
  catch(error){return {content:[{type:'text',text:'生图提交失败：'+errorText(error?.message,'未知错误')}],isError:true};}
 });
-server.tool('qq_get_meme_job','查询已提交的梗图任务。完成时返回图片；图片会进入统一暂存清单，需要发送时调用 qq_list_staged_images 获取可复用 imageId。',{
+server.tool('qq_get_meme_job','查询已提交的梗图任务。完成时返回图片；图片会进入统一暂存清单，需要发送时调用 qq_list_staged_images 获取 imageId。',{
  key:z.string(),token:z.string().optional(),jobId:z.string()
 },async({key,token,jobId})=>{
  try{const data=await agentApi('/api/images/generated',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'status',key,token:token||'',jobId}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return {content};}
  catch(error){return {content:[{type:'text',text:'查询生图失败：'+errorText(error?.message,'未知错误')}],isError:true};}
 });
-server.tool('qq_list_staged_images','列出当前会话暂存的图片：包括 QQ 收到的图片、MCP/tool 返回的图片、以及刚导入的图片。返回 imageId、图片名和来源；资源只属于当前会话并会自动过期。',{
- key:z.string(),token:z.string().optional()
-},async({key,token})=>{
- try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'list',key,token:token||''})});return {content:[{type:'text',text:serializeModelData(data)}]};}
- catch(error){return {content:[{type:'text',text:'查询暂存图片失败：'+errorText(error?.message,'未知错误')}],isError:true};}
+server.tool('qq_list_staged_images','列出当前会话暂存的图片：包括收到的 QQ 图片和 MCP/tool 返回图片。返回 imageId、名称和来源；资源仅属于当前会话并自动过期。',{key:z.string(),token:z.string().optional()},async({key,token})=>{
+ try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'list',key,token:token||''})});return{content:[{type:'text',text:serializeModelData(data)}]};}
+ catch(error){return{content:[{type:'text',text:'列出暂存图片失败：'+errorText(error?.message,'未知错误')}],isError:true};}
 });
-server.tool('qq_import_image','把图片导入统一暂存目录。url 只允许 HTTPS 图片地址；filePath 仅限管理员私聊读取任意本机路径。二者只能提供一个。成功后返回 imageId、名称和图像内容。',{
- key:z.string(),token:z.string().optional(),url:z.string().optional(),filePath:z.string().optional(),name:z.string().optional()
-},async({key,token,url,filePath,name})=>{
- try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'import',key,token:token||'',url,filePath,name}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return {content};}
- catch(error){return {content:[{type:'text',text:'导入图片失败：'+errorText(error?.message,'未知错误')}],isError:true};}
+server.tool('qq_import_image','把图片导入统一暂存目录。url 仅允许 HTTPS 图片地址；filePath 仅管理员私聊可读取任意本机路径。二者只能提供一个。成功后返回图片 ID、名称和图像内容。',{key:z.string(),token:z.string().optional(),url:z.string().optional(),filePath:z.string().optional(),name:z.string().optional()},async({key,token,url,filePath,name})=>{
+ try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'import',key,token:token||'',url,filePath,name}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return{content};}
+ catch(error){return{content:[{type:'text',text:'导入图片失败：'+errorText(error?.message,'未知错误')}],isError:true};}
 });
-server.tool('qq_send_image','把暂存图片发到当前 QQ 会话。对话里刚出现 MCP/tool 图片时，先用 qq_list_staged_images 找到对应名称和 imageId；发送成功后工具会回传名称、来源、QQ 消息 ID 与图片本身。同一图片只允许尝试发送一次。',{
+server.tool('qq_send_image','把暂存图片发到当前 QQ 会话。收到 MCP/tool 图片后先用 qq_list_staged_images 按名称找到 imageId；发送回执会给出名称、来源和 QQ 消息 ID。同一图片只尝试发送一次。',{
  key:z.string(),token:z.string().optional(),imageId:z.string()
 },async({key,token,imageId})=>{
  try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'send',key,token:token||'',imageId}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return {content};}
  catch(error){return {content:[{type:'text',text:'发图失败或结果未知，请勿自动重试：'+errorText(error?.message,'未知错误')}],isError:true};}
 });
-server.tool('qq_relay_image','把当前私聊暂存图片传到另一个白名单 QQ 会话；沿用现有传话白名单、限频和内容闸门。管理员本机路径图片不能跨会话传送。刚从 MCP/tool 收到图片时先 qq_list_staged_images 查 imageId。',{
- key:z.string(),token:z.string().optional(),target:z.string().min(1),imageId:z.string(),message:z.string().optional()
-},async({key,token,target,imageId,message})=>{
- try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'relay',key,token:token||'',target,imageId,message}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return {content};}
- catch(error){return {content:[{type:'text',text:'图片传话失败：'+errorText(error?.message,'未知错误')}],isError:true};}
+server.tool('qq_relay_image','将当前私聊的暂存图片传到一个白名单 QQ 会话。沿用传话内容闸门与限频；管理员本机图片不能跨会话传送。',{key:z.string(),token:z.string().optional(),target:z.string(),imageId:z.string(),message:z.string().optional()},async({key,token,target,imageId,message})=>{
+ try{const data=await agentApi('/api/images/staged',{method:'POST',headers:token?{'x-agent-token':token}:{},body:JSON.stringify({action:'relay',key,token:token||'',target,imageId,message}),timeoutMs:30000});const content=[{type:'text',text:serializeModelData({...data,image:undefined})}];if(data.image?.data&&data.image?.mimeType)content.push({type:'image',mimeType:data.image.mimeType,data:data.image.data});return{content};}
+ catch(error){return{content:[{type:'text',text:'传话发图失败或结果未知，请勿自动重试：'+errorText(error?.message,'未知错误')}],isError:true};}
 });
 
 // ── 表情包体系工具（二代仿真模式） ─────────────────────────────────────────
@@ -1848,51 +1898,6 @@ server.tool(
 );
 
 // ── 自查与桌面便签（tool-user-checking 插件；机主授权的一点点本机权限） ──
-const biliToken = z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）');
-const biliVideo = z.string().min(1).max(2048);
-function registerBilibiliTool(name, description, inputSchema, timeoutMs = 30000) {
-  server.tool(name, description, { token: biliToken, ...inputSchema }, async ({ token, ...input }) => {
-    try {
-      const data = await agentApi('/api/plugins/call', {
-        method: 'POST',
-        headers: { 'x-agent-token': token },
-        body: JSON.stringify({ tool: name, input }),
-        timeoutMs
-      });
-      return { content: [{ type: 'text', text: serializeModelData(data) }] };
-    } catch (error) {
-      return { content: [{ type: 'text', text: `${name} 失败：${error?.message ?? error}` }], isError: true };
-    }
-  });
-}
-
-// Bilibili plugin owns public-data retrieval, caching and constrained FFmpeg work.
-// The MCP surface adds only the current session token and forwards calls unchanged.
-registerBilibiliTool('bili_search', '匿名搜索 Bilibili 公开视频；只读。', {
-  keyword: z.string().min(1).max(100),
-  page: z.number().int().min(1).max(20).optional(),
-  sort: z.enum(['relevance', 'play', 'pubdate']).optional(),
-  excludeBvids: z.array(z.string().regex(/^BV[0-9A-Za-z]{10}$/)).max(100).optional()
-});
-registerBilibiliTool('bili_video_info', '读取 Bilibili 公开视频元数据和分 P；只读，不下载视频。', {
-  video: biliVideo, page: z.number().int().min(1).max(100).optional()
-});
-registerBilibiliTool('bili_video_content', '读取公开视频字幕及时间戳；评论会单独标记为观众观点。', {
-  video: biliVideo, page: z.number().int().min(1).max(100).optional(), includeComments: z.boolean().optional()
-});
-registerBilibiliTool('bili_video_frames', '用受控 FFmpeg 对公开视频抽取关键帧；只读，不接受任意命令或下载地址。', {
-  video: biliVideo, page: z.number().int().min(1).max(100).optional(),
-  startSeconds: z.number().min(0).optional(), endSeconds: z.number().min(0.1).optional(),
-  frameCount: z.number().int().min(1).max(18).optional(), width: z.number().int().min(320).max(1280).optional(),
-  sampleMode: z.enum(['scene', 'interval']).optional(), subtitleStrip: z.boolean().optional()
-}, 200000);
-registerBilibiliTool('bili_analyze_video', '组合视频元数据、字幕与关键帧供当前模型分析，结论区分观察、字幕、评论和推断。', {
-  video: biliVideo, question: z.string().max(1000).optional(), page: z.number().int().min(1).max(100).optional(),
-  startSeconds: z.number().min(0).optional(), endSeconds: z.number().min(0.1).optional(),
-  frameCount: z.number().int().min(1).max(18).optional(), width: z.number().int().min(320).max(1280).optional(),
-  sampleMode: z.enum(['scene', 'interval']).optional(), includeComments: z.boolean().optional()
-}, 200000);
-
 server.tool(
   'user_checking',
   '自查与桌面便签（机主已授权，不用每次讨许可）。action=status 读本机运行状态（只读指标：负载/内存/磁盘/进程，不含任何本机路径）；action=note 往桌面上机主指定的 txt 追加一句你想说的话（只追加，不覆盖不删除，一次一句、别太长）。',
@@ -1916,4 +1921,5 @@ server.tool(
   }
 );
 
+registerBilibiliTools(server, { enabled: cfg.bilibili?.enabled !== false, agentApi });
 await server.connect(new StdioServerTransport());

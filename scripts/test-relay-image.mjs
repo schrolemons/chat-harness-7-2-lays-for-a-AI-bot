@@ -21,7 +21,7 @@ function fixture() {
 test('a relay request can deliver staged QQ images together with its text', async () => {
   const { plugin, sends } = fixture();
   const imageIds = [{ imageId: 'a6d52e93-901f-4c93-9b0f-58802a1d02bb', name: 'QQ图片-42-1.png', source: 'qq-incoming' }];
-  const result = plugin.hooks.relayIncoming({
+  const result = await plugin.hooks.relayIncoming({
     key: 'private:1001', plainContent: '给小群带句话，晚点到', isOwner: false, allowed: true, imageIds
   });
   assert.equal(result.action, 'relay');
@@ -32,11 +32,11 @@ test('a relay request can deliver staged QQ images together with its text', asyn
 
 test('a staged image can be the content for an in progress relay request', async () => {
   const { plugin, sends } = fixture();
-  plugin.hooks.relayIncoming({
+  await plugin.hooks.relayIncoming({
     key: 'private:1001', plainContent: '给小群带句话', isOwner: false, allowed: true
   });
   const imageIds = [{ imageId: 'a6d52e93-901f-4c93-9b0f-58802a1d02bb', name: 'B站关键帧.jpg', source: 'mcp:bili_video_frames' }];
-  plugin.hooks.relayIncoming({
+  await plugin.hooks.relayIncoming({
     key: 'private:1001', plainContent: '[图片]', isOwner: false, allowed: true, imageIds
   });
   await new Promise(resolve => setImmediate(resolve));

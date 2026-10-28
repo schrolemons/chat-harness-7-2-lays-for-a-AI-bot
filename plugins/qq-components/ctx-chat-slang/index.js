@@ -37,13 +37,16 @@ export function createPlugin(ctx) {
   const save = (entries) => {
     try { return typeof cap.slangSave === 'function' ? cap.slangSave(entries) === true : false; } catch { return false; }
   };
-  const learnerPrompt = async (text) => {
-    try { return typeof cap.slangLearnerPrompt === 'function' ? await cap.slangLearnerPrompt(String(text || '')) : null; } catch (error) { ctx.warn('黑话学习会话调用失败：' + (error?.message ?? error)); return null; }
+  const learnerPrompt = async (text,keys=['*']) => {
+    try { return typeof cap.slangLearnerPrompt === 'function' ? await cap.slangLearnerPrompt(String(text || ''),{signal:ctx.signal,keys}) : null; } catch (error) { ctx.warn('黑话学习会话调用失败：' + (error?.message ?? error)); return null; }
   };
 
   function queue(fn) {
-    taskChain = taskChain.then(() => ctx.isActive?.() === false ? null : fn()).catch((error) => ctx.warn('黑话学习任务异常：' + (error?.message ?? error)));
-    return taskChain;
+    const work=taskChain.then(() => ctx.isActive?.() === false ? {ok:false,error:'插件已停用'} : fn()).catch((error) => {
+      ctx.warn('黑话学习任务异常：' + (error?.message ?? error));
+      return {ok:false,error:error?.message ?? String(error)};
+    });
+    taskChain=work.then(()=>{});return work;
   }
 
   function feed(key, sender, rawText) {
@@ -79,7 +82,8 @@ export function createPlugin(ctx) {
     const messages = (windows.get(key) || []).slice();
     const min = Math.max(1, Number(cfg.extractMinMessages ?? 10));
     if (messages.length < min) return;
-    const output = await learnerPrompt(buildExtractionPrompt(messages));
+    const prompt = buildExtractionPrompt(messages) + '\n\n【类别边界】本库只收群内黑话、梗、缩写及其特殊语用。游戏玩法、兴趣百科和圈层文化事实请留给“词条学习”，不要把它们作为黑话条目；尤其不能把“入圈/退圈/出圈”写成三角洲玩法。';
+    const output = await learnerPrompt(prompt,[key]);
     if (!output) return;
     let items;
     try { items = parseExtractionJson(output); } catch { return; }
@@ -114,31 +118,38 @@ export function createPlugin(ctx) {
 
   async function runResearch(candidates) {
     const cfg = getCfg();
-    if (cfg.enabled === false) return;
-    if (!Array.isArray(candidates) || !candidates.length) return;
+    if (cfg.enabled === false) return {ok:false,error:'黑话学习已关闭'};
+    if (!Array.isArray(candidates) || !candidates.length) return {ok:false,error:'没有可研究的候选黑话'};
     const targets = candidates.filter((e) => e?.id && !researching.has(e.id));
-    if (!targets.length) return;
+    if (!targets.length) return {ok:false,error:'这些候选正在研究'};
     for (const e of targets) researching.add(e.id);
     try {
-      const output = await learnerPrompt(buildResearchPrompt(targets));
-      if (!output) return;
+      const output = await learnerPrompt(buildResearchPrompt(targets),[...new Set(targets.flatMap(x=>(x.evidence||[]).map(e=>e.key)).filter(Boolean))]);
+      if (!output) return {ok:false,error:'学习会话未返回结果或已超时'};
       let results;
-      try { results = parseResearchJson(output); } catch { return; }
+      try { results = parseResearchJson(output); } catch { return {ok:false,error:'研究结果解析失败'}; }
+      if(!results.length)return {ok:false,error:'研究结果为空或格式不正确'};
       const entries = list();
+      const targetIds=new Set(targets.map(e=>e.id));let researched=0,uncertain=0;
       for (const r of results) {
         const entry = entries.find((e) => e.content === r.content);
-        if (!entry) continue;
-        if (r.confirmed !== true) continue; // 不确定的保留候选，等下次再研究
-        if (r.meaning) entry.meaning = r.meaning;
-        if (r.usage) entry.usage = r.usage;
-        if (r.example) entry.example = r.example;
-        if (r.risk) entry.risk = r.risk;
-        if (Array.isArray(r.sources) && r.sources.length) entry.sources = r.sources.map((s) => String(s ?? '').trim()).filter(Boolean).slice(0, 10);
+        if (!entry||!targetIds.has(entry.id)||entry.status!==SLANG_STATUS.CANDIDATE) continue;
+        const uncertainMeaning = /^(?:研究未确定[：:]\s*)?(?:不确定|无法确定|无法确认|尚不确定|不是黑话|并非黑话|不属于黑话)(?:[。；，,\s]|$)/.test(String(r.meaning||'').trim());
+        if (r.confirmed === true&&r.meaning&&!uncertainMeaning) {
+          entry.meaning = r.meaning;
+          if (r.usage) entry.usage = r.usage;
+          if (r.example) entry.example = r.example;
+          if (r.risk) entry.risk = r.risk;
+          else if (/^研究未确定[：:]/.test(entry.risk||'')) entry.risk = '';
+          if (Array.isArray(r.sources) && r.sources.length) entry.sources = r.sources.map((s) => String(s ?? '').trim()).filter(Boolean).slice(0, 10);
+          researched++;
+        } else uncertain++;
         entry.lastInferenceCount = entry.count;
         entry.updatedAt = new Date().toISOString();
       }
-      save(entries);
-      ctx.log(`黑话研究：已更新 ${results.length} 条候选解释`);
+      if(!save(entries))return {ok:false,error:'研究结果保存失败'};
+      ctx.log(`黑话研究：${researched} 条得到解释，${uncertain} 条仍不确定`);
+      return {ok:true,requested:targets.length,researched,uncertain,missing:targets.length-researched-uncertain};
     } finally {
       for (const e of targets) researching.delete(e.id);
     }
@@ -146,12 +157,27 @@ export function createPlugin(ctx) {
 
   function researchCandidatesByIds(ids) {
     const cfg = getCfg();
-    if (cfg.enabled === false) return;
+    if (cfg.enabled === false) return Promise.resolve({ok:false,error:'黑话学习已关闭'});
     const entries = list();
     const wanted = new Set((Array.isArray(ids) ? ids : []).map(String));
     const candidates = entries.filter((e) => e.status === SLANG_STATUS.CANDIDATE && (!wanted.size || wanted.has(String(e.id))));
-    if (candidates.length) queue(() => runResearch(candidates));
+    if(!candidates.length)return Promise.resolve({ok:false,error:'没有可研究的候选黑话'});
+    return queue(async()=>{
+      const totals={ok:true,requested:0,researched:0,uncertain:0,missing:0};
+      for(let i=0;i<candidates.length;i+=5){
+        const result=await runResearch(candidates.slice(i,i+5));
+        if(!result?.ok)return {...totals,ok:false,error:result?.error||'研究失败'};
+        for(const key of ['requested','researched','uncertain','missing'])totals[key]+=result[key]||0;
+      }
+      return totals;
+    });
   }
+
+  ctx.registerTool?.('slang_research_batch',{description:'管理员按 ID 研究至多五条候选黑话，等待写回并返回实际结果',handler:input=>{
+    const ids=[...new Set((Array.isArray(input?.ids)?input.ids:[]).map(String).filter(Boolean))];
+    if(!ids.length||ids.length>5)return {ok:false,error:'请选择 1 至 5 条候选黑话'};
+    return researchCandidatesByIds(ids);
+  }});
 
   function extractFor(key) {
     const cfg = getCfg();

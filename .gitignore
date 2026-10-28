@@ -15,3 +15,5 @@ privacy-rules.json
 *.har
 .playwright-mcp/
 artifacts/
+workspace.local.json
+source-manifest.local.json

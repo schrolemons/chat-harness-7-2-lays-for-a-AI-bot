@@ -5,8 +5,7 @@
 //   1. 安装两套 agent preset：qq-chat、qq-chat-v2
 //      （DSH 0.1.7 机制：作为 qq-agent-presets bundle 的 patch 层插入
 //        @deepseek-ai/dsh-agent-preset 行；~/.dsh/.agent-presets/ 目录已不再被读取）
-//   2. 在 DSH profile 的 cordis.patch.yml 中挂载三个 MCP server：
-//      mcp-snowluma / mcp-snowluma-host / mcp-web-search-safe
+//   2. 在 DSH profile 的 cordis.patch.yml 中挂载托管 MCP server。
 //   3. 在 profile package.json 中注册两个 bundle：qq-mode-console、qq-agent-presets
 //
 // 用法：
@@ -122,8 +121,8 @@ function yamlSingleQuote(s) {
   return `'${String(s).replace(/'/g, "''")}'`;
 }
 
-// 由桥接托管的 MCP 条目 id：脚本对这三个 id 拥有所有权，可安全地按 id 增删。
-const MANAGED_MCP_IDS = ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe', 'mcp-playwright'];
+// 由桥接托管的 MCP 条目 id：脚本对这些 id 拥有所有权，可安全地按 id 增删。
+const MANAGED_MCP_IDS = ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe', 'mcp-playwright', 'mcp-games'];
 
 function mcpEntries() {
   const node = process.execPath;
@@ -131,14 +130,14 @@ function mcpEntries() {
     'mcp-snowluma': { serverName: 'snowluma', script: path.join(REPO_ROOT, 'src', 'mcp-snowluma-safe.js'), toolCallTimeoutMs: 725000 },
     'mcp-snowluma-host': { serverName: 'snowluma-host', script: path.join(REPO_ROOT, 'src', 'mcp-host-server.js') },
     'mcp-web-search-safe': { serverName: 'web-search-safe', script: path.join(REPO_ROOT, 'src', 'mcp-web-search-safe.js') },
-    // 浏览器工具：连接用户本机真实 Edge（CDP 9227，由 scripts/browser-fetch.mjs --start-edge 提供）。
+    'mcp-games': { serverName: 'games', script: path.join(REPO_ROOT, 'src', 'mcp-games.mjs') },
+    // 浏览器工具使用本项目独立的持久浏览器上下文。
     // MCP 工具是全局注册的，非管理员会话由 qq-tool-restrict 在注册/执行期隐藏与拒绝。
     'mcp-playwright': {
       serverName: 'playwright',
       script: path.join(REPO_ROOT, 'node_modules', '@playwright', 'mcp', 'cli.js'),
       // 自己拉起 Edge（用同步好的登录态副本），不依赖外部调试端口：
       // DSH 启动时 Edge 未必开着，若用 --cdp-endpoint 会直接连不上而退出。
-      // 连接常驻 Edge（headless，端口 9222，配置 state/campus-profile）：AI 与定时检查共用同一浏览器/登录态。
       extraArgs: ['--browser', 'msedge', '--headless', '--user-data-dir', path.join(REPO_ROOT, 'state', 'mcp-browser-profile')]
     },
   };

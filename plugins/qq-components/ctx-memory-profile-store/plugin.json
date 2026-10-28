@@ -2,7 +2,7 @@
   "id": "ctx-memory-profile-store",
   "name": "全局用户画像",
   "version": "0.1.0",
-  "description": "跨会话的用户状态：身份、会话分布、互动次数、稳定备注与结构化字段；当前发言者档案由人物小档案注入，跨会话只分享脱敏内容。",
+  "description": "跨会话用户状态；个人作息仅在本人对应私聊保存和使用，不进入跨会话分享，也不允许智能体跨会话读取或写入。",
   "category": "上下文与记忆",
   "order": 5,
   "tags": [
@@ -18,7 +18,7 @@
   ],
   "config": {
     "maxShare": 3,
-    "shareAcrossConversations": true
+    "shareAcrossConversations": false
   },
   "layer": "C"
 }

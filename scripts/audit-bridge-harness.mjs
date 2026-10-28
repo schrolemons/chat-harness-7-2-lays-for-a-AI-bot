@@ -12,6 +12,13 @@ import * as markdown from '../src/md-to-plain.js';
 import * as contentGuard from '../src/content-guard.js';
 import * as conversationDrive from '../src/conversation-drive.js';
 import * as roleCard from '../src/role-card.js';
+import * as biliShare from '../src/bili-share.js';
+import * as replyPolicy from '../src/qq-reply-policy.js';
+import * as modeSettings from '../src/bridge-core/mode-settings.js';
+import * as mediaSegments from '../src/bridge-core/media-segments.js';
+import * as receiptState from '../src/bridge-core/receipt-state.js';
+import * as scheduleLocks from '../plugins/qq-components/life-proactive-time-bubble/schedule-locks.mjs';
+import * as gamesStore from '../plugins/qq-components/tool-games/games-store.mjs';
 import {createPluginHost} from '../src/plugin-host.js';
 import * as sensitive from '../src/sensitive.js';
 import * as wait from '../src/v2-wait.js';
@@ -134,6 +141,14 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
           ]
         };
       }
+      if (action === 'get_friend_list') {
+        return { status: 'ok', retcode: 0, data: [
+          { user_id: 123, nickname: '管理员', remark: '主人' },
+          { user_id: 10611, nickname: '成员乙哥哥', remark: '' },
+          { user_id: 10612, nickname: '管理员哥哥', remark: '' },
+          { user_id: 999, nickname: '未授权联系人', remark: '' }
+        ] };
+      }
       return { status: 'ok', retcode: 0, data: [{ emoji_id: 'fixture-sticker', url: 'https://public.invalid/sticker' }] };
     }
   }
@@ -161,9 +176,20 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     pluginHost, taskCaps, tokenLedger, tokenBudgetOf, shouldBlockSilentReply,
     ensureSession, ensureSlangLearnerSession, resolvePresetName, deliverPrompt, drainPromptQueue,
     buildTaskPrompt, handleTaskTurnEnd, tasksStore, queueDshEnvelope,
-    sendToQQ, sendStickerV2, handleIncoming, startConsoleServer, cfg, state, api, promptQueues,
+    sendToQQ, sendAgentReplyV2: typeof sendAgentReplyV2 === 'function' ? sendAgentReplyV2 : undefined,
+    sendStickerV2, handleIncoming, startConsoleServer, cfg, state, api, promptQueues,
     getSocialV2State, appendSocialV2Message, recordSentMessagesV2,
     buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2,
+    // 唤醒排队去重 / 补话武装的内部入口：给 scripts/test-wake-dedupe.mjs 断言用。
+    // 用 typeof 兜底：拿旧版 bridge.js 跑同一份测试时能正常加载，而不是 ReferenceError。
+    scheduleWakeV2: typeof scheduleWakeV2 === 'function' ? scheduleWakeV2 : undefined,
+    queuePendingWakeReason: typeof queuePendingWakeReason === 'function' ? queuePendingWakeReason : undefined,
+    armMessageReadAckV2: typeof armMessageReadAckV2 === 'function' ? armMessageReadAckV2 : undefined,
+    noteMessageAckInbound: typeof noteMessageAckInbound === 'function' ? noteMessageAckInbound : undefined,
+    scheduleMessageReadAck: typeof scheduleMessageReadAck === 'function' ? scheduleMessageReadAck : undefined,
+    cancelMessageReadAck: typeof cancelMessageReadAck === 'function' ? cancelMessageReadAck : undefined,
+    messageAckArmed: typeof messageAckArmed !== 'undefined' ? messageAckArmed : undefined,
+    messageAckInboundAt: typeof messageAckInboundAt !== 'undefined' ? messageAckInboundAt : undefined,
     syncStickerLibrary, listStickersForV2, getStickerImageData,
     refreshMode, modeAllowed, trackTurnEvent, replayPendingWakeReasonsV2,
     collectors, setupSleepTimerV2,
@@ -179,7 +205,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
       selfUserId = String(id ?? '');
       selfNickname = selfDisplayName.toLowerCase() || 'deepseek';
     },
-    flushQueue, retireSession,
+    flushQueue, retireSession, syncAdminDevPreset,
     voiceCfg, voiceLibrary, resolveVoicePathForV2, resolveVoicePathForOperator,
     voiceBudgetCheck, sendVoiceV2, sendVoiceForV2, assertOutboundAuditOk,
     setMode(value) { currentMode = value; },
@@ -205,7 +231,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker,
-    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard,
+    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,

@@ -5,8 +5,9 @@
 | 位置 | 必需内容 |
 |---|---|
 | `src/` | 桥接内核、DSH 客户端、OneBot 连接、权限与发送机制 |
+| `src/bridge-core/` | 模式设置、媒体消息段与双戳缓冲操作的独立模块 |
 | `plugins/qq-components/` | 七层组件、S · SCHNIE 思维模式-介入层及横切注册中心 |
-| `dsh/agent-presets/` | 四套 QQ/任务预设的源定义 |
+| `dsh/agent-presets/` | QQ 聊天、管理员、任务与独立学习预设的源定义 |
 | `plugins/qq-agent-presets/` | 生成的 preset patch、QQ/任务/摘要工具守卫 |
 | `plugins/qq-mode-console/` | DSH 与桥接共享的模式设置 |
 | `plugins/qq-launcher/` | DSH 桌面端按钮、红黄绿状态及后台启动 |
@@ -18,6 +19,7 @@
 | `plugins/qq-components/schnie-core/` | 通用本地目录读取机制，只有一个公开示例 |
 | `scripts/` | 配置、安装、启动、诊断、通用网页监控及必要测试 |
 | `public/` | 统一管理控制台 |
+| `scripts/source-workspace.mjs` | 只读源码快照、基线核验和跨目录哈希比较 |
 | `roles/小鲸鱼.md` | 可编辑的人设卡，未携带个人群聊和成员资料 |
 
 `@playwright/mcp`、`@snowluma/sdk`、MCP SDK 等通过 `npm ci` 根据锁文件安装，不把 `node_modules` 上传。DSH、QQ、SnowLuma、Codex 本体由使用者另行安装。

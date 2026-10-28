@@ -116,6 +116,10 @@ export async function discoverSnowLumaConnection({
 } = {}) {
   const sl = cfg?.snowluma ?? cfg ?? {};
   const base = String(baseUrl || process.env.SNOWLUMA_HTTP_URL || sl.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+  // Launcher config is authoritative when present. A parent process can carry a
+  // stale QQL_BOT_UIN across a settings change; environment is only a fallback
+  // for standalone callers that do not provide an account in config.
+  const targetUin = String(sl.botUin || process.env.QQL_BOT_UIN || '').trim();
   const homes = homeDirs ?? snowLumaHomeCandidates({ cfg });
   const explicit = token || process.env.SNOWLUMA_TOKEN || sl.accessToken || '';
 
@@ -134,6 +138,7 @@ export async function discoverSnowLumaConnection({
   const wsInfo = new Map();   // uin -> { token, url }
   for (const home of homes) {
     for (const entry of readOneBotTokens(home)) {
+      if (targetUin && entry.uin !== targetUin) continue;
       if (entry.http) add(entry.http.token, `onebot_${entry.uin}.json`, `http://${entry.http.host}:${entry.http.port}`);
       if (entry.ws?.token) wsInfo.set(entry.uin, { token: entry.ws.token, url: `ws://${entry.ws.host}:${entry.ws.port}` });
     }
@@ -145,6 +150,11 @@ export async function discoverSnowLumaConnection({
     const r = await probe(c.url, c.token, timeoutMs);
     tried.push({ source: c.source, url: c.url, token: c.token ? c.token.slice(0, 4) + '…' : '(空)', ok: r.ok, status: r.status, wording: r.wording });
     if (r.ok) {
+      if (targetUin && String(r.data?.user_id ?? '') !== targetUin) {
+        tried[tried.length - 1].ok = false;
+        tried[tried.length - 1].wording = '当前 QQ 账号与指定机器人 QQ 不符，拒绝连接';
+        continue;
+      }
       // 找到有效 HTTP token 后，把**同一个账号**的 WS 信息也带回去：
       // 桥接走 WebSocket，用另一个 token、另一个端口 —— 只修 HTTP 的话桥接仍然 1006 重连。
       const uin = /onebot_(\d+)\.json/.exec(c.source)?.[1] ?? String(r.data?.user_id ?? '');

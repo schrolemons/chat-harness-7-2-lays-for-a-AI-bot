@@ -675,6 +675,7 @@ export function createTokenLedger({
         }
       }
     }
+    // 基线与被淘汰的明细缺少周期归属，提醒控制台这不是绝对完整的金额。
     let partial = false;
     for (const sid of allSessionIds()) {
       const conversationKey = keyOf(sid);

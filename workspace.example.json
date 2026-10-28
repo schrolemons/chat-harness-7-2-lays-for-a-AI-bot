@@ -1,0 +1,9 @@
+{
+  "developmentRepository": "<absolute path to reviewed Git checkout>",
+  "runtimeRoot": "<absolute path to deployed bridge>",
+  "dshHome": "<absolute path to DSH home>",
+  "dshProfile": "desktop",
+  "dshSourceRepository": "<optional separate DSH upstream checkout>",
+  "desktopExecutable": "<actual installed Desktop executable>",
+  "note": "Path inventory only. This file grants no deployment or restart permission."
+}

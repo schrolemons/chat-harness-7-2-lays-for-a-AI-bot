@@ -48,6 +48,13 @@ test('an advance reminder does not hide a future event', () => atNow(() => {
   assert.match(f.blocks.join('\n'), /already-reminded/);
 }));
 
+test('an overdue first reminder is shown as due now instead of repeating the past start time', () => atNow(() => {
+  const f = fixture([record('missed-first-reminder', 0, { leadMinutes: 30, intervalMinutes: 30 })]);
+  const item = f.service.list({ key: 'group:1' }).items[0];
+  assert.equal(item.remindAt, NOW - 30 * 60000);
+  assert.equal(item.nextReminderAt, NOW);
+}));
+
 test('recurring lists project the next occurrence without rewriting persistent records', () => atNow(() => {
   const f = fixture([
     record('daily', -2 * DAY, { repeat: 'daily' }),

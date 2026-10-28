@@ -19,7 +19,6 @@ test('token budget blocks DSH prompt and outgoing reply after a billed round',as
   }finally{await h.close();}
  }
 });
-
 test('one real wake preserves reminder and unmute data through actual DSH delivery',async()=>{
  const h=await bridgeHarness({config:{socialV2:{curfew:{enabled:false},wake:{maxWakePerHour:100},proactive:{enabled:false}}}});
  try{h.setMode('reserved2');const st=h.getSocialV2State('private:123');st.pendingReminderItems=[{text:'FIXTURE_REMINDER'}];st.mutedJustCleared=true;await h.sendWakePromptV2('private:123','reminder');assert.equal(h.calls.prompts.length,1);const text=JSON.stringify(h.calls.prompts[0].content);assert.ok(text.includes('FIXTURE_REMINDER'));assert.ok(text.includes('刚解除静音'));assert.ok(text.includes('会话令牌'));}finally{await h.close();}

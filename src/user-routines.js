@@ -146,7 +146,8 @@ export function foodTaste(fields = {}) {
  */
 export function routineBlockLines(routines, opts = {}) {
   const view = routineView(routines);
-  if (!view.has) return [];
+  const ft = foodTaste(opts.fields || {});
+  if (!view.has && !ft.likes.length && !ft.dislikes.length) return [];
   const lines = [];
   const withTaste = (item) => {
     if (!item) return '';
@@ -167,7 +168,6 @@ export function routineBlockLines(routines, opts = {}) {
     const item = view[key];
     if (item && item.taste) tastes.push(stripTastePrefix(item.taste));
   }
-  const ft = foodTaste(opts.fields || {});
   tastes.push(...ft.likes);
   const liked = [...new Set(tastes.filter(Boolean))].slice(0, 6);
   const disliked = [...new Set(ft.dislikes.filter(Boolean))].slice(0, 4);

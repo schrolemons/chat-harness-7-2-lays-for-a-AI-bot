@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {createPlugin} from '../plugins/qq-components/obs-cost-policy/index.js';
+function setup(){const tiers=[];const p=createPlugin({config:{},capabilities:{setCostTier:(k,v)=>tiers.push(v)},state:{get:()=>({}),set:()=>{}}});return {p,tiers};}
+test('ordinary owner request and long quotation do not trigger Pro',()=>{const {p,tiers}=setup();for(const text of ['帮我看看今天几点吃饭','分析一下今天吃什么','普通群聊消息'.repeat(40)]){p.hooks.onIncoming({key:'private:1',isOwner:true,text});assert.equal(tiers.at(-1).model,'deepseek-flash');assert.equal(tiers.at(-1).reasoningEffort,'low');}});
+test('explicit hard work upgrades, next ordinary message resets, autonomy has no sticky Pro',()=>{const {p,tiers}=setup();p.hooks.onIncoming({key:'private:1',isOwner:true,text:'请重构这份代码并修复并发死锁，补回归测试'});assert.equal(tiers.at(-1).model,'deepseek-v4-pro');p.hooks.onIncoming({key:'private:1',isOwner:true,text:'谢谢'});assert.equal(tiers.at(-1).model,'deepseek-flash');assert.equal(p.services['cost-policy'].select({reason:'timeBubble',incomingText:'请重构代码'}).model,'deepseek-flash');});

@@ -642,6 +642,11 @@ input:focus,textarea:focus,select:focus {
 input::placeholder,textarea::placeholder {
   color:var(--placeholder)
 }
+.term-category-combo{position:relative;display:block;min-width:0}
+.row>.term-category-combo{flex:0 1 180px;width:180px}
+.term-category-combo input{padding-right:36px}
+.term-category-combo input::-webkit-calendar-picker-indicator{opacity:0}
+.term-category-combo::after{content:"";position:absolute;right:16px;top:50%;width:8px;height:8px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:translateY(-65%) rotate(45deg);pointer-events:none}
 textarea {
   resize:vertical;
   min-height:100px;
@@ -1915,7 +1920,6 @@ button:active:not(:disabled) {
 /* Commercial console: one visible function per navigation row and one reading column. */
 .component-nav .nav-item{width:100%;text-align:left}
 .component-nav .nav-item .nav-icon{font-size:12px;opacity:.7}
-.legacy-parameter-nav{display:none!important}
 .commercial-component{max-width:980px}
 .commercial-component .component-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
 .commercial-component .component-heading p{max-width:700px;line-height:1.7}
@@ -1936,33 +1940,54 @@ button:active:not(:disabled) {
 .security-setting-block{margin:12px 0;padding:14px 16px;border:1px solid var(--card-border);border-radius:12px;background:var(--surface-subtle)}
 .security-setting-block textarea{box-sizing:border-box;resize:vertical;min-height:72px;background:var(--surface);color:var(--text-strong);border:1px solid var(--border-subtle);border-radius:8px;padding:9px 11px}
 .security-policy-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:560px;overflow:auto;margin:10px 0 0;padding:12px;border:1px solid var(--border-subtle);border-radius:8px;background:var(--surface);color:var(--text-strong);font:12px/1.65 ui-monospace,Consolas,monospace}
-.member-profile-card{margin-top:10px;padding:14px;border:1px solid var(--card-border);border-radius:10px;background:var(--surface)}
+.member-card-preview,.member-card-preview *{box-sizing:border-box;min-width:0;max-width:100%}
+.member-card-preview{width:100%;overflow-x:hidden}
+.member-profile-card{width:100%;margin-top:10px;padding:14px;border:1px solid var(--card-border);border-radius:10px;background:var(--surface)}
 .member-profile-id{font-size:12px;color:var(--text-secondary);margin-bottom:6px}
-.member-profile-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.75}
+.member-profile-text{width:100%;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;line-height:1.75}
+.member-card-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 @media(max-width:650px){.quota-row{grid-template-columns:1fr}.quota-console-actions{width:100%}.quota-console-actions input{width:100%;min-width:0}}
 .commercial-component .comp-field{padding:13px 0;border-bottom:1px solid var(--border-subtle)}
 .commercial-component .comp-field>.meta{font-size:13px;color:var(--text-secondary);margin-bottom:8px}
 .commercial-component .comp-form-num,.commercial-component .comp-form-text,.commercial-component .comp-form-select,.commercial-component .comp-form-lines{background:var(--surface);color:var(--text-strong);border:1px solid var(--card-border);min-height:38px}
 .commercial-component .comp-flag{background:var(--surface-subtle);color:var(--text-secondary);border-color:var(--card-border)}
 .comp-toggle{display:inline-flex;align-items:center;gap:9px;padding:10px 14px;border:1px solid var(--card-border);border-radius:10px;background:var(--surface-subtle);font-weight:600}
-.legacy-layer-box{display:none!important}
 #section-persona .layer-note{padding:14px 18px;margin:16px 0;border-radius:12px}
 #section-persona .layer-note ol{display:flex;gap:20px;flex-wrap:wrap;padding-left:20px;margin:8px 0}
 #section-persona .layer-note p{margin:5px 0 0}
-#section-slang .slang-panel>.row:first-child{gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0}
+#section-slang .slang-panel>.row:first-child,#section-alias .slang-panel>.row:first-child,#section-terms .slang-panel>.row:first-child{gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0}
 #section-slang .slang-scroll table td.row{display:table-cell;white-space:nowrap}
 #section-slang .slang-scroll table td.row button{margin:2px}
+#section-alias .slang-scroll table{min-width:1050px}
+#section-terms .slang-scroll table{min-width:950px}
+#section-alias .slang-scroll table td.row,#section-terms .slang-scroll table td.row{display:table-cell;white-space:nowrap}
+#section-alias .slang-scroll table td.row button,#section-terms .slang-scroll table td.row button{margin:2px}
 .compact-actions{display:inline-block;position:relative;margin-left:4px}
 .compact-actions>summary{list-style:none;border:1px solid var(--card-border);border-radius:8px;padding:7px 10px;color:var(--text-secondary);font-size:12px;cursor:pointer}
 .compact-actions>summary::-webkit-details-marker{display:none}
 .compact-actions-menu{display:flex;gap:6px;flex-wrap:wrap;padding:8px;background:var(--card);border:1px solid var(--card-border);border-radius:9px;box-shadow:var(--shadow-md);z-index:8}
-#section-slang .slang-scroll .compact-actions-menu{position:absolute;right:0;min-width:175px;white-space:normal}
+#section-slang .slang-scroll .compact-actions-menu,#section-alias .slang-scroll .compact-actions-menu,#section-terms .slang-scroll .compact-actions-menu{position:absolute;right:0;min-width:175px;white-space:normal}
 .tool-reference-list{display:grid;gap:8px;margin:16px 0}
 .tool-reference-item{display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:var(--surface-subtle);border:1px solid var(--border-subtle);border-radius:10px;line-height:1.55}
 .tool-reference-item code{flex:0 0 min(240px,38%);overflow-wrap:anywhere;color:var(--text-strong)}
 .tool-reference-item span{color:var(--text-secondary);font-size:13px}
 .inline-component-settings{border-top:1px solid var(--border-subtle);margin-top:12px;padding-top:10px}
 .inline-component-settings .comp-body>.meta:first-child{font-weight:600;color:var(--text-strong)}
+.human-loop-banner{display:grid;place-items:center;gap:18px;min-height:250px;padding:clamp(28px,5vw,64px);border:1px solid var(--border-subtle);border-radius:16px;text-align:center;background:radial-gradient(ellipse at 50% 0%,color-mix(in srgb,var(--accent) 16%,transparent),transparent 68%),var(--surface-subtle)}
+.human-loop-kicker{font-size:12px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--text-secondary)}
+.human-loop-title{max-width:100%;font-size:clamp(2.5rem,9vw,7.5rem);font-weight:850;line-height:.96;letter-spacing:-.065em;color:var(--text-strong);overflow-wrap:anywhere}
+.human-loop-caption{font-size:clamp(15px,2vw,20px);color:var(--text-secondary)}
+@media(max-width:600px){.human-loop-banner{min-height:190px;gap:14px;padding:24px 14px}.human-loop-title{font-size:clamp(2.1rem,12vw,4rem);letter-spacing:-.055em}}
+.followup-session-editor{border-top:1px solid var(--border-subtle);margin-top:12px;padding-top:12px}
+.followup-session-heading{display:flex;align-items:center;gap:12px}
+.followup-session-controls{display:grid;grid-template-columns:auto minmax(180px,1fr) auto auto 120px auto 120px auto;gap:10px;align-items:center;padding:10px 0}
+.followup-session-controls>label{color:var(--text-secondary);font-size:13px}
+.followup-session-controls>input,.followup-session-controls>select{box-sizing:border-box;width:100%;min-width:0}
+.settings-group:has(#v2FollowupGlobalAnchor) .inline-component-settings .comp-body{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:8px 18px}
+.settings-group:has(#v2FollowupGlobalAnchor) .inline-component-settings .comp-field{min-width:0;margin:0;padding:12px 0}
+.settings-group:has(#v2FollowupGlobalAnchor) .inline-component-settings .comp-help{max-width:42ch}
+@media(max-width:900px){.followup-session-controls{grid-template-columns:130px minmax(0,1fr) auto}.followup-session-controls>label[for="v2TbFollowupInterval"],.followup-session-controls>label[for="v2TbFollowupDaily"]{grid-column:1}.followup-session-controls>input{grid-column:2}.followup-session-controls>button#v2TbFollowupSave{grid-column:3}.settings-group:has(#v2FollowupGlobalAnchor) .inline-component-settings .comp-body{grid-template-columns:repeat(2,minmax(170px,1fr))}}
+@media(max-width:600px){.followup-session-controls{grid-template-columns:minmax(0,1fr) auto}.followup-session-controls>label{grid-column:1/-1}.followup-session-controls>select,.followup-session-controls>input{grid-column:1}.followup-session-controls>button{grid-column:2}.settings-group:has(#v2FollowupGlobalAnchor) .inline-component-settings .comp-body{grid-template-columns:minmax(0,1fr)}}
 .comp-help{display:block;margin-top:5px;line-height:1.5;max-width:58ch}
 .monitor-lamp{display:inline-block!important;font-size:12px!important;margin:6px 8px 0 0;color:var(--text-muted)!important}
 .monitor-lamp.green,.monitor-lamp.stable{color:#49bd83!important}
@@ -1985,7 +2010,11 @@ button:active:not(:disabled) {
 /* 拆栏后的 .setting-field 是纵向 flex，.row input[type=text] 的 flex-basis(180px) 会变成高度，把输入框拉成 180px 高 */
 .setting-field>input[type=text],.setting-field>input[type=search]{flex:0 0 auto}
 /* 短字段（表情 ID 之类）不要占满 250px */
-.setting-field>input#v2ReadEmoji{max-width:110px}
+.v2-news-time-row{align-items:flex-end;gap:24px}
+.commercial-component .settings-content>.row .v2-news-time-field>label,.commercial-component .settings-content>.row .v2-news-count-field>label{display:block;flex:0 0 auto!important;flex-basis:auto!important;min-height:0;margin:0 0 6px;color:var(--text-secondary)}
+.v2-news-time-inputs{display:grid;grid-template-columns:92px 12px 92px;align-items:center;gap:6px}
+.v2-news-time-inputs input,.v2-news-count-field input{box-sizing:border-box;width:92px!important;max-width:92px!important;flex:none!important}
+.v2-news-count-field{display:flex;flex-direction:column;align-items:flex-start}
 #section-reference>table,#section-reference>.meta{display:none}
 .tool-switch-group{padding:14px;border:1px solid var(--border-subtle);border-radius:11px;margin-top:12px;background:var(--surface-subtle)}
 .tool-switch-group strong{display:block;margin-bottom:4px}
@@ -1996,7 +2025,7 @@ button:active:not(:disabled) {
 .voice-action-row label{flex-basis:auto!important;margin:0!important}
 #voiceList{max-width:760px;padding:12px;border:1px solid var(--border-subtle);border-radius:10px;background:var(--surface-subtle);line-height:1.7}
 @media(max-width:900px){.voice-action-row{grid-template-columns:1fr 1fr}.voice-action-row input[type=text]{width:100%!important}}
-#section-v2-c .settings-content,#section-v2-l .settings-content,#section-v2-o .settings-content{max-width:880px}
+#section-v2-c .settings-content,#section-v2-o .settings-content{max-width:880px}
 .schedule-list{display:grid;gap:14px;margin-top:14px}
 .schedule-session{overflow:hidden;border:1px solid var(--card-border);border-radius:14px;background:var(--surface)}
 .schedule-session-head{display:flex;align-items:center;gap:10px;padding:13px 16px;background:var(--surface-subtle);border-bottom:1px solid var(--border-subtle)}
@@ -2012,10 +2041,46 @@ button:active:not(:disabled) {
 .schedule-card-title{color:var(--text-strong);font-size:14px;font-weight:650;line-height:1.55;overflow-wrap:anywhere}
 .schedule-card-meta,.schedule-card-extra{margin-top:5px;color:var(--text-secondary);font-size:12px;line-height:1.55;overflow-wrap:anywhere}
 .schedule-card-delete{min-width:64px}
+.schedule-card-lead{margin-top:7px;display:flex;flex-wrap:wrap;align-items:center;gap:7px;color:var(--text-secondary);font-size:12px}
+.schedule-card-lead input{width:64px;text-align:right}
+.schedule-card-lead .meta{margin:0}
 .schedule-empty{padding:22px;text-align:center;border:1px dashed var(--border-subtle);border-radius:12px;color:var(--text-secondary);background:var(--surface-subtle)}
 .schedule-help{margin:10px 0 0}
 @media(max-width:600px){.schedule-card{grid-template-columns:76px minmax(0,1fr);gap:11px;padding:12px}.schedule-card-date{padding-right:8px}.schedule-card-date strong{font-size:15px}.schedule-card-delete{grid-column:2;justify-self:start}.schedule-session-head{padding:11px 12px}}
 @media(max-width:800px){.commercial-component{max-width:none}.component-nav .nav-item{padding-left:18px}}
+.learning-editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.learning-editor-grid label{display:flex;flex-direction:column;gap:7px;min-width:0}.learning-wide{grid-column:1/-1}.learning-editor-grid input:not([type=checkbox]),.learning-editor-grid select,.learning-editor-grid textarea{width:100%;min-width:0;box-sizing:border-box}.learning-editor-grid input[type=checkbox]{width:auto}.learning-list{display:grid;gap:14px;margin-top:18px}.learning-entry{border:1px solid var(--card-border);border-radius:12px;padding:18px;min-width:0;background:var(--surface)}.learning-entry-header{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.learning-entry h3{margin:0;font-size:15px}.learning-entry p,.learning-entry li,.learning-entry a{overflow-wrap:anywhere}.learning-entry .learning-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.learning-entry details{margin-top:12px}.learning-evidence{padding-left:20px;font-size:12px;color:var(--muted)}.learning-status{font-size:11px;border-radius:5px;padding:3px 7px;background:var(--accent-soft-bg);color:var(--accent-soft-fg)}.learning-toolbar{margin:18px 0 12px;flex-wrap:wrap}.learning-toolbar input{min-width:130px;flex:1}.learning-entry textarea{min-height:48px}.learning-entry .meta{line-height:1.65}
+@media(max-width:700px){.learning-editor-grid{grid-template-columns:minmax(0,1fr)}.learning-entry{padding:14px}.learning-toolbar>*{max-width:100%}}
+.diary-window-note{display:flex;gap:10px;align-items:flex-start;margin:12px 0;padding:12px 14px;border:1px solid var(--border-subtle);border-left:3px solid var(--accent);border-radius:10px;background:var(--surface-subtle);font-size:13px;line-height:1.6;color:var(--text-secondary)}
+.diary-window-note b{flex:0 0 auto;color:var(--text-strong)}
+.diary-session-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,350px),1fr));gap:12px;margin-top:14px}
+.diary-session-card{display:flex;flex-direction:column;min-width:0;padding:15px;border:1px solid var(--card-border);border-radius:13px;background:var(--surface);box-shadow:0 3px 12px rgba(25,40,70,.04)}
+.diary-session-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.diary-session-key{min-width:0;overflow-wrap:anywhere;color:var(--text-strong);font-size:13px;font-weight:700}
+.diary-session-state{flex:0 0 auto;padding:4px 9px;border:1px solid var(--border-subtle);border-radius:999px;font-size:11px;line-height:1.35;font-weight:650}
+.diary-session-state.sent{color:#16835d;background:rgba(22,131,93,.08);border-color:rgba(22,131,93,.2)}.diary-session-state.pending{color:#996000;background:rgba(199,139,21,.09);border-color:rgba(199,139,21,.22)}.diary-session-state.muted{color:var(--text-muted);background:var(--surface-subtle)}
+.diary-session-window{margin-top:12px;color:var(--text-secondary);font-size:12px;line-height:1.5;font-variant-numeric:tabular-nums}.diary-session-detail{margin-top:6px;color:var(--text-muted);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.diary-session-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:14px}.diary-session-actions button{min-height:34px}.diary-session-actions button:disabled{opacity:.55;cursor:not-allowed}
+.diary-history-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:12px}.diary-history-layout{display:grid;grid-template-columns:minmax(190px,250px) minmax(0,1fr);gap:14px;min-height:280px}
+.diary-history-sidebar,.diary-history-content{min-width:0;border:1px solid var(--card-border);border-radius:12px;background:var(--surface)}
+.diary-history-sidebar{display:flex;flex-direction:column;gap:5px;padding:8px;max-height:390px;overflow:auto}
+.diary-history-date{width:100%;padding:10px 11px;text-align:left;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-strong);cursor:pointer}
+.diary-history-date:hover{background:var(--surface-subtle)}
+.diary-history-sidebar button.diary-history-date.active{border-color:var(--accent-border-soft);background:var(--accent-soft-bg);color:var(--accent-soft-fg)}
+.diary-history-sidebar button.diary-history-date.active:hover{background:var(--accent-soft-bg-active)}
+.diary-history-date b{display:block;font-size:13px}.diary-history-date small{display:block;margin-top:4px;color:var(--text-muted);font-size:11px;line-height:1.5}
+.diary-history-content{max-height:520px;margin:0;padding:16px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.75 ui-monospace,Consolas,monospace;color:var(--text-strong)}
+@media(max-width:900px){.diary-history-layout{grid-template-columns:minmax(0,1fr)}.diary-history-sidebar{flex-direction:row;max-height:none;overflow-x:auto}.diary-history-date{flex:0 0 165px}.diary-history-content{max-height:55vh}}
+@media(max-width:700px){.diary-window-note{display:block}.diary-window-note b{display:block;margin-bottom:4px}.diary-session-grid{grid-template-columns:minmax(0,1fr)}.diary-session-card{padding:13px}.diary-session-actions button{flex:1 1 auto}.diary-history-layout{gap:10px}}
+.games-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:12px;margin:16px 0}
+.games-card{min-width:0;border:1px solid var(--card-border);border-radius:12px;padding:16px;background:var(--surface)}
+.games-card h3{margin:0 0 5px;font-size:16px;color:var(--text-strong)}
+.games-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.games-toggle{display:flex;align-items:center;gap:6px;white-space:nowrap;color:var(--text-strong)}
+.games-rules{margin:12px 0;color:var(--text-secondary);line-height:1.65;overflow-wrap:anywhere}
+.games-params{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:12px 0}
+.games-param{display:flex;flex-direction:column;gap:5px;min-width:0;color:var(--text-secondary);font-size:12px}
+.games-param input{width:100%;box-sizing:border-box}
+.games-create{margin-top:16px;padding:12px;border:1px solid var(--card-border);border-radius:10px}
+.games-create textarea{width:100%;box-sizing:border-box;font:12px/1.5 ui-monospace,Consolas,monospace}
 </style>
 </head>
 <body>
@@ -2026,6 +2091,7 @@ button:active:not(:disabled) {
     <nav id="mainNav">
       <div class="nav-label">C · 上下文与记忆</div>
       <button data-view="persona" class="nav-item"><span class="nav-icon" aria-hidden="true">◉</span>人格与角色</button>
+      <button data-view="terms" class="nav-item"><span class="nav-icon" aria-hidden="true"></span>词条学习</button>
       <button data-view="slang" class="nav-item"><span class="nav-icon" aria-hidden="true">▤</span>黑话词库</button>
       <button data-view="alias" class="nav-item"><span class="nav-icon" aria-hidden="true">⛭</span>成员绰号</button>
       <button data-view="v2-c" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>参数（心情/表情/记忆）</button>
@@ -2033,6 +2099,7 @@ button:active:not(:disabled) {
       <div class="nav-label">T · 工具接口与协议</div>
       <button data-view="reference" class="nav-item"><span class="nav-icon" aria-hidden="true">ⓘ</span>工具参考</button>
       <button data-view="v2-t" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>工具开关</button>
+      <button data-view="games" class="nav-item"><span class="nav-icon" aria-hidden="true">⚄</span>Games</button>
       <button data-view="codex-peer" class="nav-item"><span class="nav-icon" aria-hidden="true">↔</span>Codex Peer</button>
       <button data-view="injection-lab" class="nav-item"><span class="nav-icon" aria-hidden="true">⌁</span>提示词注入实验室（免疫 + 嘴炮）</button>
       <div class="component-nav" data-component-nav-layer="T"></div>
@@ -2042,7 +2109,6 @@ button:active:not(:disabled) {
       <button data-view="v2-e" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>语音</button>
       <div class="component-nav" data-component-nav-layer="E"></div>
       <div class="nav-label">L · 生命周期与编排</div>
-      <button data-view="v2-l" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>参数（唤醒/发送/定时）</button>
       <button data-view="social-v1" class="nav-item"><span class="nav-icon" aria-hidden="true">◇</span>一代仿真<span class="nav-note">V1</span></button>
       <div class="component-nav" data-component-nav-layer="L"></div>
       <div class="nav-label">O · 可观测与运维</div>
@@ -2053,12 +2119,13 @@ button:active:not(:disabled) {
       <div class="component-nav" data-component-nav-layer="O"></div>
       <div class="nav-label">V · 验证与评估</div>
       <button data-view="layer-v" class="nav-item"><span class="nav-icon" aria-hidden="true">▣</span>失败回归</button>
+      <button data-view="human" class="nav-item"><span class="nav-icon" aria-hidden="true">♙</span>human</button>
       <div class="component-nav" data-component-nav-layer="V"></div>
       <div class="nav-label">G · 治理与安全</div>
       <button data-view="access" class="nav-item"><span class="nav-icon" aria-hidden="true">⊙</span>访问与安全</button>
       <div class="component-nav" data-component-nav-layer="G"></div>
-      <div class="nav-label">S · SCHNIE 思维模式-介入层</div>
-      <button data-view="layer-s" class="nav-item"><span class="nav-icon" aria-hidden="true">▣</span>思维模式介入</button>
+      <div class="nav-label">S · SCHNIE 参考</div>
+      <button data-view="layer-s" class="nav-item"><span class="nav-icon" aria-hidden="true">▣</span>资料参考</button>
       <div class="component-nav" data-component-nav-layer="S"></div>
       <div class="nav-label">组件注册层</div>
       <button data-view="registry" class="nav-item"><span class="nav-icon" aria-hidden="true">⌗</span>注册中心</button>
@@ -2315,7 +2382,7 @@ button:active:not(:disabled) {
       <div class="meta">心情不是只写在提示词里：这里能改初始值、回落速度、各种加减分与爆发规则，也能直接看到各会话当前心情。静音一次不会变成社恐——心情会随时间慢慢回到初始值。</div>
 
       </div></details>
-<details class="settings-group"><summary><span class="layer-tag" data-layer="C">C</span>表情包参数（sticker：QQ 收藏表情体系）</summary><div class="settings-content">
+<details class="settings-group"><summary><span class="layer-tag" data-layer="C">C</span>表情与表情包管理（收藏表情 / 消息 emoji）</summary><div class="settings-content">
       <div class="row">
         <label style="flex:1">启用表情包体系</label><input type="checkbox" id="v2StickerEnabled" style="width:auto">
         <label style="flex:1">同步缓存 TTL（秒）</label><input type="number" id="v2StickerSyncTtlSec" min="1" style="width:90px">
@@ -2327,9 +2394,8 @@ button:active:not(:disabled) {
         <span class="meta" style="flex:2">关闭后 AI 仍可主动调用 qq_list_stickers，只是不主动喂到上下文。</span>
       </div>
       <div class="row">
-        <label style="flex:1">每条回复发表情概率（0~1）</label><input type="number" id="v2StickerSendProb" step="0.05" min="0" max="1" style="width:90px">
         <label style="flex:1">最近发过的冷却（分）</label><input type="number" id="v2StickerRecentCooldown" min="0" style="width:90px">
-        <span class="meta" style="flex:2">概率越低表情越稀；冷却期内的表情尽量不重复，特别贴语境才复用一次。</span>
+        <span class="meta" style="flex:2">收藏表情按语境抽取候选，每轮尽量挑一张发送；若候选不合适，普通对话可用正文 emoji/颜文字补位。图片表情与消息内表情统一按语境管理，通常选一种，避免重复堆叠；冷却期内尽量不重复。</span>
       </div>
       <div class="row">
         <label style="flex:1">AI 收藏表情</label><input type="checkbox" id="v2StickerCollectEnabled" style="width:auto">
@@ -2370,7 +2436,7 @@ button:active:not(:disabled) {
       </div></details>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="C">C</span>轻量记忆（话题 / 待说想法 / 未发言成员临时印象）</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2MemoryKey" placeholder="group:10001" style="flex:1">
+        <input type="text" id="v2MemoryKey" placeholder="group:10608" style="flex:1">
         <button id="v2MemoryLoad" class="small">加载记忆</button>
         <button id="v2MemoryClearAll" class="small danger">清空全部</button>
         <span class="meta" id="v2MemoryMsg"></span>
@@ -2386,7 +2452,7 @@ button:active:not(:disabled) {
         留空保存等于删除；只写环境背景，别写指令式的要求（那是人格卡/仿真提示词的事）。
       </div>
       <div class="row">
-        <input type="text" id="v2InitPromptKey" placeholder="group:10001（可从「白名单会话快速选择」带过来）" style="flex:1" aria-label="初始提示词的会话 key">
+        <input type="text" id="v2InitPromptKey" placeholder="group:10608" style="flex:1" aria-label="初始提示词的会话 key">
         <button id="v2InitPromptLoad" class="small">加载</button>
         <button id="v2InitPromptSave" class="small">保存</button>
         <button id="v2InitPromptClear" class="small danger">删除</button>
@@ -2429,8 +2495,10 @@ button:active:not(:disabled) {
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getActiveMembers"> <span><b>qq_get_active_members</b><span class="meta">查看最近活跃成员列表</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="setWakeConfig"> <span><b>qq_set_wake_config</b><span class="meta">设置唤醒/潜水条件：无限期、有限时间、@/名字/关键词/概率等</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="markRead"> <span><b>qq_mark_read</b><span class="meta">标记当前未读为已读（看过但决定不回复）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="reportReceipts"> <span><b>qq_report_message_receipts</b><span class="meta">逐条回报本轮双戳状态 JSON，由 Harness 校验并更新</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="memory"> <span><b>qq_memory_append / qq_memory_query</b><span class="meta">轻量记忆：当前话题/待说想法/未发言成员临时印象</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="availability"> <span><b>qq_availability</b><span class="meta">登记/查询/取消免打扰与稍后联系（AI 自己理解时间，不靠关键词）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="timeBubbleManage"> <span><b>time_bubble_manage</b><span class="meta">读取和调整当前会话的每日冒泡时段；单项锁定与整栏锁定由桥接保护</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="slangQuery"> <span><b>qq_slang_query</b><span class="meta">查询已确认黑话/梗/网络表达</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="slangSubmit"> <span><b>qq_slang_submit</b><span class="meta">AI 提交陌生词/黑话给管理员筛选</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="termQuery"> <span><b>qq_term_query</b><span class="meta">查询有来源的共同兴趣知识</span></span></label>
@@ -2461,6 +2529,24 @@ button:active:not(:disabled) {
     <div class="tool-reference-item"><code>codex_chat_cancel</code><span>请求停止指定的 Codex 回合。</span></div>
   </div>
 </section>
+<section id="section-games" data-page="games" class="card span-all">
+  <h2><span class="layer-tag" data-layer="T">T</span>Games · 独立互动 MCP</h2>
+  <div class="meta">独立列在 T · 工具接口与协议层。MCP server：<code>games</code>；规则与提示词：<code>plugins/qq-components/tool-games/</code>。只生成互动文本，不会自行发送 QQ 消息。每局规则和启停状态保存在 Games 专用配置中。</div>
+  <div id="gamesRegistry" class="games-grid"><div class="meta">正在读取游戏清单…</div></div>
+  <details class="games-create">
+    <summary>保存模型生成的自定义游戏</summary>
+    <p class="meta">模型可根据你的描述生成受限 JSON GameAdapter；粘贴完整 JSON 后保存。此适配器只允许声明初始状态、动作输入和 set / increment / randomInt 转移，不执行 JavaScript。</p>
+    <textarea id="gamesDefinition" rows="14" spellcheck="false" aria-label="自定义游戏 JSON" placeholder='{"id":"custom-coin-guess","name":"猜硬币","summary":"猜正反面","rules":"猜测一次硬币结果。","initialState":{"result":"","guesses":0},"actions":[{"type":"guess","label":"猜正反","description":"提交正面或反面","inputs":[{"name":"side","type":"choice","options":["正面","反面"]}],"effects":[{"op":"set","field":"result","input":"side"},{"op":"increment","field":"guesses","by":1,"min":0,"max":10}],"message":"猜测已记录。","endsGame":true}]}'></textarea>
+    <div class="row"><button id="gamesSaveDefinition" class="small">校验并保存</button><button id="gamesReload" class="small">刷新游戏清单</button><span id="gamesSaveMessage" class="meta" role="status"></span></div>
+  </details>
+  <div class="tool-reference-list" aria-label="Games MCP 工具">
+    <div class="tool-reference-item"><code>games_catalog</code><span>查看已启用游戏、规则与参数。</span></div>
+    <div class="tool-reference-item"><code>games_create</code><span>按用户描述生成并校验受限 JSON GameAdapter，保存为自定义游戏。</span></div>
+    <div class="tool-reference-item"><code>games_start</code><span>开始已启用的任一游戏；小火花要求参与者本人明确同意。</span></div>
+    <div class="tool-reference-item"><code>games_action</code><span>执行内置玩法或自定义 adapter 声明的合法动作。</span></div>
+    <div class="tool-reference-item"><code>games_status / games_stop</code><span>查询或结束当前互动；拒绝、不适或要求停止时立即结束。</span></div>
+  </div>
+</section>
 <section id="section-injection-lab" data-page="injection-lab" class="card span-all">
   <h2><span class="layer-tag" data-layer="T">T</span>提示词注入实验室（免疫 + 嘴炮）</h2>
   <div class="meta">独立列在 T · 工具接口与协议层。组件：<code>tool-injection-lab</code>。本栏目集中展示免疫扫描、对线策略和相关工具；不会把它混在通用工具开关中。</div>
@@ -2482,7 +2568,7 @@ button:active:not(:disabled) {
       <div class="row voice-action-row">
         <button id="voiceRefreshBtn" type="button" class="btn-secondary">刷新语音库</button>
         <label for="voiceSendTarget">发送目标</label>
-        <input type="text" id="voiceSendTarget" placeholder="group:10001" style="width:190px">
+        <input type="text" id="voiceSendTarget" placeholder="group:10603" style="width:190px">
         <label><input type="checkbox" id="voiceSendDryRun" style="width:auto" checked> 只校验不发送</label>
         <button id="voiceSendBtn" type="button">试发选中语音</button>
         <span id="voiceMsg" class="meta"></span>
@@ -2493,8 +2579,8 @@ button:active:not(:disabled) {
       </div></details>
 <div class="row" style="margin-top:10px"><button class="small v2-save" data-page="v2-e" style="font-weight:bold;padding:8px 16px">保存当前参数（写入 config.json）</button><span class="meta v2-save-msg"></span></div>
 </section>
-<section id="section-v2-l" data-page="v2-l" class="card span-all">
-      <h2>二代仿真模式（reserved2）控制台</h2>
+<section id="lifecycle-parameter-source" hidden>
+      <h2>生命周期与编排参数</h2>
       <div class="meta">配置保存后写入 config.json 并热更新；工具开关决定 AI 能调用哪些工具。已接入开关的工具在<b>重启 DSH 后</b>会从工具清单里彻底消失（少一份 schema 就少一份每次请求的 token）；发送类等跨模式共用的工具只在调用时被桥接拒绝，清单不变。</div>
 
       <div class="row" style="margin-top:10px">
@@ -2525,13 +2611,13 @@ button:active:not(:disabled) {
       <details class="settings-group" open>
         <summary><span class="layer-tag" data-layer="L">L</span>未回复补话（四组独立设置）</summary>
         <div class="settings-content">
-          <div class="meta">四组分别控制启用状态、激活延迟和固定话术表；延迟从本批合并窗口结束后起算。正常回复开始出站时会取消尚未激活的话术。</div>
+          <div class="meta">四组分别控制启用状态、激活延迟和固定话术表；延迟从最新完整用户消息收到时起算。新消息作废旧轮；正式回复在实际发送前取消两个计时器，排队和思考不取消。</div>
           <div id="messageAckComponentRoot"><div class="meta">正在读取组件设置…</div></div>
         </div>
       </details>
 
       
-<h3 class="layer-group-head" data-layer="L"><span class="layer-tag" data-layer="L">L</span>生命周期与编排（12）</h3>
+<h3 class="layer-group-head" data-layer="L"><span class="layer-tag" data-layer="L">L</span>生命周期与编排（11）</h3>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>唤醒推荐值（仅参考，AI 可不遵守）</summary><div class="settings-content">
       <div class="row">
         <label style="flex:1">默认模式</label>
@@ -2652,13 +2738,32 @@ button:active:not(:disabled) {
         <button id="v2TbReset" class="small danger">清空时段</button>
       </div>
       <span class="meta" id="v2TbMsg"></span>
+      <div class="row"><label style="flex:1"><input id="v2TbAllLocked" type="checkbox" style="width:auto"> 锁定整个冒泡栏</label><span class="meta">锁定后鲸鱼和控制台均不能改时段；取消勾选即可解锁。</span></div>
       <div id="v2TimeBubbleRows"></div>
       <div class="row" style="margin-top:6px">
         <button id="v2TimeBubbleAdd" class="small">+ 添加时段</button>
         <span class="meta">每个会话独立配置；列表为空或没有配置时，不发送时间冒泡。添加时段即开始按时提醒。</span>
       </div>
+      <div class="meta" id="v2TbCapacityMsg" aria-live="polite"></div>
       </div></details>
-<details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>主动行为（宵禁 / 主动关心 / 空闲兜底 / 每日新闻 / 已读戳）</summary><div class="settings-content">
+<details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>话题跟进（全局策略与私聊 session 限制）</summary><div class="settings-content">
+      <div id="v2FollowupGlobalAnchor"></div>
+      <div id="v2FollowupSessionEditor" class="followup-session-editor">
+        <div class="row followup-session-heading"><b>目标私聊 session 限制</b><span class="meta">只列出 private 会话；空白项继承全局，最终生效值取全局与该 session 的较小值。</span></div>
+        <div class="followup-session-controls">
+          <label for="v2FollowupSessionKey">私聊 session</label>
+          <select id="v2FollowupSessionKey"><option value="">（先刷新排程）</option></select>
+          <button id="v2FollowupSessionRefresh" class="small">刷新会话</button>
+          <label for="v2TbFollowupInterval">最小间隔（分钟）</label>
+          <input type="number" id="v2TbFollowupInterval" min="0" max="10080" placeholder="继承全局">
+          <label for="v2TbFollowupDaily">每日上限</label>
+          <input type="number" id="v2TbFollowupDaily" min="0" max="30" placeholder="继承全局">
+          <button class="small" id="v2TbFollowupSave">保存该 session</button>
+        </div>
+        <span class="meta" id="v2TbFollowupMsg"></span>
+      </div>
+      </div></details>
+<details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>主动行为（宵禁 / 主动关心 / 空闲兜底 / 每日 B 站推荐）</summary><div class="settings-content">
       <div class="row">
         <label style="flex:1">宵禁开关</label><input type="checkbox" id="v2CurfewEnabled" style="width:auto">
         <label style="flex:0 0 90px">宵禁开始</label><input type="number" id="v2CurfewStart" min="0" max="23" style="width:60px">
@@ -2672,24 +2777,47 @@ button:active:not(:disabled) {
         <label style="flex:1">最长间隔（分）</label><input type="number" id="v2CareMax" min="10" style="width:80px">
         <label style="flex:1">提问概率</label><input type="number" id="v2CareProb" step="0.05" min="0" max="1" style="width:70px">
       </div>
-      <div class="meta">用户不回复时提问概率逐级降低、间隔拉长；一回复就恢复。新闻只发群、不发私聊。</div>
+      <div class="meta">用户不回复时提问概率逐级降低、间隔拉长；一回复就恢复。每日 B 站推荐只发到下方配置的 session 白名单。</div>
       <div class="row">
         <label style="flex:1">空闲兜底开关</label><input type="checkbox" id="v2IdleEnabled" style="width:auto">
         <label style="flex:1">多久没说话兜底（分）</label><input type="number" id="v2IdleMinutes" min="30" style="width:90px">
-        <label style="flex:1">每日新闻开关</label><input type="checkbox" id="v2NewsEnabled" style="width:auto">
-        <label style="flex:0 0 70px">时间</label><input type="number" id="v2NewsHour" min="0" max="23" style="width:56px">:
-        <input type="number" id="v2NewsMinute" min="0" max="59" style="width:56px">
-        <label style="flex:1">条数</label><input type="number" id="v2NewsMax" min="1" max="5" style="width:56px">
       </div>
       <div class="row">
-        <label style="flex:1">已读戳开关</label><input type="checkbox" id="v2ReadEnabled" style="width:auto">
-        <label style="flex:1">回应表情 ID</label><input type="text" id="v2ReadEmoji" style="width:90px" placeholder="128">
-        <span class="meta" style="flex:2">收到消息时给这条消息点个表情回应（128=赞），避免“新消息和回复同时出现”时误判。</span>
-        <div class="row">
-          <label style="flex:1">管理员开发模式</label><input type="checkbox" id="v2AdminDevEnabled" style="width:auto">
-          <label style="flex:0 0 110px">preset</label><input type="text" id="v2AdminDevPreset" style="width:120px" placeholder="qq-chat-dev">
-          <span class="meta" style="flex:2">只有 owner 私聊使用完整工具面（可改本机/桥接后端）；其他会话不受影响。改 preset 后下一条消息自动重建该会话。</span>
+        <label style="flex:1">每日 B 站推荐</label><input type="checkbox" id="v2NewsEnabled" style="width:auto">
+      </div>
+      <div class="row v2-news-time-row">
+        <div class="v2-news-time-field">
+          <label for="v2NewsHour">时间</label>
+          <div class="v2-news-time-inputs">
+            <input type="number" id="v2NewsHour" min="0" max="23" aria-label="小时">
+            <span aria-hidden="true">:</span>
+            <input type="number" id="v2NewsMinute" min="0" max="59" aria-label="分钟">
+          </div>
         </div>
+        <div class="v2-news-count-field">
+          <label for="v2NewsMax">条数</label>
+          <input type="number" id="v2NewsMax" min="1" max="5">
+        </div>
+      </div>
+      <div class="row">
+        <label style="flex:0 0 150px">推荐主题关键词</label>
+        <textarea id="v2NewsKeywords" rows="3" maxlength="10600" style="flex:1;min-width:260px" placeholder="每行一个主题，基础权重 1，例如：鲸鱼、海洋纪录片、少年成长"></textarea>
+      </div>
+      <div class="row">
+        <label style="flex:0 0 150px">主题关联 UP 主（权重）</label>
+        <textarea id="v2NewsUploaders" rows="2" maxlength="3000" style="flex:1;min-width:260px" placeholder="主题 | UP 主 | 权重，例如：鲸鱼 | 正太肥鱼与龙少的日常 | 2"></textarea>
+      </div>
+      <div class="row">
+        <label style="flex:0 0 150px">支持传达的 session 白名单</label>
+        <textarea id="v2NewsSessions" rows="3" maxlength="3000" style="flex:1;min-width:260px" placeholder="每行一个：group:群号 或 private:QQ号"></textarea>
+      </div>
+      <div class="meta">抽样规则：主题权重 = 基础权重 1 + 该主题关联 UP 权重总和；主题概率 = 该主题权重 / 全部主题权重之和。选中主题后，关联 UP 的抽中概率 = 该 UP 权重 /（基础权重 1 + 同主题关联 UP 权重总和）；抽中基础权重时搜索新的 UP 主。</div>
+      <div class="meta">视频规则：抽中关联 UP 后先按“主题 + UP 名”搜索；若找到与主题相关且信息可核实的视频，推荐中至少包含 1 条该 UP 视频。只有定向搜索没有合格结果时，才全部用其他 UP 补足；其余条数仍可选名单外更热门、更有意思或更贴题的视频。抽中基础权重时广泛搜索新 UP 主。</div>
+      <div class="meta">session 白名单支持 group:群号 和 private:QQ号。每条推荐按 URL 或 BV 号、视频内容介绍、主观感受三项发送；信息不全时不编造。</div>
+      <div class="row">
+        <label style="flex:1">管理员开发模式</label><input type="checkbox" id="v2AdminDevEnabled" style="width:auto">
+        <label style="flex:0 0 110px">preset</label><input type="text" id="v2AdminDevPreset" style="width:120px" placeholder="qq-chat-dev">
+        <span class="meta" style="flex:2">只有 owner 私聊使用完整工具面（可改本机/桥接后端）；其他会话不受影响。改 preset 后下一条消息自动重建该会话。</span>
       </div>
       </div></details>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>日程提醒与排程总览（讲座/考试/课程等）</summary><div class="settings-content">
@@ -2707,30 +2835,28 @@ button:active:not(:disabled) {
         <label style="flex:0 0 70px">重复</label><select id="v2ReminderRepeat" style="flex:1"><option value="无">无</option><option value="每天">每天</option><option value="每周">每周</option></select>
       </div>
       <div class="row">
+        <label style="flex:0 0 110px">提醒开始提前(分)</label><input type="number" id="v2ReminderLead" min="0" max="1440" step="1" placeholder="默认 30" style="flex:0 0 130px">
+        <label style="flex:0 0 110px">间歇周期(分)</label><input type="number" id="v2ReminderInterval" min="1" max="1440" step="1" placeholder="默认 30" style="flex:0 0 130px">
+        <span class="meta" style="flex:1">到提醒开始时间后，按间歇周期反复提醒；只有明确说“我已经去做这事了”才停止。范围分别为 0–1440 和 1–1440 分钟。</span>
+      </div>
+      <div class="row">
         <label style="flex:0 0 110px">内容</label><input type="text" id="v2ReminderText" placeholder="讲座：大模型推理优化（线上腾讯会议）" style="flex:1">
         <button id="v2ReminderAdd" class="small">添加提醒</button>
       </div>
-      <div class="meta schedule-help">日程通过 <code>qq_schedule</code> 登记和管理，按会话独立保存；系统会在设定时间前 30 分钟唤醒提醒。下方添加的日程也会出现在此列表。</div>
+      <div class="meta schedule-help">日程通过 <code>qq_schedule</code> 登记和管理，按会话独立保存。从提醒开始时间起按间歇周期反复提醒，直到用户明确说“我已经去做这事了”；“知道了”“谢谢”等不算完成。卡片可修改开始提前量和间歇周期，也可确认完成或删除。</div>
       </div></details>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>唤醒状态（AI 当前设置的下一次唤醒条件/倒计时）</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2WakeKey" placeholder="group:10001" style="flex:1">
+        <input type="text" id="v2WakeKey" placeholder="group:10608" style="flex:1">
         <button id="v2WakeStatusLoad" class="small">查看唤醒状态</button>
         <span class="meta" id="v2WakeStatusMsg"></span>
       </div>
       <div id="v2WakeStatusOutput" class="tool-log-table">（空）</div>
 
 </div></details>
-<details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>白名单会话快速选择</summary><div class="settings-content">
-      <div class="row">
-        <select id="v2SessionSelect" style="flex:1"><option value="">选择白名单群/私聊…</option></select>
-        <button id="v2SessionRefresh" class="small">刷新</button>
-      </div>
-
-      </div></details>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>会话状态查看</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2StateKey" placeholder="group:10001" style="flex:1">
+        <input type="text" id="v2StateKey" placeholder="group:10608" style="flex:1">
         <button id="v2StateView" class="small">查看</button>
         <button id="v2ForceWake" class="small">立即唤醒</button>
         <button id="v2StatesList" class="small">列出全部会话状态</button>
@@ -2740,11 +2866,16 @@ button:active:not(:disabled) {
     </div></details>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>已读/已回复双时间戳（重启不重刷、不漏条）</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2ReceiptKey" placeholder="group:<群号>" style="flex:1">
+        <input type="text" id="v2ReceiptKey" placeholder="group:10608" style="flex:1">
         <button id="v2ReceiptLoad" class="small">查看双戳状态</button>
         <span class="meta" id="v2ReceiptMsg"></span>
       </div>
-      <div class="meta">每条入站消息在消息窗口内记录 <b>seenAt</b>（第一次被模型读到）与 <b>repliedAt</b>（这一批回复成功、或 qq_mark_read / qq_set_wake_config 带 throughSeq 收尾）。两戳齐全＝已处理：重启后不再展示、不再要求回复；只有 seenAt＝「已接收未回复」，会重新出现在快照里。throughSeq 只给已有 seenAt 的消息补 repliedAt，没看过的旧消息不会被水位误盖。</div>
+      <div class="row" style="margin-top:8px">
+        <label style="flex:1">启用新消息前双戳回查</label><input type="checkbox" id="v2DoubleStampEnabled" style="width:auto">
+        <label>向前回查条数</label><input type="number" id="v2DoubleStampWindowCount" min="1" max="100" step="1" style="width:90px">
+      </div>
+      <div class="meta">每条新消息到达时，检查它之前最近 A 条入站消息，并把当前新消息一并放入处理窗口。seenAt 只在消息交给模型后写入；回复成功后模型必须用 qq_report_message_receipts 逐条提交 JSON，Harness 验证并立即更新 repliedAt。相似消息可合并回复，但状态仍逐条回报；异常状态须提交 anomaly，由 Harness 记录并上报。</div>
+      <div class="meta">窗口配置按消息条数计（1–100，默认 8），不按秒数计。两戳齐全＝已处理；只有 seenAt＝先前看过但尚未完成；两戳都无＝本轮首次看到，交给模型后再进入未回复处理；只有 repliedAt 或时间戳格式异常＝异常，不自动修补。</div>
       <pre id="v2ReceiptOutput">（空）</pre>
     </div></details>
 <div class="row" style="margin-top:10px"><button class="small v2-save" data-page="v2-l" style="font-weight:bold;padding:8px 16px">保存当前参数（写入 config.json）</button><span class="meta v2-save-msg" id="v2ConfigMsg"></span></div>
@@ -2965,6 +3096,7 @@ button:active:not(:disabled) {
         <tr><th>层</th><th>MCP server</th><th>工具</th><th>归属组件</th></tr>
         <tr><td><span class="layer-tag" data-layer="T">T</span></td><td><code>snowluma</code></td><td>qq_*（含 qq_attack）</td><td>QQ 工具面（mcp-snowluma-safe.js）</td></tr>
         <tr><td><span class="layer-tag" data-layer="T">T</span></td><td><code>web-search-safe</code></td><td>web_search / web_fetch</td><td>联网检索（mcp-web-search-safe.js）</td></tr>
+        <tr><td><span class="layer-tag" data-layer="T">T</span></td><td><code>games</code></td><td>games_catalog / games_create / games_start / games_action / games_status / games_stop</td><td>Games 互动玩法（mcp-games.mjs）</td></tr>
         <tr><td><span class="layer-tag" data-layer="S">S</span></td><td><code>schnie-private-phi</code></td><td>schnie_status / topics / read</td><td>schnie-core</td></tr>
         <tr><td><span class="layer-tag" data-layer="O">O</span></td><td><code>bridge-health</code></td><td>bridge_health</td><td>obs-bridge-health</td></tr>
         <tr><td><span class="layer-tag" data-layer="E">E</span></td><td><code>playwright</code></td><td>browser_*（仅管理员会话）</td><td>exec-browser-manager</td></tr>
@@ -2972,40 +3104,71 @@ button:active:not(:disabled) {
       </table>
       <div id="toolReferenceRoot" class="tool-reference-list">正在汇总工具…</div>
     </section>
-<section data-page="v2-c" class="card span-all legacy-layer-box">
-  <h3 class="layer-group-head" data-layer="C"><span class="layer-tag" data-layer="C">C</span>本层组件（上下文与记忆）</h3>
-  <div class="layer-comps-root" data-layer="C"></div>
-</section>
-<section data-page="reference" class="card span-all legacy-layer-box">
-  <h3 class="layer-group-head" data-layer="T"><span class="layer-tag" data-layer="T">T</span>本层组件（工具接口与协议）</h3>
-  <div class="layer-comps-root" data-layer="T"></div>
-</section>
-<section data-page="v2-l" class="card span-all legacy-layer-box">
-  <h3 class="layer-group-head" data-layer="L"><span class="layer-tag" data-layer="L">L</span>本层组件（生命周期与编排）</h3>
-  <div class="layer-comps-root" data-layer="L"></div>
-</section>
-<section data-page="overview" class="card span-all legacy-layer-box">
-  <h3 class="layer-group-head" data-layer="O"><span class="layer-tag" data-layer="O">O</span>本层组件（可观测与运维）</h3>
-  <div class="layer-comps-root" data-layer="O"></div>
-</section>
-<section data-page="access" class="card span-all legacy-layer-box">
-  <h3 class="layer-group-head" data-layer="G"><span class="layer-tag" data-layer="G">G</span>本层组件（治理与安全）</h3>
-  <div class="layer-comps-root" data-layer="G"></div>
-</section>
 <section id="section-alias" data-page="alias" class="card span-all">
       <h2>成员绰号（谁是谁）</h2>
-      <div class="meta">维护「绰号 → QQ号」映射：AI 用它认人、@人、传话。手动填写并确认的词条始终注入；下面的开关只控制自动提取候选。</div>
-      <label class="row"><input type="checkbox" id="aliasAutoExtract" style="width:auto"> AI 自动提取成员绰号候选 <span id="aliasAutoExtractMsg" class="meta"></span></label>
-      <div class="row" style="gap:8px;margin:8px 0">
-        <input id="aliasName" type="text" placeholder="绰号（如 管理员）" style="max-width:160px">
-        <input id="aliasQq" type="text" placeholder="QQ号" style="max-width:160px">
-        <input id="aliasNote" type="text" placeholder="备注（可选）" style="max-width:200px">
-        <button id="aliasAdd" class="small">添加 / 更新</button>
-        <button id="aliasRefresh" class="small">刷新</button>
-        <span class="meta" id="aliasMsg"></span>
+      <div class="meta">一个人可有多个绰号。明确和疑似称呼都先进入候选；QQ 不确定时留空，由管理员结合语境编辑、确认或拒绝。只有确认的映射用于认人、@人和传话。</div>
+      <div class="slang-tabs learning-tabs" id="aliasTabs">
+        <button class="slang-tab active" data-alias-tab="candidate">候选绰号</button><button class="slang-tab" data-alias-tab="confirmed">已确认</button><button class="slang-tab" data-alias-tab="rejected">已拒绝</button>
+      </div><span class="meta" id="aliasMsg" role="status"></span>
+      <div class="slang-panel alias-panel active" id="aliasPanelCandidate">
+        <div class="row" style="margin-top:8px"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="aliasCandidateSelectAll"> 全选</label><button id="aliasConfirmSelected" class="small">确认所选</button><button id="aliasRejectSelected" class="small">拒绝所选</button><details class="compact-actions"><summary>更多操作</summary><div class="compact-actions-menu"><button id="aliasRefreshCandidates" class="small">刷新</button></div></details></div>
+        <div class="row" style="margin-top:8px"><input type="text" id="aliasSearchCand" placeholder="搜索绰号 / 被称呼者 / 语境" style="flex:1"><select id="aliasLimitCand" style="width:110px"><option>50</option><option selected>100</option><option>200</option><option>500</option></select></div>
+        <div class="slang-scroll" id="aliasCandidateList">加载中…</div>
       </div>
-      <div id="aliasRoot"><div class="meta">加载中…</div></div>
+      <div class="slang-panel alias-panel" id="aliasPanelConfirmed">
+        <div class="row" style="margin-top:8px"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="aliasConfirmedSelectAll"> 全选</label><button id="aliasDeleteSelected" class="small danger">删除所选映射</button></div>
+        <div class="row" style="margin-top:8px"><input type="text" id="aliasSearchConfirmed" placeholder="搜索绰号 / QQ / 备注" style="flex:1"><select id="aliasLimitConfirmed" style="width:110px"><option>50</option><option selected>100</option><option>200</option><option>500</option></select></div>
+        <div class="slang-scroll" id="aliasConfirmedList">加载中…</div>
+      </div>
+      <div class="slang-panel alias-panel" id="aliasPanelRejected">
+        <div class="row" style="margin-top:8px"><input type="text" id="aliasSearchRejected" placeholder="搜索已拒绝绰号" style="flex:1"><select id="aliasLimitRejected" style="width:110px"><option>50</option><option selected>100</option><option>200</option><option>500</option></select></div>
+        <div class="slang-scroll" id="aliasRejectedList">加载中…</div>
+      </div>
+      <div id="aliasRoot" hidden></div>
+      <div class="divider"></div><div class="meta" style="margin-bottom:6px">手动添加成员绰号</div>
+      <div class="row"><input id="aliasName" type="text" placeholder="绰号（如 管理员）" style="flex:1"><input id="aliasQq" type="text" placeholder="QQ号" style="flex:1"></div><div class="row" style="margin-top:6px"><input id="aliasNote" type="text" placeholder="备注（可选）" style="flex:1"></div><div class="row" style="margin-top:8px"><button id="aliasAdd" class="small primary">添加入库（确认）</button></div>
+      <details style="margin-top:10px"><summary class="meta">绰号学习设置</summary><label class="row"><input type="checkbox" id="aliasAutoExtract" style="width:auto"> 自动收集明确与疑似绰号 <span id="aliasAutoExtractMsg" class="meta"></span></label></details>
+      <div class="modal-overlay" id="aliasModalOverlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="aliasModalTitle" tabindex="-1">
+        <h3 id="aliasModalTitle">编辑成员绰号</h3><div class="meta" id="aliasModalContent"></div><input type="hidden" id="aliasEditId">
+        <label>绰号</label><input type="text" id="aliasModalName" maxlength="50" placeholder="成员的称呼">
+        <label>对应 QQ（不确定可留空，不能确认）</label><input type="text" id="aliasModalQq" placeholder="5 到 12 位 QQ 号">
+        <label>备注 / 目标线索</label><input type="text" id="aliasModalNote" maxlength="400" placeholder="补充群内语境或目标线索">
+        <div id="aliasModalEvidence" class="meta"></div>
+        <div class="row"><button id="aliasModalConfirm" class="small primary">确认映射</button><button id="aliasModalReject" class="small">拒绝候选</button><button id="aliasModalCancel" class="small">取消</button></div>
+      </div></div>
     </section>
+<section id="section-terms" data-page="terms" class="card span-all" hidden>
+  <h2>词条学习 · 共同兴趣</h2>
+  <p class="meta">游戏词条聚焦玩法、机制、模式、地图、装备与战术；文化词条记录可核实的公开活动、创作和交流。黑话释义、人名绰号分别管理。</p>
+  <div class="slang-tabs learning-tabs" id="termsTabs"><button class="slang-tab active" data-term-tab="candidate">候选词条</button><button class="slang-tab" data-term-tab="confirmed">已确认</button><button class="slang-tab" data-term-tab="rejected">已拒绝</button></div>
+  <div class="sr-only" id="termsStats" role="status"></div><span class="meta" id="termsMsg" role="status"></span>
+  <div class="slang-panel terms-panel active" id="termsPanelCandidate"><div class="row" style="margin-top:8px"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="termsCandidateSelectAll"> 全选</label><button class="small" id="termsResearchSelected">研究所选</button><button class="small" id="termsConfirmSelected">确认所选</button><button class="small" id="termsRejectSelected">拒绝所选</button><details class="compact-actions"><summary>更多操作</summary><div class="compact-actions-menu"><button class="small" id="termsRefresh">刷新</button><button class="small" id="termsNew">完整表单新增</button></div></details></div><div class="row" style="margin-top:8px"><input type="text" id="termsSearchCand" placeholder="搜索词条 / 摘要 / 语境证据" style="flex:1"><select id="termsLimitCand" style="width:110px"><option>50</option><option selected>100</option><option>200</option><option>500</option></select></div><div class="slang-scroll" id="termsCandidateList">加载中…</div></div>
+  <div class="slang-panel terms-panel" id="termsPanelConfirmed"><div class="row" style="margin-top:8px"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="termsConfirmedSelectAll"> 全选</label><button class="small danger" id="termsRejectConfirmedSelected">撤销所选确认</button></div><div class="row" style="margin-top:8px"><input type="text" id="termsSearchConfirmed" placeholder="搜索词条 / 主题 / 摘要 / 来源" style="flex:1"><select id="termsLimitConfirmed" style="width:110px"><option>50</option><option selected>100</option><option>200</option><option>500</option></select></div><div class="slang-scroll" id="termsConfirmedList">加载中…</div></div>
+  <div class="slang-panel terms-panel" id="termsPanelRejected"><div class="row" style="margin-top:8px"><input type="text" id="termsSearchRejected" placeholder="搜索已拒绝词条" style="flex:1"><select id="termsLimitRejected" style="width:110px"><option>50</option><option selected>100</option><option>200</option><option>500</option></select></div><div class="slang-scroll" id="termsRejectedList">加载中…</div></div>
+  <div class="divider"></div><div class="meta" style="margin-bottom:6px">手动添加兴趣词条</div>
+  <div class="row"><input type="text" id="termManualName" placeholder="词条，如：摸金撤离" style="flex:1"><input type="text" id="termManualTopic" placeholder="主题，如：三角洲行动" style="flex:1"></div>
+  <div class="row" style="margin-top:6px"><input type="text" id="termManualSummary" placeholder="知识摘要（确认时必填）" style="flex:1"><input type="text" id="termManualSource" placeholder="公开来源 URL（可选）" style="flex:1"></div>
+  <datalist id="termCategoryOptions"><option value="兴趣知识"><option value="游戏玩法"><option value="游戏机制"><option value="游戏角色"><option value="IP与作品"><option value="世界观设定"><option value="社群文化"><option value="文化与活动"><option value="科学概念"><option value="技术术语"></datalist>
+  <div class="row" style="margin-top:8px"><span class="term-category-combo"><input type="text" id="termManualCategory" list="termCategoryOptions" maxlength="40" value="兴趣知识" placeholder="知识类别（可自定义）" aria-label="知识类别"></span><button id="termManualDraft" class="small">添加候选</button><button id="termManualConfirm" class="small primary">添加入库（确认）</button></div>
+  <details class="settings-group" style="margin-top:10px"><summary class="meta">词条学习设置</summary><div class="settings-content learning-editor-grid">
+    <label><span><input type="checkbox" id="termsAutoExtract"> 自动提取兴趣候选</span></label><label><span><input type="checkbox" id="termsAutoResearch"> 自动研究重复出现的候选</span></label>
+    <label>每批最少群消息<input type="number" id="termsMinMessages" min="2" max="60" value="12"></label><label>同群提取间隔（分钟）<input type="number" id="termsCooldown" min="1" max="1440" value="30"></label>
+    <label>每小时最多候选提取调用<input type="number" id="termsMaxCalls" min="1" max="12" value="4"></label><label>每轮最多注入词条<input type="number" id="termsInjectMax" min="1" max="5" value="3"></label>
+    <div class="learning-wide row"><button class="small primary" id="termsConfigSave">保存学习设置</button><span class="meta" id="termsConfigMsg" role="status"></span></div>
+  </div></details>
+  <div class="modal-overlay" id="termEditorOverlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="termEditorTitle" tabindex="-1">
+    <h3 id="termEditorTitle">编辑词条</h3><div class="meta" id="termEditMsg" role="status"></div>
+    <input type="hidden" id="termEditId"><label>词条名称</label><input type="text" id="termName" maxlength="60" placeholder="如：烽火地带、兽聚">
+    <label>所属主题</label><input type="text" id="termTopic" maxlength="60" placeholder="如：三角洲行动、福瑞/furry">
+    <label>知识类别</label><span class="term-category-combo"><input type="text" id="termCategory" list="termCategoryOptions" maxlength="40" placeholder="可选择建议或输入自定义类别"></span>
+    <label>限定群号（留空为公开知识）</label><input type="text" id="termGroup" placeholder="只在对应群使用的知识可填群号">
+    <label>别称（逗号分隔）</label><input type="text" id="termAliases" placeholder="可选">
+    <label>知识摘要</label><textarea id="termSummary" rows="5" placeholder="只写有依据的内容；注明版本或时效，保留文化差异。"></textarea>
+    <label>参考来源（可选，每行一个 URL）</label><textarea id="termSources" rows="3" placeholder="有可核实的公开来源时可填写"></textarea>
+    <div class="row"><button id="termSaveDraft" class="small">保存草稿</button><button id="termSaveConfirmed" class="small primary">保存并确认</button><button id="termEditorCancel" class="small">取消</button></div>
+  </div></div>
+  <div id="termsRoot" hidden></div>
+</section>
 <section id="section-components" class="card span-all" hidden>
       <h2>组件与参数（九层）</h2>
       <div class="meta">按层查看所有组件；点组件名展开配置与说明，保存后仅热重载该组件。约定：参数留空或为 0 即按默认值运行；个性设定等为空白文本即可视为「无该组件」。</div>
@@ -3059,6 +3222,7 @@ button:active:not(:disabled) {
       <details class="comp-card env-card" open>
         <summary><b>DOM 一般操作</b><span class="meta">真实 Edge（CDP）：导航/点击/填表</span></summary>
         <div class="meta">登录态、DOM 访问、页面操作（browser_navigate / click / type / snapshot）。</div>
+        <div class="meta">默认设置，待接入新插件并强化</div>
         <div class="env-comp-root" id="envCompBrowserDom" data-ids="exec-browser-manager"></div>
       </details>
       <details class="comp-card env-card" open>
@@ -3080,8 +3244,17 @@ button:active:not(:disabled) {
       <div class="row" style="gap:8px;margin:8px 0"><button id="vLayerRefresh" class="small">刷新</button></div>
       <div id="vLayerRoot"></div>
     </section>
+<section id="section-human" data-page="human" class="card span-all">
+      <h2>human</h2>
+      <div class="meta">HUMAN IN THE LOOP — 我也是一个组件。</div>
+      <div class="human-loop-banner" role="img" aria-label="Human in the loop；我也是一个组件">
+        <div class="human-loop-kicker">V · HUMAN</div>
+        <div class="human-loop-title">HUMAN IN THE LOOP</div>
+        <div class="human-loop-caption">我也是一个组件。</div>
+      </div>
+    </section>
 <section id="section-layer-s" data-page="layer-s" class="card span-all">
-      <h2>SCHNIE 思维模式-介入层</h2>
+      <h2>SCHNIE 资料参考</h2>
       <div class="meta">AI 根据对话需要自主调用只读工具浏览目录并读取原文；这里管理功能开关和查看工具用途。</div>
       <div class="tool-reference-list"><div class="tool-reference-item"><code>schnie_status</code><span>查看资料目录状态</span></div><div class="tool-reference-item"><code>schnie_topics</code><span>按需筛选主题并判断是否相关</span></div><div class="tool-reference-item"><code>schnie_read</code><span>读取选中的原文卡及出处</span></div></div>
       <div class="row" style="gap:8px;margin:8px 0"><button id="sLayerRefresh" class="small">刷新</button></div>
@@ -3099,11 +3272,11 @@ button:active:not(:disabled) {
 <section id="section-whitelist" data-page="access" class="card span-all">
       <h2>白名单 / 管理员</h2>
       <label>允许的群号（逗号分隔）</label>
-      <input type="text" id="wlGroups" placeholder="123456789, 123456">
+      <input type="text" id="wlGroups" placeholder="608, 607">
       <label>允许的私聊 QQ（逗号分隔）</label>
-      <input type="text" id="wlPrivate" placeholder="123456789">
+      <input type="text" id="wlPrivate" placeholder="10608">
       <label>管理员 QQ（ownerQQ，最高权限）</label>
-      <input type="text" id="ownerQQ" placeholder="123456789">
+      <input type="text" id="ownerQQ" placeholder="10608">
       <div class="meta">管理员是唯一可执行管理命令/审批/closed-agent 的 QQ；可留空清除（清除后无管理员，fail-closed）。</div>
       <label>拒绝的群号（黑名单，逗号分隔）</label>
       <input type="text" id="dnGroups" placeholder="">
@@ -3277,8 +3450,10 @@ button:active:not(:disabled) {
       <h3 class="usage-h3">按会话（群 / 私聊）</h3>
       <div class="tool-log-table" id="usageConversations">加载中…</div>
       <h3 class="usage-h3">会话花费阈值</h3>
+      <div class="row usage-controls"><strong>全局恢复窗口</strong><label>私聊 N（条）<input id="usageRecoveryPrivate" type="number" min="1" max="30" value="5" style="width:70px"></label><label>群聊普通 B（条，不含 @）<input id="usageRecoveryGroup" type="number" min="1" max="30" value="5" style="width:70px"></label><label>群聊 @ C（条）<input id="usageRecoveryGroupAt" type="number" min="1" max="30" value="5" style="width:70px"></label><button id="usageRecoverySave" class="small">保存恢复窗口</button></div>
       <div class="meta">每晚 22:00（北京时间）重新计入新周期。金额按本周期可归属的调用计算；0 表示不启用对应阈值。达到冷漠阈值后会降低回复频率并缩短注入内容；达到上限后改用机械回复。恢复时每个会话只补处理最近窗口内的消息。</div>
       <div class="row usage-controls"><span>全部会话及后台任务本周期：<strong id="usageGlobalTurns">—</strong> 轮，花费 <strong id="usageGlobalCost">—</strong></span><label>统一花费上限（元） <input id="usageGlobalLimit" type="number" min="0" step="0.01" value="0" style="width:100px"></label><button id="usageGlobalSave" class="small">保存统一上限</button><span id="usageGlobalState" class="meta"></span></div>
+      <div class="row"><label><input id="usageOwnerBudgetEnabled" type="checkbox" checked> 管理员 owner 受额度限制</label><button id="usageOwnerBudgetSave" class="small">保存管理员设置</button><span class="meta">关闭后，owner 私聊及其发起的任务不受个人、全局额度和低频限制；花费仍计入统计。</span></div>
       <div class="tool-log-table" id="usageBudgets">加载中…</div>
       <div class="meta" id="usageBudgetMsg"></div>
       <h3 class="usage-h3">静默后的机械回复</h3>
@@ -3365,6 +3540,72 @@ async function api(path, method, body, _retried = 0) {
   return res.json();
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const gamesParameterLabels = {
+  minSparks: ['最少虚构火花', 1, 5], maxSparks: ['最多虚构火花', 1, 5],
+  minGlowLevel: ['最低虚构亮度等级', 1, 3], maxGlowLevel: ['最高虚构亮度等级', 1, 3],
+  minCadenceMs: ['最短叙述间隔（毫秒）', 250, 5000], maxCadenceMs: ['最长叙述间隔（毫秒）', 250, 5000],
+  minDurationSec: ['最短特效时长（秒）', 1, 5], maxDurationSec: ['最长特效时长（秒）', 1, 5],
+  sides: ['骰子面数', 2, 20], maxAttempts: ['最大作答次数', 1, 10]
+};
+function renderGames(games) {
+  const host = document.getElementById('gamesRegistry');
+  if (!host) return;
+  if (!games?.length) { host.innerHTML = '<div class="meta">暂无游戏。</div>'; return; }
+  host.innerHTML = games.map(game => {
+    const params = game.custom ? '' : Object.entries(game.parameters || {}).map(([key, value]) => {
+      const [label, min, max] = gamesParameterLabels[key] || [key, 0, 100];
+      return `<label class="games-param">${esc(label)}<input type="number" data-game-param="${esc(key)}" min="${min}" max="${max}" step="1" value="${Number(value)}"></label>`;
+    }).join('');
+    return `<article class="games-card" data-game-card="${esc(game.id)}">
+      <div class="games-card-head"><div><h3>${esc(game.name)}${game.custom ? ' <span class="meta">自定义</span>' : ''}</h3><div class="meta">${esc(game.id)} · ${esc(game.summary)}</div></div>
+      <label class="games-toggle"><input type="checkbox" data-game-enabled ${game.enabled ? 'checked' : ''}> 启用</label></div>
+      <p class="games-rules"><strong>规则：</strong>${esc(game.rules)}</p>
+      ${params ? `<div class="games-params">${params}</div>` : '<div class="meta">参数通过 adapter 的初始状态和合法动作定义。</div>'}
+      <div class="row"><button class="small" data-game-save>保存设置</button>${game.custom ? '<button class="small danger" data-game-delete>删除游戏</button>' : ''}<span class="meta" data-game-message role="status"></span></div>
+    </article>`;
+  }).join('');
+}
+async function loadGames() {
+  const host = document.getElementById('gamesRegistry');
+  try { const result = await api('/api/games'); if (!result.ok) throw new Error(result.error || '游戏清单读取失败'); renderGames(result.games); }
+  catch (error) { if (host) host.innerHTML = `<div class="meta err">${esc(error.message)}</div>`; }
+}
+async function saveGameCard(card) {
+  const id = card.dataset.gameCard;
+  const message = card.querySelector('[data-game-message]');
+  const parameters = Object.fromEntries([...card.querySelectorAll('[data-game-param]')].map(input => [input.dataset.gameParam, Number(input.value)]));
+  try {
+    const result = await api('/api/games/config', 'POST', { id, enabled: card.querySelector('[data-game-enabled]').checked, parameters });
+    if (!result.ok) throw new Error(result.error || '保存失败');
+    message.textContent = '已保存'; message.className = 'meta ok';
+  } catch (error) { message.textContent = error.message; message.className = 'meta err'; }
+}
+const gamesRegistry = document.getElementById('gamesRegistry');
+gamesRegistry?.addEventListener('click', async event => {
+  const card = event.target.closest('[data-game-card]');
+  if (!card) return;
+  if (event.target.closest('[data-game-save]')) { await saveGameCard(card); return; }
+  if (event.target.closest('[data-game-delete]')) {
+    if (!confirm(`删除自定义游戏「${card.dataset.gameCard}」？`)) return;
+    const message = card.querySelector('[data-game-message]');
+    try { const result = await api('/api/games/delete', 'POST', { id: card.dataset.gameCard }); if (!result.ok) throw new Error(result.error || '删除失败'); await loadGames(); }
+    catch (error) { message.textContent = error.message; message.className = 'meta err'; }
+  }
+});
+document.getElementById('gamesReload')?.addEventListener('click', loadGames);
+document.getElementById('gamesSaveDefinition')?.addEventListener('click', async () => {
+  const message = document.getElementById('gamesSaveMessage');
+  const button = document.getElementById('gamesSaveDefinition');
+  try {
+    const definition = JSON.parse(document.getElementById('gamesDefinition').value);
+    button.disabled = true; message.textContent = '校验并保存中…'; message.className = 'meta';
+    const result = await api('/api/games/create', 'POST', { definition });
+    if (!result.ok) throw new Error(result.error || '保存失败');
+    message.textContent = `已保存并启用：${result.game.name}`; message.className = 'meta ok'; await loadGames();
+  } catch (error) { message.textContent = error.message; message.className = 'meta err'; }
+  finally { button.disabled = false; }
+});
+loadGames();
 // 上游静默时长的人话渲染：只用于 SnowLuma 健康提示（秒 / 分钟 / 小时）。
 function fmtAgoMs(ms) {
   if (ms === null || ms === undefined || ms === '') return '未知';
@@ -3933,7 +4174,7 @@ async function sendVoiceFromConsole() {
   const target = document.getElementById('voiceSendTarget').value.trim();
   const dryRun = document.getElementById('voiceSendDryRun').checked;
   const pick = document.querySelector('input[name="voicePick"]:checked');
-  if (!target) { msg.textContent = '❌ 请填发送目标（如 group:10001）'; msg.className = 'meta err'; return; }
+  if (!target) { msg.textContent = '❌ 请填发送目标（如 group:10603）'; msg.className = 'meta err'; return; }
   if (!pick) { msg.textContent = '❌ 先刷新语音库并选中一个音频'; msg.className = 'meta err'; return; }
   const entry = voiceEntries[Number(pick.value)];
   msg.textContent = '发送中…'; msg.className = 'meta';
@@ -3962,7 +4203,9 @@ function buildV2TimeBubbleRow(slot) {
   const div = document.createElement('div');
   div.className = 'row';
   div.dataset.tbRow = '1';
+  div.dataset.tbId = String(slot.id || '');
   div.innerHTML = '<label style="flex:0 0 auto"><input type="checkbox" data-tb="enabled"> 启用</label>'
+    + '<label style="flex:0 0 auto"><input type="checkbox" data-tb="locked"> 锁定</label>'
     + '<input type="number" data-tb="hour" min="0" max="23" style="width:64px">'
     + '<span>:</span>'
     + '<input type="number" data-tb="minute" min="0" max="59" style="width:64px">'
@@ -3970,22 +4213,61 @@ function buildV2TimeBubbleRow(slot) {
     + '<input type="text" data-tb="hint" placeholder="参考说法：咚咚咚 白饭端来了" style="flex:1">'
     + '<button class="small danger" data-tb-del>删除</button>';
   div.querySelector('[data-tb="enabled"]').checked = slot.enabled !== false;
+  div.querySelector('[data-tb="locked"]').checked = slot.locked === true;
   div.querySelector('[data-tb="hour"]').value = slot.hour ?? 12;
   div.querySelector('[data-tb="minute"]').value = slot.minute ?? 0;
   div.querySelector('[data-tb="label"]').value = slot.label || '';
   div.querySelector('[data-tb="hint"]').value = slot.hint || '';
-  div.querySelector('[data-tb-del]').addEventListener('click', () => div.remove());
+  div.querySelector('[data-tb-del]').addEventListener('click', () => { div.remove(); applyV2TimeBubbleLocks(); });
+  div.querySelector('[data-tb="locked"]').addEventListener('change', () => applyV2TimeBubbleLocks());
   return div;
 }
-function renderV2TimeBubbles(list) {
+function applyV2TimeBubbleLocks() {
+  const allLocked = document.getElementById('v2TbAllLocked')?.checked === true;
+  document.querySelectorAll('#v2TimeBubbleRows [data-tb-row]').forEach((row) => {
+    const rowLocked = row.querySelector('[data-tb="locked"]')?.checked === true;
+    row.querySelectorAll('[data-tb]:not([data-tb="locked"]),[data-tb-del]').forEach((el) => { el.disabled = allLocked || rowLocked; });
+    row.querySelector('[data-tb="locked"]').disabled = allLocked;
+  });
+  syncV2TimeBubbleCapacity();
+}
+function syncV2TimeBubbleCapacity() {
+  const box = document.getElementById('v2TimeBubbleRows');
+  const add = document.getElementById('v2TimeBubbleAdd');
+  const msg = document.getElementById('v2TbCapacityMsg');
+  const capacityInput = add?.closest('.settings-content')?.querySelector('.inline-component-settings .comp-form-num');
+  const count = box?.querySelectorAll('[data-tb-row]').length || 0;
+  const allLocked = document.getElementById('v2TbAllLocked')?.checked === true;
+  const rawLimit = capacityInput?.value;
+  const limit = rawLimit !== '' && Number.isFinite(Number(rawLimit)) ? Math.max(0, Math.floor(Number(rawLimit))) : Infinity;
+  const overLimit = count > limit;
+  if (add) add.disabled = allLocked || count >= limit;
+  if (capacityInput) {
+    capacityInput.disabled = overLimit;
+    if (!overLimit) capacityInput.dataset.lastValidValue = capacityInput.value;
+  }
+  if (msg) {
+    if (overLimit) msg.textContent = `当前已配置 ${count} 个时段，超过每日上限 ${limit}；请先删除多余时段，再调整上限。`;
+    else if (allLocked) msg.textContent = `当前已配置 ${count}${Number.isFinite(limit) ? ' / ' + limit : ''} 个时段；冒泡栏已锁定。`;
+    else if (count >= limit) msg.textContent = `当前已配置 ${count} / ${limit} 个时段，已达到上限，不能继续添加。`;
+    else if (Number.isFinite(limit)) msg.textContent = `当前已配置 ${count} / ${limit} 个时段，还可添加 ${limit - count} 个。`;
+    else msg.textContent = `当前已配置 ${count} 个时段。`;
+  }
+}
+function renderV2TimeBubbles(list, allLocked = false) {
   const box = document.getElementById('v2TimeBubbleRows');
   if (!box) return;
+  const lock = document.getElementById('v2TbAllLocked');
+  if (lock) lock.checked = allLocked === true;
   box.innerHTML = '';
   (Array.isArray(list) ? list : []).forEach((s) => box.appendChild(buildV2TimeBubbleRow(s)));
+  applyV2TimeBubbleLocks();
 }
 function collectV2TimeBubbles() {
   return [...document.querySelectorAll('#v2TimeBubbleRows [data-tb-row]')].map((row) => ({
+    ...(row.dataset.tbId ? { id: row.dataset.tbId } : {}),
     enabled: row.querySelector('[data-tb="enabled"]').checked,
+    locked: row.querySelector('[data-tb="locked"]').checked,
     hour: Math.min(23, Math.max(0, Math.round(Number(row.querySelector('[data-tb="hour"]').value) || 0))),
     minute: Math.min(59, Math.max(0, Math.round(Number(row.querySelector('[data-tb="minute"]').value) || 0))),
     label: row.querySelector('[data-tb="label"]').value.trim().slice(0, 20),
@@ -3999,16 +4281,19 @@ async function loadV2TimeBubblesFor(key) {
     const r = await api('/api/socialV2/time-bubbles?key=' + encodeURIComponent(key));
     if (!r.ok) throw new Error(r.error || '读取失败');
     const all = r.all || r.slots || [];
-    renderV2TimeBubbles(all);
+    renderV2TimeBubbles(all, r.allLocked === true);
     setV2TbMsg((all.length ? '该会话已配置时间冒泡。' : '当前没有时间冒泡。') + ' 共 ' + all.length + ' 个时段。');
   } catch (e) { setV2TbMsg('读取失败：' + (e && e.message ? e.message : e)); }
 }
 async function saveV2TimeBubblesFor(key) {
   if (!key) { setV2TbMsg('请选择会话'); return; }
   try {
-    const r = await api('/api/socialV2/time-bubbles', 'POST', { key, slots: collectV2TimeBubbles() });
-    setV2TbMsg(r.ok ? ('✅ 已保存，共 ' + ((r.all || []).length) + ' 个时段') : ('❌ ' + (r.error || '失败')));
+    const r = await api('/api/socialV2/time-bubbles', 'POST', { key, slots: collectV2TimeBubbles(), allLocked: document.getElementById('v2TbAllLocked')?.checked === true });
+    setV2TbMsg(r.ok ? (r.conflicts?.length
+      ? ('⚠️ 已保存未锁时段；锁定时段 ' + r.conflicts.join('、') + ' 保持原样。')
+      : ('✅ 已保存，共 ' + ((r.all || []).length) + ' 个时段')) : ('❌ ' + (r.error || '失败')));
     if (r.ok) loadV2TimeBubblesFor(key);
+    else if (r.error === 'LOCKED_SCHEDULE') { setV2TbMsg('该冒泡栏或时段已锁定；先解锁，再保存。'); loadV2TimeBubblesFor(key); }
   } catch (e) { setV2TbMsg('保存失败：' + (e && e.message ? e.message : e)); }
 }
 async function resetV2TimeBubblesFor(key) {
@@ -4019,6 +4304,43 @@ async function resetV2TimeBubblesFor(key) {
     setV2TbMsg(r.ok ? '✅ 已清空；此会话不会再发送时间冒泡' : ('❌ ' + (r.error || '失败')));
     if (r.ok) loadV2TimeBubblesFor(key);
   } catch (e) { setV2TbMsg('恢复失败：' + (e && e.message ? e.message : e)); }
+}
+async function loadV2FollowupSessionLimits(key) {
+  const interval = document.getElementById('v2TbFollowupInterval');
+  const daily = document.getElementById('v2TbFollowupDaily');
+  const msg = document.getElementById('v2TbFollowupMsg');
+  if (!interval || !daily) return;
+  if (!key) { interval.value = ''; daily.value = ''; if (msg) msg.textContent = ''; return; }
+  if (!key.startsWith('private:')) { interval.value = ''; daily.value = ''; if (msg) msg.textContent = '请选择 private: 私聊会话。'; return; }
+  try {
+    const response = await api('/api/plugins/detail?id=ctx-chat-topic-drive');
+    const plugin = response.plugin || response;
+    const limit = plugin.config?.sessionLimits?.[key] || {};
+    interval.value = limit.minIntervalMinutes ?? '';
+    daily.value = limit.dailyLimit ?? '';
+    if (msg) msg.textContent = '空白项继承全局限制。';
+  } catch (error) { if (msg) msg.textContent = '读取失败：' + error.message; }
+}
+async function saveV2FollowupSessionLimits() {
+  const key = document.getElementById('v2FollowupSessionKey')?.value || '';
+  const intervalEl = document.getElementById('v2TbFollowupInterval');
+  const dailyEl = document.getElementById('v2TbFollowupDaily');
+  const msg = document.getElementById('v2TbFollowupMsg');
+  if (!key) { if (msg) msg.textContent = '请先选择 session。'; return; }
+  if (!key.startsWith('private:')) { if (msg) msg.textContent = '跟进限制需选择 private:QQ号 会话。'; return; }
+  try {
+    const detail = await api('/api/plugins/detail?id=ctx-chat-topic-drive');
+    const plugin = detail.plugin || detail;
+    const config = plugin.config || {};
+    const overrides = { ...(config.sessionLimits || {}) };
+    const limit = {};
+    if (intervalEl.value !== '') limit.minIntervalMinutes = Math.max(0, Math.min(10080, Math.round(Number(intervalEl.value) || 0)));
+    if (dailyEl.value !== '') limit.dailyLimit = Math.max(0, Math.min(30, Math.round(Number(dailyEl.value) || 0)));
+    if (Object.keys(limit).length) overrides[key] = limit; else delete overrides[key];
+    const result = await api('/api/plugins/config', 'POST', { id: 'ctx-chat-topic-drive', config: { ...config, sessionLimits: overrides } });
+    if (result.ok === false) throw Error(result.error || '保存失败');
+    if (msg) msg.textContent = '已保存；生效值取全局与该 session 的较小值。';
+  } catch (error) { if (msg) msg.textContent = '保存失败：' + error.message; }
 }
 function setV2PmMsg(text) { const el = document.getElementById('v2PmMsg'); if (el) el.textContent = text || ''; }
 async function loadV2PersistentMemory(key) {
@@ -4208,7 +4530,7 @@ async function refreshV2Schedule() {
     const convs = r.conversations || [];
     const schMap = new Map();
     for (const c of (sch && sch.conversations) || []) schMap.set(c.key, c);
-    // 顺带填充「定时主动消息」「持久化记忆」的会话下拉。
+    // 填充各自功能的会话下拉；跟进覆盖值仅适用于私聊。
     const fillKeys = (el) => {
       if (!el) return;
       const prev = el.value;
@@ -4217,6 +4539,17 @@ async function refreshV2Schedule() {
     };
     fillKeys(document.getElementById('v2TbKey'));
     fillKeys(document.getElementById('v2PmKey'));
+    const followupKey = document.getElementById('v2FollowupSessionKey');
+    if (followupKey) {
+      const previous = followupKey.value;
+      const privateConvs = convs.filter((c) => String(c.key || '').startsWith('private:'));
+      followupKey.innerHTML = privateConvs.length
+        ? privateConvs.map((c) => '<option value="' + esc(c.key) + '">' + esc(c.key) + '</option>').join('')
+        : '<option value="">（暂无私聊会话）</option>';
+      if (previous && privateConvs.some((c) => c.key === previous)) followupKey.value = previous;
+      if (followupKey.value) await loadV2FollowupSessionLimits(followupKey.value);
+      else await loadV2FollowupSessionLimits('');
+    }
     const cur = sel.value;
     sel.innerHTML = convs.length
       ? convs.map((c) => '<option value="' + esc(c.key) + '">' + esc(c.key) + '</option>').join('')
@@ -4247,21 +4580,73 @@ async function refreshV2Schedule() {
         const dateText = Number.isFinite(dueDate.getTime()) ? new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', weekday: 'short' }).format(dueDate) : String(it.when || '时间未设置');
         const timeText = Number.isFinite(dueDate.getTime()) ? dueDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
         const extra = [it.place ? '地点：' + it.place : '', it.detail ? '备注：' + it.detail : ''].filter(Boolean).join('　·　');
+        // 提前量：每条日程自己的 leadMinutes；缺字段/未指定时由服务端按全局默认（30）解析。
+        const rawLead = Number(it.leadMinutes);
+        const leadMinutes = Number.isFinite(rawLead) ? Math.min(1440, Math.max(0, Math.round(rawLead))) : 30;
+        const leadIsDefault = it.leadIsDefault === true;
+        const remindAt = Number(it.remindAt) || (dueAt ? dueAt - leadMinutes * 60 * 1000 : 0);
+        const remindText = remindAt && Number.isFinite(new Date(remindAt).getTime())
+          ? new Date(remindAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+          : '';
+        const leadEncKey = esc(encodeURIComponent(c.key));
+        const intervalMinutes = Number.isInteger(Number(it.intervalMinutes)) ? Math.min(1440, Math.max(1, Number(it.intervalMinutes))) : 30;
+        const nextReminderAt = Number(it.nextReminderAt) || remindAt;
+        const nextReminderText = nextReminderAt && Number.isFinite(new Date(nextReminderAt).getTime())
+          ? new Date(nextReminderAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+          : '';
+        const nextReminderLabel = Number(it.lastRemindedAt) > 0 ? '下次 ' : (nextReminderAt <= Date.now() ? '待首次补发 ' : '首次 ');
         rows.push('<article class="schedule-card"><div class="schedule-card-date"><span>' + esc(dateText) + '</span>'
           + '<strong>' + esc(timeText) + '</strong><small>' + esc(remainingLabel(dueAt)) + '</small></div>'
           + '<div class="schedule-card-body"><div class="schedule-card-title">' + esc(it.title || '未命名日程') + '</div>'
           + '<div class="schedule-card-meta">' + esc(repeatLabel(it.repeat)) + '</div>'
-          + (extra ? '<div class="schedule-card-extra">' + esc(extra) + '</div>' : '') + '</div>'
-          + '<button type="button" class="small danger schedule-card-delete" aria-label="删除日程 ' + esc(it.title || '') + '" data-sch-key="' + esc(encodeURIComponent(c.key))
+          + (extra ? '<div class="schedule-card-extra">' + esc(extra) + '</div>' : '')
+          + '<div class="schedule-card-lead">开始前 <input type="number" min="0" max="1440" step="1" value="' + leadMinutes + '" data-lead-key="' + leadEncKey
+          + '" data-lead-id="' + esc(it.id) + '" aria-label="提醒开始提前分钟数"> 分钟；之后每 <input type="number" min="1" max="1440" step="1" value="' + intervalMinutes + '" data-interval-id="' + esc(it.id) + '" aria-label="提醒间歇分钟数"> 分钟提醒'
+          + ' <button type="button" class="small" data-lead-save="1" data-lead-key="' + leadEncKey + '" data-lead-id="' + esc(it.id)
+          + '">保存提醒设置</button>'
+          + ' <button type="button" class="small" data-sch-complete="1" data-sch-key="' + leadEncKey + '" data-sch-id="' + esc(it.id)
+          + '" data-sch-title="' + esc(encodeURIComponent(String(it.title || ''))) + '">确认已去做</button>'
+          + ' <span class="meta">' + (leadIsDefault ? '提前量跟随全局默认' : '提前量单独设置') + (remindText ? ' · 开始 ' + esc(remindText) : '') + (nextReminderText ? ' · ' + nextReminderLabel + esc(nextReminderText) : '') + '</span></div></div>'
+          + '<button type="button" class="small danger schedule-card-delete" aria-label="删除日程 ' + esc(it.title || '') + '" data-sch-delete="1" data-sch-key="' + esc(encodeURIComponent(c.key))
           + '" data-sch-id="' + esc(it.id) + '" data-sch-title="' + esc(encodeURIComponent(String(it.title || ''))) + '">删除</button></article>');
       }
       rows.push('</section>');
     }
     listEl.innerHTML = rows.join('') || '<div class="schedule-empty">暂无待办日程。选择会话并填写时间与内容即可添加。</div>';
-    listEl.querySelectorAll('[data-sch-key]').forEach((btn) => btn.addEventListener('click', async () => {
+    listEl.querySelectorAll('[data-sch-delete]').forEach((btn) => btn.addEventListener('click', async () => {
       if (!confirm('删除日程「' + decodeURIComponent(btn.dataset.schTitle || '') + '」？')) return;
       const res = await api('/api/socialV2/schedules', 'POST', { action: 'cancel', key: decodeURIComponent(btn.dataset.schKey), id: btn.dataset.schId });
       if (res && res.ok === false) alert('删除失败：' + (res.error || '未知错误'));
+      await refreshV2Schedule();
+    }));
+    listEl.querySelectorAll('[data-sch-complete]').forEach((btn) => btn.addEventListener('click', async () => {
+      if (!confirm('确认「' + decodeURIComponent(btn.dataset.schTitle || '') + '」已经去做了吗？')) return;
+      const res = await api('/api/socialV2/schedules', 'POST', { action: 'complete', key: decodeURIComponent(btn.dataset.schKey || ''), id: btn.dataset.schId });
+      if (res && res.ok === false) alert('确认失败：' + (res.error || '未知错误'));
+      await refreshV2Schedule();
+    }));
+    // 逐条改提前量：action=update（服务端改完立刻生效，下一个 tick 用新值）。
+    listEl.querySelectorAll('[data-lead-save]').forEach((btn) => btn.addEventListener('click', async () => {
+      const row = btn.closest('.schedule-card-lead');
+      const leadInput = row ? row.querySelector('input[data-lead-id]') : null;
+      const intervalInput = row ? row.querySelector('input[data-interval-id]') : null;
+      const raw = leadInput ? String(leadInput.value || '').trim() : '';
+      const rawInterval = intervalInput ? String(intervalInput.value || '').trim() : '';
+      const minutes = Number(raw), interval = Number(rawInterval);
+      if (raw === '' || !Number.isInteger(minutes) || minutes < 0 || minutes > 1440 || !Number.isInteger(interval) || interval < 1 || interval > 1440) {
+        alert('提醒开始提前量需为 0–1440 的整数，间歇周期需为 1–1440 的整数（分钟）');
+        return;
+      }
+      btn.disabled = true;
+      const res = await api('/api/socialV2/schedules', 'POST', {
+        action: 'update',
+        key: decodeURIComponent(btn.dataset.leadKey || ''),
+        id: btn.dataset.leadId,
+        leadMinutes: minutes,
+        intervalMinutes: interval
+      });
+      btn.disabled = false;
+      if (res && res.ok === false) alert('修改提醒设置失败：' + (res.error || '未知错误'));
       await refreshV2Schedule();
     }));
     msg.textContent = (sch && sch.ok === false)
@@ -4383,7 +4768,6 @@ async function loadV2Config() {
     document.getElementById('v2StickerMaxList').value = stk.maxListCount ?? 100;
     document.getElementById('v2StickerPromptMax').value = stk.promptMaxStickers ?? 8;
     document.getElementById('v2StickerIncludePrompt').checked = stk.includeInPrompt !== false;
-    document.getElementById('v2StickerSendProb').value = stk.sendProbability ?? 0.6;
     document.getElementById('v2StickerRecentCooldown').value = stk.recentCooldownMinutes ?? 30;
     const stkCollect = stk.collect || {};
     document.getElementById('v2StickerCollectEnabled').checked = stkCollect.enabled !== false;
@@ -4425,9 +4809,15 @@ async function loadV2Config() {
     document.getElementById('v2NewsHour').value = nw.hour ?? 9;
     document.getElementById('v2NewsMinute').value = nw.minute ?? 0;
     document.getElementById('v2NewsMax').value = nw.maxItems ?? 2;
-    const rr = c.readReceipt || {};
-    document.getElementById('v2ReadEnabled').checked = rr.enabled !== false;
-    document.getElementById('v2ReadEmoji').value = rr.emojiId ?? '128';
+    const defaultNewsTopics = ['鲸鱼', '海洋', '少年感', '海洋 纪录片', '大海 治愈', '少年 成长'];
+    document.getElementById('v2NewsKeywords').value = (Array.isArray(nw.keywords) && nw.keywords.length ? nw.keywords : defaultNewsTopics).join('\n');
+    const defaultNewsUploaders = [{ topic: '鲸鱼', uploader: '正太肥鱼与龙少的日常', weight: 2 }];
+    const topicUploaders = Array.isArray(nw.topicUploaders) ? nw.topicUploaders : defaultNewsUploaders;
+    document.getElementById('v2NewsUploaders').value = topicUploaders.map(x => `${x.topic} | ${x.uploader} | ${x.weight ?? 1}`).join('\n');
+    document.getElementById('v2NewsSessions').value = (Array.isArray(nw.sessionWhitelist) ? nw.sessionWhitelist : []).join('\n');
+    const ds = c.doubleStamp || {};
+    document.getElementById('v2DoubleStampEnabled').checked = ds.enabled !== false;
+    document.getElementById('v2DoubleStampWindowCount').value = Math.min(100, Math.max(1, Math.round(Number(ds.windowCount) || 8)));
     const sr = c.selfReview || {};
     document.getElementById('v2SelfReviewEnabled').checked = sr.enabled !== false;
     document.getElementById('v2SelfReviewHours').value = sr.intervalHours ?? 6;
@@ -4521,7 +4911,6 @@ async function saveV2Config(btn) {
       syncTtlMs: Math.max(1000, Math.round(Number(document.getElementById('v2StickerSyncTtlSec').value) || 60) * 1000),
       maxListCount: Math.min(500, Math.max(1, Math.round(Number(document.getElementById('v2StickerMaxList').value) || 100))),
       includeInPrompt: document.getElementById('v2StickerIncludePrompt').checked,
-      sendProbability: Math.min(1, Math.max(0, Number(document.getElementById('v2StickerSendProb').value) || 0)),
       recentCooldownMinutes: Math.min(1440, Math.max(0, Math.round(Number(document.getElementById('v2StickerRecentCooldown').value) || 0))),
       promptMaxStickers: Math.min(30, Math.max(1, Math.round(Number(document.getElementById('v2StickerPromptMax').value) || 8))),
       collect: {
@@ -4569,7 +4958,13 @@ async function saveV2Config(btn) {
       enabled: document.getElementById('v2NewsEnabled').checked,
       hour: Math.min(23, Math.max(0, Math.round(Number(document.getElementById('v2NewsHour').value) || 9))),
       minute: Math.min(59, Math.max(0, Math.round(Number(document.getElementById('v2NewsMinute').value) || 0))),
-      maxItems: Math.min(5, Math.max(1, Math.round(Number(document.getElementById('v2NewsMax').value) || 2)))
+      maxItems: Math.min(5, Math.max(1, Math.round(Number(document.getElementById('v2NewsMax').value) || 2))),
+      keywords: document.getElementById('v2NewsKeywords').value.split(/[，,\r\n]+/).map(s => s.trim()).filter(Boolean),
+      topicUploaders: document.getElementById('v2NewsUploaders').value.split(/[\r\n]+/).map(line => {
+        const [topic = '', uploader = '', weight = '1'] = line.split('|').map(s => s.trim());
+        return { topic, uploader, weight: weight ? Number(weight) : 1 };
+      }).filter(x => x.topic && x.uploader),
+      sessionWhitelist: document.getElementById('v2NewsSessions').value.split(/[，,\r\n]+/).map(s => s.trim()).filter(Boolean)
     },
     selfReview: {
       enabled: document.getElementById('v2SelfReviewEnabled').checked,
@@ -4583,9 +4978,9 @@ async function saveV2Config(btn) {
       enabled: document.getElementById('v2AdminDevEnabled').checked,
       preset: String(document.getElementById('v2AdminDevPreset').value || 'standard').trim().slice(0, 64) || 'standard'
     },
-    readReceipt: {
-      enabled: document.getElementById('v2ReadEnabled').checked,
-      emojiId: String(document.getElementById('v2ReadEmoji').value || '128').trim().slice(0, 16) || '128'
+    doubleStamp: {
+      enabled: document.getElementById('v2DoubleStampEnabled').checked,
+      windowCount: Math.min(100, Math.max(1, Math.round(Number(document.getElementById('v2DoubleStampWindowCount').value) || 8)))
     },
     dailyDiary: {
       enabled: document.getElementById('v2DdEnabled').checked,
@@ -5001,38 +5396,38 @@ document.getElementById('v2InitPromptList').addEventListener('click', (ev) => {
   loadV2InitialPrompt();
 });
 
-async function loadV2SessionOptions() {
-  const sel = document.getElementById('v2SessionSelect');
-  const prev = sel.value;
-  try {
-    const r = await api('/api/status');
-    const groups = Array.isArray(r.allowGroups) ? r.allowGroups : [];
-    const privates = Array.isArray(r.allowPrivate) ? r.allowPrivate : [];
-    const options = [{ value: '', label: '选择白名单群/私聊…' }];
-    for (const g of groups) options.push({ value: 'group:' + g, label: '群 ' + g });
-    for (const p of privates) options.push({ value: 'private:' + p, label: '私聊 ' + p });
-    sel.innerHTML = options.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
-    if (prev && options.some((o) => o.value === prev)) sel.value = prev;
-  } catch (e) {
-    sel.innerHTML = '<option value="">无法加载白名单</option>';
-  }
-}
-document.getElementById('v2SessionRefresh').addEventListener('click', loadV2SessionOptions);
-document.getElementById('v2SessionSelect').addEventListener('change', (ev) => {
-  const key = ev.target.value;
-  if (!key) return;
-  document.getElementById('v2StateKey').value = key;
-  document.getElementById('v2MemoryKey').value = key;
-  document.getElementById('v2WakeKey').value = key;
-  document.getElementById('v2InitPromptKey').value = key;
-});
-
 document.querySelectorAll('.v2-save').forEach(b => b.addEventListener('click', () => saveV2Config(b)));
 document.getElementById('v2ConfigSaveTop').addEventListener('click', () => saveV2Config(document.getElementById('v2ConfigSaveTop')));
 document.getElementById('v2MoodRefresh').addEventListener('click', refreshV2Mood);
 document.getElementById('v2TimeBubbleAdd').addEventListener('click', () => {
   const box = document.getElementById('v2TimeBubbleRows');
-  if (box) box.appendChild(buildV2TimeBubbleRow({ hour: 12, minute: 0, label: '', hint: '', enabled: true }));
+  if (box) {
+    const capacity = document.getElementById('v2TimeBubbleAdd')?.closest('.settings-content')?.querySelector('.inline-component-settings .comp-form-num');
+    const limit = capacity && capacity.value !== '' ? Math.max(0, Math.floor(Number(capacity.value) || 0)) : Infinity;
+    if (box.querySelectorAll('[data-tb-row]').length >= limit) { syncV2TimeBubbleCapacity(); return; }
+    box.appendChild(buildV2TimeBubbleRow({ hour: 12, minute: 0, label: '', hint: '', enabled: true }));
+    applyV2TimeBubbleLocks();
+  }
+});
+document.getElementById('v2TbAllLocked').addEventListener('change', applyV2TimeBubbleLocks);
+document.addEventListener('change', (event) => {
+  const input = event.target;
+  if (!input.matches?.('.inline-component-settings .comp-form-num') || !input.closest('.settings-content')?.querySelector('#v2TimeBubbleAdd')) return;
+  const count = document.querySelectorAll('#v2TimeBubbleRows [data-tb-row]').length;
+  const attempted = input.value === '' ? Infinity : Math.max(0, Math.floor(Number(input.value) || 0));
+  if (count > attempted) {
+    input.value = input.dataset.lastValidValue ?? '';
+    syncV2TimeBubbleCapacity();
+    return;
+  }
+  input.dataset.lastValidValue = input.value;
+  syncV2TimeBubbleCapacity();
+});
+document.getElementById('v2TbFollowupSave').addEventListener('click', saveV2FollowupSessionLimits);
+document.getElementById('v2FollowupSessionKey').addEventListener('change', (event) => loadV2FollowupSessionLimits(event.target.value));
+document.getElementById('v2FollowupSessionRefresh').addEventListener('click', async () => {
+  await refreshV2Schedule();
+  await loadV2FollowupSessionLimits(document.getElementById('v2FollowupSessionKey').value);
 });
 document.getElementById('v2ScheduleRefresh').addEventListener('click', refreshV2Schedule);
 document.getElementById('v2SelfReviewView').addEventListener('click', async () => {
@@ -5131,9 +5526,30 @@ document.getElementById('v2ReminderAdd').addEventListener('click', async () => {
   const repeat = repeatMap[document.getElementById('v2ReminderRepeat').value] || 'none';
   const msg = document.getElementById('v2ScheduleMsg');
   if (!key || !date || !text) { msg.textContent = '请先选择会话、填日期和内容'; return; }
-  const r = await api('/api/socialV2/schedules', 'POST', { action: 'add', key, title: text, when: date + ' ' + time, repeat });
+  const leadEl = document.getElementById('v2ReminderLead');
+  const intervalEl = document.getElementById('v2ReminderInterval');
+  const leadRaw = leadEl ? String(leadEl.value || '').trim() : '';
+  const intervalRaw = intervalEl ? String(intervalEl.value || '').trim() : '';
+  const payload = { action: 'add', key, title: text, when: date + ' ' + time, repeat };
+  if (leadRaw !== '') {
+    const leadMinutes = Number(leadRaw);
+    if (!Number.isFinite(leadMinutes) || Math.round(leadMinutes) < 0 || Math.round(leadMinutes) > 1440) {
+      msg.textContent = '提前量要是 0–1440 的整数（分钟）';
+      return;
+    }
+    payload.leadMinutes = Math.round(leadMinutes);
+  }
+  if (intervalRaw !== '') {
+    const intervalMinutes = Number(intervalRaw);
+    if (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 1440) {
+      msg.textContent = '间歇周期要是 1–1440 的整数（分钟）';
+      return;
+    }
+    payload.intervalMinutes = intervalMinutes;
+  }
+  const r = await api('/api/socialV2/schedules', 'POST', payload);
   if (r && r.ok !== false) {
-    msg.textContent = '✅ 已添加日程：' + (r.item ? (r.item.when + ' · ' + r.item.title) : text);
+    msg.textContent = '✅ 已添加日程：' + (r.item ? (r.item.when + ' · ' + r.item.title + ' · 提前 ' + r.item.leadMinutes + ' 分钟开始，每 ' + r.item.intervalMinutes + ' 分钟提醒' + (r.leadClamped ? '（已夹取）' : '')) : text);
     document.getElementById('v2ReminderText').value = '';
   } else {
     msg.textContent = '❌ ' + ((r && r.error) || '添加失败');
@@ -5182,7 +5598,7 @@ document.getElementById('v2StatesList').addEventListener('click', async () => {
   document.getElementById('v2AllStatesOutput').textContent = JSON.stringify(r.conversations || [], null, 2);
 });
 // ── 已读/已回复双时间戳（seenAt + repliedAt）────────────────────────────────
-// 索引号登记在 splitParameterPages 的「唤醒与会话」组里（12 = 本 details 在 section-v2-l 内的序号）。
+// 该设置组也归入拆分后的「唤醒与会话」页；旧页 shell 在页面启动时移除。
 function loadV2Receipts() {
   const key = document.getElementById('v2ReceiptKey').value.trim();
   const msg = document.getElementById('v2ReceiptMsg');
@@ -5198,9 +5614,12 @@ function loadV2Receipts() {
       `会话：${r.key || key}`,
       `待回复：${Number(r.pendingReplyCount) || 0} 条｜已接收未回复：${Number(r.awaitingReplyCount) || 0} 条｜首条未完成 seq：${r.firstPendingSeq == null ? '—' : r.firstPendingSeq}｜已读水位：${r.lastReadThroughSeq == null ? '—' : r.lastReadThroughSeq}`
     ];
+    const audit = r.doubleStampCheck;
+    if (audit) lines.push(`最近入站回查：${audit.enabled ? '启用' : '关闭'}｜向前 ${Number(audit.windowCount) || 0} 条｜触发 seq ${audit.triggerSeq || '—'}｜${audit.checkedAt ? new Date(Number(audit.checkedAt)).toLocaleTimeString() : '尚未检查'}｜窗口未完成 ${Number(audit.pendingCount) || 0} 条｜异常 ${Array.isArray(audit.anomalies) ? audit.anomalies.length : 0} 条｜上次 JSON 回执 ${audit.lastReportAt ? new Date(Number(audit.lastReportAt)).toLocaleTimeString() : '尚未上报'}｜${audit.lastReportError || ''}`);
+    if (Array.isArray(audit?.anomalies) && audit.anomalies.length) lines.push('异常详情：' + audit.anomalies.map((item) => `seq ${item.seq} ${item.state || ''} ${item.note || item.source || ''}`).join('；'));
     if (!rows.length) lines.push('（窗口内没有未完成的消息：都拿到了 seenAt + repliedAt）');
     for (const m of rows) {
-      lines.push(`seq ${m.seq} · ${m.sender || '未知'} · seenAt=${fmt(m.seenAt)} · repliedAt=${fmt(m.repliedAt)}${m.awaitingReply ? ' · 已接收未回复' : ''}`);
+      lines.push(`seq ${m.seq} · ${m.sender || '未知'} · ${m.receiptState || ''} · seenAt=${fmt(m.seenAt)} · repliedAt=${fmt(m.repliedAt)}${m.awaitingReply ? ' · 已接收未回复' : ''}`);
     }
     out.textContent = lines.join('\n');
     msg.textContent = '✅ 已加载';
@@ -5403,8 +5822,8 @@ function setSlangMsg(text, ok = true) {
 }
 function setSlangTab(tab) {
   slangActiveTab = tab;
-  document.querySelectorAll('.slang-tab').forEach((btn) => btn.classList.toggle('active', btn.dataset.slangTab === tab));
-  document.querySelectorAll('.slang-panel').forEach((panel) => panel.classList.toggle('active', panel.id === 'slangPanel' + tab[0].toUpperCase() + tab.slice(1)));
+  document.querySelectorAll('#section-slang .slang-tab').forEach((btn) => btn.classList.toggle('active', btn.dataset.slangTab === tab));
+  document.querySelectorAll('#section-slang .slang-panel').forEach((panel) => panel.classList.toggle('active', panel.id === 'slangPanel' + tab[0].toUpperCase() + tab.slice(1)));
   renderSlangPanel();
 }
 function updateSlangSelectAll(status) {
@@ -5436,7 +5855,8 @@ function renderSlangPanel() {
   let html = `<div class="meta" style="padding:6px 8px">共 ${filtered.length} 条，显示 ${shown.length} 条（可滚动查找）</div>`;
   html += '<table><tr><th>选择</th><th>词条</th><th>次数</th><th>来源</th><th>含义 / 用法 / 示例</th><th>参考来源</th><th>语境证据</th><th>操作</th></tr>';
   for (const e of shown) {
-    const meaning = e.meaning ? esc(e.meaning) : (status === 'candidate' ? '<span class="meta">待研究</span>' : '<span class="meta">无</span>');
+    const researchLabel=status==='candidate'?(Number(e.lastInferenceCount)>0?(Number(e.lastInferenceCount)<Number(e.count)?'有新语境，待复核':e.meaning?'已研究，待审核':'已研究，仍不确定'):e.meaning?'已有解释，待审核':String(e.risk||'').startsWith('研究未确定：')?'已研究，仍不确定':'待研究'):'';
+    const meaning = e.meaning ? esc(e.meaning)+(status==='candidate'?'<br><span class="meta">'+researchLabel+'</span>':'') : (status === 'candidate' ? '<span class="meta">'+researchLabel+'</span>' : '<span class="meta">无</span>');
     const checked = slangSelected.has(e.id) ? ' checked' : '';
     const actions = [];
     if (status === 'candidate') {
@@ -5455,7 +5875,7 @@ function renderSlangPanel() {
       <td><b>${esc(e.content)}</b><br><span class="${slangStatusClass(status)}">${slangStatusLabel(status)}</span></td>
       <td>${esc(e.count)}</td>
       <td>${esc(slangSourceLabel(e))}</td>
-      <td>${meaning}${e.usage ? '<br><span class="meta">用法：' + esc(e.usage) + '</span>' : ''}${e.example ? '<br><span class="meta">例：' + esc(e.example) + '</span>' : ''}${e.risk ? '<br><span class="meta">风险：' + esc(e.risk) + '</span>' : ''}</td>
+      <td>${meaning}${e.usage ? '<br><span class="meta">用法：' + esc(e.usage) + '</span>' : ''}${e.example ? '<br><span class="meta">例：' + esc(e.example) + '</span>' : ''}${e.risk ? '<br><span class="meta">' + (String(e.risk).startsWith('研究未确定：') ? '研究备注：' + esc(String(e.risk).slice(6)) : '风险：' + esc(e.risk)) + '</span>' : ''}</td>
       <td>${slangSourcesHtml(e) || '<span class="meta">—</span>'}</td>
       <td>${slangEvidenceHtml(e)}</td>
       <td class="row">${actions.join('')}</td>
@@ -5537,7 +5957,7 @@ function readSlangModalPayload() {
   };
 }
 
-document.querySelectorAll('.slang-tab').forEach((btn) => btn.addEventListener('click', () => setSlangTab(btn.dataset.slangTab)));
+document.querySelectorAll('#section-slang .slang-tab').forEach((btn) => btn.addEventListener('click', () => setSlangTab(btn.dataset.slangTab)));
 document.getElementById('slangSearchCand').addEventListener('input', renderSlangPanel);
 document.getElementById('slangSearchConfirmed').addEventListener('input', renderSlangPanel);
 document.getElementById('slangSearchRejected').addEventListener('input', renderSlangPanel);
@@ -5565,12 +5985,23 @@ document.getElementById('slangRejectedSelectAll').addEventListener('change', (e)
   for (const x of filtered) { if (e.target.checked) slangSelected.add(x.id); else slangSelected.delete(x.id); }
   renderSlangPanel();
 });
-document.getElementById('slangBatchResearch').addEventListener('click', async () => {
+async function researchSlangIds(ids,button){
+  if(!ids.length){setSlangMsg('请先勾选要研究的候选词',false);return;}
+  button.disabled=true;let researched=0,uncertain=0,missing=0,requested=0;
+  try{
+    for(let i=0;i<ids.length;i+=5){
+      setSlangMsg('正在研究第 '+(Math.floor(i/5)+1)+' / '+Math.ceil(ids.length/5)+' 批；本批完成后会写回词库',true);
+      const result=await learningCall('slang_research_batch',{ids:ids.slice(i,i+5)});
+      researched+=result.researched||0;uncertain+=result.uncertain||0;missing+=result.missing||0;requested+=result.requested||0;
+      await refreshSlang();
+    }
+    setSlangMsg('研究已写回：'+researched+' 条得到解释，'+uncertain+' 条仍不确定，'+missing+' 条未返回；请审核候选。',true);
+  }catch(error){await refreshSlang();setSlangMsg('已处理 '+requested+' / '+ids.length+' 条；研究中断：'+error.message,false);}
+  finally{button.disabled=false;}
+}
+document.getElementById('slangBatchResearch').addEventListener('click', async event => {
   const ids = selectedIdsForStatus('candidate');
-  if (!ids.length) { alert('请先勾选要研究的候选词'); return; }
-  const r = await api('/api/slang/research', 'POST', { ids });
-  setSlangMsg(r.ok ? `✅ 已送 ${r.count} 条候选到 DSH 深度联网研究，完成后刷新查看结果` : ('❌ ' + (r.error || '失败')), r.ok);
-  if (r.ok) refreshSlang();
+  await researchSlangIds(ids,event.currentTarget);
 });
 document.getElementById('slangBatchConfirm').addEventListener('click', async () => {
   const ids = selectedIdsForStatus('candidate');
@@ -5636,12 +6067,10 @@ document.getElementById('slangModalDirectConfirm').addEventListener('click', asy
   closeSlangModal();
   refreshSlang();
 });
-document.getElementById('slangModalSendResearch').addEventListener('click', async () => {
+document.getElementById('slangModalSendResearch').addEventListener('click', async event => {
   if (!slangModalId) return;
-  const r = await api('/api/slang/research', 'POST', { ids: [slangModalId] });
-  setSlangMsg(r.ok ? `✅ 已送「${slangEntriesCache.find((x) => x.id === slangModalId)?.content || ''}」到 DSH 深度联网研究，稍后刷新查看结果` : ('❌ ' + (r.error || '失败')), r.ok);
+  await researchSlangIds([slangModalId],event.currentTarget);
   closeSlangModal();
-  refreshSlang();
 });
 document.getElementById('slangModalCancel').addEventListener('click', closeSlangModal);
 document.getElementById('slangModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'slangModalOverlay') closeSlangModal(); });
@@ -5667,9 +6096,8 @@ document.getElementById('slangExtract').addEventListener('click', async () => {
   const r = await api('/api/slang/extract', 'POST', {});
   setSlangMsg(r.ok ? '✅ 已触发提取' : ('❌ ' + (r.error || '失败')), r.ok);
 });
-document.getElementById('slangResearch').addEventListener('click', async () => {
-  const r = await api('/api/slang/research', 'POST', {});
-  setSlangMsg(r.ok ? ('✅ 已触发研究 ' + r.count + ' 条') : ('❌ ' + (r.error || '失败')), r.ok);
+document.getElementById('slangResearch').addEventListener('click', async event => {
+  await researchSlangIds(slangEntriesCache.filter(e=>e.status==='candidate').map(e=>e.id),event.currentTarget);
 });
 function loadSlangConfig() {
   api('/api/slang').then(r => {
@@ -5804,6 +6232,7 @@ const consolePages = {
   persona: ['人格与角色', '给你的伙伴，一点独特个性。', '选择已有角色，或用自己的语言写下新的性格与表达方式。'],
   'v2-c': ['上下文与记忆 · 参数', '给模型看什么、记住什么。', '心情 / 表情包 / 上下文 / 持久化记忆 / 轻量记忆 / 初始提示词。'],
   'v2-t': ['工具开关', '工具开关', '勾选 AI 可以调用的工具。'],
+  'games': ['Games', 'Games · 独立互动 MCP', '查看 Games T 层工具、玩法与互动边界。'],
   'codex-peer': ['Codex Peer', 'Codex Peer · 小鲸鱼与 Codex 专用通道', '管理端专用 Codex 通信工具与组件设置。'],
   'injection-lab': ['提示词注入实验室', '提示词注入实验室 · 免疫 + 嘴炮', '管理注入免疫、对线工具与组件设置。'],
   'v2-e': ['语音', '语音', '管理语音库与发送设置。'],
@@ -5812,12 +6241,14 @@ const consolePages = {
   'social-v1': ['一代仿真', '为自然对话，设定合适的节奏。', '调整参与概率、活跃周期和分条发送；所有配置项完整保留。'],
   slang: ['黑话词库', '读懂群聊里的，言外之意。', '从候选到确认，让 AI 逐渐熟悉大家的表达习惯。'],
   alias: ['成员绰号', '记住每个名字，对应到每个人。', '维护「绰号 → QQ号」映射：手动添加、自动提取候选、确认后注入提示词供 AI 认人/传话。'],
+  terms: ['词条学习', '把共同兴趣，变成有来源的知识。', '学习实际玩法、兴趣术语、公开活动与文化；候选由管理员审核，确认后按语境使用。'],
   usage: ['令牌与花费', '每一次思考，都算得清楚。', '实时查看 AI 的 token 消耗与花费，可下钻到每个群、每个好友、每一轮对话。'],
   access: ['访问与安全', '明确边界，安心连接。', '管理允许对话的对象、管理员权限与控制台访问凭证。'],
   operations: ['调试与运维', '让桥接，始终井然有序。', '测试消息、引导 AI，或维护桥接进程与会话工作区。'],
   environments: ['环境与执行', '四种环境，各司其职。', '一般群友、管理员模式、私聊模式、浏览器——各自的预设、组件与能力入口。'],
   'layer-v': ['失败回归', '失败回归', '将失败记录整理为可复查的用例。'],
-  'layer-s': ['思维模式介入', '思维模式介入', '按需读取 SCHNIE 原文资料，提供思维引导与对话介入。'],
+  'human': ['human', 'HUMAN IN THE LOOP', '我也是一个组件。'],
+  'layer-s': ['资料参考', '资料参考', 'AI 按需读取 SCHNIE 原文资料。'],
   reference: ['工具参考', '每一种能力，都清晰可见。', '查看桥接提供给 DSH 的 MCP 工具与用途。'],
   components: ['组件与参数', '九层之下，每个能力各就各位。', '按层查看并配置全部组件：参数留空即用默认值，个性化文本留空即视为无该组件。'],
   registry: ['扩展组件', '扩展组件', '查看接入的扩展项目。']
@@ -5859,6 +6290,9 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'environments' && typeof loadEnvironments === 'function') loadEnvironments();
   if (page === 'alias' && typeof loadAliases === 'function') loadAliases();
   if (page === 'terms' && typeof loadTerms === 'function') loadTerms();
+  // Load usage after the initial route has been applied, so first-page data
+  // follows the same path as navigation and cannot race a bootstrap request.
+  if (page === 'usage' && typeof refreshUsageDashboard === 'function') void refreshUsageDashboard();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
     document.getElementById(target || 'mainContent')?.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -5931,7 +6365,7 @@ document.querySelectorAll('input,select,textarea').forEach(input => {
     }
     input.setAttribute('aria-label', label.textContent.trim() + (siblings.length > 1 ? (siblings.indexOf(input) === 0 ? '（下限）' : '（上限）') : ''));
   } else {
-    const names = { consoleTokenInput: '新的控制台访问令牌', closedPreset: '封闭 Agent 使用的 DSH 预设', tsKind: '测试消息目标类型', aiNotifyKind: '后台提醒目标类型', sStateKey: '一代仿真会话', v2SessionSelect: '二代仿真白名单会话', slangLimitCand: '候选词显示数量', slangLimitConfirmed: '已确认词显示数量', slangLimitRejected: '已拒绝词显示数量' };
+    const names = { consoleTokenInput: '新的控制台访问令牌', closedPreset: '封闭 Agent 使用的 DSH 预设', tsKind: '测试消息目标类型', aiNotifyKind: '后台提醒目标类型', sStateKey: '一代仿真会话', slangLimitCand: '候选词显示数量', slangLimitConfirmed: '已确认词显示数量', slangLimitRejected: '已拒绝词显示数量' };
     input.setAttribute('aria-label', names[input.id] || input.placeholder || input.closest('section')?.querySelector('h2')?.textContent || '设置');
   }
 });
@@ -5968,10 +6402,14 @@ searchInput.addEventListener('input', () => {
       setConsolePage(entry.page);
       let ancestor = entry.target.closest('details');
       while (ancestor) { ancestor.open = true; ancestor = ancestor.parentElement.closest('details'); }
-      if (entry.target.closest('.slang-panel')) {
+      if (entry.target.closest('#section-slang .slang-panel')) {
         const panels = { slangPanelCandidate: 'candidate', slangPanelConfirmed: 'confirmed', slangPanelRejected: 'rejected' };
         setSlangTab(panels[entry.target.closest('.slang-panel').id]);
       }
+      const aliasPanel=entry.target.closest('#section-alias .alias-panel');
+      if(aliasPanel)document.querySelector('#aliasTabs [data-alias-tab="'+aliasPanel.id.replace('aliasPanel','').toLowerCase()+'"]')?.click();
+      const termPanel=entry.target.closest('#section-terms .terms-panel');
+      if(termPanel)document.querySelector('#termsTabs [data-term-tab="'+termPanel.id.replace('termsPanel','').toLowerCase()+'"]')?.click();
       entry.target.scrollIntoView({ block:'center', behavior:'instant' });
       if (!entry.target.hasAttribute('tabindex') && !entry.target.matches('input,textarea,select,button,summary')) entry.target.tabIndex = -1;
       entry.target.focus({ preventScroll:true });
@@ -6289,15 +6727,23 @@ async function refreshUsageBudgets() {
   try {
     const result = await api('/api/tokens/budgets');
     const rows = result.rows || [];
+    const ownerEnabled = result.owner?.budgetEnabled !== false;
+    const ownerInput = document.getElementById('usageOwnerBudgetEnabled');
+    if (document.activeElement !== ownerInput && !ownerInput.dataset.dirty) ownerInput.checked = ownerEnabled;
     const money = (value) => usageMoney(value, result.symbol || '¥');
     const global = result.global || {};
     document.getElementById('usageGlobalTurns').textContent = usageNum(global.turns);
     document.getElementById('usageGlobalCost').textContent = money(global.cost);
     const globalInput = document.getElementById('usageGlobalLimit');
     if (document.activeElement !== globalInput) globalInput.value = Number(global.limit) || 0;
-    document.getElementById('usageGlobalState').textContent = global.reached ? '已触发：全部会话进入机械回复' : global.remaining == null ? '未设统一上限' : `统一剩余 ${money(global.remaining)}`;
-    box.innerHTML = rows.length ? '<table><tr><th>会话</th><th class="num">本周期轮数</th><th class="num">已用</th><th class="num">剩余</th><th>状态</th><th>冷漠阈值（元）</th><th>上限（元）</th><th>冷漠间隔（分钟）</th><th>恢复窗口（条）</th><th></th></tr>'
-      + rows.map((row) => `<tr data-budget-key="${esc(row.key)}"><td>${esc(row.key)}</td><td class="num">${usageNum(row.turns)}</td><td class="num">${money(row.cost)}${row.partial ? ' <span title="部分历史用量无法按时段归属">*</span>' : ''}</td><td class="num">${row.remainingYuan == null ? '不限' : money(row.remainingYuan)}</td><td>${row.stage === 'silent' ? '机械回复' : row.stage === 'weak' ? '低频短回复' : '正常'}${Number(row.recoveryPending) > 0 ? `（待补 ${usageNum(row.recoveryPending)} 条）` : ''}</td><td><input type="number" min="0" step="0.01" value="${Number(row.coldLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="0" step="0.01" value="${Number(row.hardLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="1" max="1440" step="1" value="${Number(row.weakMinIntervalMin) || 30}" style="width:75px"></td><td><input type="number" min="1" max="30" step="1" value="${Number(row.recoveryWindowMessages) || 5}" style="width:75px"></td><td><button class="small" data-budget-save>保存</button></td></tr>`).join('') + '</table>'
+    const windows = result.recoveryWindows || {};
+    for (const [id, field] of [['usageRecoveryPrivate', 'privateMessages'], ['usageRecoveryGroup', 'groupMessages'], ['usageRecoveryGroupAt', 'groupAtMessages']]) {
+      const input = document.getElementById(id);
+      if (input && document.activeElement !== input) input.value = Number(windows[field]) || 5;
+    }
+    document.getElementById('usageGlobalState').textContent = global.reached ? (ownerEnabled ? '已触发：全部会话进入机械回复' : '已触发：受限会话进入机械回复，owner 豁免') : global.remaining == null ? '未设统一上限' : `统一剩余 ${money(global.remaining)}`;
+    box.innerHTML = rows.length ? '<table><tr><th>会话</th><th class="num">本周期轮数</th><th class="num">已用</th><th class="num">剩余</th><th>状态</th><th>冷漠阈值（元）</th><th>上限（元）</th><th>冷漠间隔（分钟）</th><th></th></tr>'
+      + rows.map((row) => `<tr data-budget-key="${esc(row.key)}"><td>${esc(row.key)}</td><td class="num">${usageNum(row.turns)}</td><td class="num">${money(row.cost)}${row.partial ? ' <span title="部分历史用量无法按时段归属">*</span>' : ''}</td><td class="num">${row.remainingYuan == null ? '不限' : money(row.remainingYuan)}</td><td>${row.exempt ? '管理员豁免' : row.stage === 'silent' ? '机械回复' : row.stage === 'weak' ? '低频短回复' : '正常'}${Number(row.recoveryPending) > 0 ? `（待补 ${usageNum(row.recoveryPending)} 条）` : ''}</td><td><input type="number" min="0" step="0.01" value="${Number(row.coldLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="0" step="0.01" value="${Number(row.hardLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="1" max="1440" step="1" value="${Number(row.weakMinIntervalMin) || 30}" style="width:75px"></td><td><button class="small" data-budget-save>保存</button></td></tr>`).join('') + '</table>'
       : '<div class="empty-state">暂无可配置的会话；有 QQ 会话后会自动列出。</div>';
     if (rows.some((row) => row.partial)) {
       msg.textContent = '* 部分旧用量只有累计值，无法准确归入本周期；额度判断基于有时间戳的调用。';
@@ -6310,6 +6756,21 @@ async function refreshUsageBudgets() {
     box.textContent = '阈值读取失败：' + (error?.message || '未知错误');
   }
 }
+document.getElementById('usageOwnerBudgetEnabled').addEventListener('change', (event) => { event.target.dataset.dirty = 'true'; });
+document.getElementById('usageOwnerBudgetSave').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  const input = document.getElementById('usageOwnerBudgetEnabled');
+  const msg = document.getElementById('usageBudgetMsg');
+  button.disabled = true;
+  try {
+    await api('/api/tokens/budgets/owner', 'POST', { ownerBudgetEnabled: input.checked });
+    delete input.dataset.dirty;
+    button.blur();
+    msg.textContent = '管理员额度设置已保存'; msg.className = 'meta ok';
+    await refreshUsageBudgets();
+  } catch (error) { msg.textContent = '保存失败：' + error.message; msg.className = 'meta err'; }
+  finally { button.disabled = false; }
+});
 document.getElementById('usageBudgets').addEventListener('click', async (event) => {
   const button = event.target.closest('[data-budget-save]');
   if (!button) return;
@@ -6318,8 +6779,24 @@ document.getElementById('usageBudgets').addEventListener('click', async (event) 
   const msg = document.getElementById('usageBudgetMsg');
   button.disabled = true;
   try {
-    await api('/api/tokens/budgets', 'POST', { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], weakMinIntervalMin: values[2], recoveryWindowMessages: values[3] });
+    await api('/api/tokens/budgets', 'POST', { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], weakMinIntervalMin: values[2] });
     msg.textContent = '已保存'; msg.className = 'meta ok';
+    button.blur();
+    await refreshUsageBudgets();
+  } catch (error) { msg.textContent = '保存失败：' + error.message; msg.className = 'meta err'; }
+  finally { button.disabled = false; }
+});
+document.getElementById('usageRecoverySave').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  const msg = document.getElementById('usageBudgetMsg');
+  button.disabled = true;
+  try {
+    await api('/api/tokens/budgets/recovery-windows', 'POST', {
+      privateMessages: Number(document.getElementById('usageRecoveryPrivate').value),
+      groupMessages: Number(document.getElementById('usageRecoveryGroup').value),
+      groupAtMessages: Number(document.getElementById('usageRecoveryGroupAt').value)
+    });
+    msg.textContent = '全局恢复窗口已保存'; msg.className = 'meta ok';
     button.blur();
     await refreshUsageBudgets();
   } catch (error) { msg.textContent = '保存失败：' + error.message; msg.className = 'meta err'; }
@@ -6470,7 +6947,6 @@ async function refreshUsage() {
     void refreshUsageMechanicalReplies();
     renderUsagePrices(r.priceTable ? { ...r.priceTable, nowTier: r.nowTier } : null);
     syncUsageKeySelect((r.conversations || []).map(c => String(c.key ?? '')));
-    if (!document.getElementById('usageTurns').dataset.loaded && usageSelectedKey) refreshUsageTurns();
     msg.textContent = `✅ 已同步于 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`;
     msg.className = 'meta ok';
   } catch (error) {
@@ -6504,11 +6980,20 @@ async function refreshUsageRecent() {
   }
 }
 
+let usageDashboardRefresh = null;
+function refreshUsageDashboard() {
+  // Avoid overlapping page-load, navigation, button and polling requests. A
+  // slower first response must not overwrite a newer billing snapshot.
+  if (usageDashboardRefresh) return usageDashboardRefresh;
+  usageDashboardRefresh = (async () => {
+    await Promise.all([refreshUsage(), refreshUsageChart(), refreshUsageRecent()]);
+    await refreshUsageTurns();
+  })().finally(() => { usageDashboardRefresh = null; });
+  return usageDashboardRefresh;
+}
+
 document.getElementById('usageRefresh').addEventListener('click', () => {
-  refreshUsage();
-  refreshUsageChart();
-  refreshUsageTurns();
-  refreshUsageRecent();
+  void refreshUsageDashboard();
   showConsoleToast('用量已刷新');
 });
 document.getElementById('usageTurnsLoad').addEventListener('click', () => refreshUsageTurns());
@@ -6536,12 +7021,14 @@ document.getElementById('usageClear').addEventListener('click', async () => {
 
 // Semantic, distinct sidebar icons share one lightweight SVG style.
 const NAV_ICON_PATHS = {
+  "terms": "<path d=\"m12 3-10 5 10 5 10-5ZM6 11v5c3 3 9 3 12 0v-5M22 8v8\"/>",
   "persona": "<circle cx=\"12\" cy=\"8\" r=\"3.5\"/><path d=\"M5 21v-2a7 7 0 0 1 14 0v2\"/>",
   "slang": "<path d=\"M4 5a2 2 0 0 1 2-2h14v18H6a2 2 0 0 1 0-4h14M4 5v14M8 7h8M8 11h6\"/>",
   "alias": "<path d=\"M3 4h8l10 10-7 7L3 10Z\"/><circle cx=\"7.5\" cy=\"7.5\" r=\"1\"/>",
   "v2-c": "<path d=\"M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7 1.8 1.8 0 0 1 1-3.3h3a3 3 0 0 0 3-3c0-4.4-4-8-9-8Z\"/><circle cx=\"7.5\" cy=\"10\" r=\".7\"/><circle cx=\"11\" cy=\"6.5\" r=\".7\"/><circle cx=\"16\" cy=\"8\" r=\".7\"/>",
   "reference": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v6M12 7h.01\"/>",
   "v2-t": "<path d=\"M4 7h7m4 0h5M4 17h3m4 0h9\"/><circle cx=\"13\" cy=\"7\" r=\"2\"/><circle cx=\"9\" cy=\"17\" r=\"2\"/>",
+  "games": "<path d=\"M6 8h12a4 4 0 0 1 3.8 5.2l-1 3A2 2 0 0 1 17 17l-2-2H9l-2 2a2 2 0 0 1-3.8-.8l-1-3A4 4 0 0 1 6 8Z\"/><path d=\"M7 10v4m-2-2h4m7-1h.01M18 13h.01\"/>",
   "codex-peer": "<rect x=\"2\" y=\"4\" width=\"8\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"13\" width=\"8\" height=\"7\" rx=\"1.5\"/><path d=\"M14 6h5v4m-3-3 3 3M10 18H5v-4m3 3-3-3\"/>",
   "injection-lab": "<path d=\"M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1 2h14a1.3 1.3 0 0 0 1-2L14 9V3M7 15h10M10 18h.01M14 12h.01\"/>",
   "environments": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"m7 7 3 3-3 3m6 0h4M12 17v4M8 21h8\"/>",
@@ -6554,6 +7041,7 @@ const NAV_ICON_PATHS = {
   "operations": "<path d=\"M14 6a6 6 0 0 0-7 7L3 17a2.8 2.8 0 0 0 4 4l5-5a6 6 0 0 0 7-8l-4 4-3-3 4-4Z\"/>",
   "v2-o": "<rect x=\"5\" y=\"4\" width=\"14\" height=\"18\" rx=\"2\"/><rect x=\"9\" y=\"2\" width=\"6\" height=\"4\" rx=\"1\"/><path d=\"M9 11h6M9 15h6M9 19h3\"/>",
   "layer-v": "<path d=\"m12 3-8 3v6c0 5 8 9 8 9s8-4 8-9V6Z\"/><path d=\"m8 12 3 3 5-6\"/>",
+  "human": "<circle cx=\"12\" cy=\"7\" r=\"4\"/><path d=\"M4 21v-2a8 8 0 0 1 16 0v2Z\"/>",
   "access": "<rect x=\"5\" y=\"10\" width=\"14\" height=\"11\" rx=\"2\"/><path d=\"M8 10V7a4 4 0 0 1 8 0v3M12 15v2\"/>",
   "layer-s": "<path d=\"M3 3h7a3 3 0 0 1 3 3v15a4 4 0 0 0-4-2H3Zm18 0h-5a3 3 0 0 0-3 3v15a4 4 0 0 1 4-2h4Z\"/>",
   "registry": "<path d=\"M9 3v5H4v5h5v8h5v-5h6v-5h-6V3Z\"/>",
@@ -6579,11 +7067,11 @@ const splitParameterPages = [
   { layer: 'C', sourcePage: 'v2-c', groups: [
     ['心情与表情', [0, 1]], ['上下文与记忆', [2, 3, 4]], ['会话背景', [5]]
   ] },
-  { layer: 'L', sourcePage: 'v2-l', groups: [
-    ['唤醒与会话', [0, 1, 2, 10, 9, 11]], ['发送与等待', [3, 4]], ['主动行为与日程', [5, 6, 7, 8]]
+  { layer: 'L', sourcePage: 'v2-l', sourceId: 'lifecycle-parameter-source', groups: [
+    ['唤醒与会话', [0, 1, 2, 3, 11, 12, 13]], ['发送与等待', [4, 5]], ['主动行为', [6, 7, 8, 9, 10]]
   ] },
   { layer: 'O', sourcePage: 'v2-o', groups: [
-    ['质量与工具日志', [0, 3]], ['日记与反馈', [1, 2]]
+    ['质量与工具日志', [0, 4]], ['日记与反馈', [1, 2, 3]]
   ] }
 ];
 document.querySelectorAll('[data-tool-proxy]').forEach(proxy => proxy.addEventListener('change', () => {
@@ -6594,12 +7082,10 @@ document.querySelectorAll('[data-v2-tool="sendFile"],[data-v2-tool="status"]').f
   const proxy = document.querySelector('[data-tool-proxy="' + source.dataset.v2Tool + '"]');
   if (proxy) proxy.checked = source.checked;
 }));
-for (const { layer, sourcePage, groups } of splitParameterPages) {
-  const oldNav = document.querySelector('#mainNav [data-view="' + sourcePage + '"]');
-  const source = document.getElementById('section-' + sourcePage);
+for (const { layer, sourcePage, sourceId, groups } of splitParameterPages) {
+  const source = document.getElementById(sourceId || ('section-' + sourcePage));
   const navRoot = document.querySelector('[data-component-nav-layer="' + layer + '"]');
   if (!source || !navRoot) continue;
-  oldNav?.classList.add('legacy-parameter-nav');
   const allDetails = [...source.querySelectorAll(':scope > details.settings-group')];
   groups.forEach(([title, indexes], index) => {
     const page = 'setting-' + layer.toLowerCase() + '-' + index;
@@ -6644,8 +7130,35 @@ for (const { layer, sourcePage, groups } of splitParameterPages) {
     consolePages[page] = [title, title, '设置保存后由现有配置接口写入并热更新。'];
     featureIndex.push({ page, label: title, target: section });
   });
+  if (sourcePage === 'v2-l') {
+    const primary = document.querySelector('[data-page="setting-l-0"]');
+    if (primary) {
+      const controls = document.createElement('details');
+      controls.className = 'settings-group';
+      controls.open = true;
+      controls.innerHTML = '<summary>运行控制与预设</summary><div class="settings-content"></div>';
+      const content = controls.querySelector('.settings-content');
+      for (const child of [...source.children]) {
+        if (child.matches('details.settings-group')) {
+          child.open = true;
+          primary.append(child);
+        } else if (child.matches('.layer-group-head')) {
+          child.remove();
+        } else if (child.matches('.row') && child.querySelector('.v2-save')) {
+          const status = child.querySelector('#v2ConfigMsg');
+          if (status) content.append(status);
+          child.remove();
+        } else {
+          content.append(child);
+        }
+      }
+      primary.prepend(controls);
+    }
+    source.remove();
+  }
 }
-const legacyParameterRedirect = { 'v2-c': 'setting-c-0', 'v2-l': 'setting-l-0', 'v2-o': 'setting-o-0', components: 'overview' };
+const legacyParameterRedirect = { 'v2-c': 'setting-c-0', 'v2-o': 'setting-o-0', components: 'overview' };
+document.querySelector('#mainNav .nav-item[data-view="v2-o"]')?.remove();
 const adminRow = document.getElementById('v2AdminDevEnabled')?.closest('.row');
 const adminControls = document.getElementById('envAdminControls');
 if (adminRow && adminControls) {
@@ -6659,10 +7172,10 @@ if (adminRow && adminControls) {
 // 初次进入按 hash 定位页面：延后到所有 IIFE 都定义完再切，否则层页钩子（loadEnvironments / loadComponents / loadVLayer / loadSLayer / loadAliases 等）还没挂上，页面会空。
 setTimeout(() => setConsolePage(legacyParameterRedirect[location.hash.slice(1)] || location.hash.slice(1), { updateHash:false }), 0);
 
-refresh(); refreshRoles(); refreshWhitelist(); refreshSessions(); refreshPending(); refreshPresets(); loadSocialForm(); loadV2Config(); refreshV2Activity(); loadV2ToolLog(); loadV2SessionOptions(); refreshSocialStatus(); refreshSlang(); loadSlangConfig(); loadSecurity(); refreshSimPrompt(); refreshDshModel(); refreshUsage(); refreshUsageChart(); refreshUsageRecent();
+refresh(); refreshRoles(); refreshWhitelist(); refreshSessions(); refreshPending(); refreshPresets(); loadSocialForm(); loadV2Config(); refreshV2Activity(); loadV2ToolLog(); refreshSocialStatus(); refreshSlang(); loadSlangConfig(); loadSecurity(); refreshSimPrompt(); refreshDshModel();
 setInterval(() => { refresh(); refreshSessions(); refreshPending(); refreshSocialStatus(); refreshSlang(); }, 3000);
 // 用量看板只在本页可见时轮询：既保证「实时」，又不让其它页白白多打两份接口。
-setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); refreshUsageChart(); refreshUsageRecent(); }, 3000);
+setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsageDashboard(); }, 3000);
 // 主题切换（纯前端，不发任何请求；选择写入 localStorage，未选择时跟随系统）
 (function () {
   var root = document.documentElement;
@@ -6722,29 +7235,13 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     .worklog-preview pre{max-height:340px;overflow:auto;margin:0;padding:14px;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,Consolas,monospace;color:var(--text-strong)}
     .worklog-empty{padding:14px;color:var(--text-muted);font-size:13px}
     @media(max-width:700px){.worklog-layout{grid-template-columns:1fr}.worklog-list{display:flex;gap:4px;max-height:none;overflow-x:auto}.worklog-date{width:auto;min-width:135px;flex:0 0 auto}.worklog-preview pre{max-height:55vh}}
-    .diary-window-note{display:flex;gap:10px;align-items:flex-start;margin:10px 0;padding:10px 12px;border:1px solid rgba(95,130,255,.24);border-radius:9px;background:rgba(95,130,255,.06);font-size:13px;line-height:1.55}
-    .diary-window-note b{flex:0 0 auto}.diary-session-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:10px;margin-top:10px}
-    .diary-session-card{min-width:0;padding:12px;border:1px solid var(--border-subtle);border-radius:11px;background:var(--surface)}
-    .diary-session-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.diary-session-key{min-width:0;overflow-wrap:anywhere;font-weight:650}
-    .diary-session-state{flex:0 0 auto;padding:3px 8px;border:1px solid var(--border-subtle);border-radius:999px;font-size:11px}
-    .diary-session-state.sent{color:#16835d;background:rgba(22,131,93,.08);border-color:rgba(22,131,93,.2)}.diary-session-state.pending{color:#a26800;background:rgba(199,139,21,.09);border-color:rgba(199,139,21,.22)}.diary-session-state.muted{color:var(--text-muted)}
-    .diary-session-window{margin-top:8px;font-size:12px;color:var(--text-muted)}.diary-session-detail{margin-top:6px;font-size:12px;line-height:1.55;color:var(--text-muted);overflow-wrap:anywhere}
-    .diary-session-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.diary-session-actions button{min-height:32px}
-    .diary-history-head{display:flex;align-items:center;gap:12px;margin-bottom:10px}.diary-history-layout{display:grid;grid-template-columns:minmax(190px,250px) minmax(0,1fr);gap:12px;min-height:280px}
-    .diary-history-sidebar,.diary-history-content{min-width:0;border:1px solid var(--border-subtle);border-radius:11px;background:var(--surface)}
-    .diary-history-sidebar{display:flex;flex-direction:column;gap:4px;padding:8px;max-height:390px;overflow:auto}
-    .diary-history-date{width:100%;padding:9px 10px;text-align:left;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-strong);cursor:pointer}
-    .diary-history-date:hover{background:rgba(127,168,255,.08)}.diary-history-date.active{border-color:rgba(127,168,255,.42);background:rgba(127,168,255,.12)}
-    .diary-history-date b{display:block;font-size:13px}.diary-history-date small{display:block;margin-top:3px;color:var(--text-muted);font-size:11px}
-    .diary-history-content{max-height:520px;margin:0;padding:14px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.7 ui-monospace,Consolas,monospace;color:var(--text-strong)}
-    @media(max-width:700px){.diary-history-layout{grid-template-columns:1fr}.diary-history-sidebar{flex-direction:row;max-height:none;overflow-x:auto}.diary-history-date{flex:0 0 148px}.diary-history-content{max-height:55vh}.diary-window-note{display:block}.diary-window-note b{display:block;margin-bottom:3px}}
   `;
   document.head.appendChild(css);
 
   const COMP_LAYERS = [
     { id: 'C', name: '上下文与记忆' }, { id: 'T', name: '工具接口与协议' }, { id: 'E', name: '环境与执行' },
     { id: 'L', name: '生命周期与编排' }, { id: 'O', name: '可观测与运维' }, { id: 'V', name: '验证与评估' },
-    { id: 'G', name: '治理与安全' }, { id: 'S', name: 'SCHNIE 思维模式-介入层' }, { id: '', name: '组件注册中心' }
+    { id: 'G', name: '治理与安全' }, { id: 'S', name: 'SCHNIE 参考' }, { id: '', name: '组件注册中心' }
   ];
   let compCache = [];
 
@@ -6811,7 +7308,9 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
       { key: 'longIncomingChars', label: '长消息判定字数', help: '收到的文字达到这个字数后，按较完整的回复方式处理。单位：字符。', type: 'number', min: 1, max: 2000 }
     ] },
     'ctx-chat-topic-drive': { title: '话题跟进', fields: [
-      { key: 'followUpProbability', label: '接续当前话题概率', help: '0～1；0.5 约表示一半适合跟进的机会会继续当前话题。', type: 'number', min: 0, max: 1 },
+      { key: 'privateFollowupEnabled', label: '允许群聊后私聊跟进', help: '鲸鱼自行判断是否值得追问；只联系确有私聊关系的人。', type: 'boolean' },
+      { key: 'minIntervalMinutes', label: '全局私聊跟进最小间隔（分钟）', help: '两次私聊跟进之间至少间隔多久；具体会话设定与此值取较小值。', type: 'number', min: 0, max: 10080 },
+      { key: 'dailyLimit', label: '全局每日私聊跟进上限', help: '每天最多向同一人私聊跟进几次；具体会话设定与此值取较小值。', type: 'number', min: 0, max: 30 },
       { key: 'newTopicProbability', label: '主动开启新话题概率', help: '0～1；只在满足主动发言条件时生效。', type: 'number', min: 0, max: 1 },
       { key: 'followUpCooldownMinutes', label: '同一话题跟进冷却（分钟）', help: '两次主动跟进之间至少间隔多久。', type: 'number', min: 0 },
       { key: 'newTopicCooldownMinutes', label: '新话题冷却（分钟）', help: '两次主动开新话题之间至少间隔多久。', type: 'number', min: 0 },
@@ -6846,20 +7345,23 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
         { key: 'timeoutSeconds', label: '请求超时（秒）', type: 'number', min: 1, max: 600 },
         { key: 'cooldownSeconds', label: '同一会话冷却（秒）', type: 'number', min: 0, max: 3600 },
         { key: 'allowAutomatic', label: '允许按聊天语境自动生成图片', help: '开启后仍受会话权限、额度和冷却限制。', type: 'boolean' },
-        { key: 'allowedSessions', label: '允许使用的会话（每行一个）', help: '例如 private:<私聊QQ> 或 group:<群号>。', type: 'lines' },
+        { key: 'allowedSessions', label: '允许使用的会话（每行一个）', help: '例如 private:12345 或 group:67890。', type: 'lines' },
         { key: 'assetRetentionDays', label: '生成图片保留天数', type: 'number', min: 1, max: 365 }
       ]
     },
     'life-campus-watch': {
       title: '监控设置',
       fields: [
-        { key: 'webWatchEnabled', label: '启用网页监控', help: '填写自己的网址；有效变化经 AI 整理后通知，菜单等杂项变化不提醒。', type: 'boolean' },
+        { key: 'webWatchEnabled', label: '启用网页监控', help: '必须填写至少一个网址；页面变化时发送新增内容的 diff。', type: 'boolean' },
         { key: 'fastCheckMinutes', label: '快速检查间隔（分钟）', type: 'number', min: 1, max: 1440 },
         { key: 'fullCheckMinutes', label: '完整检查间隔（分钟）', type: 'number', min: 1, max: 10080 },
-        { key: 'watchUrls', label: '监控网址（勾选=启用）', help: '填写自己的“名称 | URL”。需要登录的网站请先在本地独立浏览器完成登录；取消勾选会暂停检测并保留配置。', type: 'items', placeholder: '名称 | https://网址', addLabel: '添加网址' },
+        { key: 'watchUrls', label: '监控网址（勾选=启用）', help: '所有网页都按普通网址监控处理，含 Blackboard 页面。可直接写 https://网址，也可写“名称 | https://网址”；取消勾选 = 暂停检测但保留。', type: 'items', placeholder: '名称 | https://网址', addLabel: '添加网址' },
         { key: 'scriptCollabEnabled', label: '启用脚本协同', help: '添加脚本后，AI 可以按约定查询其状态并参与任务流程。', type: 'boolean' },
-        { key: 'scriptPaths', label: '协同脚本（勾选=启用）', help: '填写自己的脚本路径。绿灯由脚本主动写入运行心跳后显示；只填路径不会自动执行脚本，仓库不附带私人自动化。', type: 'items', placeholder: 'user-scripts/example.py', addLabel: '添加脚本' },
-        { key: 'aiWebSummary', label: 'AI 整理网页变化', help: '只在有有效变化时调用；不可用时发送规则摘要。', type: 'boolean' }
+        { key: 'scriptPaths', label: '协同脚本（勾选=启用）', help: '每行：勾选框 = 是否协同。例如 scripts/campus-watch.mjs。绿灯由脚本写入运行心跳后显示；只填路径不会自动执行脚本。', type: 'items', placeholder: 'scripts/campus-watch.mjs', addLabel: '添加脚本' },
+        { key: 'lecturesEnabled', label: '启用抢讲座', type: 'boolean' },
+        { key: 'lecturesLocation', label: '讲座地点关键词', help: '例如「高新」。', type: 'text' },
+        { key: 'lecturesIntervalMinutes', label: '讲座检查间隔（分钟）', type: 'number', min: 1, max: 120 },
+        { key: 'lecturesPortalUrl', label: '讲座门户 URL', type: 'text' }
       ]
     },
     'ctx-memory-profile-store': { title: '可分享印象', fields: [
@@ -6869,7 +7371,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     'ctx-media-sticker-pick': { title: '表情候选', fields: [{ key: 'limit', label: '按语境评分后最多提供的候选数', type: 'number', min: 1, max: 30 }] },
     'ctx-memory-update': { title: '记忆更新', fields: [{ key: 'maxChars', label: '写入时读取的记忆上限（字符）', type: 'number', min: 100, max: 20000 }] },
     'ctx-memory-profile-facts': { title: '用户画像事实', fields: [
-      { key: 'cooldownMs', label: '画像提取冷却（分钟）', help: 'AI 两次自动整理用户事实的最短间隔。', type: 'minutes', min: 1 },
+      { key: 'cooldownMs', label: '画像提取冷却（分钟）', help: '设为 0 时，每轮新消息都可及时整理稳定人物事实；只有值得长期使用的信息才写入档案。', type: 'minutes', min: 0 },
       { key: 'maxSnippets', label: '每轮最多候选事实', help: '一轮最多挑出多少条值得记住的用户事实。', type: 'number', min: 1, max: 30 },
       { key: 'maxCharsPerSnippet', label: '单条事实最大字数', help: '防止把整段聊天记录当作一条画像事实。', type: 'number', min: 10, max: 1000 }
     ] },
@@ -6906,14 +7408,15 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     'life-proactive-startup-greeting': { title: '开机问候', fields: [{ key: 'hint', label: '开机问候语气提示', help: '只提供语气线索，不是固定发送文案。', type: 'text' }] },
     'life-schedule-reminder': { title: '日程提醒设置', fields: [
       { key: 'enabled', label: '启用日程提醒', help: '只控制日程到点提醒与日程上下文注入；不会影响定时主动消息。', type: 'boolean' },
-      { key: 'advanceMinutes', label: '提前唤醒（分钟）', help: '到达日程时间前多久唤醒 AI 提醒。', type: 'number', min: 1, max: 1440 },
-      { key: 'lateMinutes', label: '迟到补提醒窗口（分钟）', help: '桥接短暂离线后，仍允许补发提醒的时间范围。', type: 'number', min: 1, max: 1440 },
+      { key: 'advanceMinutes', label: '全局默认提醒开始提前量（分钟）', help: '日程未单独设置 leadMinutes 时使用；0 表示到日程时间才开始提醒。', type: 'number', min: 0, max: 1440 },
+      { key: 'intervalMinutes', label: '全局默认提醒间歇周期（分钟）', help: '日程未单独设置 intervalMinutes 时使用；从提醒开始后持续间歇提醒，直到用户明确确认已经去做。', type: 'number', min: 1, max: 1440 },
+      { key: 'lateMinutes', label: '旧版单次提醒补发窗口（分钟）', help: '仅兼容没有间歇周期的旧日程；新日程会在桥接恢复后补一次，并继续按周期提醒直到明确确认。', type: 'number', min: 1, max: 1440 },
       { key: 'horizonDays', label: '总览与上下文范围（天）', type: 'number', min: 1, max: 90 },
       { key: 'maxItems', label: '最多保存的日程数', help: '达到上限后不再接受新的日程；不会删除现有日程。', type: 'number', min: 10, max: 1000 },
       { key: 'maxPromptItems', label: '每轮最多注入日程数', type: 'number', min: 1, max: 20 }
     ] },
     'life-user-availability': { title: '用户空闲判断', fields: [{ key: 'contactGraceMinutes', label: '最近联系保护期（分钟）', help: '用户刚联系过时，在这段时间内减少主动打扰。', type: 'number', min: 0, max: 1440 }] },
-    'life-message-ack': { title: '四组话术分别设置启用状态、激活延迟和固定话术表。延迟从合并窗口结束后起算。', fields: [
+    'life-message-ack': { title: '四组独立启用、延迟和话术；从最新完整用户消息起算。新消息取消旧轮，正式回复实际发送前取消两个计时器。', fields: [
       { key: 'privateWait', label: '私聊 · 等待中', type: 'ackGroup' },
       { key: 'privateApology', label: '私聊 · 抱歉', type: 'ackGroup' },
       { key: 'groupWait', label: '群聊 · 等待中', type: 'ackGroup' },
@@ -6957,7 +7460,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
       return '<fieldset class="comp-field comp-ack-group" style="border:1px solid var(--border-subtle);border-radius:12px;padding:12px 14px;margin:10px 0;background:var(--surface)">'
         + '<legend style="padding:0 6px;font-weight:650">' + esc(field.label) + '</legend>'
         + '<div class="row" style="gap:14px;align-items:center"><label><input type="checkbox" class="comp-ack-enabled"' + (group.enabled !== false ? ' checked' : '') + '> 启用这组</label>'
-        + '<label>激活延迟（秒） <input type="number" class="comp-ack-delay" value="' + esc(String(Number(group.delayMs ?? 0) / 1000)) + '" min="0" max="600" step="0.1" style="width:110px"></label></div>'
+        + '<label>激活延迟（秒） <input type="number" class="comp-ack-delay" value="' + esc(String(Number(group.delayMs ?? 0) / 1000)) + '" min="0" max="10600" step="0.1" style="width:110px"></label></div>'
         + '<label class="meta" style="display:block;margin-top:8px">固定话术表（每行一条，激活时随机选一条）</label>'
         + '<textarea class="comp-ack-lines" rows="' + Math.max(4, Math.min(8, lines.length)) + '" style="width:100%;min-height:100px">' + esc(lines.join('\n')) + '</textarea>'
         + '<small class="meta comp-help">清空话术表会让此组不发送；延迟上限为 600 秒。</small></fieldset>';
@@ -7065,7 +7568,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
         key,
         label: ({ disabledBlocks: '停用的提示词片段', injectPrompt: '向 AI 提供工具提示' })[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()),
         help: ({
-          'ctx-member-card': '从近期发言者的画像中提取称呼、偏好和备注，作为对话上下文。',
+      'ctx-member-card': '注入近期发言者的称呼、偏好和印象；作息仅在对应私聊可见，不跨群分享。',
           'ctx-knowledge-quota': '按日统计非管理员的专业问答次数；达到上限后提示 AI 暂停作答。'
         })[p.id] || '用于调整此功能的运行方式。',
         type: Array.isArray(value) ? 'lines' : typeof value === 'boolean' ? 'boolean' : typeof value === 'number' ? 'number' : 'text'
@@ -7090,10 +7593,22 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     try {
       const resp = await api('/api/plugins/detail?id=' + encodeURIComponent(id));
       const p = resp && resp.plugin ? resp.plugin : resp;
+      if (id === 'human') {
+        body.innerHTML = '<div class="human-loop-banner" role="img" aria-label="Human in the loop；我也是一个组件"><div class="human-loop-kicker">V · HUMAN</div><div class="human-loop-title">HUMAN IN THE LOOP</div><div class="human-loop-caption">我也是一个组件。</div></div>';
+        body.dataset.loaded = '1';
+        return;
+      }
       const form = renderComponentForm(p, el.dataset.inlineFields ? el.dataset.inlineFields.split(',') : null, !!el.dataset.inlineFields);
       const enabled = el.dataset.hideToggle === '1' || id === 'exec-image-generation' ? '' : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? ' checked' : '') + '> <span>' + esc(el.dataset.toggleLabel || '启用此功能') + '</span></label><span class="meta comp-toggle-msg"></span>';
       if (form) {
         body.innerHTML = enabled + form.html + (form.empty || el.dataset.deferSave === '1' ? '' : '<div class="row" style="gap:8px;margin-top:8px"><button class="small comp-save">保存设置</button><span class="meta comp-msg"></span></div>');
+        if (id === 'life-proactive-time-bubble') {
+          const capacityInput = body.querySelector('.comp-form-num');
+          if (capacityInput) {
+            capacityInput.dataset.lastValidValue = capacityInput.value;
+            syncV2TimeBubbleCapacity();
+          }
+        }
         if (id === 'exec-image-generation') {
           body.insertAdjacentHTML('beforeend', '<div class="quota-console image-generation-console"><div class="quota-console-head"><div><b>本地 API 密钥</b><div class="meta">密钥不会写入组件配置，状态查询也不会返回密钥内容。</div></div><span class="meta image-secret-state" role="status">正在读取保存状态…</span></div><div class="row" style="gap:8px;margin-top:10px"><input type="password" class="image-secret-input comp-form-text" autocomplete="new-password" aria-label="图片生成 API 密钥" placeholder="输入新密钥" style="flex:1;min-width:180px;max-width:420px"><button type="button" class="small image-secret-set">保存密钥</button><button type="button" class="small danger image-secret-clear">清除密钥</button></div><div class="meta image-secret-message" aria-live="polite"></div><div class="quota-console-head" style="margin-top:18px"><div><b>今日图片生成用量</b><div class="meta">按上海时间统计请求次数。</div></div><button type="button" class="small image-usage-refresh">刷新用量</button></div><div class="meta image-usage-result" aria-live="polite">正在读取…</div></div>');
           const panel = body.querySelector('.image-generation-console');
@@ -7143,16 +7658,45 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
           void refreshUsage();
         }
         if (id === 'ctx-knowledge-quota') {
-          body.insertAdjacentHTML('beforeend', '<div class="quota-console"><div class="quota-console-head"><div><b>今日用量</b><div class="meta">留空查询全部会话，也可填写一个会话 key。</div></div><div class="quota-console-actions"><input class="quota-key" placeholder="例如 group:10001" aria-label="配额查询会话 key"><button class="small quota-query">查询用量</button><button class="small danger quota-reset">清空今日用量</button></div></div><div class="quota-result" aria-live="polite">选择会话后查询，或直接查询全部会话。</div></div>');
+          body.insertAdjacentHTML('beforeend', '<div class="quota-console"><div class="quota-console-head"><div><b>今日用量</b><div class="meta">留空查询全部会话，也可填写一个会话 key。</div></div><div class="quota-console-actions"><input class="quota-key" placeholder="例如 group:10608" aria-label="配额查询会话 key"><button class="small quota-query">查询用量</button><button class="small danger quota-reset">清空今日用量</button></div></div><div class="quota-result" aria-live="polite">选择会话后查询，或直接查询全部会话。</div></div>');
           const panel = body.querySelector('.quota-console'), keyInput = panel.querySelector('.quota-key'), result = panel.querySelector('.quota-result');
           const call = async action => { const key = keyInput.value.trim(); const r = await api('/api/plugins/call', 'POST', { tool: 'knowledge_quota', input: { action, ...(key ? { key } : {}) } }); return r?.result || r || {}; };
           panel.querySelector('.quota-query').addEventListener('click', async () => { result.textContent = '正在读取…'; try { const d = await call('query'); if (d.ok !== true) throw Error(d.error || '查询失败'); const rows = Array.isArray(d.entries) ? d.entries : (d.key ? [{ key: d.key, used: d.used, remaining: d.remaining }] : []); result.innerHTML = '<div class="quota-summary"><span>日期 <b>' + esc(d.day || '—') + '</b></span><span>每日上限 <b>' + esc(d.limit ?? '—') + '</b></span><span>计数方式 <b>' + esc(d.countBy === 'user' ? '按发言人' : '按会话') + '</b></span>' + (d.enabled === false ? '<span class="quota-off">功能已停用</span>' : '') + '</div>' + (rows.length ? '<div class="quota-rows">' + rows.map(x => '<div class="quota-row"><code>' + esc(x.key) + '</code><span>已用 <b>' + esc(x.used) + '</b></span><span>剩余 <b>' + esc(x.remaining) + '</b></span></div>').join('') + '</div>' : '<div class="quota-empty">今天还没有专业问答用量。</div>'); } catch (e) { result.textContent = '读取失败：' + e.message; } });
           panel.querySelector('.quota-reset').addEventListener('click', async () => { const key = keyInput.value.trim(); if (!confirm(key ? `清空 ${key} 今天的专业问答用量？` : '清空所有会话今天的专业问答用量？')) return; result.textContent = '正在清空…'; try { const d = await call('reset'); if (d.ok !== true) throw Error(d.error || '清空失败'); result.textContent = '今日用量已清空。'; } catch (e) { result.textContent = '清空失败：' + e.message; } });
         }
         if (id === 'ctx-member-card') {
-          body.insertAdjacentHTML('beforeend', '<div class="member-card-preview"><div class="quota-console-head"><div><b>档案预览</b><div class="meta">输入群或私聊 key，查看该会话对应的具体人物档案。</div></div><div class="quota-console-actions"><input class="member-key" placeholder="例如 private:<私聊QQ>" aria-label="档案预览会话 key"><button class="small member-preview">查看档案</button></div></div><div class="member-card-results" aria-live="polite">填写会话 key 后查看档案。</div></div>');
+          body.insertAdjacentHTML('beforeend', '<div class="member-card-preview"><div class="quota-console-head"><div><b>档案预览</b><div class="meta">输入群或私聊 key，查看该会话对应的具体人物档案；有内容时每 30 秒自动刷新。</div></div><div class="quota-console-actions"><input class="member-key" placeholder="例如 private:10610" aria-label="档案预览会话 key"><button class="small member-preview">查看档案</button></div></div><div class="member-card-results" aria-live="polite">填写会话 key 后查看档案。</div></div>');
           const panel = body.querySelector('.member-card-preview'), keyInput = panel.querySelector('.member-key'), result = panel.querySelector('.member-card-results');
-          panel.querySelector('.member-preview').addEventListener('click', async () => { const key = keyInput.value.trim(); if (!key) { result.textContent = '请先填写会话 key。'; keyInput.focus(); return; } result.textContent = '正在读取档案…'; try { const r = await api('/api/plugins/call', 'POST', { tool: 'member_card', input: { key } }); const d = r?.result || r || {}; if (d.ok !== true) throw Error(d.error || '读取失败'); const cards = Array.isArray(d.cards) ? d.cards : []; if (!cards.length) { result.textContent = '该会话暂无可展示的人物档案。'; return; } result.innerHTML = '<div class="member-card-meta">显示 ' + cards.length + ' 张 · 上限 ' + esc(d.maxCards) + ' 张 / ' + esc(d.maxChars) + ' 字</div>' + cards.map(x => '<article class="member-profile-card"><div class="member-profile-id">QQ ' + esc(x.userId || '') + '</div><div class="member-profile-text">' + esc(x.text || '') + '</div></article>').join(''); } catch (e) { result.textContent = '读取失败：' + e.message; } });
+          const refreshButton = panel.querySelector('.member-preview');
+          let reading = false, lastUpdatedKey = '';
+          const refresh = async ({ quiet = false } = {}) => {
+            const key = keyInput.value.trim();
+            if (!key) { if (!quiet) result.textContent = '请先填写会话 key。'; return; }
+            if (reading) return;
+            reading = true; refreshButton.disabled = true;
+            if (!quiet) result.textContent = '正在读取档案…';
+            try {
+              const r = await api('/api/plugins/call', 'POST', { tool: 'member_card', input: { key } });
+              if (key !== keyInput.value.trim()) return;
+              const d = r?.result || r || {};
+              if (d.ok !== true) throw Error(d.error || '读取失败');
+              const cards = Array.isArray(d.cards) ? d.cards : [];
+              const updatedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              lastUpdatedKey = key;
+              if (!cards.length) {
+                result.innerHTML = '<div class="member-card-meta"><span>该会话暂无可展示的人物档案。</span><span>更新于 ' + esc(updatedAt) + '</span></div>';
+                return;
+              }
+              const cleanText = value => String(value || '').replace(/\*\*|__/g, '').replace(/~~/g, '').replace(/`/g, '');
+              result.innerHTML = '<div class="member-card-meta"><span>显示 ' + cards.length + ' 张 · 上限 ' + esc(d.maxCards) + ' 张 / ' + esc(d.maxChars) + ' 字</span><span>更新于 ' + esc(updatedAt) + '</span></div>' + cards.map(x => '<article class="member-profile-card"><div class="member-profile-id">QQ ' + esc(x.userId || '') + '</div><div class="member-profile-text">' + esc(cleanText(x.text)) + '</div></article>').join('');
+            } catch (e) { result.textContent = '读取失败：' + e.message; }
+            finally { reading = false; refreshButton.disabled = false; }
+          };
+          refreshButton.addEventListener('click', () => refresh());
+          keyInput.addEventListener('keydown', event => { if (event.key === 'Enter') refresh(); });
+          window.setInterval(() => {
+            if (!document.hidden && panel.isConnected && keyInput.value.trim() && keyInput.value.trim() === lastUpdatedKey) refresh({ quiet: true });
+          }, 30000);
         }
         if (id === 'life-daily-worklog') {
           body.insertAdjacentHTML('beforeend', '<section class="worklog-console" aria-label="运维日报历史"><div class="worklog-console-head"><div><h3>日报归档</h3><p class="meta">浏览最近生成的日报。此处只读，不会重新生成或发送。</p></div><button class="small worklog-refresh" type="button">刷新列表</button></div><div class="worklog-status" aria-live="polite"></div><div class="worklog-layout"><nav class="worklog-list" aria-label="日报日期列表"><div class="worklog-empty">读取日报列表中…</div></nav><article class="worklog-preview"><div class="worklog-preview-head"><b>内容预览</b><span class="meta worklog-preview-meta">选择一份日报</span></div><pre class="worklog-preview-text">日报内容会显示在这里。</pre></article></div></section>');
@@ -7253,7 +7797,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     if (!compCache.length) { const d = await api('/api/plugins'); compCache = d.plugins || []; }
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return;
-    const items = compCache.filter((p) => (p.layer || '') === layerId);
+    const items = compCache.filter((p) => (p.layer || '') === layerId && !(layerId === 'V' && p.id === 'human'));
     root.innerHTML = items.length ? items.map((p) => `<details class="comp-card" open data-id="${esc(p.id)}"><summary><b>${esc(p.name)}</b><span class="meta">${esc(p.id)} v${esc(p.version || '0')}</span></summary><div class="meta">${esc(p.description)}</div><div class="comp-body">加载详情…</div></details>`).join('') : '<p class="meta">当前没有可配置功能。</p>';
     root.querySelectorAll('details.comp-card').forEach((d) => { loadComponentDetail(d.dataset.id, d); d.addEventListener('toggle', () => { if (d.open) loadComponentDetail(d.dataset.id, d); }); });
   };
@@ -7273,7 +7817,6 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
     if (!root || root.dataset.loaded === '1' || root.dataset.loading === '1') return;
     root.dataset.loading = '1';
     try {
-      // 进入此栏时重新查询清单；桥接热加载组件后，旧清单不应让表单一直空着。
       compCache = (await api('/api/plugins')).plugins || [];
       await window.__renderComponentsByIds(['life-message-ack'], root);
       if (!root.children.length) throw Error('未找到 life-message-ack 组件，请确认桥接已加载该组件');
@@ -7299,7 +7842,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
       ['ctx-memory-profile-facts', 'v2PmEnabled'],
       ['ctx-memory-context', 'v2PmEnabled'],
       ['ctx-chat-reply-shape', 'roleInjectMax'],
-      ['ctx-chat-topic-drive', 'v2ProactiveEnabled'],
+      ['ctx-chat-topic-drive', 'v2FollowupGlobalAnchor', 'privateFollowupEnabled,minIntervalMinutes,dailyLimit'],
       ['obs-self-review', 'v2SelfReviewEnabled', 'maxFixesPerRound'],
       ['life-daily-worklog', 'v2DdEnabled', 'sendToOwner']
     ];
@@ -7314,7 +7857,9 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
       if (target.closest('section[data-page^="setting-"]')) slot.dataset.deferSave = '1';
       if (fields) slot.dataset.inlineFields = fields;
       slot.innerHTML = '<div class="comp-body">读取设置中…</div>';
-      target.append(slot);
+      const sessionEditor = id === 'ctx-chat-topic-drive' ? document.getElementById('v2FollowupSessionEditor') : null;
+      if (sessionEditor && sessionEditor.parentElement === target) target.insertBefore(slot, sessionEditor);
+      else target.append(slot);
       loadComponentDetail(id, slot);
     }
     const inventory = new Map();
@@ -7663,17 +8208,6 @@ function learningLinks(urls) {
       if (scriptStatus) scriptStatus.innerHTML = '<div class="meta">脚本灯等待组件重载后显示。</div>';
     });
   };
-})();
-
-// ── 把各层组件下发到具体页（本层组件），不只在总览 ──────────────────────────
-(() => {
-  window.renderAllLayerComps = () => {
-    if (!window.__renderLayerComponents) return;
-    document.querySelectorAll('.layer-comps-root').forEach((root) => {
-      window.__renderLayerComponents(root.dataset.layer, root);
-    });
-  };
-  // 组件已有各自的侧栏页，不再在层页面末尾重复出现。
 })();
 
 // ── 免打扰时段（只读）：从 life-user-availability 组件读结构化计划并人话化 ────

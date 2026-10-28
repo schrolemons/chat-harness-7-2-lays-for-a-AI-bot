@@ -10,7 +10,8 @@
         "./presets/qq-chat.patch.yml",
         "./presets/qq-chat-v2.patch.yml",
         "./presets/qq-chat-dev.patch.yml",
-        "./presets/qq-task-worker.patch.yml"
+        "./presets/qq-task-worker.patch.yml",
+        "./presets/qq-learning.patch.yml"
       ]
     }
   }

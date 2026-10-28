@@ -1,14 +1,33 @@
 {
   "id": "ctx-member-alias",
   "name": "成员绰号表（谁是谁）",
-  "version": "0.1.0",
-  "description": "维护「绰号 → QQ号」的映射：支持手动添加、自动提取候选、确认/删除；注入每轮提示词供 AI 识别群里谁是谁，传话/点名时按此表对应 QQ。",
+  "version": "1.1.0",
+  "description": "明确与疑似绰号候选学习；支持一人多绰号、未绑定 QQ、证据、管理员编辑和审核。",
   "category": "上下文与记忆",
   "layer": "C",
   "order": 18,
-  "tags": ["绰号", "昵称", "QQ号", "传话", "成员"],
+  "tags": [
+    "绰号",
+    "昵称",
+    "QQ号",
+    "传话",
+    "成员"
+  ],
   "main": "index.js",
   "enabled": true,
-  "hooks": ["onIncoming", "beforePrompt"],
-  "config": {"autoExtract": true}
+  "hooks": [
+    "onIncoming",
+    "beforePrompt",
+    "onTick"
+  ],
+  "config": {
+    "autoExtract": true,
+    "autoSemantic": true,
+    "minMessages": 15,
+    "cooldownMs": 1800000,
+    "maxCallsPerHour": 4
+  },
+  "schedule": {
+    "everyMs": 60000
+  }
 }

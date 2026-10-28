@@ -1,7 +1,7 @@
 // Only the model-facing view is compacted. Stored messages and console/API data
 // retain the original fields for display, media retrieval and troubleshooting.
 const DEFAULT_FALSE_FIELDS = new Set([
-  'quoteTargetIsSelf', 'isOwner', 'isSelf', 'hasMedia', 'hasForward'
+  'quoteTargetIsSelf', 'isOwner', 'isSelf', 'hasMedia', 'hasForward', 'awaitingReply'
 ]);
 const OPTIONAL_FIELDS = new Set([
   'seq', 'messageId', 'sender', 'userId', 'text', 'plain', 'tail', 'kind',
@@ -107,6 +107,18 @@ export function compactModelMessage(message, opts = {}) {
     delete result.time;
     result.at = localStamp(stamp, now);
     result.ago = ageText(stamp, now);
+  }
+  // ── 已读/已回复双戳（seenAt / repliedAt）──
+  // 模型不需要裸 epoch：它只要知道「这条是不是已接收未回复」。存储与 HTTP 接口仍保留
+  // seenAt / repliedAt（给控制台/排查用），模型视图只留一个布尔提示，省 token。
+  const rawSeenAt = Number(message.seenAt);
+  const rawRepliedAt = Number(message.repliedAt);
+  delete result.seenAt;
+  delete result.repliedAt;
+  if (Number.isFinite(rawSeenAt) && rawSeenAt > 0 && !(Number.isFinite(rawRepliedAt) && rawRepliedAt > 0)) {
+    result.awaitingReply = true;
+  } else {
+    delete result.awaitingReply;
   }
   if (Array.isArray(result.media)) {
     const canResolveByMessage = Number.isSafeInteger(message.seq) && message.seq > 0;

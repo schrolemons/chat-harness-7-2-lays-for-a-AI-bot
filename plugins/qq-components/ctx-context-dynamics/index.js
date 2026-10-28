@@ -2,7 +2,7 @@
 //
 // 从 buildWakePromptV2 搬走两段「每轮动态生成」的提示词：
 //   · 心情引导：心情值 → 语气/条数建议；被叫回来/恢复期的附注
-//   · 表情策略：本轮带不带表情（概率）、最近发过哪些、可用表情列表
+//   · 表情策略：收藏表情候选、最近发过哪些，以及正文表情的统一使用规则
 //
 // 桥接只传事实：心情值/阈值/是否刚被叫回来/是否恢复期、sticker 配置、收藏表情列表。
 // 表情候选排序仍由 ctx-media-sticker-pick 组件负责（这里只给策略与列表）。
@@ -38,7 +38,6 @@ function buildStickerBlock(payload) {
   if (cfg.enabled === false) return '';
   const entries = Array.isArray(payload.stickerEntries) ? payload.stickerEntries : [];
   const st = payload.st || {};
-  const sendProb = Number.isFinite(Number(cfg.sendProbability)) ? Number(cfg.sendProbability) : 0.6;
   const cooldownMin = Math.max(0, Number(cfg.recentCooldownMinutes) || 30);
   const cooldownMs = cooldownMin * 60000;
   const now = Date.now();
@@ -64,11 +63,7 @@ function buildStickerBlock(payload) {
       return (e?.desc || e?.localNote || String(id)).slice(0, 20);
     });
   let turnLine = '';
-  // 硬币由桥接掷一次（payload.stickerRoll），确保「策略文案」和「候选过滤」用同一个结果。
-  const roll = typeof payload.stickerRoll === 'boolean' ? payload.stickerRoll : Math.random() < sendProb;
-  if (!roll) {
-    turnLine = '【本轮不必配表情】这一轮可以少发或不发表情（对方点名要、正在斗图、或你真的很想接一张时照发）。';
-  } else if (recentNames.length) {
+  if (recentNames.length) {
     turnLine = '【最近发过的表情（这次换一张）】' + [...new Set(recentNames)].join('、') + '。这一轮换一张没发过的；同一张 ' + cooldownMin + ' 分钟内别再用，也别连着两条都用同一张。';
   }
   if (overused.length) {

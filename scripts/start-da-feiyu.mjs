@@ -25,14 +25,17 @@
 // 改 config.json 前一定先备份、结束进程前确认它是 node.exe。
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { spawn, execFileSync, execFile } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 
 import { NodeApiClient, unwrap } from '../src/dsh-client.js';
 import { readBridgeHealth, classifyBridge, resolveConsoleToken } from '../plugins/qq-components/obs-bridge-health/health.mjs';
 import { discoverSnowLumaConnection } from '../src/snowluma-conn.js';
+import { readLauncherSettings } from './launcher-settings.mjs';
+import { processRunsFile, stopVerifiedRecords } from './launcher-process-identity.mjs';
+import { resolveSnowHome } from './snow-runtime-location.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -42,13 +45,18 @@ const LOCK_FILE = path.join(STATE_DIR, 'bridge.lock');
 const START_LOG = path.join(STATE_DIR, 'start-da-feiyu.log');
 const BRIDGE_LOG = path.join(STATE_DIR, 'bridge.log');
 const ENDPOINT_CACHE = path.join(STATE_DIR, 'dsh-endpoints.json');
+const SUPERVISOR_FILE = path.join(STATE_DIR, 'start-da-feiyu.pid');
+const PROGRESS_FILE = path.join(STATE_DIR, 'startup-progress.json');
+const execText = promisify(execFile);
 
 const NODE_BIN = process.execPath;
-const DSH_HINT_LAUNCHER = process.env.DSH_LAUNCHER || path.join(os.homedir(), 'Desktop', 'DeepSeek Harness.lnk');
 
 // ── 命令行参数 ───────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
 const opt = {
+  gatewayOnly: argv.includes('--gateway-only'),
+  stopGateway: argv.includes('--stop-gateway'),
+  stop: argv.includes('--stop'),
   check: argv.includes('--check'),
   once: argv.includes('--once') || argv.includes('--no-watch'),
   force: argv.includes('--force'),
@@ -83,7 +91,62 @@ function log(msg) {
 }
 function fail(msg) {
   log(`❌ ${msg}`);
+  progress('failed', msg);
   return false;
+}
+
+function progress(phase, message) {
+  try { fs.writeFileSync(PROGRESS_FILE, JSON.stringify({ pid: process.pid, phase, message, at: Date.now() })); } catch {}
+}
+
+async function processList() {
+  if (process.platform !== 'win32') return [];
+  const { stdout } = await execText('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    'ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CreationDate,CommandLine)'
+  ], { windowsHide: true, timeout: 15000, maxBuffer: 8 * 1024 * 1024 });
+  return JSON.parse(stdout || '[]');
+}
+
+const normalized = value => String(value || '').replaceAll('\\', '/').toLowerCase();
+function commandHasFile(command, file) {
+  const escaped = normalized(file).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(?:^|[\\s"\'])' + escaped + '(?=$|[\\s"\'])').test(normalized(command));
+}
+
+async function stopSnowProcesses(home) {
+  const entry = path.join(home, 'index.mjs');
+  const matches = (await processList()).filter(p => processRunsFile(p.CommandLine, entry));
+  // Updater first: otherwise it may respawn a worker while shutdown is in progress.
+  matches.sort((a, b) => matches.some(p => p.ProcessId === a.ParentProcessId) - matches.some(p => p.ProcessId === b.ParentProcessId));
+  await stopVerifiedRecords(matches, { list: processList, stop: pid => stopBridgePair(pid) });
+  return true;
+}
+
+async function stopBot() {
+  const cfg = loadConfig();
+  // Verify the supervisor by its absolute script path, not by a potentially reused PID.
+  const { supervisors } = selectBotProcesses(await processList(), ROOT, process.pid);
+  await stopVerifiedRecords(supervisors, { list: processList, stop: pid => stopBridgePair(0, pid) });
+  // bridge.js hardens its state directory before writing bridge.lock. Catch that
+  // initialization window too; otherwise stopping the supervisor leaves an orphan.
+  const booting = (await processList()).filter(p => processRunsFile(p.CommandLine, path.join(ROOT, 'src', 'bridge.js')));
+  await stopVerifiedRecords(booting, { list: processList, stop: pid => stopBridgePair(pid) });
+  const bridgePid = Number(fs.existsSync(LOCK_FILE) ? fs.readFileSync(LOCK_FILE, 'utf8').trim() : 0);
+  if (bridgePid && isAlive(bridgePid) && !(await stopLockedBridge(bridgePid, Number(cfg.consolePort) || 3100))) return false;
+  if (fs.existsSync(LOCK_FILE) && bridgePid && isAlive(bridgePid)) return fail('桥接仍在运行，取消后续操作');
+  try { fs.unlinkSync(LOCK_FILE); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  try { fs.unlinkSync(SUPERVISOR_FILE); } catch {}
+  progress('stopped', 'bot 已关闭');
+  log('bot 已关闭，守护已停止；保留 QQ、SnowLuma 和 DSH');
+  return true;
+}
+
+function selectBotProcesses(processes, root, selfPid) {
+  const bridges = processes.filter(p => processRunsFile(p.CommandLine, path.join(root, 'src', 'bridge.js')));
+  const supervisors = processes.filter(p => p.ProcessId !== selfPid && !/(?:^|\s)--stop(?:\s|$)/.test(p.CommandLine)
+    && (processRunsFile(p.CommandLine, path.join(root, 'scripts', 'start-da-feiyu.mjs'))
+      || (processRunsFile(p.CommandLine, 'scripts/start-da-feiyu.mjs') && bridges.some(child => child.ParentProcessId === p.ProcessId))));
+  return { bridges, supervisors };
 }
 
 // ── 小工具 ───────────────────────────────────────────────────────────────
@@ -152,7 +215,7 @@ function imageNameOf(pid) {
   }
 }
 
-function parseNetstatPorts(out) {
+function parseNetstatPorts(out, allowedPids = null) {
   // 不用「状态列 == LISTENING」判断，因为中文/英文系统的 netstat 状态列不一样；
   // 改成「远端端口为 0」＝监听（与语言无关）。
   const ports = new Set();
@@ -160,19 +223,20 @@ function parseNetstatPorts(out) {
     const m = line.match(/^\s*TCP\s+(\S+):(\d+)\s+(\S+):(\d+)\s+(\S+)/);
     if (!m) continue;
     const [, addr, localPort, remoteAddr, remotePort] = m;
+    if (allowedPids && !allowedPids.has(Number(line.trim().split(/\s+/).at(-1)))) continue;
     if (Number(remotePort) !== 0) continue; // 不是监听
     const local = /(127\.0\.0\.1|\[::1\]|\[::\]|0\.0\.0\.0)/.test(addr);
     const anyRemote = /(127\.0\.0\.1|\[::1\]|\[::\]|0\.0\.0\.0)/.test(remoteAddr);
     if (!local && !anyRemote) continue;
     const port = Number(localPort);
     if (!port || port < 1024 || port > 65535) continue;
-    if ([3000, 3001, 3100, 9222, 9227].includes(port)) continue;
+    if ([3000, 3001, 3100, 3199, 9222, 9227].includes(port)) continue;
     ports.add(port);
   }
   return [...ports];
 }
 
-function localListeningPorts() {
+function localListeningPorts(allowedPids = null) {
   let out = '';
   for (const args of [['-ano'], ['-an']]) {
     try {
@@ -184,7 +248,24 @@ function localListeningPorts() {
     log('（提示：无法枚举本机监听端口，只试 config.json / 最近成功过的地址；一般不影响启动）');
     return [];
   }
-  return parseNetstatPorts(out);
+  return parseNetstatPorts(out, allowedPids);
+}
+
+function parseDshProcessIds(out) {
+  return new Set(String(out).split(/\r?\n/).map(line =>
+    line.match(/^"DeepSeek Harness\.exe",\s*"(\d+)"/i)?.[1]
+  ).filter(Boolean).map(Number));
+}
+
+function localDshListeningPorts() {
+  if (process.platform !== 'win32') return [];
+  try {
+    const output = execFileSync('tasklist.exe', [
+      '/FI', 'IMAGENAME eq DeepSeek Harness.exe', '/FO', 'CSV', '/NH'
+    ], { encoding: 'utf8', timeout: 4000, windowsHide: true });
+    const pids = parseDshProcessIds(output);
+    return pids.size ? localListeningPorts(pids) : [];
+  } catch { return []; }
 }
 
 function loadEndpointCache() {
@@ -216,12 +297,12 @@ function tailOf(file, lines = 12) {
 // ── DSH 探测 ─────────────────────────────────────────────────────────────
 /**
  * 判断某个地址是不是「我们要的那个 DSH」。
- *  - 先看它是否持有我们 state/sessions.json 里的会话（session/projections）→ 最可靠；
- *  - 再看它是否至少是个能通过鉴权的 DSH（agentPresets.list）。
+ *  - 先用带鉴权的 agentPresets.list 排除无关本地服务；
+ *  - 再看它是否持有已知会话，仍以会话归属作为更强的选择依据。
  */
-async function probeDsh(baseUrl, sessionIds) {
+async function probeDsh(baseUrl, sessionIds, createClient = url => new NodeApiClient(url, 3000, {})) {
   const result = { baseUrl, score: 0, title: '', error: '', presets: 0, sessions: 0 };
-  const api = new NodeApiClient(baseUrl, 3000, {});
+  const api = createClient(baseUrl);
   const withTimeout = async (fn, ms) => {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), ms);
@@ -231,6 +312,16 @@ async function probeDsh(baseUrl, sessionIds) {
       clearTimeout(timer);
     }
   };
+  try {
+    const value = unwrap(await withTimeout(signal => api.callUnary('agentPresets.list', {}, signal), 3000));
+    const list = Array.isArray(value) ? value : value?.presets ?? value?.items;
+    if (!Array.isArray(list)) throw new Error('invalid DSH preset catalogue');
+    result.presets = list.length;
+    result.score = 1;
+  } catch (error) {
+    result.error = error?.message ?? String(error);
+    return result;
+  }
   for (const sid of sessionIds.slice(0, 4)) {
     try {
       const r = await withTimeout((signal) => api.callUnary('session/projections', { sessionId: sid }, signal), 3500);
@@ -245,23 +336,15 @@ async function probeDsh(baseUrl, sessionIds) {
       if (!result.error) result.error = error?.message ?? String(error);
     }
   }
-  if (result.score === 0) {
-    try {
-      const r = await withTimeout((signal) => api.callUnary('agentPresets.list', {}, signal), 3000);
-      const list = unwrap(r);
-      result.presets = Array.isArray(list) ? list.length : Array.isArray(list?.items) ? list.items.length : 1;
-      result.score = 1;
-      result.error = '';
-    } catch (error) {
-      if (!result.error) result.error = error?.message ?? String(error);
-    }
-  }
+  if (result.score > 0) result.error = '';
   return result;
 }
 
-async function discoverDsh(cfg) {
+async function discoverDsh(cfg, deps = {}) {
+  const probe = deps.probe ?? probeDsh;
+  const remember = deps.remember ?? rememberEndpoint;
   const configured = String(cfg?.dsh?.baseUrl || '').trim();
-  const sessionIds = (() => {
+  const sessionIds = deps.sessionIds ?? (() => {
     try {
       const doc = JSON.parse(fs.readFileSync(path.join(STATE_DIR, 'sessions.json'), 'utf8'));
       return [...new Set(Object.values(doc?.sessions || {}))].filter((s) => typeof s === 'string');
@@ -275,13 +358,25 @@ async function discoverDsh(cfg) {
   const quickUrl = String(opt.port ? `http://127.0.0.1:${opt.port}` : (process.env.DSH_URL || configured || ''))
     .trim().replace(/\/+$/, '');
   if (quickUrl) {
-    const quick = await probeDsh(quickUrl, sessionIds);
+    const quick = await probe(quickUrl, sessionIds);
     if (quick && quick.score > 0) {
       log(`探测 DSH：${quickUrl} 直接可用（跳过端口扫描）`);
-      rememberEndpoint(quickUrl);
+      remember(quickUrl);
       return quick;
     }
-    log(`探测 DSH：${quickUrl} 不可用，回退到全量探测`);
+    log(`探测 DSH：${quickUrl} 不可用，检查 DSH 进程监听端口`);
+  }
+
+  const preferredPorts = (deps.preferredPorts ?? localDshListeningPorts)();
+  if (preferredPorts.length) {
+    const preferred = await Promise.all(preferredPorts.map(port => probe(`http://127.0.0.1:${port}`, sessionIds)));
+    const best = preferred.filter(p => p.score >= 2 || (!sessionIds.length && p.score > 0))
+      .sort((a, b) => b.score - a.score || b.sessions - a.sessions)[0];
+    if (best) {
+      log(`探测 DSH：通过进程监听端口定位 ${best.baseUrl}（已鉴权，会话命中 ${best.sessions} 个，跳过全量扫描）`);
+      remember(best.baseUrl);
+      return best;
+    }
   }
 
   const candidates = [];
@@ -294,16 +389,19 @@ async function discoverDsh(cfg) {
   if (opt.port) push(opt.port);
   if (process.env.DSH_URL) push(process.env.DSH_URL);
   if (configured) push(configured);
-  for (const url of loadEndpointCache()) push(url);
-  const discovered = localListeningPorts();
+  for (const url of (deps.loadCache ?? loadEndpointCache)()) push(url);
+  const discovered = (deps.allPorts ?? localListeningPorts)();
   for (const port of discovered) push(port);
 
   log(`探测 DSH：候选 ${candidates.length} 个地址（其中 ${discovered.length} 个来自本机监听端口）`);
   const probes = [];
-  const CONCURRENCY = 8;
+  const CONCURRENCY = 16;
   for (let i = 0; i < candidates.length; i += CONCURRENCY) {
     const batch = candidates.slice(i, i + CONCURRENCY);
-    probes.push(...(await Promise.all(batch.map((url) => probeDsh(url, sessionIds)))));
+    probes.push(...(await Promise.all(batch.map((url) => probe(url, sessionIds)))));
+    // Two known-session matches are already the strongest ownership evidence.
+    const owned = probes.find(p => p.score >= 2 && p.sessions >= 2);
+    if (owned) { remember(owned.baseUrl); return owned; }
   }
 
   const usable = probes.filter((p) => p.score > 0);
@@ -321,19 +419,27 @@ async function discoverDsh(cfg) {
         (p.title ? ` 会话标题：${p.title}` : '')
     );
   }
-  rememberEndpoint(usable[0].baseUrl);
+  remember(usable[0].baseUrl);
   return usable[0];
 }
 
 async function launchDshIfPossible() {
   if (!opt.launchDsh) return false;
-  if (!fs.existsSync(DSH_HINT_LAUNCHER)) {
-    log(`找不到 DSH 启动快捷方式：${DSH_HINT_LAUNCHER}`);
+  const cfg = loadConfig();
+  const candidates = [cfg.dsh?.launcherPath, process.env.DSH_EXE,
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness', 'DeepSeek Harness.exe'),
+    process.env.USERPROFILE && path.join(process.env.USERPROFILE, 'Desktop', 'DeepSeek Harness.lnk')].filter(Boolean);
+  const launcher = candidates.find(candidate => fs.existsSync(candidate));
+  if (!launcher) {
+    log('找不到 DSH 启动程序；请配置 dsh.launcherPath 或 DSH_EXE');
     return false;
   }
   log('尝试拉起 DeepSeek Harness（--launch-dsh）…');
   try {
-    spawn('cmd.exe', ['/c', 'start', '', DSH_HINT_LAUNCHER], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    if (/\.lnk$/i.test(launcher)) {
+      const encoded = Buffer.from(`Start-Process -FilePath '${launcher.replaceAll("'", "''")}' -WindowStyle Hidden`, 'utf16le').toString('base64');
+      spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { stdio: 'ignore', windowsHide: true }).unref();
+    } else spawn(launcher, [], { stdio: 'ignore', windowsHide: true }).unref();
   } catch (error) {
     log(`拉起 DSH 失败：${error?.message ?? error}`);
     return false;
@@ -348,47 +454,88 @@ async function launchDshIfPossible() {
 // ── SnowLuma ─────────────────────────────────────────────────────────────
 async function snowLumaInfo(cfg) {
   const found=await discoverSnowLumaConnection({cfg,timeoutMs:3000});
-  return {ok:found.ok,nickname:found.self?.nickname||'',userId:found.self?.user_id||'',error:found.ok?'':found.error||'无法访问 QQ 网关'};
+  const expected = resolveBotUin(cfg);
+  const accountOk = expected && String(found.self?.user_id || '') === expected;
+  return {ok:found.ok && !!accountOk,nickname:found.self?.nickname||'',userId:found.self?.user_id||'',
+    errorKind: found.tried?.some(item => item.status === 401) ? 'auth_rejected' : found.ok && !accountOk ? 'wrong_account' : 'gateway_pending',
+    error:found.ok && !accountOk ? 'QQ 网关当前账号不是指定 bot，正在恢复 bot 账号' : found.ok?'':found.error||'无法访问 QQ 网关'};
 }
 
-async function ensureSnowLuma(cfg) {
-  const first = await snowLumaInfo(cfg);
+function resolveBotUin(cfg) {
+  return readLauncherSettings(ROOT, cfg).botUin;
+}
+
+function buildSnowLaunch(launcher, botUin) {
+  const home = path.dirname(launcher);
+  return {
+    file: path.join(home, 'node.exe'),
+    args: ['--import', pathToFileURL(path.join(__dirname, 'snow-bootstrap.mjs')).href, path.join(home, 'index.mjs')],
+    options: { cwd: home, windowsHide: true, detached: process.platform !== 'win32', stdio: 'ignore',
+      env: { ...process.env, QQL_BOT_UIN: String(botUin || ''), SNOWLUMA_HOOK_AUTOLOAD: '0', SNOWLUMA_BRIDGE_UIN: String(botUin || ''),
+        SNOWLUMA_BRIDGE_ENTRY: path.join(home, 'index.mjs') } }
+  };
+}
+
+async function ensureSnowLuma(cfg, deps = {}) {
+  const infoFn = deps.info || snowLumaInfo;
+  const exists = deps.exists || fs.existsSync;
+  const pause = deps.sleep || sleep;
+  const now = deps.now || Date.now;
+  const report = deps.progress || progress;
+  const botUin = deps.botUin || resolveBotUin(cfg);
+  if (!botUin) return fail('无法确定 bot QQ 账号；请配置 snowluma.botUin，不会自动加载其他 QQ');
+  const first = await infoFn(cfg);
   if (first.ok) {
     log(`SnowLuma 在线：${first.nickname || '未知昵称'}（${first.userId || '?'}）`);
     return true;
   }
   log(`SnowLuma 连不上（${first.error || '未知错误'}），尝试按配置拉起…`);
-  const launcher = String(cfg?.snowluma?.launcherPath || '');
-  if (!launcher || !fs.existsSync(launcher)) {
-    return fail(`找不到 SnowLuma 启动器（config.snowluma.launcherPath = ${launcher || '空'}），请手动打开 SnowLuma 后重试`);
-  }
   // launcher.bat 里全是相对路径（.\check-node-version.cjs、.\node.exe），且版本检查要求
   // Node ^24.22.1 —— 必须让它的工作目录落在 SnowLuma 自己的目录里：
   // 否则 node 会跑到桥接目录里找模块（MODULE_NOT_FOUND），或者用 PATH 里的旧 node 被版本检查拦下。
-  const launcherDir = path.dirname(launcher);
+  let snowChild, launchError = '', exited = false;
   try {
+    const launcherDir = resolveSnowHome(cfg, { exists });
     // 直接用发行包附带的 Node 启动，避免 cmd start 创建可见的黑色终端。
     const snowNode = path.join(launcherDir, 'node.exe');
     const snowEntry = path.join(launcherDir, 'index.mjs');
-    if (!fs.existsSync(snowNode) || !fs.existsSync(snowEntry)) throw new Error('SnowLuma 发行包缺少 node.exe 或 index.mjs');
-    spawn(snowNode, [snowEntry], {
-      detached: true,
-      stdio: 'ignore',
-      cwd: fs.existsSync(launcherDir) ? launcherDir : undefined,
-      windowsHide: true
-    }).unref();
+    if (!exists(snowNode) || !exists(snowEntry)) throw new Error('SnowLuma 发行包缺少 node.exe 或 index.mjs');
+    // An existing WebUI alone does not imply an injected, logged-in QQ session.
+    if (!(await (deps.stopStale || stopSnowProcesses)(launcherDir))) throw new Error('无法停止未就绪的旧 SnowLuma');
+    const launch = buildSnowLaunch(path.join(launcherDir, 'launcher.bat'), botUin);
+    if (deps.launch) snowChild = await deps.launch(launch);
+    else {
+      fs.mkdirSync(STATE_DIR, { recursive: true });
+      const errorLog = path.join(STATE_DIR, 'snowluma-process.stderr.log');
+      try { if (fs.statSync(errorLog).size > 2 * 1024 * 1024) fs.renameSync(errorLog, `${errorLog}.${Date.now()}`); } catch {}
+      const errorFd = fs.openSync(errorLog, 'a');
+      try { snowChild = spawn(launch.file, launch.args, { ...launch.options, stdio: ['ignore', 'ignore', errorFd] }); }
+      finally { fs.closeSync(errorFd); }
+    }
+    snowChild.once('error', error => { launchError = error?.message || 'spawn failed'; });
+    snowChild.once('exit', (code, signal) => {
+      exited = true; launchError = `进程退出 code=${code} signal=${signal}`;
+      log(`SnowLuma 启动器已退出（PID ${snowChild.pid}，code=${code} signal=${signal}）`);
+    });
+    snowChild.unref?.();
   } catch (error) {
     return fail(`拉起 SnowLuma 失败：${error?.message ?? error}`);
   }
-  for (let i = 0; i < 30; i += 1) {
-    await sleep(3000);
-    const info = await snowLumaInfo(cfg);
+  report('waiting_gateway', '正在连接指定机器人 QQ 的接口；已登录 QQ 时无需重复登录');
+  const deadline = now() + 300_000;
+  while (now() < deadline) {
+    await pause(2000);
+    if (launchError || exited) return fail(`SnowLuma 启动失败：${launchError}；请查看 SnowLuma 日志`);
+    const info = await infoFn(cfg);
     if (info.ok) {
       log(`SnowLuma 已就绪：${info.nickname || '未知昵称'}（${info.userId || '?'}）`);
       return true;
     }
+    report('waiting_gateway', info.errorKind === 'auth_rejected'
+      ? 'QQ 接口有响应，但机器人账号鉴权尚未通过；正在等待指定账号的接口就绪'
+      : '正在等待指定机器人 QQ 的接口就绪（请保持该账号登录）');
   }
-  return fail('等待 SnowLuma 上线超时（90s）；请确认它的 OneBot 服务（HTTP 3000 / WS 3001）已开启');
+  return fail('指定机器人 QQ 的接口等待超时（5 分钟）；请检查 SnowLuma 账号、端口和鉴权，不代表 QQ 未登录');
 }
 
 // ── 控制台 / 已有实例 ─────────────────────────────────────────────────────
@@ -439,19 +586,7 @@ async function prepareLock(consolePort) {
       pid = Number(fs.readFileSync(LOCK_FILE, 'utf8').trim()) || 0;
     } catch {}
     if (pid && isAlive(pid)) {
-      const name = imageNameOf(pid);
-      if (!/^node(\.exe)?$/i.test(name)) {
-        log(`锁文件 PID ${pid} 不是 node（${name || '未知'}），为安全起见不结束它；请手动处理`);
-        return false;
-      }
-      log(`--force：结束旧实例 PID ${pid}`);
-      try {
-        process.kill(pid);
-        for (let i = 0; i < 20 && isAlive(pid); i += 1) await sleep(250);
-      } catch (error) {
-        log(`结束旧实例失败：${error?.message ?? error}`);
-        return false;
-      }
+      if (!(await stopLockedBridge(pid, consolePort))) return false;
     } else {
       log('旧实例没有可用的 PID，无法安全结束；请手动重启桥接后重试');
       return false;
@@ -462,18 +597,104 @@ async function prepareLock(consolePort) {
   const raw = fs.readFileSync(LOCK_FILE, 'utf8').trim();
   const pid = Number(raw) || 0;
   if (pid && isAlive(pid)) {
-    log(`锁文件里的 PID ${pid} 仍然活着但没有应答控制台——按“另一个实例在跑”处理，不启动`);
-    log('如果确认它是卡死的僵尸进程，请手动结束它，或加 --force');
-    if (!opt.force) return false;
+    if (!opt.force) {
+      log(`锁文件里的 PID ${pid} 仍然活着但没有应答控制台——按“另一个实例在跑”处理，不启动`);
+      log('如果确认它是卡死的僵尸进程，请手动结束它，或加 --force');
+      return false;
+    }
+    if (!(await stopLockedBridge(pid, consolePort))) return false;
   }
   try {
-    fs.unlinkSync(LOCK_FILE);
+    if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE);
     log(`已清理僵尸锁文件（PID ${pid || '空'} 已不存在）`);
   } catch (error) {
     log(`清理锁文件失败：${error?.message ?? error}`);
     return false;
   }
   return true;
+}
+
+async function stopBridgePair(bridgePid, supervisorPid = 0) {
+  // On Windows a detached child survives termination of its supervisor.
+  // Stop and confirm the supervisor first, then explicitly stop the bridge.
+  for (const targetPid of [supervisorPid, bridgePid].filter(Boolean)) {
+    if (!isAlive(targetPid)) continue;
+    try { process.kill(targetPid); }
+    catch (error) { if (error?.code !== 'ESRCH') return false; }
+    for (let i = 0; i < 40 && isAlive(targetPid); i += 1) await sleep(250);
+    if (isAlive(targetPid)) return false;
+  }
+  return true;
+}
+
+async function stopLockedBridge(pid, consolePort) {
+  // A reboot can reuse yesterday's PID for an unrelated application. The new
+  // process creation time proves that the old lock no longer owns that PID.
+  try {
+    const { stdout } = await execText('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${Math.trunc(pid)}').CreationDate.ToUniversalTime().ToString('o')`
+    ], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
+    if (lockPidReused(fs.statSync(LOCK_FILE).mtimeMs, Date.parse(stdout.trim()))) {
+      if (Number(fs.readFileSync(LOCK_FILE, 'utf8').trim()) === pid) fs.unlinkSync(LOCK_FILE);
+      log(`旧锁 PID ${pid} 已被新进程复用；只清理过期锁，不结束该进程`);
+      return true;
+    }
+  } catch {}
+  const name = imageNameOf(pid);
+  if (!/^node(\.exe)?$/i.test(name)) {
+    log(`锁文件 PID ${pid} 不是 node（${name || '未知'}），为安全起见不结束它；请手动处理`);
+    return false;
+  }
+  // A stale lock can point at a reused PID. Only terminate a Node process whose command line
+  // still identifies this bridge checkout; never kill an unrelated Node service by PID alone.
+  let processInfo = null;
+  try {
+    const rawInfo = execFileSync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      `$p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${Math.trunc(pid)}'; ` +
+      `$parent = Get-CimInstance Win32_Process -Filter \"ProcessId = $($p.ParentProcessId)\"; ` +
+      `ConvertTo-Json -Compress @{ parentPid = $p.ParentProcessId; commandLine = $p.CommandLine; parentCommandLine = $parent.CommandLine }`
+    ], { encoding: 'utf8', timeout: 10000, windowsHide: true }).trim();
+    processInfo = JSON.parse(rawInfo);
+  } catch {}
+  const normalizedCommand = String(processInfo?.commandLine || '').replaceAll('\\', '/').toLowerCase();
+  const normalizedParent = String(processInfo?.parentCommandLine || '').replaceAll('\\', '/').toLowerCase();
+  const normalizedEntry = path.join(ROOT, 'src', 'bridge.js').replaceAll('\\', '/').toLowerCase();
+  const normalizedRoot = ROOT.replaceAll('\\', '/').toLowerCase();
+  const parentPid = Number(processInfo?.parentPid) || 0;
+  const parentIsThisSupervisor = normalizedParent.includes('start-da-feiyu.mjs')
+    && (normalizedParent.includes(normalizedRoot) || normalizedParent.includes('scripts/start-da-feiyu.mjs'));
+  // A previous supervisor may already be dead. The authenticated console from this
+  // checkout plus the OS listener PID can still identify that orphan safely.
+  let isBridgeEntry = normalizedCommand.includes(normalizedEntry)
+    || (normalizedCommand.includes('src/bridge.js') && parentIsThisSupervisor);
+  if (!isBridgeEntry && normalizedCommand.includes('src/bridge.js')) {
+    try {
+      const rawPids = execFileSync('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `ConvertTo-Json -Compress -InputObject @(Get-NetTCPConnection -LocalPort ${Math.trunc(consolePort)} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess)`
+      ], { encoding: 'utf8', timeout: 20000, windowsHide: true });
+      const ownsConsole = JSON.parse(rawPids).map(Number).includes(pid);
+      isBridgeEntry = ownsConsole && (await consoleStatus(consolePort)).ok;
+    } catch {}
+  }
+  if (!isBridgeEntry) {
+    log(`锁文件 PID ${pid} 的命令行无法确认为当前桥接：为安全起见不结束它`);
+    return false;
+  }
+  if (parentIsThisSupervisor && parentPid && isAlive(parentPid)) {
+    log(`--force：先结束旧守护进程 PID ${parentPid}，阻止它再次拉起旧桥接`);
+  }
+  log(`--force：结束旧桥接 PID ${pid}`);
+  if (!(await stopBridgePair(pid, parentIsThisSupervisor ? parentPid : 0))) {
+    log('旧守护进程或桥接未能退出；停止启动以避免重复实例');
+    return false;
+  }
+  return true;
+}
+
+function lockPidReused(lockMtimeMs, creationMs) {
+  return Number.isFinite(lockMtimeMs) && Number.isFinite(creationMs) && creationMs > lockMtimeMs + 2000;
 }
 
 // ── 启动 + 守护 ──────────────────────────────────────────────────────────
@@ -509,16 +730,17 @@ function restartSoon(delayMs = 5000, reason = '桥接退出') {
 }
 
 function startBridge() {
-  // stdio 用 inherit：桥接自己会写 state/bridge.log，不需要我们再转发一遍；
-  // 而且某些受限环境（沙箱/服务账号）不允许开管道，pipe 会直接 EPERM。
-  child = spawn(NODE_BIN, ['src/bridge.js'], {
+  // 桥接自己会写 state/bridge.log；完全隐藏子进程，避免桌面按钮启动时弹出命令窗口。
+  child = spawn(NODE_BIN, [path.join(ROOT, 'src', 'bridge.js')], {
     cwd: ROOT,
-    stdio: 'inherit',
+    detached: process.platform !== 'win32',
+    stdio: 'ignore',
     windowsHide: true,
     env: process.env
   });
   log(`桥接进程已启动（PID ${child.pid}）`);
   child.once('exit', onChildExit);
+  child.once('error', error => { fail(`桥接进程无法启动：${error.message}`); });
   return child;
 }
 
@@ -544,6 +766,70 @@ async function waitReady(consolePort, timeoutMs = 60000) {
 }
 
 async function main() {
+  if (opt.stop) return stopBot();
+  if (opt.stopGateway) {
+    const cfg = loadConfig();
+    const entry = path.join(ROOT, 'scripts', 'start-da-feiyu.mjs');
+    const guardians = (await processList()).filter(p => p.ProcessId !== process.pid && processRunsFile(p.CommandLine, entry)
+      && /(?:^|\s)--gateway-only(?:\s|$)/.test(p.CommandLine));
+    await stopVerifiedRecords(guardians, { list: processList, stop: pid => stopBridgePair(pid) });
+    await stopSnowProcesses(resolveSnowHome(cfg));
+    log('仅停止 SnowLuma 及其网关守护，保留 QQ、DSH 和桥接');
+    return true;
+  }
+  if (opt.gatewayOnly) {
+    // Own only SnowLuma; never clean bridge locks, change sessions, or restart DSH.
+    const cfg = loadConfig();
+    const botUin = resolveBotUin(cfg);
+    if (!botUin) return fail('机器人 QQ 未设置，拒绝恢复网关');
+    process.env.QQL_BOT_UIN = botUin;
+    cfg.snowluma = { ...cfg.snowluma, botUin };
+    const entry = path.join(ROOT, 'scripts', 'start-da-feiyu.mjs');
+    const duplicate = (await processList()).some(p => p.ProcessId !== process.pid && processRunsFile(p.CommandLine, entry)
+      && /(?:^|\s)--gateway-only(?:\s|$)/.test(p.CommandLine));
+    if (duplicate) { log('网关守护已存在，不启动第二个'); return true; }
+    log('网关守护开始：只恢复指定机器人 QQ 的 SnowLuma，保留桥接');
+    if (!(await ensureSnowLuma(cfg))) return false;
+    progress('ready', 'SnowLuma 网关已恢复，桥接将自动重连');
+    let activeBotUin = botUin;
+    let home = resolveSnowHome(cfg);
+    let snowEntry = path.join(home, 'index.mjs');
+    let gatewayRestarts = [];
+    while (true) {
+      await sleep(10000);
+      // A guardian can outlive the settings page and retain its startup config.
+      // Reload the canonical file before every recovery decision so an account
+      // change can never silently reconnect the previous bot.
+      let latestCfg;
+      try { latestCfg = loadConfig(); }
+      catch (error) { return fail(`无法读取机器人 QQ 设置，停止自动恢复：${error?.message || error}`); }
+      const latestBotUin = resolveBotUin(latestCfg);
+      if (!latestBotUin) {
+        await stopSnowProcesses(home);
+        return fail('机器人 QQ 已从设置中移除，已停止 SnowLuma 自动恢复');
+      }
+      latestCfg.snowluma = { ...latestCfg.snowluma, botUin: latestBotUin };
+      if (latestBotUin !== activeBotUin) {
+        log('检测到机器人 QQ 设置已更改；只按新设置切换 SnowLuma 网关');
+        process.env.QQL_BOT_UIN = latestBotUin;
+        if (!(await ensureSnowLuma(latestCfg))) return false;
+        activeBotUin = latestBotUin;
+        cfg = latestCfg;
+        home = resolveSnowHome(cfg);
+        snowEntry = path.join(home, 'index.mjs');
+        gatewayRestarts = [];
+        continue;
+      }
+      const processes = await processList();
+      if (processes.some(p => processRunsFile(p.CommandLine, snowEntry))) continue;
+      const now = Date.now();
+      gatewayRestarts = gatewayRestarts.filter(time => now - time < 10 * 60_000);
+      if (gatewayRestarts.length >= 3) return fail('SnowLuma 十分钟内连续退出三次，已停止网关重试；查看 gateway-recovery.log 和 snowluma-process.stderr.log');
+      gatewayRestarts.push(now);
+      log('检测到 SnowLuma 进程已消失，单独恢复网关');
+      if (!(await ensureSnowLuma(latestCfg))) return false;
+    }
+  }
   // Check means observation only. In particular: no port scan, config rewrite, gateway launch or lock cleanup.
   const existing=await readBridgeHealth();
   if(opt.check){console.log(JSON.stringify(existing,null,2));return existing.healthy;}
@@ -566,6 +852,13 @@ async function main() {
   }
 
   const consolePort = Number(cfg.consolePort) || 3100;
+  const botUin = resolveBotUin(cfg);
+  if (!botUin) return fail('请先在标题栏“设置”中填写机器人 QQ，再启动 bot');
+  process.env.QQL_BOT_UIN = botUin;
+  cfg.snowluma = { ...cfg.snowluma, botUin };
+  if (opt.forceNow && !(await stopBot())) return false;
+  fs.writeFileSync(SUPERVISOR_FILE, String(process.pid));
+  progress('discovering_dsh', '正在定位 DSH');
 
   // 1) DSH
   let best = await discoverDsh(cfg);
@@ -606,9 +899,12 @@ async function main() {
   if (!slOk) return false;
 
   // 3) 锁 / 已有实例
-  if (!(await prepareLock(consolePort))) return true;
+  if (!opt.forceNow && !(await prepareLock(consolePort))) {
+    return !opt.forceNow && (await readBridgeHealth()).healthy;
+  }
 
   // 4) 启动
+  progress('starting_bridge', '正在初始化桥接和加载预设');
   startBridge();
 
   // 5) 校验
@@ -624,6 +920,7 @@ async function main() {
     const d = ready.data;
     const nickname = d.snowluma?.accountOnline ? 'QQ 在线' : 'QQ 状态未知';
     log(`✅ 已就绪：DSH ${best.baseUrl} · ${nickname} · 模式 ${d.mode || '?'} · 控制台 http://127.0.0.1:${consolePort}`);
+    progress('ready', 'bot 已就绪');
     log('   在 QQ 里发条消息试试；按 Ctrl+C 停止（本窗口关闭则桥接一起退出）');
   }
 
@@ -695,7 +992,7 @@ async function main() {
 }
 
 // 允许被 import（自测脚本会 import parseNetstatPorts）；只有直接运行时才真正启动。
-export { parseNetstatPorts, onChildExit, waitForBridgeExit };
+export { parseNetstatPorts, parseDshProcessIds, probeDsh, discoverDsh, onChildExit, waitForBridgeExit, stopBridgePair, buildSnowLaunch, ensureSnowLuma, commandHasFile, lockPidReused, resolveBotUin, selectBotProcesses };
 
 const invokedDirectly = (() => {
   const entry = process.argv[1] ? path.resolve(process.argv[1]) : '';
