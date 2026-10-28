@@ -2551,6 +2551,15 @@ async function main() {
         : undefined)
   });
 
+  function tokenBudgetOf(key, at = Date.now(), periodSnapshot = null) {
+    const period = pluginHost.callService('tokenBudget', 'period', { now: at });
+    if (!period) return { stage: 'normal', cost: 0, resetAt: 0 };
+    const globalUsage = periodSnapshot || tokenLedger.periodUsage({ since: period.since, until: at });
+    const usage = globalUsage.byKey?.[key] || { cost: 0, tokens: 0, turns: 0, steps: 0, partial: false };
+    return { ...usage, globalPartial: globalUsage.partial, globalTurns: globalUsage.turns,
+      ...(pluginHost.callService('tokenBudget', 'assess', { key, cost: usage.cost, globalCost: globalUsage.cost, now: at }) || { stage: 'normal' }) };
+  }
+
   /** sessionId -> 最近一次已知的实际模型。切换模型会让单价差好几倍，所以按会话记。 */
   const sessionModels = new Map();
   const nominalModel = () => cfg.dsh?.model || 'deepseek-flash';
@@ -7131,6 +7140,50 @@ async function main() {
         // 不应让某个群里的 AI 读到别的群烧了多少钱。这里再显式拒绝一次做双保险。
         if (url.pathname === '/api/tokens/summary' || url.pathname.startsWith('/api/tokens/')) {
           if (req.headers['x-agent-token']) { sendJson({ ok: false, error: '该接口仅控制台可用' }, 403); return; }
+          if (req.method === 'GET' && url.pathname === '/api/tokens/budgets') {
+            const at = Date.now();
+            const period = pluginHost.callService('tokenBudget', 'period', { now: at });
+            const snapshot = period ? tokenLedger.periodUsage({ since: period.since, until: at }) : null;
+            const saved = pluginHost.get('life-token-budget')?.config?.sessions || {};
+            const known = tokenLedger.summary({ limit: 500 }).conversations.map((item) => item.key);
+            const keys = [...new Set([...known, ...Object.keys(saved), ...Object.keys(state.sessions)])]
+              .filter((key) => /^(private|group):\d+$/.test(key)).sort();
+            const all = tokenBudgetOf('__global', at, snapshot);
+            sendJson({ ok: true, symbol: priceTable.symbol,
+              global: { cost: all.globalCost || 0, turns: all.globalTurns || 0, remaining: all.globalRemainingYuan ?? null,
+                limit: all.globalHardLimitYuan || 0, partial: all.globalPartial || false, resetAt: all.resetAt || 0,
+                reached: all.stage === 'silent' && Number(all.globalHardLimitYuan) > 0 && all.globalCost >= all.globalHardLimitYuan },
+              rows: keys.map((key) => ({ key, ...tokenBudgetOf(key, at, snapshot) })) });
+            return;
+          }
+          if (req.method === 'POST' && url.pathname === '/api/tokens/budgets/global') {
+            const body = await readBody();
+            const limit = Number(body.globalHardLimitYuan);
+            if (!Number.isFinite(limit) || limit < 0 || limit > 100000) { sendJson({ ok: false, error: '全局上限超出范围' }, 400); return; }
+            const result = pluginHost.setConfig('life-token-budget', { globalHardLimitYuan: limit });
+            if (!result.ok) { sendJson(result, 400); return; }
+            await pluginHost.reload('life-token-budget');
+            sendJson({ ok: true, global: { ...tokenBudgetOf('__global') } });
+            return;
+          }
+          if (req.method === 'POST' && url.pathname === '/api/tokens/budgets') {
+            const body = await readBody();
+            const key = String(body.key || '');
+            if (!/^(private|group):[1-9]\d*$/.test(key)) { sendJson({ ok: false, error: '无效会话' }, 400); return; }
+            const numbers = ['coldLimitYuan', 'hardLimitYuan', 'weakMinIntervalMin'].map((field) => Number(body[field]));
+            if (numbers.some((value) => !Number.isFinite(value) || value < 0 || value > 100000)
+                || (numbers[2] !== 0 && (numbers[2] < 1 || numbers[2] > 1440))) {
+              sendJson({ ok: false, error: '阈值或间隔超出范围' }, 400); return;
+            }
+            const current = pluginHost.get('life-token-budget')?.config?.sessions || {};
+            const sessions = Object.fromEntries(Object.entries(current).filter(([name]) => /^(private|group):[1-9]\d*$/.test(name)));
+            sessions[key] = { coldLimitYuan: numbers[0], hardLimitYuan: numbers[1], weakMinIntervalMin: numbers[2] || 30 };
+            const result = pluginHost.setConfig('life-token-budget', { sessions });
+            if (!result.ok) { sendJson(result, 400); return; }
+            await pluginHost.reload('life-token-budget');
+            sendJson({ ok: true, row: { key, ...tokenBudgetOf(key) } });
+            return;
+          }
           if (req.method === 'GET' && url.pathname === '/api/tokens/summary') {
             const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit')) || 200));
             sendJson({ ...tokenLedger.summary({ limit }), ledger: tokenLedger.stats() });
@@ -9291,7 +9344,8 @@ async function main() {
   // 静默模式：除 owner 私聊外，不发送任何在途 AI 回复。
   function shouldBlockSilentReply(key) {
     const roleState = readRoleState();
-    return roleState.mode === 'silent' && key !== `private:${String(cfg.ownerQQ ?? '')}`;
+    return (roleState.mode === 'silent' && key !== `private:${String(cfg.ownerQQ ?? '')}`)
+      || tokenBudgetOf(key).stage === 'silent';
   }
 
   // 已知会话令牌出现在出站正文里：打码后照常发出，而不是整条丢弃。
@@ -9345,6 +9399,7 @@ async function main() {
 
   // 统一出站消息：先完整文本审计，再发送。返回是否真的发出。
   async function auditAndSend(key, text) {
+    if (shouldBlockSilentReply(key)) return false;
     const prepared = prepareOutboundText(key, text);
     const outText = prepared.text;
     if (prepared.notes.length) {
@@ -9354,7 +9409,7 @@ async function main() {
     if (shouldAuditKey(key) && isSensitiveText(outText, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules)) {
       log(`⚠️ 回复被安全策略拦截 (${key})，疑似包含敏感信息`);
       appendActivity(`${key} agent 回复被拦截（疑似敏感信息）`);
-      if (cfg.security?.interceptNotify !== false) {
+      if (cfg.security?.interceptNotify !== false && isAdminDevKey(key)) {
         await sendToQQ(key, cfg.security?.interceptNotifyText || '⚠️ 本条回复因疑似包含敏感信息（路径/凭据/会话令牌）被安全策略拦截，已记录并通知管理员。');
       }
       return false;
@@ -11643,6 +11698,10 @@ async function main() {
   // 实际的 DSH prompt 投递（不再直接对外暴露，统一走 promptQueues 串行队列）。
   async function deliverPromptNow(key, promptText, opts = {}) {
     if (!isSessionAllowedInCurrentMode(key)) throw new Error(`当前模式不允许会话 ${key}`);
+    const budgetAllows = () => {
+      const budget = tokenBudgetOf(key);
+      return { budget, allowed: pluginHost.callService('tokenBudget', 'canDispatch', { key, stage: budget.stage }) !== false };
+    };
     // Recheck queued wakes at dispatch time: no model call while paused/disabled
     // and no reserved2 prompt leaking into an ordinary chat after a mode switch.
     const wakeBlocked = () => opts.wakeReason && (currentMode !== 'reserved2' || socialV2.paused || cfg.socialV2?.enabled === false || !pluginHost.allowsWake(opts.wakeReason,{key}) || pluginHost.callService('availability','canWake',{key,reason:opts.wakeReason})===false);
@@ -11651,7 +11710,7 @@ async function main() {
       if(opts.wakeReason){pendingWakeKeys.delete(key);disarmPendingWakeLease(key);}
       return { ok: true, skipped: true };
     };
-    if (wakeBlocked() || pluginBlocked() || (opts.socialMode && opts.socialMode!==currentMode)) return skipWake();
+    if (wakeBlocked() || pluginBlocked() || (opts.socialMode && opts.socialMode!==currentMode) || !budgetAllows().allowed) return skipWake();
     if (!dshReady) {
       const items = queued.get(key) ?? [];
       if (items.length >= QUEUE_MAX) {
@@ -11672,7 +11731,7 @@ async function main() {
       }
       throw error;
     }
-    if (wakeBlocked() || pluginBlocked()) return skipWake();
+    if (wakeBlocked() || pluginBlocked() || !budgetAllows().allowed) return skipWake();
     let wakeState;
     let wakeToken;
     let wakeSnapshot;
@@ -11682,15 +11741,21 @@ async function main() {
       // offline queue may have received more messages since this wake was queued.
       wakeState = getSocialV2State(key);
       wakeToken = wakeState.agentToken;
-      promptText = buildWakePromptV2(key, opts.wakeReason);
+      const budgetStage = tokenBudgetOf(key).stage;
+      promptText = buildWakePromptV2(key, opts.wakeReason, budgetStage);
       // 人格层：reserved2 下角色卡原本只在 qq_get_prompt 里能读到，于是"改了人设卡但不生效"。
       // 这里把当前角色卡拼到每条唤醒提示词最前面（仍受 role.maxInjectChars 截断），
       // 保证人设每轮都真正参与决策。
       const roleHintNow = currentRoleHintV2();
       if (roleHintNow) promptText = `${roleHintNow.trim()}\n\n${promptText}`;
-      wakeSnapshot = buildWakeSnapshotV2(key);
+      wakeSnapshot = buildWakeSnapshotV2(key, budgetStage === 'weak');
       if (wakeSnapshot) {
         promptText += `\n\n【本次消息快照】\n${JSON.stringify(wakeSnapshot)}\n【逐条看完，别只回最后一条】以上消息已提供，无需重复查询；snapshot.pendingFromSeq 是窗口内第一个还没双戳（seenAt+repliedAt）齐全的消息，重启后从它开始处理、不会重刷已回复过的旧消息；awaitingReply=true 或出现在 awaitingReplySeqs 里的消息是「已接收未回复」的旧账，必须逐条处理（回复，或在确认不接时用 qq_mark_read(throughSeq=…) 收尾）。snapshot.partial=true 或 includedUnreadCount < unreadCount 时，必须先用 qq_get_unread_messages(afterSeq=readThroughSeq) 把剩余未读读完再回复。这一批里如果有多条**意思互不相同**的消息（不同问题、不同话题、不同人找你——哪怕它们挨得很近），要逐条回应：一次唤醒可以发 2~3 条文字分别对应不同消息（用 qq_send_message 的 messages 数组），最后只配 1 张表情包；不要把几个话题并成一句笼统回复，也不要只回最新那条、把前面当没看见。回复前如需确认对方是否说完，用 qq_wait_for_messages(purpose="reply") 补足短静默，已安静够久会立即返回。收尾只确认你真正处理过的 readThroughSeq（本地 seq，非 QQ messageId），传给 qq_mark_read 或 qq_set_wake_config 的 throughSeq；没回过的消息不要跟着一起标记已读。`;
+      }
+      if (budgetStage === 'weak') {
+        const detailAt = promptText.indexOf('\n【逐条看完，别只回最后一条】');
+        if (detailAt >= 0) promptText = promptText.slice(0, detailAt)
+          + '\n【本周期低频模式】只处理本次快照列出的待回复消息，简短回应；未列出的消息保留未读，不要为它们调用工具或标记已回复。';
       }
     }
     let content = [{ type: 'text', text: withSlangContext(promptText) }];
@@ -11700,6 +11765,8 @@ async function main() {
     }
     // 媒体解析成功后再标记退场，避免解析异常时残留退场标记。
     if (!isCurrentSession(key, sessionId)) throw new Error('投递前会话已重置或权限已变化');
+    const dispatchBudget = budgetAllows();
+    if (!dispatchBudget.allowed) return skipWake();
     if (opts.farewell) social.exitingSessions.add(sessionId);
     let accepted;
     try {
@@ -11712,9 +11779,10 @@ async function main() {
       if (opts.farewell) social.exitingSessions.delete(sessionId);
       const errText = `${accepted.result.error.code}: ${accepted.result.error.message}`;
       const safeErrText = shouldAuditKey(key) && isSensitiveText(errText, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules) ? '（含敏感信息，已隐藏）' : errText;
-      if (!opts.silent) await sendToQQ(key, `⚠️ 消息未被接受：${safeErrText}`);
+      if (!opts.silent && isAdminDevKey(key)) await sendToQQ(key, `⚠️ 消息未被接受：${safeErrText}`);
       return { ok: false, error: safeErrText };
     }
+    pluginHost.callService('tokenBudget', 'noteDispatch', { key, stage: dispatchBudget.budget.stage });
     if(String(opts.wakeReason||'').startsWith('scheduledContact:'))pluginHost.callService('availability','markDispatched',{key,id:String(opts.wakeReason).split(':')[1]});
     if (wakeSnapshot && isCurrentSession(key, sessionId)
         && socialV2.conversations.get(canonicalV2Key(key)) === wakeState
@@ -13006,7 +13074,7 @@ async function main() {
     return `${lines.join('\n')}\n\n`;
   }
 
-  function buildWakeSnapshotV2(key) {
+  function buildWakeSnapshotV2(key, weakBudget = false) {
     const context = cfg.socialV2?.context ?? {};
     if (context.inlineWakeMessages === false || (!v2ToolEnabled('getUnread') && !v2ToolEnabled('getRecent'))) return null;
     const st = getSocialV2State(key);
@@ -13014,9 +13082,9 @@ async function main() {
       const value = Number(context[name] ?? fallback);
       return Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback;
     };
-    const maxChars = bounded('wakeMaxChars', 6000, 500, 20000);
-    const maxUnread = bounded('wakeMessageLimit', 12, 1, 100);
-    const maxRecent = bounded('wakeRecentLimit', 4, 0, 20);
+    const maxChars = weakBudget ? 1800 : bounded('wakeMaxChars', 6000, 500, 20000);
+    const maxUnread = weakBudget ? 4 : bounded('wakeMessageLimit', 12, 1, 100);
+    const maxRecent = weakBudget ? 0 : bounded('wakeRecentLimit', 4, 0, 20);
     // 一次快照只取一次 now：同一批消息的 ago 必须彼此可比。
     const now = Date.now();
     // 只展示还没双戳齐全的消息；双戳齐全的在回复/收尾时就已经从 unread 摘除。
@@ -13106,7 +13174,7 @@ async function main() {
     const m = [...list].reverse().find((x) => x && !x.isSelf);
     return String(m?.plain ?? m?.text ?? m?.tail ?? '');
   }
-  function buildWakePromptV2(key, reason) {
+  function buildWakePromptV2(key, reason, budgetStage = 'normal') {
     if(String(reason).startsWith('scheduledContact:'))reason='scheduledContact';
     const roleState = readRoleState();
     const initialPromptText = reason === 'bootstrap' ? formatInitialPromptV2(key) : '';
@@ -13173,7 +13241,8 @@ async function main() {
         isOwnerKey: isAdminDevKey(key),
         persistentMemory: readPersistMemoryV2(key),
         midTermText: readTaskNotesV2(key).trim(),
-        maxChars: Math.max(500, Number(cfg.socialV2?.persistentMemory?.maxChars) || 4000),
+        maxChars: budgetStage === 'weak' ? 700 : Math.max(500, Number(cfg.socialV2?.persistentMemory?.maxChars) || 4000),
+        budgetStage,
         roleName: roleState.role || '',
         selfName: selfDisplayName,
         selfId: selfUserId,
@@ -13987,14 +14056,14 @@ async function main() {
 
     // 控制类话语：仅管理员（ownerQQ）可下达；群友触发直接拦截
     if (!isOwner && /进入角色扮演|退出角色扮演|切换角色|设置角色|改角色|换角色|关闭角色扮演|开启角色扮演/.test(plainContent)) {
-      await sendToQQ(key, '角色切换仅管理员可在管理端操作，群内不支持。');
+      if (isAdminDevKey(key)) await sendToQQ(key, '角色切换仅管理员可在管理端操作，群内不支持。');
       return;
     }
 
     // 管理命令：仅管理员（ownerQQ）可用，且由桥接直接执行（硬性，不经过模型）
     if (plainContent.startsWith('/')) {
       if (!isOwner) {
-        await sendToQQ(key, '管理命令仅管理员可用。');
+        if (isAdminDevKey(key)) await sendToQQ(key, '管理命令仅管理员可用。');
         return;
       }
       if (plainContent === '/reset' || plainContent === '/new') {
@@ -14116,7 +14185,7 @@ async function main() {
               log('[adminDev] 管理员打断当前长任务 ' + key);
               appendActivity(key + ' [adminDev] 打断任务');
             } catch (error) {
-              await sendToQQ(key, '打断失败：' + (error?.message ?? error));
+              if (isAdminDevKey(key)) await sendToQQ(key, '打断失败：' + (error?.message ?? error));
             }
             return;
           }
@@ -14153,7 +14222,7 @@ async function main() {
               // 同一套安全闸门：不因「来自 owner」就绕过（owner 也可能转贴外部内容）。
               const fbGuard = guardFeedbackText(String(fb[1]), { config: resolveBridgeGuardConfig(cfg) });
               if (fbGuard.action === 'reject') {
-                void sendToQQ(key, '❌ 这条反馈没记：' + fbGuard.reason);
+                if (isAdminDevKey(key)) void sendToQQ(key, '❌ 这条反馈没记：' + fbGuard.reason);
                 log('[guard] harness 反馈被拒：' + fbGuard.reason);
                 return;
               }
@@ -14384,6 +14453,8 @@ async function main() {
       return;
     }
 
+    const initialBudget = tokenBudgetOf(key);
+    if (pluginHost.callService('tokenBudget', 'canDispatch', { key, stage: initialBudget.stage }) === false) return;
     // DSH 重启容错：DSH 不可用时消息入队（不丢），恢复后自动补投
     if (!dshReady) {
       const items = queued.get(key) ?? [];
@@ -14396,7 +14467,7 @@ async function main() {
       const now = Date.now();
       if ((queuedHintAt.get(key) ?? 0) + QUEUE_HINT_COOLDOWN_MS < now) {
         queuedHintAt.set(key, now);
-        await sendToQQ(key, '⏳ 系统服务重启中，消息已排队，恢复后自动处理。');
+        if (isAdminDevKey(key)) await sendToQQ(key, '⏳ 系统服务重启中，消息已排队，恢复后自动处理。');
       }
       log(`DSH 不可用，消息入队 (${key})`);
       return;
@@ -14418,6 +14489,8 @@ async function main() {
       content = [{ type: 'text', text: withSlangContext(promptText) }, ...imageParts];
     }
     if (!isCurrentSession(key, sessionId)) throw new Error('投递前会话已重置或权限已变化');
+    const finalBudget = tokenBudgetOf(key);
+    if (pluginHost.callService('tokenBudget', 'canDispatch', { key, stage: finalBudget.stage }) === false) return;
     const accepted = await api.sessions.prompt({
       sessionId,
       mode: 'queue',
@@ -14426,9 +14499,10 @@ async function main() {
     if (!accepted.result.ok) {
       const errText = `${accepted.result.error.code}: ${accepted.result.error.message}`;
       const safeErrText = shouldAuditKey(key) && isSensitiveText(errText, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules) ? '（含敏感信息，已隐藏）' : errText;
-      await sendToQQ(key, `⚠️ 消息未被接受：${safeErrText}`);
+      if (isAdminDevKey(key)) await sendToQQ(key, `⚠️ 消息未被接受：${safeErrText}`);
       return;
     }
+    pluginHost.callService('tokenBudget', 'noteDispatch', { key, stage: finalBudget.stage });
     if (accepted.result.value.command) {
       // 斜杠命令直接有结果，不走模型
       if (accepted.result.value.command.text) await auditAndSend(key, mdToPlain(accepted.result.value.command.text));
@@ -14483,13 +14557,13 @@ async function main() {
         if (pending.get(key) === p) pending.delete(key);
       } catch (error) {
         log('回答问题失败（保留挂起以便重试）:', error.message);
-        await sendToQQ(key, '⚠️ 回答提交失败，请再回复一次。');
+        if (isAdminDevKey(key)) await sendToQQ(key, '⚠️ 回答提交失败，请再回复一次。');
       }
       return;
     }
     if (p.kind === 'approval') {
       if (!isOwner) {
-        await sendToQQ(key, '审批仅管理员可操作');
+        if (isAdminDevKey(key)) await sendToQQ(key, '审批仅管理员可操作');
         return;
       }
       const t = answerText.trim().toLowerCase();
@@ -14497,7 +14571,7 @@ async function main() {
       for (const w of APPROVE_WORDS) if (t === w) outcome = 'allowed-once';
       for (const w of REJECT_WORDS) if (t === w) outcome = 'rejected';
       if (!outcome) {
-        await sendToQQ(key, '请回复「通过」或「拒绝」来决定这个审批');
+        if (isAdminDevKey(key)) await sendToQQ(key, '请回复「通过」或「拒绝」来决定这个审批');
         return;
       }
       try {
@@ -14512,7 +14586,7 @@ async function main() {
         if (pending.get(key) === p) pending.delete(key);
       } catch (error) {
         log('处理审批失败（保留挂起以便重试）:', error.message);
-        await sendToQQ(key, '⚠️ 审批回执提交失败，请再回复一次「通过」或「拒绝」。');
+        if (isAdminDevKey(key)) await sendToQQ(key, '⚠️ 审批回执提交失败，请再回复一次「通过」或「拒绝」。');
       }
       return;
     }
@@ -14664,7 +14738,7 @@ async function main() {
         pending.delete(key);
         log(`挂起请求超时 (${key})`);
         cancelPendingEntry(entry).catch(() => {});
-        sendToQQ(key, '⏰ 等待回答超时，已取消该请求');
+        if (isAdminDevKey(key)) sendToQQ(key, '⏰ 等待回答超时，已取消该请求');
       }
     }, cfg.questionTimeoutMs);
     entry.timer = timer;
@@ -15041,7 +15115,7 @@ async function main() {
             if (shouldAuditKey(key) && isSensitiveText(plain, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules)) {
               log(`⚠️ 回复被安全策略拦截 (${key})，疑似包含敏感信息`);
               appendActivity(`${key} agent 回复被拦截（疑似敏感信息）`);
-              if (cfg.security?.interceptNotify !== false) {
+              if (cfg.security?.interceptNotify !== false && isAdminDevKey(key)) {
                 await sendToQQ(key, cfg.security?.interceptNotifyText || '⚠️ 本条回复因疑似包含敏感信息（路径/凭据/会话令牌）被安全策略拦截，已记录并通知管理员。');
               }
               if (isFarewell) {
@@ -15180,7 +15254,7 @@ async function main() {
               }
               // 管理员开发模式：standard preset 的 agent 习惯直接把结果写成文本，
               // 这里把它的文本转发到 QQ（它若已用发送工具则跳过，避免重复）。
-              if (isAdminDevKey(key) && adminDevCfgV2().enabled && !sendToolSucceeded && !wasMemoryTurn && plain.trim()) {
+              if (isAdminDevKey(key) && adminDevCfgV2().enabled && !sendToolSucceeded && !wasMemoryTurn && plain.trim() && !shouldBlockSilentReply(key)) {
                 try {
                   await sendToQQ(key, plain.trim());
                   log('[adminDev] 已转发管理员会话文本 ' + key + '（' + plain.trim().length + ' 字）');
@@ -15207,7 +15281,7 @@ async function main() {
             // 以前这里只发 QQ、不写日志：出问题时 bridge.log 里什么都没有，排查只能靠猜（PR #24）。
             log(`⚠️ agent 处理出错 (${key})：${safeMsg}`);
             appendActivity(`${key} agent 处理出错：${safeMsg.slice(0, 80)}`);
-            await sendToQQ(key, `⚠️ agent 处理出错：${safeMsg}`);
+            if (isAdminDevKey(key)) await sendToQQ(key, `⚠️ agent 处理出错：${safeMsg}`);
             if (isFarewell) {
               const st = socialState(key);
               if (st.phase === 'exiting') {
@@ -15219,7 +15293,7 @@ async function main() {
             }
           } else if (ended.reason.kind === 'aborted') {
             log(`⏹️ 回合被中止 (${key})`);
-            await sendToQQ(key, '⏹️ 已停止');
+            if (isAdminDevKey(key)) await sendToQQ(key, '⏹️ 已停止');
             if (isFarewell) {
               const st = socialState(key);
               if (st.phase === 'exiting') {
@@ -15293,12 +15367,14 @@ async function main() {
           }
           return s;
         });
+        if (!isAdminDevKey(key)) { await cancelPendingEntry({ ...frame, kind: 'question' }); continue; }
         await sendToQQ(key, '❓ agent 需要你回答：\n' + lines.join('\n') + '\n（直接回复选项文字或输入你的回答）');
         await registerPending(key, { kind: 'question', rpcId: envelope.rpcId, sessionId: frame.sessionId, clientId: frame.clientId, eventId: frame.eventId, questions: frame.questions });
       } else if (frame.type === 'approval/requested') {
         const key = reverse.get(frame.sessionId);
         if (!key) continue;
         if (!isCurrentSession(key, frame.sessionId)) { await cancelPendingEntry({ ...frame, kind: 'approval' }); continue; }
+        if (!isAdminDevKey(key)) { await cancelPendingEntry({ ...frame, kind: 'approval' }); continue; }
         const rawReason = frame.reason ?? '';
         const sensitiveReason = shouldAuditKey(key) && isSensitiveText(rawReason, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules);
         if (sensitiveReason) log(`⚠️ 审批理由含敏感信息，已隐藏 (${key})`);
@@ -15319,12 +15395,12 @@ async function main() {
             log('[adminDev] 已自动通过工具审批：' + safeToolName + (reason ? '（' + String(reason).slice(0, 60) + '）' : ''));
           } catch (error) {
             log('[adminDev] 自动通过审批失败，回退为询问：' + (error?.message ?? error));
-            await sendToQQ(key, `🔐 agent 请求审批：${safeToolName}${reason}\n回复「通过」或「拒绝」`);
+            if (isAdminDevKey(key)) await sendToQQ(key, `🔐 agent 请求审批：${safeToolName}${reason}\n回复「通过」或「拒绝」`);
             await registerPending(key, { kind: 'approval', rpcId: envelope.rpcId, sessionId: frame.sessionId, clientId: frame.clientId, eventId: frame.eventId, toolName: frame.toolName });
           }
           continue;
         }
-        await sendToQQ(key, `🔐 agent 请求审批：${safeToolName}${reason}\n回复「通过」或「拒绝」`);
+        if (isAdminDevKey(key)) await sendToQQ(key, `🔐 agent 请求审批：${safeToolName}${reason}\n回复「通过」或「拒绝」`);
         await registerPending(key, { kind: 'approval', rpcId: envelope.rpcId, sessionId: frame.sessionId, clientId: frame.clientId, eventId: frame.eventId, toolName: frame.toolName });
       } else if (frame.type === 'stream/error') {
         log('事件流错误:', frame.error);

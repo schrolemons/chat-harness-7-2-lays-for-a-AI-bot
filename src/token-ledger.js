@@ -646,6 +646,48 @@ export function createTokenLedger({
     return ids;
   }
 
+  /** 按逐轮花费口径计算周期用量：整轮归入最后一个计费步骤所在的周期。 */
+  function periodUsage({ key, since, until = now() } = {}) {
+    const start = Number(since);
+    const end = Number(until);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return { cost: 0, tokens: 0, turns: 0, steps: 0, partial: true, byKey: {} };
+    const index = buildIndex(); // 与下方「逐轮花费」共用相同的 row.cost / row.endedAt 口径。
+    const byKey = Object.create(null);
+    let cost = 0;
+    let tokens = 0;
+    let turns = 0;
+    let steps = 0;
+    for (const [sid, entry] of index) {
+      const conversationKey = keyOf(sid);
+      if (key && conversationKey !== key) continue;
+      for (const row of entry.turns.values()) {
+        if (row.endedAt < start || row.endedAt >= end) continue;
+        cost += row.cost;
+        tokens += totalTokensOf(row.buckets);
+        turns += 1;
+        steps += row.steps;
+        if (conversationKey) {
+          const item = byKey[conversationKey] ||= { cost: 0, tokens: 0, turns: 0, steps: 0, partial: false };
+          item.cost += row.cost;
+          item.tokens += totalTokensOf(row.buckets);
+          item.turns += 1;
+          item.steps += row.steps;
+        }
+      }
+    }
+    let partial = false;
+    for (const sid of allSessionIds()) {
+      const conversationKey = keyOf(sid);
+      if (key && conversationKey !== key) continue;
+      const unknownPeriod = (baselines.get(sid)?.t >= start && baselines.get(sid)?.t < end)
+        || (!evictionCovered(evicted.get(sid)) && evicted.has(sid));
+      if (!unknownPeriod) continue;
+      partial = true;
+      if (conversationKey) (byKey[conversationKey] ||= { cost: 0, tokens: 0, turns: 0, steps: 0, partial: false }).partial = true;
+    }
+    return { cost, tokens, turns, steps, partial, byKey };
+  }
+
   /** 汇总：全局 + 每个会话。 */
   function summary({ limit = 200 } = {}) {
     const index = buildIndex();
@@ -946,6 +988,7 @@ export function createTokenLedger({
     ingestBaseline,
     ingestSnapshotRecords,
     summary,
+    periodUsage,
     conversation,
     series,
     recent,

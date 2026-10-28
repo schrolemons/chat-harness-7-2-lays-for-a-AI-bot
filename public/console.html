@@ -3276,6 +3276,11 @@ button:active:not(:disabled) {
       <div class="meta" id="usageChartNote" style="margin-top:6px"></div>
       <h3 class="usage-h3">按会话（群 / 私聊）</h3>
       <div class="tool-log-table" id="usageConversations">加载中…</div>
+      <h3 class="usage-h3">会话花费阈值</h3>
+      <div class="meta">每晚 22:00（北京时间）重新计入新周期。金额按本周期可归属的调用计算；0 表示不启用对应阈值。达到冷漠阈值后会降低回复频率并缩短注入内容；达到上限后停止回复。</div>
+      <div class="row usage-controls"><span>全部会话本周期：<strong id="usageGlobalTurns">—</strong> 轮，花费 <strong id="usageGlobalCost">—</strong></span><label>统一花费上限（元） <input id="usageGlobalLimit" type="number" min="0" step="0.01" value="0" style="width:100px"></label><button id="usageGlobalSave" class="small">保存统一上限</button><span id="usageGlobalState" class="meta"></span></div>
+      <div class="tool-log-table" id="usageBudgets">加载中…</div>
+      <div class="meta" id="usageBudgetMsg"></div>
       <h3 class="usage-h3">逐轮花费 <span class="meta" id="usageTurnScope">—</span></h3>
       <div class="row usage-controls">
         <label class="sr-only" for="usageKeySelect">选择要查看逐轮明细的会话</label>
@@ -6270,6 +6275,62 @@ function renderUsageConversations(r) {
   }));
 }
 
+async function refreshUsageBudgets() {
+  const box = document.getElementById('usageBudgets');
+  const msg = document.getElementById('usageBudgetMsg');
+  if (box.contains(document.activeElement)) return;
+  try {
+    const result = await api('/api/tokens/budgets');
+    const rows = result.rows || [];
+    const money = (value) => usageMoney(value, result.symbol || '¥');
+    const global = result.global || {};
+    document.getElementById('usageGlobalTurns').textContent = usageNum(global.turns);
+    document.getElementById('usageGlobalCost').textContent = money(global.cost);
+    const globalInput = document.getElementById('usageGlobalLimit');
+    if (document.activeElement !== globalInput) globalInput.value = Number(global.limit) || 0;
+    document.getElementById('usageGlobalState').textContent = global.reached ? '已触发：全部会话停止回复' : global.remaining == null ? '未设统一上限' : `统一剩余 ${money(global.remaining)}`;
+    box.innerHTML = rows.length ? '<table><tr><th>会话</th><th class="num">本周期轮数</th><th class="num">已用</th><th class="num">剩余</th><th>状态</th><th>冷漠阈值（元）</th><th>上限（元）</th><th>冷漠间隔（分钟）</th><th></th></tr>'
+      + rows.map((row) => `<tr data-budget-key="${esc(row.key)}"><td>${esc(row.key)}</td><td class="num">${usageNum(row.turns)}</td><td class="num">${money(row.cost)}${row.partial ? ' <span title="部分历史用量无法按时段归属">*</span>' : ''}</td><td class="num">${row.remainingYuan == null ? '不限' : money(row.remainingYuan)}</td><td>${row.stage === 'silent' ? '停止回复' : row.stage === 'weak' ? '低频短回复' : '正常'}</td><td><input type="number" min="0" step="0.01" value="${Number(row.coldLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="0" step="0.01" value="${Number(row.hardLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="1" max="1440" step="1" value="${Number(row.weakMinIntervalMin) || 30}" style="width:75px"></td><td><button class="small" data-budget-save>保存</button></td></tr>`).join('') + '</table>'
+      : '<div class="empty-state">暂无可配置的会话；有 QQ 会话后会自动列出。</div>';
+    if (rows.some((row) => row.partial)) {
+      msg.textContent = '* 部分旧用量只有累计值，无法准确归入本周期；额度判断基于有时间戳的调用。';
+      msg.className = 'meta';
+    } else if (!msg.classList.contains('ok')) {
+      msg.textContent = '';
+      msg.className = 'meta';
+    }
+  } catch (error) {
+    box.textContent = '阈值读取失败：' + (error?.message || '未知错误');
+  }
+}
+document.getElementById('usageBudgets').addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-budget-save]');
+  if (!button) return;
+  const row = button.closest('[data-budget-key]');
+  const values = [...row.querySelectorAll('input')].map((input) => Number(input.value));
+  const msg = document.getElementById('usageBudgetMsg');
+  button.disabled = true;
+  try {
+    await api('/api/tokens/budgets', 'POST', { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], weakMinIntervalMin: values[2] });
+    msg.textContent = '已保存'; msg.className = 'meta ok';
+    button.blur();
+    await refreshUsageBudgets();
+  } catch (error) { msg.textContent = '保存失败：' + error.message; msg.className = 'meta err'; }
+  finally { button.disabled = false; }
+});
+document.getElementById('usageGlobalSave').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  const msg = document.getElementById('usageBudgetMsg');
+  button.disabled = true;
+  try {
+    await api('/api/tokens/budgets/global', 'POST', { globalHardLimitYuan: Number(document.getElementById('usageGlobalLimit').value) });
+    button.blur();
+    msg.textContent = '统一上限已保存'; msg.className = 'meta ok';
+    await refreshUsageBudgets();
+  } catch (error) { msg.textContent = '保存失败：' + error.message; msg.className = 'meta err'; }
+  finally { button.disabled = false; }
+});
+
 function renderUsageTurns(r) {
   const box = document.getElementById('usageTurns');
   const scope = document.getElementById('usageTurnScope');
@@ -6364,6 +6425,7 @@ async function refreshUsage() {
     document.getElementById('metricUsagePerTurnHint').textContent =
       `${usageNum(t.turns)} 轮 ｜ ${usageNum(t.steps)} 步 ｜ 当前${r.nowTier?.tier === 'peak' ? '高峰' : '空闲'}时段`;
     renderUsageConversations(r);
+    void refreshUsageBudgets();
     renderUsagePrices(r.priceTable ? { ...r.priceTable, nowTier: r.nowTier } : null);
     syncUsageKeySelect((r.conversations || []).map(c => String(c.key ?? '')));
     if (!document.getElementById('usageTurns').dataset.loaded && usageSelectedKey) refreshUsageTurns();
