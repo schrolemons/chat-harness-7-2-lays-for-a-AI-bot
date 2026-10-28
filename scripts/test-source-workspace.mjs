@@ -24,3 +24,19 @@ test('source guard detects edits, additions and removals while excluding runtime
     ]);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('source guard covers persona and deployment contract drift without reading local workspace maps', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'source-contract-'));
+  try {
+    const files = ['roles/whale.md', 'docs/WORKSPACE_AND_DSH_DESKTOP.md', 'README.md', 'workspace.example.json'];
+    for (const file of files) {
+      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      fs.writeFileSync(path.join(root, file), 'before');
+    }
+    fs.writeFileSync(path.join(root, 'workspace.local.json'), 'local-only');
+    const before = snapshot(root);
+    assert.deepEqual(Object.keys(before.files).sort(), [...files].sort());
+    for (const file of files) fs.writeFileSync(path.join(root, file), 'after');
+    assert.deepEqual(compare(before, snapshot(root)).map(x => x.file), [...files].sort());
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

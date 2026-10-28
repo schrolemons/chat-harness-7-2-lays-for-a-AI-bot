@@ -4,7 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-const roots = ['src', 'plugins', 'public', 'dsh', 'scripts'];
+const roots = ['src', 'plugins', 'public', 'dsh', 'scripts', 'roles', 'docs'];
 const excluded = new Set(['node_modules', '.git', 'state', 'private', 'knowledge', 'venv', '__pycache__']);
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -27,7 +27,7 @@ export function snapshot(root) {
     }
   }
   for (const relative of roots) if (fs.existsSync(path.join(absolute, relative))) visit(relative);
-  for (const relative of ['AGENTS.md', 'package.json', 'package-lock.json']) {
+  for (const relative of ['AGENTS.md', 'README.md', 'package.json', 'package-lock.json', 'workspace.example.json']) {
     if (fs.existsSync(path.join(absolute, relative))) visit(relative);
   }
   return { version: 1, files };
