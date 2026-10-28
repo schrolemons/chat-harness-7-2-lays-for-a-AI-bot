@@ -3281,6 +3281,13 @@ button:active:not(:disabled) {
       <div class="row usage-controls"><span>全部会话及后台任务本周期：<strong id="usageGlobalTurns">—</strong> 轮，花费 <strong id="usageGlobalCost">—</strong></span><label>统一花费上限（元） <input id="usageGlobalLimit" type="number" min="0" step="0.01" value="0" style="width:100px"></label><button id="usageGlobalSave" class="small">保存统一上限</button><span id="usageGlobalState" class="meta"></span></div>
       <div class="tool-log-table" id="usageBudgets">加载中…</div>
       <div class="meta" id="usageBudgetMsg"></div>
+      <h3 class="usage-h3">静默后的机械回复</h3>
+      <div class="meta">达到会话或全局硬上限后，私聊每累计 5 条消息随机回一句；群聊仅被 @ 时随机回一句。词条不调用模型，每行一条，私聊与群聊分别管理。</div>
+      <div class="row" style="align-items:flex-start;margin-top:10px">
+        <label style="flex:1;min-width:230px">私聊词条<textarea id="usageMechanicalPrivate" rows="8" spellcheck="false" placeholder="每行一条"></textarea></label>
+        <label style="flex:1;min-width:230px">群聊词条<textarea id="usageMechanicalGroup" rows="8" spellcheck="false" placeholder="每行一条"></textarea></label>
+      </div>
+      <div class="row" style="margin-top:8px"><button id="usageMechanicalSave" class="small">保存机械回复词条</button><span id="usageMechanicalMsg" class="meta"></span></div>
       <h3 class="usage-h3">逐轮花费 <span class="meta" id="usageTurnScope">—</span></h3>
       <div class="row usage-controls">
         <label class="sr-only" for="usageKeySelect">选择要查看逐轮明细的会话</label>
@@ -6331,6 +6338,40 @@ document.getElementById('usageGlobalSave').addEventListener('click', async (even
   finally { button.disabled = false; }
 });
 
+let usageMechanicalDirty = false;
+const mechanicalPrivateBox = document.getElementById('usageMechanicalPrivate');
+const mechanicalGroupBox = document.getElementById('usageMechanicalGroup');
+for (const box of [mechanicalPrivateBox, mechanicalGroupBox]) box.addEventListener('input', () => { usageMechanicalDirty = true; });
+async function refreshUsageMechanicalReplies() {
+  if (usageMechanicalDirty) return;
+  const msg = document.getElementById('usageMechanicalMsg');
+  try {
+    const result = await api('/api/tokens/budgets/replies');
+    if (usageMechanicalDirty) return;
+    mechanicalPrivateBox.value = (result.privateReplies || []).join('\n');
+    mechanicalGroupBox.value = (result.groupReplies || []).join('\n');
+    if (!msg.classList.contains('ok')) msg.textContent = '';
+  } catch (error) { msg.textContent = '词条读取失败：' + error.message; msg.className = 'meta err'; }
+}
+document.getElementById('usageMechanicalSave').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  const msg = document.getElementById('usageMechanicalMsg');
+  const lines = (box) => box.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  button.disabled = true;
+  try {
+    const privateReplies = lines(mechanicalPrivateBox);
+    const groupReplies = lines(mechanicalGroupBox);
+    if (!privateReplies.length || !groupReplies.length) throw Error('私聊和群聊各需至少一条词条');
+    await api('/api/tokens/budgets/replies', 'POST', { privateReplies, groupReplies });
+    usageMechanicalDirty = false;
+    button.blur();
+    msg.textContent = `已保存：私聊 ${privateReplies.length} 条，群聊 ${groupReplies.length} 条`;
+    msg.className = 'meta ok';
+    await refreshUsageMechanicalReplies();
+  } catch (error) { msg.textContent = '保存失败：' + error.message; msg.className = 'meta err'; }
+  finally { button.disabled = false; }
+});
+
 function renderUsageTurns(r) {
   const box = document.getElementById('usageTurns');
   const scope = document.getElementById('usageTurnScope');
@@ -6426,6 +6467,7 @@ async function refreshUsage() {
       `${usageNum(t.turns)} 轮 ｜ ${usageNum(t.steps)} 步 ｜ 当前${r.nowTier?.tier === 'peak' ? '高峰' : '空闲'}时段`;
     renderUsageConversations(r);
     void refreshUsageBudgets();
+    void refreshUsageMechanicalReplies();
     renderUsagePrices(r.priceTable ? { ...r.priceTable, nowTier: r.nowTier } : null);
     syncUsageKeySelect((r.conversations || []).map(c => String(c.key ?? '')));
     if (!document.getElementById('usageTurns').dataset.loaded && usageSelectedKey) refreshUsageTurns();

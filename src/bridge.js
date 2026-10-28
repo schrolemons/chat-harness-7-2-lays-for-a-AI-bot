@@ -2561,6 +2561,15 @@ async function main() {
       ...(pluginHost.callService('tokenBudget', 'assess', { key, cost: usage.cost, globalCost: globalUsage.cost, now: at }) || { stage: 'normal' }) };
   }
 
+  // 所有由桥接发起的 DSH 模型请求共用最后一道额度闸门，含聊天、任务、学习和插件请求。
+  const rawDshPrompt = api.sessions.prompt.bind(api.sessions);
+  api.sessions.prompt = async (request, ...args) => {
+    if (tokenBudgetOf('__global').stage === 'silent') throw new Error('全局额度硬上限已触发，拒绝新的模型调用');
+    const key = reverse.get(request?.sessionId);
+    if (key && tokenBudgetOf(key).stage === 'silent') throw new Error('会话额度硬上限已触发，拒绝新的模型调用');
+    return rawDshPrompt(request, ...args);
+  };
+
   /** sessionId -> 最近一次已知的实际模型。切换模型会让单价差好几倍，所以按会话记。 */
   const sessionModels = new Map();
   const nominalModel = () => cfg.dsh?.model || 'deepseek-flash';
@@ -7141,6 +7150,30 @@ async function main() {
         // 不应让某个群里的 AI 读到别的群烧了多少钱。这里再显式拒绝一次做双保险。
         if (url.pathname === '/api/tokens/summary' || url.pathname.startsWith('/api/tokens/')) {
           if (req.headers['x-agent-token']) { sendJson({ ok: false, error: '该接口仅控制台可用' }, 403); return; }
+          if (url.pathname === '/api/tokens/budgets/replies') {
+            if (req.method === 'GET') {
+              const active = pluginHost.callService('tokenBudget', 'mechanicalReplies') || {};
+              sendJson({ ok: true, privateReplies: active.private || [], groupReplies: active.group || [] });
+              return;
+            }
+            if (req.method === 'POST') {
+              const body = await readBody();
+              const clean = (value) => {
+                if (!Array.isArray(value) || value.length < 1 || value.length > 80) return null;
+                const list = value.map((entry) => typeof entry === 'string' ? entry.trim() : '');
+                if (list.some((entry) => !entry || entry.length > 120) || new Set(list).size !== list.length) return null;
+                return list;
+              };
+              const privateReplies = clean(body.privateReplies);
+              const groupReplies = clean(body.groupReplies);
+              if (!privateReplies || !groupReplies) { sendJson({ ok: false, error: '每套需有 1–80 条不重复词条，每条 1–120 字' }, 400); return; }
+              const result = pluginHost.setConfig('life-token-budget', { mechanicalPrivateReplies: privateReplies, mechanicalGroupReplies: groupReplies });
+              if (!result.ok) { sendJson(result, 400); return; }
+              await pluginHost.reload('life-token-budget');
+              sendJson({ ok: true, privateReplies, groupReplies });
+              return;
+            }
+          }
           if (req.method === 'GET' && url.pathname === '/api/tokens/budgets') {
             const at = Date.now();
             const period = pluginHost.callService('tokenBudget', 'period', { now: at });
@@ -8485,7 +8518,7 @@ async function main() {
   const lastSendFailed = new Map(); // key -> true（下一次成功即清除）
 
   function sendToQQ(key, msg, options = {}) {
-    const assertSendAllowed = captureSendGuard(key);
+    const assertSendAllowed = captureSendGuard(key, { budgetMechanical: options.budgetMechanical === true });
     if (isSensitiveText(msg, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules)) {
       log(`⚠️ QQ 出站文本命中安全拦截 (${key})，已阻止发送`);
       appendActivity(`${key} 出站文本命中安全拦截，已阻止发送`);
@@ -9331,13 +9364,16 @@ async function main() {
   }
 
   // 入队校验无法约束排队等待期间的权限变化，每条消息临近实际发送时再次校验。
-  function captureSendGuard(key) {
+  function captureSendGuard(key, { budgetMechanical = false } = {}) {
     const policy = sessionPolicy(key);
     const sessionId = state.sessions[key];
     return () => {
       if (!isSessionAllowedInCurrentMode(key) || policy !== sessionPolicy(key)
           || (sessionId && state.sessions[key] !== sessionId)) {
         throw new Error('发送已取消：会话、模式或白名单已变化');
+      }
+      if (!budgetMechanical && tokenBudgetOf(key).stage === 'silent') {
+        throw new Error('发送已取消：额度硬上限已触发');
       }
     };
   }
@@ -14036,6 +14072,17 @@ async function main() {
     // 因此必须先解析 quoteTargetIsSelf 再做空文本过滤，避免“只引用不附文”被漏掉。
     const quoteTargetIsSelf = await isQuoteTargetSelf(event.message ?? [], kind, id, event.self_id);
     if (!isSessionAllowedInCurrentMode(key)) return;
+    const incomingBudget = tokenBudgetOf(key);
+    const mechanical = pluginHost.callService('tokenBudget', 'onSilentIncoming', {
+      key, kind, stage: incomingBudget.stage, periodStart: incomingBudget.periodStart,
+      messageId: messageRef,
+      atSelf: kind === 'group' && Array.isArray(event.message)
+        && event.message.some((segment) => segment?.type === 'at' && String(segment.data?.qq) === String(event.self_id ?? ''))
+    });
+    if (incomingBudget.stage === 'silent') {
+      if (mechanical?.text) await sendToQQ(key, mechanical.text, { budgetMechanical: true });
+      return;
+    }
     if (!plainContent && !quoteTargetIsSelf) return;
     const isOwner = String(event.user_id) === String(cfg.ownerQQ ?? '');
     const roleState = readRoleState();

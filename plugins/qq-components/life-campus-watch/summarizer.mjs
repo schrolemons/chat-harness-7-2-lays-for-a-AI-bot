@@ -5,8 +5,31 @@ import WebSocket from 'ws';
 import { NodeApiClient, unwrap } from '../../../src/dsh-client.js';
 import { SUMMARY_PROMPT } from './summary-policy.mjs';
 
+/** 独立定时脚本也必须服从桥接的全局额度；状态不可读时不启动模型回合。 */
+export async function assertGlobalBudgetAllowsModel(root, { fetchImpl = fetch } = {}) {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
+    const token = String(cfg.consoleToken || fs.readFileSync(path.join(root, 'state', 'console-token'), 'utf8')).trim();
+    const port = Number(cfg.consolePort) || 3100;
+    if (!token || port < 1 || port > 65535) throw Error('missing local console access');
+    const response = await fetchImpl(`http://127.0.0.1:${port}/api/tokens/budgets`, {
+      headers: { 'x-console-token': token }, signal: AbortSignal.timeout(2500)
+    });
+    if (!response.ok) throw Error('budget endpoint unavailable');
+    const data = await response.json();
+    const limit = Number(data?.global?.limit);
+    const cost = Number(data?.global?.cost);
+    if (!data?.ok || !Number.isFinite(limit) || !Number.isFinite(cost)) throw Error('invalid budget response');
+    if (data.global.reached || (limit > 0 && cost >= limit)) throw Error('全局额度已达上限，跳过模型整理');
+  } catch (error) {
+    if (String(error?.message || '').startsWith('全局额度已达上限')) throw error;
+    throw Error('额度状态不可用，跳过模型整理');
+  }
+}
+
 /** One short, fresh, tool-free DSH turn for the whole change batch. Never sends to QQ. */
 export async function generateWebSummary(payload, { root, timeoutMs = 35000, provider = 'deepseek-official', model = 'deepseek-flash' } = {}) {
+  await assertGlobalBudgetAllowsModel(root);
   const cfg = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
   const api = new NodeApiClient(cfg.dsh.baseUrl, 8000, cfg.dsh.authToken ? { token: cfg.dsh.authToken } : {});
   const abort = new AbortController();
@@ -41,7 +64,9 @@ export async function generateWebSummary(payload, { root, timeoutMs = 35000, pro
       const submit = () => {
         if (promptSent || done) return;
         promptSent = true;
-        api.sessions.prompt({ sessionId, mode: 'queue', content: [{ type: 'text', text: SUMMARY_PROMPT + '\n网页变化数据：\n' + JSON.stringify(payload) }] }, signal).catch(error => finish(error));
+        void assertGlobalBudgetAllowsModel(root)
+          .then(() => api.sessions.prompt({ sessionId, mode: 'queue', content: [{ type: 'text', text: SUMMARY_PROMPT + '\n网页变化数据：\n' + JSON.stringify(payload) }] }, signal))
+          .catch(error => finish(error));
       };
       socket.on('open', () => {
         socket.send(JSON.stringify({ type: 'open', streamId, endpoint: 'session/follow', payload: { args: { request: { address: { kind: 'session', sessionId } } } } }));
