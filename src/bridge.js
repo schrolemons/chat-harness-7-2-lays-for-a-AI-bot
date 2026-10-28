@@ -13302,11 +13302,7 @@ async function main() {
     // 防重入：如果该会话已经有一个 DSH turn 在进行中（AI 正在思考/调用工具），
     // 或已有排队/在途 prompt，则不再投递新的候选唤醒，避免“思维链进行中又塞入一个 question 唤醒”。
     if (isConversationBusyV2(key, st)) {
-      // 会话正忙：新消息先暂存唤醒原因。但「看到了」的轻确认必须照常触发，
-      // 否则我这边一忙，机主就只看到「已入未读」、完全没有回应。
-      if (/^(private|poke|atMention|question|nameMention|keyword|probability|reply)/.test(String(reason || ''))) {
-        schedulePrivateReadAck(key);
-      }
+      // 会话正忙时仍暂存唤醒原因；补话只由最新的完整入站消息布置。
       if (!Array.isArray(st.pendingWakeReasons)) st.pendingWakeReasons = [];
       const seq = st.lastUnreadSeq || 0;
       if (!st.pendingWakeReasons.some((r) => r && r.reason === reason && r.seq === seq)) {
@@ -13525,7 +13521,7 @@ async function main() {
     return TIMER_WAKE_REASONS.has(String(reason ?? '').split(':')[0]);
   }
 
-  function scheduleWakeV2(key, reason) {
+  function scheduleWakeV2(key, reason, ackInboundAt = null) {
     if (cfg.socialV2?.enabled === false) return;
     if (socialV2.paused) return;
     if (!isSessionAllowedInCurrentMode(key)) {
@@ -13533,6 +13529,7 @@ async function main() {
       return;
     }
     const st = getSocialV2State(key);
+    if (ackInboundAt != null) armMessageReadAckV2(key, reason, ackInboundAt);
     if (st.pendingWakeTimer) {
       // 合并窗口内已有待发送唤醒：按优先级升级最终原因，避免先概率后 @ 却仍按概率唤醒。
       const cur = st.pendingWakeReason || reason;
@@ -13543,11 +13540,7 @@ async function main() {
       return;
     }
     if (isConversationBusyV2(key, st)) {
-      // 会话正忙：新消息先暂存唤醒原因。但「看到了」的轻确认必须照常触发，
-      // 否则我这边一忙，机主就只看到「已入未读」、完全没有回应。
-      if (/^(private|poke|atMention|question|nameMention|keyword|probability|reply)/.test(String(reason || ''))) {
-        schedulePrivateReadAck(key);
-      }
+      // 会话正忙时仍暂存唤醒原因；补话只由最新的完整入站消息布置。
       if (!Array.isArray(st.pendingWakeReasons)) st.pendingWakeReasons = [];
       const seq = st.lastUnreadSeq || 0;
       if (!st.pendingWakeReasons.some((r) => r && r.reason === reason && r.seq === seq)) {
@@ -13608,7 +13601,7 @@ async function main() {
       && (isPoke || String(config.text || '').trim()));
     if (!stages.length) return;
 
-    const armed = { timers: new Set(), inboundAt: expectedInboundAt, mergeWindowMs, internal: false };
+    const armed = { timers: new Set(), inboundAt: expectedInboundAt, mergeWindowMs, internal: false, claimed: false };
     messageAckArmed.set(key, armed);
     for (const stage of stages) {
       const delayMs = waitForMergeMs + Math.max(0, Math.min(600000, Math.round(Number(stage.config.delayMs))));
@@ -13629,6 +13622,14 @@ async function main() {
           if (!isSessionAllowedInCurrentMode(key) || shouldBlockSilentReply(key)) return cancel();
           const id = Number(String(key).split(':')[1]);
           if (!Number.isFinite(id) || id <= 0) return cancel();
+
+          // 同一条最新消息只发送最先激活的一个话术组。
+          if (armed.claimed) return;
+          armed.claimed = true;
+          if (messageAckArmed.get(key) === armed) {
+            for (const timer of armed.timers) { try { clearBridgeTimer(timer); } catch {} }
+            armed.timers.clear();
+          }
 
           armed.internal = true;
           let sent = false;
@@ -13677,24 +13678,24 @@ async function main() {
   }
   const PRIVATE_ACK_WAKE_REASONS = /^(private|poke|atMention|question|nameMention|keyword|probability|reply)(?=$|:)/;
   const GROUP_ACK_WAKE_REASONS = /^(poke|atMention|question|nameMention|keyword|reply)(?=$|:)/;
-  function armMessageReadAckV2(key, reason) {
+  function armMessageReadAckV2(key, reason, inboundAt) {
+    if (Number(messageAckInboundAt.get(key)) !== Number(inboundAt)) return;
     const reasonText = String(reason || '');
     const isEligible = String(key).startsWith('private:')
       ? PRIVATE_ACK_WAKE_REASONS.test(reasonText)
       : String(key).startsWith('group:') && GROUP_ACK_WAKE_REASONS.test(reasonText);
     if (!isEligible) return;
-    scheduleMessageReadAck(key);
+    scheduleMessageReadAck(key, inboundAt);
   }
 
   function noteMessageAckInbound(key, inboundAt = Date.now()) {
     const k = String(key ?? '');
-    if (!/^(?:private|group):/.test(k)) return false;
-    const hadPendingAck = messageAckArmed.has(k);
-    messageAckInboundAt.set(k, inboundAt);
+    if (!/^(?:private|group):/.test(k)) return null;
+    // 同一毫秒内连续收到两条完整 QQ 消息，也必须能区分新旧计时周期。
+    const latestAt = Math.max(Number(inboundAt) || Date.now(), (Number(messageAckInboundAt.get(k)) || 0) + 1);
+    messageAckInboundAt.set(k, latestAt);
     cancelMessageReadAck(k);
-    // 群里已有一条明确发给机器人的消息尚未回复时，新消息会重置其静默窗口（仍以合并窗口结束为起点）。
-    if (k.startsWith('group:') && hadPendingAck) scheduleMessageReadAck(k, inboundAt);
-    return hadPendingAck;
+    return latestAt;
   }
 
   /**
@@ -13911,7 +13912,7 @@ async function main() {
       log(`忽略未授权会话 ${key}（当前模式 ${currentMode}，来自 ${event.user_id}）`);
       return;
     }
-    noteMessageAckInbound(key, incomingAt);
+    const ackInboundAt = noteMessageAckInbound(key, incomingAt);
     const resolveAtName = async (qq) => {
       // 只有群聊才需要把 @QQ号 解析成群名片/昵称；私聊没有群成员概念
       if (kind !== 'group') return null;
@@ -14270,7 +14271,7 @@ async function main() {
       } else {
         const reason = evaluateWakeTriggerV2(key, st, event, kind, textContent, plainContent, quoteTargetIsSelf);
         if (reason) {
-          scheduleWakeV2(key, reason);
+          scheduleWakeV2(key, reason, ackInboundAt);
         }
       }
       appendActivity(`${key} [reserved2] 消息已入未读：${textContent.slice(0, 80)}`);
@@ -14614,7 +14615,7 @@ async function main() {
     }
     if (!modeAllowed(key, kind, id, cfg, currentMode)) return;
     const incomingAt = Date.now();
-    noteMessageAckInbound(key, incomingAt);
+    const ackInboundAt = noteMessageAckInbound(key, incomingAt);
     if (currentMode !== 'reserved2') {
       appendActivity(`${key} 收到拍一拍事件（非 reserved2，仅记录）：${senderId} -> ${targetId}`);
       return;
@@ -14646,7 +14647,7 @@ async function main() {
       saveSocialV2State();
       scheduleWakeV2(key, 'bootstrap');
     } else if (st.wakeConfig?.triggers?.poke) {
-      scheduleWakeV2(key, 'poke');
+      scheduleWakeV2(key, 'poke', ackInboundAt);
     }
   }
 
