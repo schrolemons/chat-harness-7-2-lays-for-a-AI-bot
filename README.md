@@ -24,6 +24,25 @@
 
 分层是一种本项目采用的工程组织方法，不把它宣称为学术界统一标准。人格行为属于 C 层；权限检查和真实动作不会只依赖人设文字。
 
+## 组件与功能概览
+
+当前公开版本包含 **52 个组件清单**。组件可以按层独立配置和启停；列在这里表示仓库提供相应实现，不代表每个组件都已启用，也不包含使用者自己的账号、记忆、密钥或外部服务配置。
+
+| 层 | 主要组件 | 提供的功能 |
+|---|---|---|
+| **C · 上下文与记忆** | `ctx-chat-style`、`ctx-chat-reply-shape`、`ctx-context-*`、`ctx-role-card` | 小鲸鱼说话风格、回复条数节奏、心情与表情选择、会话身份和时间感、唤醒与收尾提示，以及角色卡兼容处理。 |
+| | `ctx-memory-*`、`ctx-memory-profile-store`、`ctx-chat-topic-drive`、`ctx-interest-terms`、`ctx-chat-slang`、`ctx-member-alias`、`ctx-user-mood` | 会话轻/中/长期记忆、按 QQ 号管理的人物档案、私聊追问、共同兴趣词条与黑话学习、成员别名及心情记录。群聊按实际说话对象查询档案，不自动注入成员隐私。 |
+| **T · 工具与协议** | QQ MCP、`tool-registry`、`tool-games`、`tool-bilibili`、`tool-codex-chat`、`tool-injection-lab`、`tool-user-checking` | 受会话权限约束的 QQ 收发、引用回复、图片、日程和状态接口；小游戏、公开视频搜索/字幕/抽帧、网页搜索、提示词注入防护、受限的本机状态/桌面便签查询，以及可选的 Codex 专用会话。工具注册表提供能力与权限说明。 |
+| **E · 环境与执行** | `exec-browser-manager`、`exec-sandbox`、`exec-image-generation`、`gov-admin-dev-mode` | 浏览器监控与可见授权操作、受限执行后端、图片生成/编辑与 QQ 发图、管理员本机开发能力。浏览器登录、开发工具和生图服务需由使用者配置。 |
+| **L · 生命周期** | `life-scheduler`、`life-schedule-reminder`、`life-user-availability`、`life-message-ack`、`life-task-session`、`life-relay-message`、`life-campus-watch`、`life-proactive-*` | 统一定时调度和发送凭据、日程提醒、语义免打扰与稍后联系、用户明确回来时撤销对应联系、未回复补话、任务委派、传话、通用网页监控、开机问候与时间冒泡。 |
+| **O · 观测与运维** | `obs-*`、`life-token-budget`、`tool-deepseek-balance`、`life-daily-worklog` | 桥接/组件健康诊断、模型成本策略、额度保护、管理员专用余额只读查询、自我复盘和可选运维日报。 |
+| **G · 治理** | `gov-policy`、`plugins/qq-agent-presets/` 中的预设守卫与出站检查 | 会话白名单、工具权限、令牌校验、外部内容隔离、受限 QQ 预设与发送前检查。管理员本机能力和普通群聊工具面分开。 |
+| **V · 验证** | `eval-regression`、`scripts/test-*.mjs`、`human` | 将对话缺陷整理成回归用例，检查协议、权限和组件行为，并为关键操作保留人工确认边界。 |
+| **S · SCHNIE** | `schnie-core` | 可选的思维引导和本地资料读取机制；仓库仅含通用实现与公开示例，私人资料由使用者本地维护。 |
+| **横切集成** | `integration-registry`、`env-bridge` | 注册、配置和启停跨层组件；桥接负责 QQ/DSH 连接、会话状态、调度入口、鉴权和控制台，不承载各组件的业务提示词。 |
+
+这些组件组合后可支持群聊与私聊、按消息引用回复、角色和记忆上下文、定时提醒、网页监控、媒体处理、管理员工具及运行诊断。具体能力受 DSH、SnowLuma/OneBot、模型服务和本机配置影响；安装包不会替使用者登录外部服务或携带个人数据。
+
 ## 技术架构
 
 开发前请先读 [工作树、运行目录与 DSH Desktop 修改契约](docs/WORKSPACE_AND_DSH_DESKTOP.md)。Git 开发树、已部署目录与 DSH profile 是不同对象；本项目提供只读的 `scripts/source-workspace.mjs`，用文件哈希检查同步基线，避免旧副本覆盖运行优化。本机路径映射可参考 `workspace.example.json`，保存在被忽略的 `workspace.local.json` 中。
