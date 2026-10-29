@@ -1,8 +1,8 @@
 {
   "id": "ctx-memory-profile-store",
-  "name": "全局用户画像",
-  "version": "0.1.0",
-  "description": "跨会话用户状态；个人作息仅在本人对应私聊保存和使用，不进入跨会话分享，也不允许智能体跨会话读取或写入。",
+  "name": "按 QQ 号 JSON 人物档案",
+  "version": "0.2.0",
+  "description": "每个 QQ 号一份可扩展 JSON 档案；私聊注入本人，群聊仅按明确对象查阅。",
   "category": "上下文与记忆",
   "order": 5,
   "tags": [
@@ -16,9 +16,6 @@
     "onIncoming",
     "beforePrompt"
   ],
-  "config": {
-    "maxShare": 3,
-    "shareAcrossConversations": false
-  },
+  "config": {},
   "layer": "C"
 }

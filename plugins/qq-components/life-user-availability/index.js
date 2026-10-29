@@ -17,6 +17,9 @@
 
 import crypto from 'node:crypto';
 
+// 仅用于丢弃重启后已过时的到期任务，不参与判断用户是否提前回来。
+const CONTACT_TASK_EXPIRY_MS = 15 * 60000;
+
 const validISO = (s) => /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:\d\d)$/.test(s) && Number.isFinite(Date.parse(s));
 const clock = (s) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(s) ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3)) : null);
 const fmtMinute = (mins) => {
@@ -91,7 +94,7 @@ export function createPlugin(ctx) {
     for (const [key, p] of Object.entries(s.plans)) {
       if (!p.end || p.kind === 'daily') continue;
       if (p.finished) continue;
-      if (now > p.end + Math.max(1, Number(ctx.config?.contactGraceMinutes) || 15) * 60000) {
+      if (now > p.end + CONTACT_TASK_EXPIRY_MS) {
         p.finished = 'expired';
         ctx.state.set({ plans: s.plans });
         continue;
@@ -101,7 +104,7 @@ export function createPlugin(ctx) {
         owner: ctx.id || 'life-user-availability',
         type: 'user-availability',
         at: p.end,
-        expiresAt: p.end + 15 * 60000,
+        expiresAt: p.end + CONTACT_TASK_EXPIRY_MS,
         run: async () => {
           const live = state();
           const current = live.plans[key];
@@ -111,8 +114,6 @@ export function createPlugin(ctx) {
           current.finished = p.kind === 'later' ? 'triggered' : 'expired';
           ctx.state.set({ plans: live.plans });
           if (p.kind !== 'later') return;
-          const recent = live.incoming[key];
-          if (recent?.at > p.sourceAt && recent.at >= p.end - 15 * 60000) return;
           await ctx.capabilities?.requestScheduledContact?.({ key, id: p.id });
         }
       });
@@ -148,15 +149,36 @@ export function createPlugin(ctx) {
     } else {
       return { ok: false, error: 'kind 必须是 daily / quiet / later / indefinite' };
     }
-    const id = crypto.createHash('sha256').update(key + ':' + JSON.stringify([kind, windows, startISO, endISO, contactISO])).digest('hex').slice(0, 20);
-    if (s.plans[key]?.id === id) return { ok: true, duplicate: true, kind, summary: describePlan(s.plans[key]) };
+    const signature = crypto.createHash('sha256').update(key + ':' + JSON.stringify([kind, windows, startISO, endISO, contactISO])).digest('hex').slice(0, 20);
+    const existing = s.plans[key];
+    if (existing && !existing.finished && (existing.signature || existing.id) === signature) {
+      return { ok: true, duplicate: true, planId: existing.id, kind, summary: describePlan(existing) };
+    }
+    const id = crypto.randomUUID();
     cancel(key, s.plans[key]);
-    plan = { ...plan, id, reason: String(reason || '').slice(0, 120), sourceAt: now, createdAt: now };
+    plan = { ...plan, id, signature, reason: String(reason || '').slice(0, 120), sourceAt: now, createdAt: now };
     s.plans[key] = plan;
     s.changes[key] = { status: 'scheduled', at: now };
     ctx.state.set(s);
     restore({ now });
-    return { ok: true, kind, summary: describePlan(plan), until: plan.end ? new Date(plan.end).toISOString() : null };
+    return { ok: true, planId: id, kind, summary: describePlan(plan), until: plan.end ? new Date(plan.end).toISOString() : null };
+  }
+
+  function markReturned({ key, planId } = {}) {
+    if (!key || !planId) return { ok: false, error: '确认提前回来需要 key 和 planId；请先 query 当前约定' };
+    const s = state();
+    const current = s.plans[key];
+    if (!current && s.changes[key]?.status === 'returned' && s.changes[key]?.planId === planId) {
+      return { ok: true, duplicate: true, cancelled: true, planId, summary: '本次稍后联系已因用户回来而撤销' };
+    }
+    if (!current || current.id !== planId) return { ok: false, error: '约定已变化，请重新 query，不能撤销其他约定' };
+    if (current.kind !== 'later') return { ok: false, error: 'returned 只用于本次稍后联系；其他免打扰计划请明确使用 cancel' };
+    if (current.finished && current.finished !== 'triggered') return { ok: false, error: '本次联系已完成或过期，无需撤销' };
+    cancel(key, current);
+    delete s.plans[key];
+    s.changes[key] = { status: 'returned', planId, at: Date.now() };
+    ctx.state.set(s);
+    return { ok: true, cancelled: true, planId, summary: '已确认用户提前回来，撤销本次稍后联系' };
   }
 
   function cancelPlan({ key } = {}) {
@@ -179,6 +201,7 @@ export function createPlugin(ctx) {
       ok: true,
       quietNow: isQuiet({ key }),
       plan: {
+        id: p.id,
         kind: p.kind,
         windows: p.kind === 'daily' ? planWindows(p).map((w) => ({ start: fmtMinute(w.start), end: fmtMinute(w.end) })) : undefined,
         startISO: p.start ? new Date(p.start).toISOString() : null,
@@ -209,6 +232,7 @@ export function createPlugin(ctx) {
         isQuiet,
         setPlan,
         cancelPlan,
+        markReturned,
         getPlan,
         restore,
         recordMemory,
@@ -226,7 +250,7 @@ export function createPlugin(ctx) {
           const AUTO = /^(?:timeBubble|startupGreeting|careCheck|newsShare|idleRescue|proactiveCheck|replyCheck|timeout|reminder|taskDone|scheduledContact)$/;
           if (base === 'scheduledContact') {
             const plan = state().plans[p.key];
-            return !!plan && plan.id === raw.split(':')[1] && !['dispatched', 'expired', 'cancelled', 'triggered'].includes(plan.finished) && Date.now() <= plan.end + 15 * 60000;
+            return !!plan && plan.id === raw.split(':')[1] && !['dispatched', 'expired', 'cancelled'].includes(plan.finished) && Date.now() <= plan.end + CONTACT_TASK_EXPIRY_MS;
           }
           return !AUTO.test(base) || !isQuiet({ key: p.key });
         }
@@ -250,7 +274,8 @@ export function createPlugin(ctx) {
       beforePrompt(p = {}) {
         const plan = state().plans[p.key];
         if (!plan) return '';
-        return '当前时间约定（本会话）：' + describePlan(plan) + '\n如果要改时间、取消约定或提前回来，直接调用 qq_availability 更新，不要只嘴上答应。';
+        return '当前时间约定（本会话）：' + describePlan(plan) + '\n约定编号 planId：' + plan.id
+          + '\n如果用户明确提前回来、恢复聊天且本次稍后联系已不再需要，用 qq_availability(action="returned", planId="' + plan.id + '") 撤销本次联系。只有 kind=later 才能这样处理；不因单条发言或经过固定分钟数自动认定回来。改期用 set，取消其他免打扰计划用 cancel，不要只嘴上答应。';
       },
       onTick(p) { restore(p); },
       wakeTail(p = {}) {

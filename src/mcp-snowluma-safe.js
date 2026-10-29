@@ -1081,11 +1081,12 @@ server.tool(
   'qq_availability',
   '登记/查询/取消本会话的免打扰与「稍后联系」约定。识别由你负责：用户说“别打扰/我上班/最近忙/晚上聊/晚点再聊/改个时间/取消约定”等，先自己理解成具体时间再调用；含糊时间（“晚上聊”）先补问，不要猜。'
   + 'action=set 时：kind=daily 传 windows（可多段 HH:MM，如工作时段两段，支持跨午夜）；kind=quiet 传 startISO/endISO（一次性，带时区）；kind=later 传 contactISO（到点联系一次，带时区）；kind=indefinite 不需要时间（用户现在不想聊又没给结束时间，用户再直接找你时自动解除）。'
-  + '改期=重新 set（替换旧约定）；取消用 action=cancel；不确定当前约定用 action=query。登记成功后用一句话确认具体时间，不要只嘴上答应。',
+  + '改期=重新 set（替换旧约定）；取消用 action=cancel；不确定当前约定用 action=query。用户明确提前回来并恢复聊天、本次稍后联系已不再需要时，使用 action=returned 并传本次 planId（set 返回 planId，query 返回 plan.id）；只撤销对应的 later 约定，不取消其他免打扰计划。不按固定分钟数或单条发言自动判断用户回来。登记成功后用一句话确认具体时间，不要只嘴上答应。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    action: z.enum(['set', 'cancel', 'query']).optional().describe('默认 set'),
+    action: z.enum(['set', 'cancel', 'query', 'returned']).optional().describe('默认 set；returned=确认用户提前回来，撤销本次稍后联系'),
+    planId: z.string().optional().describe('action=returned 必填，使用 set 返回的 planId 或 query 返回的 plan.id，防止撤销已改期的新约定'),
     kind: z.enum(['daily', 'quiet', 'later', 'indefinite']).optional().describe('set 时的约定类型'),
     windows: z.array(z.object({
       start: z.string().describe('开始时间 HH:MM（24 小时制）'),
@@ -1096,11 +1097,11 @@ server.tool(
     contactISO: z.string().optional().describe('kind=later 的联系时间 ISO（必须带时区，且在未来）'),
     reason: z.string().optional().describe('简短原因，方便控制台查看，如“上班”“开会”“去忙了”')
   },
-  async ({ key, token, action, kind, windows, startISO, endISO, contactISO, reason }) => {
+  async ({ key, token, action, planId, kind, windows, startISO, endISO, contactISO, reason }) => {
     try {
       const data = await agentApi('/api/socialV2/availability', {
         method: 'POST',
-        body: JSON.stringify({ key, action: action || 'set', kind, windows, startISO, endISO, contactISO, reason }),
+        body: JSON.stringify({ key, action: action || 'set', planId, kind, windows, startISO, endISO, contactISO, reason }),
         headers: { 'x-agent-token': token }
       });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
@@ -1784,6 +1785,26 @@ if (cfg.socialV2?.tools?.getForwardMsg !== false) {
     }
   );
 }
+
+// ── DeepSeek API 余额（后端插件请求只读查询；桥接层强制限制管理员私聊） ──
+server.tool(
+  'deepseek_balance',
+  '查询当前 DeepSeek API 账号余额和可用状态。只读操作，仅管理员私聊可用；需传入唤醒提示中的会话令牌。余额来自 API 账户，不代表 DSH 桌面订阅余额。',
+  { token: z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）') },
+  async ({ token }) => {
+    try {
+      const data = await agentApi('/api/plugins/call', {
+        method: 'POST',
+        headers: { 'x-agent-token': token },
+        body: JSON.stringify({ tool: 'deepseek_balance', input: {} }),
+        timeoutMs: 20000
+      });
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `查询 DeepSeek API 余额失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
 
 // ── L 层任务委派会话工具（life-task-session 插件；桥接执行 + 仅主人会话可用） ──
 server.tool(

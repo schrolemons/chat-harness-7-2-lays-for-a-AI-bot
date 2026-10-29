@@ -1929,7 +1929,8 @@ button:active:not(:disabled) {
 .quota-console-head b{font-size:15px}
 .quota-console-head .meta{margin-top:4px}
 .quota-console-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.quota-console-actions input{width:min(340px,70vw);min-width:210px}
+ .quota-console-actions input{width:min(340px,70vw);min-width:210px}
+ .quota-console-actions select.member-key{width:min(420px,70vw);min-width:260px;min-height:40px;padding:8px 12px;border:1px solid var(--card-border);border-radius:10px;background:var(--surface);color:var(--text-strong)}
 .quota-result,.member-card-results{margin-top:14px;padding:14px;border:1px solid var(--card-border);border-radius:10px;background:var(--surface);line-height:1.7}
 .quota-summary{display:flex;gap:10px;flex-wrap:wrap}
 .quota-summary span,.quota-off{padding:6px 10px;border-radius:8px;background:var(--surface-subtle)}
@@ -1946,7 +1947,13 @@ button:active:not(:disabled) {
 .member-profile-id{font-size:12px;color:var(--text-secondary);margin-bottom:6px}
 .member-profile-text{width:100%;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;line-height:1.75}
 .member-card-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
-@media(max-width:650px){.quota-row{grid-template-columns:1fr}.quota-console-actions{width:100%}.quota-console-actions input{width:100%;min-width:0}}
+.profile-fields{display:grid;gap:10px;margin:14px 0}
+.profile-json-field{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px;padding:12px;border:1px solid var(--card-border);border-radius:10px;background:var(--surface)}
+.profile-json-field label{display:grid;gap:7px;min-width:0;color:var(--text-secondary);font-size:13px}
+.profile-json-field textarea{box-sizing:border-box;width:100%;min-width:0;min-height:74px;resize:vertical;overflow-wrap:anywhere;white-space:pre-wrap;padding:10px 12px;border:1px solid var(--border-subtle);border-radius:9px;background:var(--surface-subtle);color:var(--text-strong);font:inherit;line-height:1.6}
+.profile-status{min-width:180px}
+@media(max-width:650px){.profile-json-field{grid-template-columns:minmax(0,1fr)}.profile-json-field button{justify-self:start}.profile-status{width:100%}}
+ @media(max-width:650px){.quota-row{grid-template-columns:1fr}.quota-console-actions{width:100%}.quota-console-actions input,.quota-console-actions select.member-key{width:100%;min-width:0}}
 .commercial-component .comp-field{padding:13px 0;border-bottom:1px solid var(--border-subtle)}
 .commercial-component .comp-field>.meta{font-size:13px;color:var(--text-secondary);margin-bottom:8px}
 .commercial-component .comp-form-num,.commercial-component .comp-form-text,.commercial-component .comp-form-select,.commercial-component .comp-form-lines{background:var(--surface);color:var(--text-strong);border:1px solid var(--card-border);min-height:38px}
@@ -2436,7 +2443,7 @@ button:active:not(:disabled) {
       </div></details>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="C">C</span>轻量记忆（话题 / 待说想法 / 未发言成员临时印象）</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2MemoryKey" placeholder="group:10608" style="flex:1">
+        <input type="text" id="v2MemoryKey" placeholder="group:10001" style="flex:1">
         <button id="v2MemoryLoad" class="small">加载记忆</button>
         <button id="v2MemoryClearAll" class="small danger">清空全部</button>
         <span class="meta" id="v2MemoryMsg"></span>
@@ -2452,7 +2459,7 @@ button:active:not(:disabled) {
         留空保存等于删除；只写环境背景，别写指令式的要求（那是人格卡/仿真提示词的事）。
       </div>
       <div class="row">
-        <input type="text" id="v2InitPromptKey" placeholder="group:10608" style="flex:1" aria-label="初始提示词的会话 key">
+        <input type="text" id="v2InitPromptKey" placeholder="group:10001" style="flex:1" aria-label="初始提示词的会话 key">
         <button id="v2InitPromptLoad" class="small">加载</button>
         <button id="v2InitPromptSave" class="small">保存</button>
         <button id="v2InitPromptClear" class="small danger">删除</button>
@@ -2568,7 +2575,7 @@ button:active:not(:disabled) {
       <div class="row voice-action-row">
         <button id="voiceRefreshBtn" type="button" class="btn-secondary">刷新语音库</button>
         <label for="voiceSendTarget">发送目标</label>
-        <input type="text" id="voiceSendTarget" placeholder="group:10603" style="width:190px">
+        <input type="text" id="voiceSendTarget" placeholder="group:10001" style="width:190px">
         <label><input type="checkbox" id="voiceSendDryRun" style="width:auto" checked> 只校验不发送</label>
         <button id="voiceSendBtn" type="button">试发选中语音</button>
         <span id="voiceMsg" class="meta"></span>
@@ -2847,7 +2854,7 @@ button:active:not(:disabled) {
       </div></details>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>唤醒状态（AI 当前设置的下一次唤醒条件/倒计时）</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2WakeKey" placeholder="group:10608" style="flex:1">
+        <input type="text" id="v2WakeKey" placeholder="group:10001" style="flex:1">
         <button id="v2WakeStatusLoad" class="small">查看唤醒状态</button>
         <span class="meta" id="v2WakeStatusMsg"></span>
       </div>
@@ -2856,7 +2863,7 @@ button:active:not(:disabled) {
 </div></details>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>会话状态查看</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2StateKey" placeholder="group:10608" style="flex:1">
+        <input type="text" id="v2StateKey" placeholder="group:10001" style="flex:1">
         <button id="v2StateView" class="small">查看</button>
         <button id="v2ForceWake" class="small">立即唤醒</button>
         <button id="v2StatesList" class="small">列出全部会话状态</button>
@@ -2866,7 +2873,7 @@ button:active:not(:disabled) {
     </div></details>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>已读/已回复双时间戳（重启不重刷、不漏条）</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2ReceiptKey" placeholder="group:10608" style="flex:1">
+        <input type="text" id="v2ReceiptKey" placeholder="group:10001" style="flex:1">
         <button id="v2ReceiptLoad" class="small">查看双戳状态</button>
         <span class="meta" id="v2ReceiptMsg"></span>
       </div>
@@ -3126,7 +3133,7 @@ button:active:not(:disabled) {
       </div>
       <div id="aliasRoot" hidden></div>
       <div class="divider"></div><div class="meta" style="margin-bottom:6px">手动添加成员绰号</div>
-      <div class="row"><input id="aliasName" type="text" placeholder="绰号（如 管理员）" style="flex:1"><input id="aliasQq" type="text" placeholder="QQ号" style="flex:1"></div><div class="row" style="margin-top:6px"><input id="aliasNote" type="text" placeholder="备注（可选）" style="flex:1"></div><div class="row" style="margin-top:8px"><button id="aliasAdd" class="small primary">添加入库（确认）</button></div>
+      <div class="row"><input id="aliasName" type="text" placeholder="绰号（如 十二）" style="flex:1"><input id="aliasQq" type="text" placeholder="QQ号" style="flex:1"></div><div class="row" style="margin-top:6px"><input id="aliasNote" type="text" placeholder="备注（可选）" style="flex:1"></div><div class="row" style="margin-top:8px"><button id="aliasAdd" class="small primary">添加入库（确认）</button></div>
       <details style="margin-top:10px"><summary class="meta">绰号学习设置</summary><label class="row"><input type="checkbox" id="aliasAutoExtract" style="width:auto"> 自动收集明确与疑似绰号 <span id="aliasAutoExtractMsg" class="meta"></span></label></details>
       <div class="modal-overlay" id="aliasModalOverlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="aliasModalTitle" tabindex="-1">
         <h3 id="aliasModalTitle">编辑成员绰号</h3><div class="meta" id="aliasModalContent"></div><input type="hidden" id="aliasEditId">
@@ -3272,11 +3279,11 @@ button:active:not(:disabled) {
 <section id="section-whitelist" data-page="access" class="card span-all">
       <h2>白名单 / 管理员</h2>
       <label>允许的群号（逗号分隔）</label>
-      <input type="text" id="wlGroups" placeholder="608, 607">
+      <input type="text" id="wlGroups" placeholder="10001">
       <label>允许的私聊 QQ（逗号分隔）</label>
-      <input type="text" id="wlPrivate" placeholder="10608">
+      <input type="text" id="wlPrivate" placeholder="10001">
       <label>管理员 QQ（ownerQQ，最高权限）</label>
-      <input type="text" id="ownerQQ" placeholder="10608">
+      <input type="text" id="ownerQQ" placeholder="10001">
       <div class="meta">管理员是唯一可执行管理命令/审批/closed-agent 的 QQ；可留空清除（清除后无管理员，fail-closed）。</div>
       <label>拒绝的群号（黑名单，逗号分隔）</label>
       <input type="text" id="dnGroups" placeholder="">
@@ -4174,7 +4181,7 @@ async function sendVoiceFromConsole() {
   const target = document.getElementById('voiceSendTarget').value.trim();
   const dryRun = document.getElementById('voiceSendDryRun').checked;
   const pick = document.querySelector('input[name="voicePick"]:checked');
-  if (!target) { msg.textContent = '❌ 请填发送目标（如 group:10603）'; msg.className = 'meta err'; return; }
+  if (!target) { msg.textContent = '❌ 请填发送目标（如 group:10001）'; msg.className = 'meta err'; return; }
   if (!pick) { msg.textContent = '❌ 先刷新语音库并选中一个音频'; msg.className = 'meta err'; return; }
   const entry = voiceEntries[Number(pick.value)];
   msg.textContent = '发送中…'; msg.className = 'meta';
@@ -7158,7 +7165,9 @@ for (const { layer, sourcePage, sourceId, groups } of splitParameterPages) {
   }
 }
 const legacyParameterRedirect = { 'v2-c': 'setting-c-0', 'v2-o': 'setting-o-0', components: 'overview' };
-document.querySelector('#mainNav .nav-item[data-view="v2-o"]')?.remove();
+for (const page of ['v2-c', 'v2-o']) {
+  document.querySelector('#mainNav .nav-item[data-view="' + page + '"]')?.remove();
+}
 const adminRow = document.getElementById('v2AdminDevEnabled')?.closest('.row');
 const adminControls = document.getElementById('envAdminControls');
 if (adminRow && adminControls) {
@@ -7288,14 +7297,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
       { key: 'noteFileName', label: '便签文件名', help: '固定写入桌面；这里只能设置文件名，不能选择其他目录。便签始终自动添加时间戳。', type: 'text' },
       { key: 'maxNoteChars', label: '单条便签最大字数', help: '限制每次追加的便签长度。', type: 'number', min: 20, max: 2000 }
     ] },
-    'ctx-member-card': { title: '人物档案注入', fields: [
-      { key: 'enabled', label: '启用档案注入', help: '关闭后，档案仍可在下方预览，但不会随每轮对话发送给 AI。', type: 'boolean' },
-      { key: 'maxCards', label: '每轮最多注入人数', help: '限制一轮对话中加入上下文的人物卡数量；人数越多，占用的上下文越多。', type: 'number', min: 1, max: 20 },
-      { key: 'maxNotes', label: '每人最多附带备注数', help: '决定每张人物卡最多包含几条最近备注；增加后能提供更多背景，也会增加上下文长度。', type: 'number', min: 1, max: 20 },
-      { key: 'maxChars', label: '档案总字数上限', help: '限制一轮注入的所有人物卡总长度；超出时会少放人物卡，不会截断半条档案。', type: 'number', min: 200, max: 10000 },
-      { key: 'skipOwner', label: '跳过主人档案', help: '开启后不把主人自己的档案注入 AI；其他发言者档案不受影响。', type: 'boolean' },
-      { key: 'includeGroups', label: '在群聊中注入档案', help: '关闭后只在私聊使用人物档案；开启后群聊也会根据近期发言者选择档案。', type: 'boolean' }
-    ] },
+    'ctx-memory-profile-store': { title: '人物档案', fields: [] },
     'ctx-knowledge-quota': { title: '专业问答配额规则', fields: [
       { key: 'enabled', label: '启用配额规则', help: '关闭后专业问题不再计数，也不会因达到上限而被拦截；配额查询工具仍可查看已有记录。', type: 'boolean' },
       { key: 'dailyLimit', label: '每个计数对象每日可回答次数', help: '达到此次数后，后续命中的专业问题会改为使用下方的自然带过提示。设为 0 表示不允许额度内回答。', type: 'number', min: 0, max: 1000 },
@@ -7303,7 +7305,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
       { key: 'exemptOwner', label: '主人不受配额限制', help: '开启后，主人发起的专业问题不计入配额，也不会被配额拦截。', type: 'boolean' },
       { key: 'countBy', label: '配额计数方式', help: 'session：同一群或私聊共用额度；user：群内每位发言者各自计算，私聊仍按会话计算。', type: 'select', options: ['session', 'user'] },
       { key: 'deflectStyle', label: '额度用完后的带过方式', help: '达到上限后，AI 会参考这段文字自然结束专业回答；最多使用前 300 个字符。', type: 'textarea' },
-      { key: 'keywords', label: '专业问题关键词（每行一个）', help: '消息需包含其中一个关键词，并带有问句特征才会计入；关键词匹配不区分英文大小写。', type: 'lines' }
+      { key: 'keywords', label: '专业问题关键词（逗号分隔）', help: '多个关键词用逗号隔开；消息包含任意一个关键词且带问句特征时计入，匹配不区分英文大小写。', type: 'comma-list' }
     ] },
     'ctx-chat-reply-shape': { title: '回复长短与分条', fields: [
       { key: 'maxMessagesNormal', label: '普通聊天最多分几条发送', help: '例如填 2：一次回复最多拆成两条 QQ 消息；不是每次必须发满两条。', type: 'number', min: 1, max: 10 },
@@ -7368,10 +7370,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
         { key: 'lecturesPortalUrl', label: '讲座门户 URL', type: 'text' }
       ]
     },
-    'ctx-memory-profile-store': { title: '可分享印象', fields: [
-      { key: 'shareAcrossConversations', label: '允许跨对话分享其他用户的可分享印象', type: 'boolean' },
-      { key: 'maxShare', label: '每轮最多分享条数', type: 'number', min: 0, max: 20 }
-    ] },
+    'ctx-memory-profile-store': { title: '按 QQ 管理 JSON 人物档案', fields: [] },
     'ctx-media-sticker-pick': { title: '表情候选', fields: [{ key: 'limit', label: '按语境评分后最多提供的候选数', type: 'number', min: 1, max: 30 }] },
     'ctx-memory-update': { title: '记忆更新', fields: [{ key: 'maxChars', label: '写入时读取的记忆上限（字符）', type: 'number', min: 100, max: 20000 }] },
     'ctx-memory-profile-facts': { title: '用户画像事实', fields: [
@@ -7419,7 +7418,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
       { key: 'maxItems', label: '最多保存的日程数', help: '达到上限后不再接受新的日程；不会删除现有日程。', type: 'number', min: 10, max: 1000 },
       { key: 'maxPromptItems', label: '每轮最多注入日程数', type: 'number', min: 1, max: 20 }
     ] },
-    'life-user-availability': { title: '用户空闲判断', fields: [{ key: 'contactGraceMinutes', label: '最近联系保护期（分钟）', help: '用户刚联系过时，在这段时间内减少主动打扰。', type: 'number', min: 0, max: 1440 }] },
+    'life-user-availability': { title: '语义约定与免打扰', fields: [] },
     'life-message-ack': { title: '四组独立启用、延迟和话术；从最新完整用户消息起算。新消息取消旧轮，正式回复实际发送前取消两个计时器。', fields: [
       { key: 'privateWait', label: '私聊 · 等待中', type: 'ackGroup' },
       { key: 'privateApology', label: '私聊 · 抱歉', type: 'ackGroup' },
@@ -7474,6 +7473,10 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
       const opts = (field.options || []).map(([v, label]) => '<label class="comp-flag"><input type="checkbox" data-flag="' + esc(v) + '"' + (set.has(v) ? ' checked' : '') + '> ' + esc(label) + '</label>').join('');
       return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><div class="row" style="gap:10px;flex-wrap:wrap;margin-top:4px">' + opts + '</div>' + hint + '</div>';
     }
+    if (field.type === 'comma-list') {
+      const arr = Array.isArray(value) ? value : [];
+      return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><input type="text" class="comp-form-text" style="width:100%;max-width:520px" placeholder="例如：论文，作业，报告" value="' + esc(arr.join('， ')) + '">' + hint + '</div>';
+    }
     if (field.type === 'lines') {
       const arr = Array.isArray(value) ? value : [];
       return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><textarea class="comp-form-lines" style="width:100%;min-height:70px" rows="' + Math.max(3, arr.length + 1) + '">' + esc(arr.join('\n')) + '</textarea>' + hint + '</div>';
@@ -7520,6 +7523,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
       el.querySelectorAll('input[data-flag]').forEach((c) => { if (c.checked) vals.push(c.dataset.flag); });
       return vals.join('|');
     }
+    if (field.type === 'comma-list') return el.querySelector('.comp-form-text').value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
     if (field.type === 'lines') return el.querySelector('.comp-form-lines').value.split('\n').map((s) => s.trim()).filter(Boolean);
     if (field.type === 'number') { const n = Number(el.querySelector('.comp-form-num').value); return Number.isFinite(n) ? n : undefined; }
     if (field.type === 'minutes') { const n = Number(el.querySelector('.comp-form-minutes').value); return Number.isFinite(n) ? Math.round(n) * 60000 : undefined; }
@@ -7572,7 +7576,13 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
         key,
         label: ({ disabledBlocks: '停用的提示词片段', injectPrompt: '向 AI 提供工具提示' })[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()),
         help: ({
-      'ctx-member-card': '注入近期发言者的称呼、偏好和印象；作息仅在对应私聊可见，不跨群分享。',
+          'tool-user-checking': ({
+            enabled: '开启后，小鲸鱼可读取本机运行指标，并向桌面便签追加内容。',
+            noteFileName: '设置桌面便签的 txt 文件名；文件仍只写入桌面。',
+            maxNoteChars: '限制每条便签的字数，超出长度的内容不会写入。',
+            timestampNote: '开启后，每条便签开头都会附上写入时间。'
+          })[key],
+      'ctx-memory-profile-store': '按 QQ 号编辑 JSON 人物档案；私聊注入本人，群聊由工具按回复对象读取。',
           'ctx-knowledge-quota': '按日统计非管理员的专业问答次数；达到上限后提示 AI 暂停作答。'
         })[p.id] || '用于调整此功能的运行方式。',
         type: Array.isArray(value) ? 'lines' : typeof value === 'boolean' ? 'boolean' : typeof value === 'number' ? 'number' : 'text'
@@ -7663,45 +7673,99 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
           void refreshUsage();
         }
         if (id === 'ctx-knowledge-quota') {
-          body.insertAdjacentHTML('beforeend', '<div class="quota-console"><div class="quota-console-head"><div><b>今日用量</b><div class="meta">留空查询全部会话，也可填写一个会话 key。</div></div><div class="quota-console-actions"><input class="quota-key" placeholder="例如 group:10608" aria-label="配额查询会话 key"><button class="small quota-query">查询用量</button><button class="small danger quota-reset">清空今日用量</button></div></div><div class="quota-result" aria-live="polite">选择会话后查询，或直接查询全部会话。</div></div>');
+          body.insertAdjacentHTML('beforeend', '<div class="quota-console"><div class="quota-console-head"><div><b>今日用量</b><div class="meta">留空查询全部会话，也可填写一个会话 key。</div></div><div class="quota-console-actions"><input class="quota-key" placeholder="例如 group:10001" aria-label="配额查询会话 key"><button class="small quota-query">查询用量</button><button class="small danger quota-reset">清空今日用量</button></div></div><div class="quota-result" aria-live="polite">选择会话后查询，或直接查询全部会话。</div></div>');
           const panel = body.querySelector('.quota-console'), keyInput = panel.querySelector('.quota-key'), result = panel.querySelector('.quota-result');
           const call = async action => { const key = keyInput.value.trim(); const r = await api('/api/plugins/call', 'POST', { tool: 'knowledge_quota', input: { action, ...(key ? { key } : {}) } }); return r?.result || r || {}; };
           panel.querySelector('.quota-query').addEventListener('click', async () => { result.textContent = '正在读取…'; try { const d = await call('query'); if (d.ok !== true) throw Error(d.error || '查询失败'); const rows = Array.isArray(d.entries) ? d.entries : (d.key ? [{ key: d.key, used: d.used, remaining: d.remaining }] : []); result.innerHTML = '<div class="quota-summary"><span>日期 <b>' + esc(d.day || '—') + '</b></span><span>每日上限 <b>' + esc(d.limit ?? '—') + '</b></span><span>计数方式 <b>' + esc(d.countBy === 'user' ? '按发言人' : '按会话') + '</b></span>' + (d.enabled === false ? '<span class="quota-off">功能已停用</span>' : '') + '</div>' + (rows.length ? '<div class="quota-rows">' + rows.map(x => '<div class="quota-row"><code>' + esc(x.key) + '</code><span>已用 <b>' + esc(x.used) + '</b></span><span>剩余 <b>' + esc(x.remaining) + '</b></span></div>').join('') + '</div>' : '<div class="quota-empty">今天还没有专业问答用量。</div>'); } catch (e) { result.textContent = '读取失败：' + e.message; } });
           panel.querySelector('.quota-reset').addEventListener('click', async () => { const key = keyInput.value.trim(); if (!confirm(key ? `清空 ${key} 今天的专业问答用量？` : '清空所有会话今天的专业问答用量？')) return; result.textContent = '正在清空…'; try { const d = await call('reset'); if (d.ok !== true) throw Error(d.error || '清空失败'); result.textContent = '今日用量已清空。'; } catch (e) { result.textContent = '清空失败：' + e.message; } });
         }
-        if (id === 'ctx-member-card') {
-          body.insertAdjacentHTML('beforeend', '<div class="member-card-preview"><div class="quota-console-head"><div><b>档案预览</b><div class="meta">输入群或私聊 key，查看该会话对应的具体人物档案；有内容时每 30 秒自动刷新。</div></div><div class="quota-console-actions"><input class="member-key" placeholder="例如 private:10610" aria-label="档案预览会话 key"><button class="small member-preview">查看档案</button></div></div><div class="member-card-results" aria-live="polite">填写会话 key 后查看档案。</div></div>');
-          const panel = body.querySelector('.member-card-preview'), keyInput = panel.querySelector('.member-key'), result = panel.querySelector('.member-card-results');
-          const refreshButton = panel.querySelector('.member-preview');
-          let reading = false, lastUpdatedKey = '';
-          const refresh = async ({ quiet = false } = {}) => {
-            const key = keyInput.value.trim();
-            if (!key) { if (!quiet) result.textContent = '请先填写会话 key。'; return; }
-            if (reading) return;
-            reading = true; refreshButton.disabled = true;
-            if (!quiet) result.textContent = '正在读取档案…';
-            try {
-              const r = await api('/api/plugins/call', 'POST', { tool: 'member_card', input: { key } });
-              if (key !== keyInput.value.trim()) return;
-              const d = r?.result || r || {};
-              if (d.ok !== true) throw Error(d.error || '读取失败');
-              const cards = Array.isArray(d.cards) ? d.cards : [];
-              const updatedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-              lastUpdatedKey = key;
-              if (!cards.length) {
-                result.innerHTML = '<div class="member-card-meta"><span>该会话暂无可展示的人物档案。</span><span>更新于 ' + esc(updatedAt) + '</span></div>';
-                return;
-              }
-              const cleanText = value => String(value || '').replace(/\*\*|__/g, '').replace(/~~/g, '').replace(/`/g, '');
-              result.innerHTML = '<div class="member-card-meta"><span>显示 ' + cards.length + ' 张 · 上限 ' + esc(d.maxCards) + ' 张 / ' + esc(d.maxChars) + ' 字</span><span>更新于 ' + esc(updatedAt) + '</span></div>' + cards.map(x => '<article class="member-profile-card"><div class="member-profile-id">QQ ' + esc(x.userId || '') + '</div><div class="member-profile-text">' + esc(cleanText(x.text)) + '</div></article>').join('');
-            } catch (e) { result.textContent = '读取失败：' + e.message; }
-            finally { reading = false; refreshButton.disabled = false; }
+        if (id === 'ctx-memory-profile-store') {
+          body.insertAdjacentHTML('beforeend', '<section class="member-card-preview"><div class="quota-console-head"><div><b>按 QQ 管理人物档案</b><div class="meta">档案跟随 QQ 号保存。私聊自动注入本人档案；群聊不自动注入成员资料。可选择已有档案，也可输入尚未成为好友的 QQ 号。</div></div></div><div class="quota-console-actions"><select class="member-key" aria-label="选择 QQ 档案"><option value="">正在读取档案…</option></select><input class="profile-qq" inputmode="numeric" placeholder="或输入 QQ 号" aria-label="手动输入 QQ 号"><button class="small member-preview">读取档案</button></div><div class="profile-fields"></div><div class="quota-console-actions"><input class="profile-new-key" placeholder="新增 JSON 字段名" aria-label="新增档案字段名"><button class="small profile-add-key">增加字段</button><button class="small profile-save">保存 JSON 档案</button><button class="small danger profile-delete-person">删除该 QQ 档案</button><span class="profile-status meta" aria-live="polite">固定字段可留空；新增字段会保留。</span></div></section>');
+          const panel = body.querySelector('.member-card-preview'), select = panel.querySelector('.member-key'), qqInput = panel.querySelector('.profile-qq'), fieldsBox = panel.querySelector('.profile-fields'), status = panel.querySelector('.profile-status');
+          const labels = { routine_food: '作息与饮食', hobbies: '兴趣与爱好', relationships: '人际关系', catchphrases: '口头禅' };
+          let current = {}, loadedId = '', originalKeys = new Set(), readVersion = 0, reading = false, writing = false;
+          const chosenId = () => (qqInput.value.trim() || select.value.trim()).replace(/^private:/, '');
+          const syncEditor = () => {
+            const ready = !!loadedId && loadedId === chosenId() && !reading && !writing;
+            fieldsBox.querySelectorAll('textarea,button').forEach(el => { el.disabled = !ready; });
+            panel.querySelectorAll('.profile-save,.profile-add-key,.profile-new-key,.profile-delete-person').forEach(el => { el.disabled = !ready; });
           };
-          refreshButton.addEventListener('click', () => refresh());
-          keyInput.addEventListener('keydown', event => { if (event.key === 'Enter') refresh(); });
-          window.setInterval(() => {
-            if (!document.hidden && panel.isConnected && keyInput.value.trim() && keyInput.value.trim() === lastUpdatedKey) refresh({ quiet: true });
-          }, 30000);
+          const render = profile => {
+            current = profile && typeof profile === 'object' ? profile : {};
+            const keys = [...new Set([...Object.keys(labels), ...Object.keys(current)])];
+            fieldsBox.innerHTML = keys.map(key => '<div class="profile-json-field"><label><span>' + esc(labels[key] || key) + (labels[key] ? '' : ' · 扩展字段') + '</span><textarea data-profile-key="' + esc(key) + '" rows="3" placeholder="填写一段长句或短句">' + esc(current[key] || '') + '</textarea></label><button type="button" class="small danger profile-delete-key" data-remove-key="' + esc(key) + '">' + (labels[key] ? '清空' : '删除字段') + '</button></div>').join('');
+            fieldsBox.querySelectorAll('textarea[data-profile-key]').forEach(el => el.addEventListener('input', () => { current[el.dataset.profileKey] = el.value; }));
+            fieldsBox.querySelectorAll('[data-remove-key]').forEach(btn => btn.addEventListener('click', () => { const key = btn.dataset.removeKey; if (labels[key]) current[key] = ''; else delete current[key]; render(current); }));
+            syncEditor();
+          };
+          const readProfile = async () => {
+            const id = chosenId();
+            if (!/^\d{1,20}$/.test(id)) { status.textContent = '请输入有效 QQ 号。'; return; }
+            const version = ++readVersion;
+            reading = true; writing = false; loadedId = ''; originalKeys = new Set(); render({});
+            status.textContent = '正在读取…';
+            try {
+              const r = await api('/api/plugins/call', 'POST', { tool: 'profile_snapshot', input: { userId: id } });
+              const d = r?.result || r || {};
+              if (version !== readVersion || chosenId() !== id) return;
+              if (r?.ok !== true || d.ok === false) throw Error(d.error || r?.error || '读取失败');
+              qqInput.value = id; loadedId = id; originalKeys = new Set(Object.keys(d.profiles?.[id] || {})); render(d.profiles?.[id] || {}); status.textContent = '档案已读取；空档案也可直接填写创建。';
+            } catch (e) { if (version === readVersion && chosenId() === id) status.textContent = '读取失败：' + e.message; }
+            finally { if (version === readVersion) { reading = false; syncEditor(); } }
+          };
+          const loadProfiles = async () => {
+            try {
+              const r = await api('/api/plugins/call', 'POST', { tool: 'profile_snapshot', input: {} });
+              const d = r?.result || r || {};
+              if (r?.ok !== true && d.ok !== true) throw Error(d.error || r?.error || '读取失败');
+              const ids = new Set(Object.keys(d.profiles || {}));
+              const options = [...ids].sort().map(id => { const name = d.people?.[id]?.name; return '<option value="' + esc(id) + '">' + esc(name ? name + ' · ' : '') + esc(id) + '</option>'; });
+              select.innerHTML = '<option value="">选择已有档案</option>' + options.join('');
+            } catch (e) { select.innerHTML = '<option value="">档案列表读取失败</option>'; status.textContent = '档案列表读取失败：' + e.message; }
+          };
+          select.addEventListener('change', () => { if (select.value) { qqInput.value = select.value; void readProfile(); } });
+          qqInput.addEventListener('input', () => { const id = chosenId(); if (id !== loadedId) { readVersion++; reading = false; writing = false; originalKeys = new Set(); loadedId = ''; render({}); status.textContent = '请先读取这个 QQ 的档案，再填写或创建。'; } });
+          panel.querySelector('.member-preview').addEventListener('click', () => void readProfile());
+          panel.querySelector('.profile-delete-person').addEventListener('click', async () => {
+            const id = chosenId();
+            if (!/^\d{1,20}$/.test(id)) { status.textContent = '请输入有效 QQ 号。'; return; }
+            if (reading || writing || loadedId !== id) { status.textContent = '请先读取目标档案。'; return; }
+            if (!confirm('确定删除 QQ ' + id + ' 的整份人物档案？此操作会移除所有字段和档案元数据。')) return;
+            const version = readVersion; writing = true; syncEditor();
+            status.textContent = '正在删除…';
+            try {
+              const r = await api('/api/plugins/call', 'POST', { tool: 'profile_delete', input: { userId: id, key: 'private:' + id, adminCrossSession: true } });
+              const d = r?.result || r || {};
+              if (version !== readVersion || chosenId() !== id) return;
+              if (r?.ok !== true || d.ok === false) throw Error(d.error || r?.error || '删除失败');
+              originalKeys = new Set(); loadedId = ''; qqInput.value = ''; select.value = ''; render({}); await loadProfiles();
+              status.textContent = d.deleted ? '该 QQ 档案已删除。' : '该 QQ 档案原本不存在。';
+            } catch (e) { if (version === readVersion) status.textContent = '删除失败：' + e.message; }
+            finally { if (version === readVersion) { writing = false; syncEditor(); } }
+          });
+
+          render({});
+          panel.querySelector('.profile-add-key').addEventListener('click', () => { const input = panel.querySelector('.profile-new-key'), key = input.value.trim(); if (!/^[a-z][a-z0-9_]{0,63}$/i.test(key)) { status.textContent = '字段名需以字母开头，只能包含字母、数字和下划线。'; return; } if (key in current) { status.textContent = '该字段已经存在。'; return; } current[key] = ''; input.value = ''; render(current); status.textContent = '已添加字段，填写后保存。'; });
+          panel.querySelector('.profile-save').addEventListener('click', async () => {
+            const id = chosenId();
+            if (!/^\d{1,20}$/.test(id)) { status.textContent = '请输入有效 QQ 号。'; return; }
+            if (reading || writing || loadedId !== id) { status.textContent = '请先读取目标档案。'; return; }
+            const version = readVersion; writing = true; syncEditor();
+            const patch = {};
+            fieldsBox.querySelectorAll('textarea[data-profile-key]').forEach(el => { patch[el.dataset.profileKey] = el.value; });
+            status.textContent = '正在保存…';
+            try {
+              const deleteKeys = [...originalKeys].filter(key => !labels[key] && !Object.prototype.hasOwnProperty.call(patch, key));
+              const r = await api('/api/plugins/call', 'POST', { tool: 'profile_update', input: { userId: id, key: 'private:' + id, adminCrossSession: true, profile: patch, deleteKeys } });
+              const d = r?.result || r || {};
+              if (version !== readVersion || chosenId() !== id) return;
+              if (r?.ok !== true || d.ok === false) throw Error(d.error || r?.error || '保存失败');
+              render(d.profile || patch); originalKeys = new Set(Object.keys(d.profile || patch)); qqInput.value = id; loadedId = id; await loadProfiles();
+              if (version === readVersion && chosenId() === id) { select.value = id; status.textContent = '已保存；未改字段均保留。'; }
+            } catch (e) { if (version === readVersion) status.textContent = '保存失败：' + e.message; }
+            finally { if (version === readVersion) { writing = false; syncEditor(); } }
+          });
+          void loadProfiles();
         }
         if (id === 'life-daily-worklog') {
           body.insertAdjacentHTML('beforeend', '<section class="worklog-console" aria-label="运维日报历史"><div class="worklog-console-head"><div><h3>日报归档</h3><p class="meta">浏览最近生成的日报。此处只读，不会重新生成或发送。</p></div><button class="small worklog-refresh" type="button">刷新列表</button></div><div class="worklog-status" aria-live="polite"></div><div class="worklog-layout"><nav class="worklog-list" aria-label="日报日期列表"><div class="worklog-empty">读取日报列表中…</div></nav><article class="worklog-preview"><div class="worklog-preview-head"><b>内容预览</b><span class="meta worklog-preview-meta">选择一份日报</span></div><pre class="worklog-preview-text">日报内容会显示在这里。</pre></article></div></section>');
@@ -7928,6 +7992,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
       'ctx-context-lifecycle': 'setting-l-0',
       'ctx-context-runtime': 'setting-l-0',
       'ctx-context-session': 'setting-c-1',
+      'ctx-memory-profile-store': 'setting-c-2',
       'ctx-media-sticker-pick': 'setting-c-0',
       'ctx-member-alias': 'alias',
       'ctx-interest-terms': 'terms',
@@ -7943,7 +8008,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
       'tool-injection-lab': 'injection-lab'
     };
     for (const p of compCache) {
-      if (mergedIds.has(p.id) || ['ctx-role-card', 'ctx-memory-profile-store', 'life-relay-message', 'life-campus-watch', 'ctx-chat-style', 'ctx-context-dynamics', 'ctx-context-lifecycle', 'ctx-context-runtime', 'ctx-context-session', 'ctx-memory-store', 'ctx-memory-update', 'ctx-member-alias', 'ctx-interest-terms', 'tool-registry'].includes(p.id)) continue;
+      if (mergedIds.has(p.id) || ['ctx-role-card', 'life-relay-message', 'life-campus-watch', 'ctx-chat-style', 'ctx-context-dynamics', 'ctx-context-lifecycle', 'ctx-context-runtime', 'ctx-context-session', 'ctx-memory-store', 'ctx-memory-update', 'ctx-member-alias', 'ctx-interest-terms', 'tool-registry'].includes(p.id)) continue;
       // /api/plugins 的 summary 不再返回 config（值可能含敏感信息，只在 detail 里给），
       // 所以这里不能再用 p.config 判断“有没有可配置项”，否则所有纯配置组件（如成本策略）
       // 都会从页面消失。改为看控制台自己声明的表单（COMPONENT_FORMS）或组件工具。
@@ -7957,12 +8022,17 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsag
       section.dataset.page = page;
       section.hidden = currentConsolePage !== page;
       section.innerHTML = '<div class="component-heading"><div><h2>' + esc(p.name) + '</h2><p class="meta">' + esc(p.description || '此功能没有额外说明。') + '</p></div></div>' +
-        ((p.tools || []).length ? '<div class="tool-reference-list">' + p.tools.map(t => '<div class="tool-reference-item"><code>' + esc(t.name) + '</code><span>' + esc(t.description || '由 AI 按需使用') + '</span></div>').join('') + '</div>' : '') +
+        ((p.tools || []).length && p.id !== 'ctx-memory-profile-store' ? '<div class="tool-reference-list">' + p.tools.map(t => '<div class="tool-reference-item"><code>' + esc(t.name) + '</code><span>' + esc(t.description || '由 AI 按需使用') + '</span></div>').join('') + '</div>' : '') +
         '<div class="comp-body">读取设置中…</div>';
       const placedAtLifecycleTop = page === 'setting-l-2'
         && ['life-scheduler', 'life-proactive-time-bubble'].includes(p.id)
         && mountLifecycleTopComponent(section);
-      if (!placedAtLifecycleTop) main.append(section);
+      if (!placedAtLifecycleTop) {
+        // 把档案入口放在「会话背景」页首屏，避免被追加到整张控制台最底部而像是消失。
+        const pageAnchor = page === 'setting-c-2' ? main.querySelector('section[data-page="setting-c-2"]') : null;
+        if (pageAnchor) main.insertBefore(section, pageAnchor);
+        else main.append(section);
+      }
       featureIndex.push({ page, label: p.name, target: section });
       loadComponentDetail(p.id, section);
     }

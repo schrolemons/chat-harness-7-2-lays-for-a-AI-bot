@@ -3557,7 +3557,7 @@ async function main() {
         // 管理端专用 v2 接口：带 agent token 的请求一律拒绝，防止 MCP 工具越权访问控制台功能
         // /api/socialV2/initial-prompt 也在这里：它是操作者写给 AI 的"环境背景"，
         // 让 AI 自己读/改等于把控制台的管理输入（以及未来可能写入的其它群信息）交给会话主体。
-        const adminOnlyV2Paths = ['/api/socialV2/config', '/api/socialV2/activity', '/api/socialV2/reset', '/api/socialV2/states', '/api/socialV2/wake', '/api/socialV2/initial-prompt', '/api/socialV2/time-bubbles', '/api/socialV2/user-profiles', '/api/socialV2/persistent-memory', '/api/socialV2/daily-diary', '/api/socialV2/self-review', '/api/socialV2/optimization-memory', '/api/socialV2/self-review-feedback'];
+        const adminOnlyV2Paths = ['/api/socialV2/config', '/api/socialV2/activity', '/api/socialV2/reset', '/api/socialV2/states', '/api/socialV2/wake', '/api/socialV2/initial-prompt', '/api/socialV2/time-bubbles', '/api/socialV2/person-profiles', '/api/socialV2/persistent-memory', '/api/socialV2/daily-diary', '/api/socialV2/self-review', '/api/socialV2/optimization-memory', '/api/socialV2/self-review-feedback'];
         if (req.headers['x-agent-token'] && (adminOnlyV2Paths.includes(url.pathname) || (url.pathname === '/api/socialV2/feedback' && req.method === 'GET') || (url.pathname === '/api/socialV2/tool-log' && req.method === 'GET'))) {
           sendJson({ ok: false, error: '该接口仅控制台可用' }, 403);
           return;
@@ -5171,11 +5171,11 @@ async function main() {
           });
           return;
         }
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/user-profiles') {
-          // 管理端查看全局用户画像（完整 info；只在控制台/带令牌的调用里可见）。
+        if (req.method === 'GET' && url.pathname === '/api/socialV2/person-profiles') {
+          // 管理端读取按 QQ 号保存的 JSON 人物档案。
           const snapOut = await pluginHost.callTool('profile_snapshot', {});
-          const snap = snapOut && snapOut.ok ? snapOut.result : { users: {} };
-          sendJson({ ok: true, count: Object.keys(snap.users || {}).length, updatedAt: snap.updatedAt, users: snap.users });
+          const snap = snapOut && snapOut.ok ? snapOut.result : { profiles: {}, people: {} };
+          sendJson({ ok: true, count: Object.keys(snap.profiles || {}).length, updatedAt: snap.updatedAt, profiles: snap.profiles, people: snap.people });
           return;
         }
         if (req.method === 'GET' && url.pathname === '/api/plugins') {
@@ -5285,6 +5285,17 @@ async function main() {
             sendJson({ok:false,error:'学习库管理仅控制台可用；Bot 查询和提交须使用带会话鉴权的专用接口'},403);return;
           }
           const isAgentPluginCall = req.headers['x-agent-call'] !== undefined || !!req.headers['x-agent-token'];
+          if (isAgentPluginCall && body.tool === 'deepseek_balance') {
+            const token = String(req.headers['x-agent-token'] || '');
+            const sessionKey = token
+              ? [...CONVERSATION_TOKENS.entries()].find(([, tokens]) => tokens.some((known) => tokenEq(known, token)))?.[0] || ''
+              : '';
+            const ownerKey = 'private:' + String(cfg.ownerQQ ?? '');
+            if (!cfg.ownerQQ || sessionKey !== ownerKey) {
+              sendJson({ ok: false, error: 'DeepSeek 余额只允许管理员私聊查询。' }, 403);
+              return;
+            }
+          }
           if (isAgentPluginCall && body.tool === 'time_bubble_manage') {
             const input = body.input && typeof body.input === 'object' ? body.input : {};
             const token = String(req.headers['x-agent-token'] || '');
@@ -5310,7 +5321,7 @@ async function main() {
             const ownerKey = 'private:' + String(cfg.ownerQQ ?? '');
             const isOwnerProfileSession = !!cfg.ownerQQ && sessionKey === ownerKey;
             const isCrossSessionTarget = !!input.key && String(input.key) !== sessionKey;
-            if (!sessionKey || toolName === 'profile_sync_impressions'
+            if (!sessionKey
               || (toolName === 'profile_snapshot' && !isOwnerProfileSession)
               || (isCrossSessionTarget && !isOwnerProfileSession)
               || (!input.key && toolName !== 'profile_snapshot')) {
@@ -7688,9 +7699,12 @@ async function main() {
           if (!token || !agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
           if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
           if (!v2ToolEnabled('availability')) { sendJson({ ok: false, error: '工具未启用：qq_availability' }, 403); return; }
-          const service = action === 'query' ? 'getPlan' : action === 'cancel' ? 'cancelPlan' : 'setPlan';
+          const services = { set: 'setPlan', query: 'getPlan', cancel: 'cancelPlan', returned: 'markReturned' };
+          const service = Object.hasOwn(services, action) ? services[action] : null;
+          if (!service) { sendJson({ ok: false, error: 'action 必须是 set / query / cancel / returned' }, 400); return; }
           const out = pluginHost.callService('availability', service, {
             key,
+            planId: body.planId,
             kind: body.kind,
             windows: body.windows,
             startISO: body.startISO,
@@ -7722,7 +7736,7 @@ async function main() {
             }
             const warmTarget = pluginHost.callService('profileStore', 'isWarmTarget', { key, target: extra.target });
             if (warmTarget === true) {
-              sendJson({ ok: false, error: '该群友已进入人物档案；请用 profile_record_note 或 profile_record_facts 更新，不要再写轻量概述' }, 409); return;
+              sendJson({ ok: false, error: '该群友已有 QQ 人物档案；请勿在轻量印象中重复保存稳定资料' }, 409); return;
             }
           }
           const st = getSocialV2State(key);

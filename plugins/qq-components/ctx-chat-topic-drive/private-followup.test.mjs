@@ -8,9 +8,7 @@ import { createPlugin } from './index.js';
 test('cross-session followup queues until the group reply is delivered and sends only once', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'whale-followup-'));
   fs.mkdirSync(path.join(root, 'state'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'state', 'user-profiles.json'), JSON.stringify({ users: {
-    'u:5': { userId: '5', keys: ['group:10', 'private:5'] }
-  } }));
+  fs.writeFileSync(path.join(root, 'state', 'person-profiles.json'), JSON.stringify({ version: 2, profiles: { '5': { routine_food: '', hobbies: '', relationships: '', catchphrases: '' } }, people: { '5': { keys: ['group:10', 'private:5'] } } }));
   let stored = {};
   const tools = new Map();
   const sends = [];
@@ -35,9 +33,7 @@ test('cross-session followup queues until the group reply is delivered and sends
 test('prompt asks for an independent private followup when care or genuine interest applies', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'whale-followup-prompt-'));
   fs.mkdirSync(path.join(root, 'state'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'state', 'user-profiles.json'), JSON.stringify({ users: {
-    'u:5': { userId: '5', keys: ['group:10', 'private:5'] }
-  } }));
+  fs.writeFileSync(path.join(root, 'state', 'person-profiles.json'), JSON.stringify({ version: 2, profiles: { '5': { routine_food: '', hobbies: '', relationships: '', catchphrases: '' } }, people: { '5': { keys: ['group:10', 'private:5'] } } }));
   const tools = new Map();
   let stored = {};
   const plugin = createPlugin({ root, config: { minIntervalMinutes: 180, dailyLimit: 1 },

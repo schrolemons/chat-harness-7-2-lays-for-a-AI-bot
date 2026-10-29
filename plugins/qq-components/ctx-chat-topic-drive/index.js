@@ -15,23 +15,21 @@ export function createPlugin(ctx) {
   const phi = createTurnPolicy(ctx);
   const cfg = ctx.config || {};
   const state = ctx.state;
-  const root = ctx.root || process.cwd();
-  const profileFor = (userId) => {
-    try { return JSON.parse(fs.readFileSync(path.join(root, 'state', 'user-profiles.json'), 'utf8')).users?.['u:' + String(userId)]; }
-    catch { return null; }
-  };
   const dayKey = (at = Date.now()) => new Date(at).toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
   const eligible = (groupKey, userId) => {
     if (!/^group:\d+$/.test(String(groupKey || '')) || !/^\d{1,20}$/.test(String(userId || ''))) return false;
-    const profile = profileFor(userId);
-    return !!profile && Array.isArray(profile.keys)
-      && profile.keys.includes(groupKey) && profile.keys.includes('private:' + userId);
+    try {
+      const data = JSON.parse(fs.readFileSync(path.join(ctx.root || process.cwd(), 'state', 'person-profiles.json'), 'utf8'));
+      const person = data?.people?.[String(userId)];
+      return !!person && Array.isArray(person.keys)
+        && person.keys.includes(groupKey) && person.keys.includes('private:' + userId);
+    } catch { return false; }
   };
   const sessionSettings = () => cfg.sessionLimits && typeof cfg.sessionLimits === 'object' ? cfg.sessionLimits : {};
   ctx.registerTool('private_followup_send', {
     description: '群聊回复完成后，如果本轮实际发言者值得关心，或你对其具体经历/话题确实感兴趣且自然想了解后续，应使用本工具向其私聊追问一句。只问一个简短、具体的问题，不复述群里回复；必须使用本轮群聊 key 和实际发言者 QQ。系统会校验真实私聊关系、会话白名单、当前发言者和冷却/日上限，不要尝试绕过限制。',
     schema: { type: 'object', required: ['groupKey', 'userId', 'text'], properties: {
-      groupKey: { type: 'string', description: '本轮群聊 key，例如 group:10607' },
+      groupKey: { type: 'string', description: '本轮群聊 key，例如 group:10001' },
       userId: { type: 'string', description: '本轮群消息实际发送者 QQ 号' },
       text: { type: 'string', description: '一条简短的私聊追问，不复述群聊回复' }
     } },

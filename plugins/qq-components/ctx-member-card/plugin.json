@@ -1,8 +1,8 @@
 {
   "id": "ctx-member-card",
   "name": "人物小档案",
-  "version": "0.1.0",
-  "description": "C 层上下文管理：人物卡分别建模称呼、偏好、作息饮食、个人爱好与互动印象；作息饮食仅在本人对应私聊中注入。",
+  "version": "0.2.0",
+  "description": "旧人物卡注入停用；档案由按 QQ 号 JSON 人物档案组件统一管理。",
   "category": "上下文与记忆",
   "order": 24,
   "tags": [
@@ -15,13 +15,6 @@
   "hooks": [
     "beforePrompt"
   ],
-  "config": {
-    "enabled": true,
-    "maxCards": 3,
-    "maxNotes": 2,
-    "maxChars": 900,
-    "skipOwner": false,
-    "includeGroups": true
-  },
+  "config": {},
   "layer": "C"
 }
