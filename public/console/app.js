@@ -6046,12 +6046,12 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   // console/shared/components/scope.js
   var LOCAL = /* @__PURE__ */ new Set(["exec-browser-manager", "exec-image-generation", "life-campus-watch", "tool-user-checking", "tool-codex-chat"]);
   var NOTES = {
-    "ctx-user-mood": "全局规则；心情分数、每日恢复和回应等待按会话分别记录。",
-    "ctx-memory-profile-store": "全局档案规则；下方档案正文按 QQ 号单独保存。",
-    "ctx-knowledge-quota": "全局配额规则；实际用量按设定的会话或发言人分别累计。",
-    "life-proactive-time-bubble": "全局数量上限；上方具体时段按选中的会话单独保存。",
-    "ctx-chat-topic-drive": "全局跟进规则；下方可为某个私聊设置更严格的限制。",
-    "life-schedule-reminder": "全局日程默认规则；单条日程的收件会话和覆盖值单独保存。",
+    "ctx-user-mood": "心情分数、每日恢复和回应等待按会话分别记录。",
+    "ctx-memory-profile-store": "下方档案正文按 QQ 号单独保存。",
+    "ctx-knowledge-quota": "实际用量按设定的会话或发言人分别累计。",
+    "life-proactive-time-bubble": "上方具体时段按选中的会话单独保存。",
+    "ctx-chat-topic-drive": "下方可为某个私聊设置更严格的限制。",
+    "life-schedule-reminder": "单条日程的收件会话和覆盖值单独保存。",
     "life-campus-watch": "本机监控与脚本配置；消息只投递到配置中的目标会话。",
     "exec-image-generation": "本机 API 服务、额度与密钥；密钥单独保存，普通参数按钮不修改密钥。",
     "obs-cost-policy": "小鲸鱼全局调用规则；不改写 DSH 的全局默认模型设置。"
