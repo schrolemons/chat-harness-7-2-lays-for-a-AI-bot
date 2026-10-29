@@ -1,5 +1,10 @@
-import test from 'node:test';import assert from 'node:assert/strict';
+import test from 'node:test';import assert from 'node:assert/strict';import path from 'node:path';import {fileURLToPath} from 'node:url';import {Client} from '@modelcontextprotocol/sdk/client/index.js';import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
+const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+test('QQ MCP exposes private_followup_send with the required scoped arguments',async()=>{
+ const client=new Client({name:'private-followup-tool-test',version:'1'});const transport=new StdioClientTransport({command:process.execPath,args:[path.join(ROOT,'src/mcp-snowluma-safe.js')],cwd:ROOT,stderr:'pipe'});
+ try{await client.connect(transport);const {tools}=await client.listTools();const tool=tools.find(x=>x.name==='private_followup_send');assert.ok(tool,'private_followup_send must appear in DSH tools/list');assert.deepEqual(tool.inputSchema.required,['groupKey','userId','text','token']);assert.match(tool.description,/群聊回复完成后/);}finally{try{await client.close();}catch{}}
+});
 test('token budget blocks DSH prompt and outgoing reply after a billed round',async()=>{
  for(const scope of ['session','global']){
   const config=scope==='session'
@@ -51,6 +56,11 @@ test('contact plan identity survives busy queue and cancellation prevents old-ti
  const h=await bridgeHarness();try{h.setMode('reserved2');const key='private:123',now=Date.now();h.pluginHost.callService('availability','setPlan',{key,kind:'later',contactISO:new Date(now+3600000).toISOString(),reason:'约定'});const plan=h.pluginHost.get('life-user-availability').state.plans[key];let release,entered;const ready=new Promise(r=>entered=r);h.api.sessions.prompt=async p=>{if(JSON.stringify(p.content).includes('BLOCK')){entered();await new Promise(r=>release=r);}h.calls.prompts.push(p);return {result:{ok:true,value:{}}};};const first=h.deliverPrompt(key,'BLOCK');await ready;await h.taskCaps.requestScheduledContact({key,id:plan.id});assert.ok(h.getSocialV2State(key).pendingWakeReasons.some(x=>x.reason==='scheduledContact:'+plan.id));h.pluginHost.callService('availability','cancelPlan',{key});release();await first;h.replayPendingWakeReasonsV2(key);await new Promise(r=>setTimeout(r,30));assert.equal(h.calls.prompts.length,1);}finally{await h.close();}
 });
 test('all optional plugins disabled still permits ordinary transport delivery',async()=>{const h=await bridgeHarness();try{h.setMode('reserved2');for(const p of h.pluginHost.summary().plugins)h.pluginHost.setEnabled(p.id,false);await h.deliverPrompt('private:123','ORDINARY_TRANSPORT');assert.equal(h.calls.prompts.length,1);assert.ok(JSON.stringify(h.calls.prompts[0].content).includes('ORDINARY_TRANSPORT'));}finally{await h.close();}});
+
+test('private_followup_send cannot be invoked with a token from a different conversation',async()=>{
+ const h=await bridgeHarness();const server=h.startConsoleServer();
+ try{h.setMode('reserved2');if(!server.listening)await new Promise(resolve=>server.once('listening',resolve));const token=h.getSocialV2State('private:123').agentToken;const response=await fetch('http://127.0.0.1:'+server.address().port+'/api/plugins/call',{method:'POST',headers:{'content-type':'application/json','x-console-token':'fixture-console-token','x-agent-token':token},body:JSON.stringify({tool:'private_followup_send',input:{groupKey:'group:456',userId:'5',text:'那后来怎么样了？'}})});assert.equal(response.status,403);assert.match((await response.json()).error,/当前群会话/);}finally{server.closeAllConnections?.();await new Promise(resolve=>server.close(resolve));await h.close();}
+});
 
 test('availability returned API checks session token and plan identity, retaining unrelated quiet periods', async () => {
  const h=await bridgeHarness();const key='private:123';const server=h.startConsoleServer();

@@ -1364,6 +1364,66 @@ server.tool('qq_term_submit','提交共同兴趣词条候选，保留语境/公�
   catch(error){return {isError:true,content:[{type:'text',text:'提交词条失败：'+error.message}]};}
 });
 
+server.tool(
+  'private_followup_send',
+  '群聊回复完成后，确认已成功送达；若本轮实际发言者值得关心，或你对其具体经历确实感兴趣并自然想了解后续，向该发言者私聊追问一句。只问一个简短、具体的问题，不复述群里回复。必须使用当前群聊 key、本轮实际发言者 QQ 和会话令牌；桥接会校验本轮发言、群/私聊关系、白名单与限频。不得用本工具代替群聊回复。',
+  {
+    groupKey: z.string().regex(/^group:\d+$/).describe('当前群聊 key，使用本轮唤醒提示中的 group key'),
+    userId: z.string().regex(/^\d{1,20}$/).describe('本轮群消息实际发送者 QQ，不要猜测或换成其他成员'),
+    text: z.string().trim().min(1).max(300).refine(value => !/[\r\n]/.test(value), '只能发送一条简短消息').describe('一句简短、具体的私聊追问'),
+    token: z.string().min(1).describe('当前群聊会话令牌')
+  },
+  async ({ groupKey, userId, text, token }) => {
+    try {
+      const data = await agentApi('/api/plugins/call', {
+        method: 'POST',
+        headers: { 'x-agent-token': token },
+        body: JSON.stringify({ tool: 'private_followup_send', input: { groupKey, userId, text } })
+      });
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `私聊追问失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  'profile_get',
+  '读取 JSON 人物档案。私聊只读取当前私聊用户本人；群聊只读取本轮真实发言者并返回四个固定字段。管理员私聊可按明确 QQ 号跨档案查看。不得用昵称猜 QQ 号；群聊不要读取其他成员档案。',
+  { userId: z.string().regex(/^\d{1,20}$/).describe('档案对象 QQ 号'), key: z.string().regex(/^(private|group):\d+$/).describe('当前会话 key；管理员跨档案请用 private:<目标QQ>'), token: z.string().min(1).describe('当前会话令牌') },
+  async ({ userId, key, token }) => {
+    try {
+      const data = await agentApi('/api/plugins/call', { method: 'POST', headers: { 'x-agent-token': token }, body: JSON.stringify({ tool: 'profile_get', input: { userId, key } }) });
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `读取人物档案失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  'profile_update',
+  '根据档案对象本人在当前会话亲自表达的信息，增改 JSON 人物档案字段。私聊只能修改本人；群聊只可修改本轮真实发言者的四个固定字段；管理员私聊可按明确 QQ 号跨档案修改。先用 profile_get 保留其他字段，再只提交需要改动的键。',
+  {
+    userId: z.string().regex(/^\d{1,20}$/).describe('档案对象 QQ 号'),
+    key: z.string().regex(/^(private|group):\d+$/).describe('当前会话 key；管理员跨档案请用 private:<目标QQ>'),
+    profile: z.record(z.string(), z.string()).describe('需要新增或修改的 JSON 字段；每个值必须是描述本人的完整字符串，只传有变化的键'),
+    deleteKeys: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/i)).optional().describe('删除明确指定的扩展字段；固定四个字段只能清空，不能删除'),
+    token: z.string().min(1).describe('当前会话令牌')
+  },
+  async ({ userId, key, profile, deleteKeys, token }) => {
+    try {
+      const data = await agentApi('/api/plugins/call', {
+        method: 'POST', headers: { 'x-agent-token': token },
+        body: JSON.stringify({ tool: 'profile_update', input: { userId, key, profile, deleteKeys } })
+      });
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `修改人物档案失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
+
 // ── 图片/表情查看工具（一代/二代仿真共用） ─────────────────────────────────
 if (cfg.socialV2?.tools?.getImages !== false) {
   server.tool(

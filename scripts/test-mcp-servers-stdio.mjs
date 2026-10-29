@@ -34,6 +34,23 @@ for (const { serverName, script } of SERVERS) {
     const bad = names.filter((n) => !/^[A-Za-z0-9_-]{1,64}$/.test(n));
     if (bad.length) { console.log(`   ⚠️ 不符合 DSH 工具名契约: ${bad.join(', ')}`); failures += 1; }
     if (serverName === 'snowluma') {
+      const followup = tools.find((tool) => tool.name === 'private_followup_send');
+      if (!followup) {
+        console.log('   ❌ private_followup_send 必须暴露给 DSH 工具列表');
+        failures += 1;
+      } else {
+        const required = followup.inputSchema?.required ?? [];
+        for (const field of ['groupKey', 'userId', 'text', 'token']) {
+          if (!required.includes(field)) {
+            console.log(`   ❌ private_followup_send.${field} 必须为必填参数`);
+            failures += 1;
+          }
+        }
+        if (!followup.description?.includes('群聊回复完成后')) {
+          console.log('   ❌ private_followup_send 必须说明先完成群聊回复');
+          failures += 1;
+        }
+      }
       const waitTool = tools.find((tool) => tool.name === 'qq_wait_for_messages');
       const required = waitTool?.inputSchema?.required ?? [];
       if (!required.includes('purpose')) {

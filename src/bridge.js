@@ -5296,6 +5296,22 @@ async function main() {
               return;
             }
           }
+          if (isAgentPluginCall && body.tool === 'private_followup_send') {
+            const input = body.input && typeof body.input === 'object' ? body.input : {};
+            const token = String(req.headers['x-agent-token'] || '');
+            const sessionKey = token
+              ? [...CONVERSATION_TOKENS.entries()].find(([, tokens]) => tokens.some((known) => tokenEq(known, token)))?.[0] || ''
+              : '';
+            if (!sessionKey || !/^group:\d+$/.test(String(input.groupKey || '')) || String(input.groupKey) !== sessionKey) {
+              sendJson({ ok: false, error: 'private_followup_send 只能从令牌所属的当前群会话调用' }, 403);
+              return;
+            }
+            if (currentMode !== 'reserved2' || socialV2.paused || cfg.socialV2?.enabled === false
+              || !v2SessionAllowed(sessionKey) || !v2ToolEnabled('sendPrivate')) {
+              sendJson({ ok: false, error: 'private_followup_send 当前不可用或未启用' }, 403);
+              return;
+            }
+          }
           if (isAgentPluginCall && body.tool === 'time_bubble_manage') {
             const input = body.input && typeof body.input === 'object' ? body.input : {};
             const token = String(req.headers['x-agent-token'] || '');
