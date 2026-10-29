@@ -1,0 +1,16 @@
+<section id="section-maintenance" data-page="operations" class="card">
+      <h2>桥接控制</h2>
+      <p class="meta">连接异常时，管理端可调用 bridge_health 只读诊断；区分鉴权失败、QQ离线和上游退化，不自动重启。</p>
+      <details class="settings-group"><summary>组件心跳巡检与告警</summary><div class="settings-content"><div data-component-slot="obs-health-monitor"></div></div></details>
+      <details class="settings-group"><summary>管理员桌面便签</summary><div class="settings-content"><div data-component-slot="tool-user-checking"></div></div></details>
+      <h3>进程与工作区维护</h3>
+      <div class="row">
+        <button id="restartBtn" class="danger">重启桥接</button>
+        <span class="meta" id="restartMsg"></span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="clearWsBtn" class="danger">清空 QQ 聊天工作区</button>
+        <span class="meta" id="clearWsMsg"></span>
+      </div>
+      <div class="meta">由守护窗口启动时，重启后 5 秒自动恢复；清空工作区会归档全部 QQ 会话并清空活动日志。</div>
+    </section>

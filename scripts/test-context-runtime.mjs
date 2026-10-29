@@ -23,9 +23,9 @@ const st = {
     { isSelf: true, text: '在', time: now - 30 * 1000 },
     { isSelf: true, text: '咋了', time: now - 60 * 1000 },
     { isSelf: true, text: '说吧', time: now - 90 * 1000 },
-    { isSelf: false, sender: '管理员', text: '问你个事', time: now - 4 * 60 * 1000 }
+    { isSelf: false, sender: '十二', text: '问你个事', time: now - 4 * 60 * 1000 }
   ],
-  unread: [{ text: '在吗', plain: '在吗，DeepSeek 在不在', sender: '管理员', time: now - 60 * 1000 }],
+  unread: [{ text: '在吗', plain: '在吗，DeepSeek 在不在', sender: '十二', time: now - 60 * 1000 }],
   lastAiReplyAt: now - 2 * 60 * 1000
 };
 const text = build({ st, directUnread: 1, wakeConfig: { staleChatMinutes: 10, staleSilentMinutes: 120 } });

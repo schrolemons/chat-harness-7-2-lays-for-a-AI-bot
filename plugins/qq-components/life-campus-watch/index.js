@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseEnabledScripts, parseWatchUrls, parseScriptPaths } from './monitor-config.mjs';
+import { leaseActive } from '../../../scripts/campus-browser-session.mjs';
 
 function readJson(file, fallback = {}) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -44,11 +45,11 @@ export function createPlugin(ctx) {
       const heartbeats = readJson(path.join(ctx.root, 'state', 'script-heartbeats.json'));
       const scripts = scriptPaths.map(script => {
         const beat = heartbeats[script] || {};
-        const recent = Number(beat.at) > 0 && Date.now() - Number(beat.at) < Math.max(full * 2, 10 * 60000);
-        return { path: script, health: cfg.scriptCollabEnabled === false ? 'paused' : recent ? (beat.ok === false ? 'red' : 'green') : 'unknown', checkedAt: beat.at || null, hint: beat.hint || (recent ? '最近有运行心跳' : '尚未接入运行心跳') };
+        const recent = Number(beat.at) > 0 && Date.now() - Number(beat.at) < Math.max(full * 2, (Number(cfg.lecturesIntervalMinutes) || 10) * 120000, 10 * 60000);
+        return { path: script, health: cfg.scriptCollabEnabled === false ? 'paused' : recent ? (beat.ok === false ? 'red' : beat.mode === 'fallback' ? 'fallback' : 'green') : Number(beat.at)>0 ? 'stale' : 'unknown', checkedAt: beat.at || null, hint: beat.hint || (recent ? '最近有运行心跳' : '尚未接入运行心跳') };
       });
       const bbSites = bbCourses.flatMap(course => (course.pages || []).map(p => {
-        const url = `https://example.invalid/webapps/blackboard/content/listContent.jsp?course_id=${course.courseId}&content_id=${p.contentId}&mode=reset`;
+        const url = `https://portal.example.invalid/webapps/blackboard/content/listContent.jsp?course_id=${course.courseId}&content_id=${p.contentId}&mode=reset`;
         return { name: `${course.name}·${p.label}`, url, health: state.monitorHealth?.[url] || null };
       }));
       const sites = (cfg.webWatchEnabled === false ? [] : watchUrls.map(site => ({ ...site, health: state.monitorHealth?.[site.url] || null })))
@@ -58,11 +59,19 @@ export function createPlugin(ctx) {
   });
 
   return { hooks: { onTick({ now = Date.now() } = {}) {
-    if (cfg.webWatchEnabled === false || !watchUrls.length) return;
+    const hasWebWork = cfg.webWatchEnabled !== false && watchUrls.length > 0;
+    const hasScriptWork = cfg.scriptCollabEnabled !== false && scriptPaths.length > 0;
+    const hasLectureWork = enabledScripts.has('lectures') && (cfg.lecturesEnabled === true || cfg.lecturesEnabled !== false && base.lectures?.enabled === true);
+    const hasLegacyWork = enabledScripts.has('blackboard') && bbCourses.length > 0 || hasLectureWork;
+    if (!hasWebWork && !hasScriptWork && !hasLegacyWork) return;
     const spawn = ctx.capabilities?.spawnCampusWatch;
     if (typeof spawn !== 'function') return;
+    if (leaseActive(path.join(ctx.root, 'state', 'login-window.lock')) || leaseActive(path.join(ctx.root, 'state', 'campus-watch.lock'))) return;
     const s = ctx.state.get(), t = Number(now) || Date.now();
-    if (s.lastFullAt && t - s.lastFullAt < full) return;
-    if (spawn([]) === true) ctx.state.set({ lastFastAt: t, lastFullAt: t });
+    if (s.lastFastAt && t - s.lastFastAt < fast) return;
+    const needFull = !s.lastFullAt || t - s.lastFullAt >= full;
+    // A minute tick is a scheduler check, not a reason to navigate every minute.
+    if (!needFull && !hasLectureWork) return;
+    if (spawn(needFull ? [] : ['--lectures-only']) === true) ctx.state.set({ lastFastAt: t, ...(needFull ? { lastFullAt: t } : {}) });
   } } };
 }

@@ -25,5 +25,9 @@
 - 不重启 DSH；不碰与桥接无关的系统目录；不为改而改。
 
 ## 配置
-`config.intervalHours` 仅作说明口径（真实定时在桥接 `socialV2.selfReview.intervalHours`）；
-`config.maxFixesPerRound` 控制单轮最多修几项。
+自查间隔和修复上限统一由控制台「自我更新」设置管理：
+- `socialV2.selfReview.intervalHours`：定期扫描间隔，默认 6 小时。
+- `socialV2.selfReview.maxSelfFixesPerRound`：自我发现与工具反馈每轮最多修复数。
+- `socialV2.selfReview.maxFeedbackFixesPerRound`：用户反馈每轮最多修复数。
+
+组件配置不再保存重复的间隔或修复上限。

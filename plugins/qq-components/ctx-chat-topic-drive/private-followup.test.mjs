@@ -23,7 +23,7 @@ test('cross-session followup queues until the group reply is delivered and sends
   assert.equal(sends.length, 0);
   plugin.hooks.afterSend({ key: 'group:10', success: true, sentAt: Date.now(), messages: ['群聊回复'] });
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.deepEqual(sends, [{ userId: '5', text: '那后来怎么样了？' }]);
+  assert.deepEqual(sends, [{ userId: '5', text: '那后来怎么样了？', sourceKey:'group:10', actionId:'privateFollowup:group:10:5:'+at }]);
   const duplicate = await tools.get('private_followup_send').handler({ groupKey: 'group:10', userId: '5', text: '还有呢？' });
   assert.equal(duplicate.ok, false);
   assert.equal(sends.length, 1);

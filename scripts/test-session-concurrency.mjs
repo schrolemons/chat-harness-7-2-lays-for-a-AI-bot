@@ -40,10 +40,11 @@ test('owner reply delivery cannot hold group DSH event consumption',async()=>{
     const owner=await h.ensureSession('private:123'),group=await h.ensureSession('group:456');
     h.bot.sendPrivateMessage=async()=>{entered();await blocked;};
     const event=(sid,type,data)=>({payload:{type:'session/event',sessionId:sid,event:{type,data}}});
+    await h.deliverPrompt('private:123','owner input');
     await h.queueDshEnvelope(event(owner,'turn/start',{turn:1}));
     await h.queueDshEnvelope(event(owner,'assistant/message',{turn:1,message:{content:[{type:'text',text:'owner-result'}]}}));
     const ownerEnd=h.queueDshEnvelope(event(owner,'turn/end',{turn:1,reason:{kind:'completed'}}));
-    await started;
+    await Promise.race([started,new Promise((_,reject)=>setTimeout(()=>reject(Error('owner send never started '+JSON.stringify(h.calls))),3000))]);
     await h.queueDshEnvelope(event(group,'turn/start',{turn:1}));
     assert.ok(h.v2TurnStartAt.has(group));
     release();await ownerEnd;

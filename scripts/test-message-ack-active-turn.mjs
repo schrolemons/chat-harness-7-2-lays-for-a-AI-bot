@@ -7,6 +7,9 @@ async function open() {
   const h = await bridgeHarness({ config: { sendDelayMs: 0, socialV2: { enabled: true,
     readReceipt: { ackPrivate: true, ackGroup: true, ackWhileGenerating: true }, wake: { batchWindowMs: 10 } } } });
   h.setMode('reserved2');
+  // Isolate acknowledgement timers from the independently tested outgoing pacing.
+  h.pluginHost.setConfig('ctx-chat-reply-shape',{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0});
+  await h.pluginHost.reload('ctx-chat-reply-shape');
   for (const id of ['obs-health-monitor', 'obs-bridge-health', 'obs-self-review', 'life-campus-watch', 'life-daily-worklog', 'eval-regression']) h.pluginHost.setEnabled(id, false);
   const call = h.pluginHost.callService.bind(h.pluginHost);
   h.pluginHost.callService = (name, method, args) => name === 'messageAck' && method === 'plan'

@@ -1,3 +1,4 @@
+import { readConsoleTestSource } from './console-test-source.mjs';
 // 语音发送自检：
 // 1) send-voice-lib 纯函数（来源解析、音频库列举、时长/体积校验、目标 key 解析）
 // 2) 配置项 + MCP 工具 + bridge 路由存在性
@@ -210,7 +211,7 @@ console.log('## preset 人设已描述语音能力（否则 AI 不知道自己�
 
 console.log('## 控制台契约');
 {
-  const html = fs.readFileSync(path.join(ROOT, 'public', 'console.html'), 'utf8');
+  const html = readConsoleTestSource();
   const bridgeSrc = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
   ok(html.includes('data-v2-tool="sendVoice"'), '控制台有 sendVoice 工具开关');
   ok(bridgeSrc.includes("'sendVoice']"), 'config API 的 toolFlags 含 sendVoice');
@@ -354,7 +355,7 @@ if (process.env.QQ_BRIDGE_TEST_LIVE === '1') {
       const denied = await fetch(`http://127.0.0.1:${port}/api/voice/send`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(token ? { 'x-console-token': token } : {}) },
-        body: JSON.stringify({ target: 'group:10602', file: first, dryRun: true }),
+        body: JSON.stringify({ target: 'group:60013', file: first, dryRun: true }),
         signal: AbortSignal.timeout(30000)
       });
       ok(denied.status === 403, `白名单外目标被拒（HTTP ${denied.status}）`);

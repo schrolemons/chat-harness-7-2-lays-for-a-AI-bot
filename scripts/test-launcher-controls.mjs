@@ -13,7 +13,7 @@ async function fixture(t, extra = {}) {
   const settingsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-control-settings-'));
   t.after(() => fs.rmSync(settingsRoot, { recursive: true, force: true }));
   fs.writeFileSync(path.join(settingsRoot, 'config.json'), '{}');
-  if (!extra.unconfigured) saveLauncherSettings(settingsRoot, { botUin: '10608' });
+  if (!extra.unconfigured) saveLauncherSettings(settingsRoot, { botUin: '60000' });
   const dispose = createLauncher({}, { servicePort: 0 }, {
     settingsRoot, readConfig: () => ({}),
     nodeBinary: process.execPath,

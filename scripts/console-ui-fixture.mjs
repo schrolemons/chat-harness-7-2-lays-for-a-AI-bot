@@ -1,9 +1,16 @@
 #!/usr/bin/env node
-/** Offline console preview. No production modules, credentials, state, or network clients are loaded. */
+/** Offline console preview using source declarations and isolated learning handlers; no production credentials, state, or network clients are loaded. */
 import http from 'node:http';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import { createAffairStore } from '../plugins/qq-components/ctx-memory-store/affairs.mjs';
+import { routeMemoryManagement } from '../src/console/memory-management.js';
+import { renderConsoleDocument, readConsoleAsset, isConsoleAssetPath } from '../src/console/document.js';
+import { existsSync } from 'node:fs';
+import { TOOL_CONFIG_FLAGS } from '../src/tools/flags.js';
 import {createPlugin as createAliasLearning} from '../plugins/qq-components/ctx-member-alias/index.js';
 import {createPlugin as createTermLearning} from '../plugins/qq-components/ctx-interest-terms/index.js';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { roleCharStats, roleSectionReport } from '../src/role-card.js';
@@ -67,8 +74,8 @@ function usageConversationFixture(key, buckets, cost, turns, steps, unattributed
 
 function usageSummaryFixture() {
   const conversations = [
-    usageConversationFixture('group:10608', { cacheMiss: 41230, cacheHit: 1284000, cacheWrite: 0, output: 18420, reasoning: 0 }, 0.2886, 42, 231),
-    usageConversationFixture('private:10600', { cacheMiss: 8600, cacheHit: 210400, cacheWrite: 0, output: 3900, reasoning: 0 }, 0.0467, 9, 48),
+    usageConversationFixture('group:60000', { cacheMiss: 41230, cacheHit: 1284000, cacheWrite: 0, output: 18420, reasoning: 0 }, 0.2886, 42, 231),
+    usageConversationFixture('private:60006', { cacheMiss: 8600, cacheHit: 210400, cacheWrite: 0, output: 3900, reasoning: 0 }, 0.0467, 9, 48),
     usageConversationFixture('internal:黑话学习', { cacheMiss: 2200, cacheHit: 18000, cacheWrite: 0, output: 900, reasoning: 0 }, 0.0075, 3, 11),
   ];
   const buckets = conversations.reduce((acc, c) => ({
@@ -182,7 +189,7 @@ function usageSeriesFixture(hoursRaw) {
       turns,
       steps,
       tier: tierOfBucket(t),
-      keys: steps > 0 ? ['group:10608'] : [],
+      keys: steps > 0 ? ['group:60000'] : [],
     });
   }
   const totals = buckets.reduce((acc, b) => ({
@@ -212,7 +219,7 @@ function usageSeriesFixture(hoursRaw) {
 }
 
 function usageTurnsFixture(key) {
-  const target = key || 'group:10608';
+  const target = key || 'group:60000';
   const base = Date.parse(timestamp);
   const rows = [];
   for (let i = 0; i < 6; i += 1) {
@@ -267,7 +274,7 @@ function usageRecentFixture() {
   for (let i = 0; i < 8; i += 1) {
     rows.push({
       time: base - i * 45_000,
-      key: i % 3 === 2 ? 'private:10600' : 'group:10608',
+      key: i % 3 === 2 ? 'private:60006' : 'group:60000',
       sessionId: 'fixture-session',
       turn: 42 - Math.floor(i / 4),
       step: 1 + (i % 4),
@@ -302,12 +309,12 @@ export function makeFixtureState() {
     },
     roleInjectMax: 8000,
     dshEffort: 'max',
-    whitelist: { allow: { groups: [608, 601], private: [600] }, deny: { groups: [], private: [] }, ownerQQ: '10600' },
-    diaryCatchUpSent: { 'private:10600': false, 'private:10609': false },
+    whitelist: { allow: { groups: [60000, 60008], private: [60006] }, deny: { groups: [], private: [] }, ownerQQ: '60006' },
+    diaryCatchUpSent: { 'private:60006': false, 'private:60007': false },
     sessions: [
-      { key: 'group:10608', sessionId: 'demo-community-20260920', owner: false },
-      { key: 'group:10601', sessionId: 'demo-development-20260920', owner: false },
-      { key: 'private:10600', sessionId: 'demo-owner-20260920', owner: true },
+      { key: 'group:60000', sessionId: 'demo-community-20260920', owner: false },
+      { key: 'group:60008', sessionId: 'demo-development-20260920', owner: false },
+      { key: 'private:60006', sessionId: 'demo-owner-20260920', owner: true },
     ],
     social: {
       triggerProbability: 0.2, activeCheckMinMs: 10000, activeCheckMaxMs: 30000,
@@ -321,8 +328,8 @@ export function makeFixtureState() {
       proactiveIdleThresholdMs: 1800000, proactiveCheckMinMs: 300000,
       proactiveCheckMaxMs: 900000, proactiveProbability: 0.2,
     },
-    socialStates: { 'group:10608': { phase: 'active' }, 'group:10601': { phase: 'idle' } },
-    v2: { enabled: true, agentPreset: 'qq-chat-v2', provideRecommendations: true, tools: {} },
+    socialStates: { 'group:60000': { phase: 'active' }, 'group:60008': { phase: 'idle' } },
+    v2: { enabled: true, doubleStamp:{enabled:true,windowCount:12}, tools: {} },
     // 会话初始提示词（离线示例）：整段内容都是虚构的演示文本。
     initPrompt: '离线示例：这是一个演示用的群聊环境说明，不会写进任何真实配置。',
     slangConfig: { enabled: true, extractMinMessages: 10, extractCooldownMs: 300000, inferenceThresholds: [2, 4, 8], injectMax: 8, learnerPreset: 'qq-chat', workspaceTitle: 'QQ 黑话学习', autoResearch: true },
@@ -336,29 +343,43 @@ export function makeFixtureState() {
     // （真实场景：Windows 上未以管理员身份运行桥接时就是这个状态）。
     hardenStateDir: false,
     toolLog: [
-      { time: timestamp, key: 'group:10608', tool: 'qq_get_recent_messages', type: 'call', args: JSON.stringify({ key: 'group:10608', limit: 20 }) },
-      { time: timestamp, key: 'group:10608', tool: 'qq_get_recent_messages', type: 'result', ok: true },
+      { time: timestamp, key: 'group:60000', tool: 'qq_get_recent_messages', type: 'call', args: JSON.stringify({ key: 'group:60000', limit: 20 }) },
+      { time: timestamp, key: 'group:60000', tool: 'qq_get_recent_messages', type: 'result', ok: true },
     ],
     feedback: [{ time: timestamp, level: 'info', message: '这是离线演示反馈。' }],
   };
 }
 
 /** Bind only to loopback. Mutations affect this server's disposable in-memory state. */
-export async function startConsoleFixture({ port = 0, original = false, htmlPath, logWrites = false, learningFixtures = {} } = {}) {
-  const file = htmlPath || resolve(projectRoot, original ? 'scripts/fixtures/console.before.html' : 'public/console.html');
+export async function startConsoleFixture({ port = 0, htmlPath, logWrites = false, learningFixtures = {} } = {}) {
+  const file = htmlPath || resolve(projectRoot, 'public/console.html');
   await readFile(file); // Fail early rather than displaying a broken preview.
   const state = makeFixtureState();
+  const memoryFixtureRoot = mkdtempSync(resolve(os.tmpdir(), 'whale-console-memory-'));
+  const affairsStore = createAffairStore(memoryFixtureRoot);
   const learningStates={alias:{entries:structuredClone(learningFixtures.aliases||[])},terms:{entries:structuredClone(learningFixtures.terms||[])}};
   const learningContexts={},learningTools=new Map();
   for(const [kind,id,factory] of [['alias','ctx-member-alias',createAliasLearning],['terms','ctx-interest-terms',createTermLearning]]){
     const manifest=JSON.parse(await readFile(resolve(projectRoot,'plugins/qq-components',id,'plugin.json'),'utf8'));
-    const context={id,config:structuredClone(manifest.config),runtime:{},signal:new AbortController().signal,isActive:()=>true,log:()=>{},warn:()=>{},state:{get:()=>structuredClone(learningStates[kind]),set:patch=>Object.assign(learningStates[kind],structuredClone(patch))},registerTool:(name,tool)=>learningTools.set(name,{id,tool}),capabilities:{getOwnerQQ:()=>600,getLearningHistory:async()=>[],getLearningMembers:async()=>[],learningPrompt:async()=>JSON.stringify({summary:'公开聚会以创作、交流与活动为内容，具体规则依主办方。不同成员观点并不完全相同。',sources:['https://www.anthrocon.org/']})}};
+    const context={id,config:structuredClone(manifest.config),runtime:{},signal:new AbortController().signal,isActive:()=>true,log:()=>{},warn:()=>{},state:{get:()=>structuredClone(learningStates[kind]),set:patch=>Object.assign(learningStates[kind],structuredClone(patch))},registerTool:(name,tool)=>learningTools.set(name,{id,tool}),capabilities:{getOwnerQQ:()=>60006,getLearningHistory:async()=>[],getLearningMembers:async()=>[],learningPrompt:async()=>JSON.stringify({summary:'公开聚会以创作、交流与活动为内容，具体规则依主办方。不同成员观点并不完全相同。',sources:['https://www.anthrocon.org/']})}};
     learningContexts[kind]=context;factory(context);
   }
 
   const requests = [];
+  const reads = [];
   const readToolCalls = [];
   const unknownRequests = [];
+  // Use current declarations, without executing plugin code or loading production state.
+  const componentFixtures = new Map();
+  for (const id of await readdir(resolve(projectRoot, 'plugins/qq-components'))) {
+    try {
+      const manifest = JSON.parse(await readFile(resolve(projectRoot, 'plugins/qq-components', id, 'plugin.json'), 'utf8'));
+      const source = await readFile(resolve(projectRoot, 'plugins/qq-components', id, 'index.js'), 'utf8');
+      const tools = [...source.matchAll(/registerTool\(\s*['"]([^'"]+)['"]/g)].map(m=>({name:m[1],description:m[1]}));
+      componentFixtures.set(id, { ...manifest, enabled:manifest.enabled!==false, config:structuredClone(manifest.config||{}), configKeys:Object.keys(manifest.config||{}), configSchema:manifest.configSchema||{}, tools, state:{}, metrics:{} });
+    } catch {}
+  }
+  componentFixtures.get('life-user-availability').state = { plans: { 'private:60006': {kind:'quiet',start:Date.now(),end:Date.now()+3600000} } };
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     const path = url.pathname;
@@ -371,20 +392,36 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
       if (method === 'GET' && ['/', '/console', '/console.html'].includes(path)) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
           'content-security-policy': "connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'" });
-        res.end(await readFile(file));
+        res.end(htmlPath ? await readFile(file) : renderConsoleDocument(projectRoot,{entry:file}));
         return;
+      }
+      if (method === 'GET' && isConsoleAssetPath(path)) {
+        const asset = readConsoleAsset(projectRoot, path);
+        res.writeHead(200, {'content-type':asset.type,'cache-control':'no-store'});
+        res.end(asset.body); return;
       }
       if (path === '/favicon.ico') { res.writeHead(204); res.end(); return; }
       if (method === 'GET' && path === '/__fixture/requests') return json({ requests, unknownRequests });
       if (method === 'GET' && path === '/__fixture/info') return json({ offline: true, htmlPath: file });
       if (!path.startsWith('/api/')) return json({ ok: false, error: 'Offline fixture route not found' }, 404);
+      if(method==='GET')reads.push({method,path,search:url.search});
+      if (method === 'GET' && path === '/api/socialV2/affairs') {
+        await routeMemoryManagement({ req, url, readBody: async () => ({}), sendJson: json,
+          pluginHost: { callService: (_, action, input) => affairsStore[action](input) }, agentTokenOk: () => false, affairsMaxChars: 4000 }); return;
+      }
 
       let body = {};
       if (method !== 'GET') {
         const chunks = [];
         for await (const chunk of req) chunks.push(chunk);
         body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-        if (path === '/api/plugins/call' && ['worklog_history', 'diary_history', 'diary_read'].includes(body.tool)) readToolCalls.push(body);
+        if (path === '/api/socialV2/affairs') {
+          requests.push({ method, path, body });
+          await routeMemoryManagement({ req, url, readBody: async () => body, sendJson: json,
+            pluginHost: { callService: (_, action, input) => affairsStore[action](input) }, agentTokenOk: () => false, affairsMaxChars: 4000 }); return;
+        }
+        if (path === '/api/plugins/call' && (['worklog_history', 'diary_history', 'diary_read', 'profile_snapshot', 'image_generation_status', 'campus_watch_status'].includes(body.tool)
+          || body.tool === 'image_generation_secret' && body.input?.op === 'status')) readToolCalls.push(body);
         else if (!(path === '/api/socialV2/schedules' && body.action === 'list')
           && !(path === '/api/socialV2/daily-diary' && body.action === 'catchUpAll')) requests.push({ method, path, body });
         if (logWrites) console.log(`[mock write] ${method} ${path} ${JSON.stringify(body)}`);
@@ -397,6 +434,7 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
       if(path==='/api/plugins/config' && method==='POST'){
         const kind=body.id==='ctx-member-alias'?'alias':body.id==='ctx-interest-terms'?'terms':null;
         if(kind){Object.assign(learningContexts[kind].config,body.config);return json({ok:true});}
+        if(componentFixtures.has(body.id)){Object.assign(componentFixtures.get(body.id).config,structuredClone(body.config));return json({ok:true});}
       }
       if(path==='/api/plugins/call' && method==='POST' && body.tool==='slang_research_batch'){
         const ids=body.input?.ids||[],matches=state.slang.filter(e=>e.status==='candidate'&&ids.includes(e.id));
@@ -408,7 +446,10 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
       }
       if (method === 'GET') {
         switch (path) {
-          case '/api/status': return json({ ok: true, dshReady: true, mode: state.mode, role: state.role, roleMode: state.roleMode, closedAgentPreset: state.closedAgentPreset, ownerQQ: state.whitelist.ownerQQ, allowGroups: state.whitelist.allow.groups, allowPrivate: state.whitelist.allow.private, activity: '[08:30:00] 演示桥接已连接\n[08:30:12] group:10608 · 已处理一条消息\n[08:30:20] 二代社交助手正在运行\n以上均为离线模拟数据。' });
+          case '/api/games': return json({ok:true,games:[{id:'fixture-dice',name:'离线骰子',summary:'隔离测试游戏',rules:'参与者同意后掷骰',enabled:true,parameters:{sides:6}}]});
+          case '/api/socialV2/self-review-feedback': return json({ok:true,pending:[],completed:[],admin:[],queues:{user:[],self:[],admin:[]},difficulties:[],history:[],counts:{pending:0,completed:0},historyCount:0});
+          case '/api/socialV2/optimization-memory': return json({ok:true,content:'离线优化记录',chars:6,path:'fixture/_optimization.md',exists:true,updatedAt:Date.now()});
+          case '/api/status': return json({ ok: true, dshReady: true, mode: state.mode, role: state.role, roleMode: state.roleMode, closedAgentPreset: state.closedAgentPreset, ownerQQ: state.whitelist.ownerQQ, allowGroups: state.whitelist.allow.groups, allowPrivate: state.whitelist.allow.private, activity: '[08:30:00] 演示桥接已连接\n[08:30:12] group:60000 · 已处理一条消息\n[08:30:20] 二代社交助手正在运行\n以上均为离线模拟数据。' });
           case '/api/presets': return json({ presets: [{ id: 'qq-chat-v2', trust: 'user' }, { id: 'qq-chat', trust: 'user' }] });
           case '/api/roles': return json({
             roles: state.roles.slice(),
@@ -480,14 +521,14 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
           });
           case '/api/whitelist': return json(state.whitelist);
           case '/api/sessions': return json({ sessions: state.sessions });
-          case '/api/pending': return json({ pending: [{ key: 'group:10608', kind: 'approval', toolName: '演示工具', reason: '等待管理员确认（离线示例）' }] });
-          case '/api/social': return json({ config: state.social, states: state.socialStates, pendingSummaries: { 'group:10608': 2 } });
+          case '/api/pending': return json({ pending: [{ key: 'group:60000', kind: 'approval', toolName: '演示工具', reason: '等待管理员确认（离线示例）' }] });
+          case '/api/social': return json({ config: state.social, states: state.socialStates, pendingSummaries: { 'group:60000': 2 } });
           case '/api/socialV2/config': return json({ ok: true, config: state.v2 });
           case '/api/socialV2/daily-diary': {
             const todayDate = new Date();
             const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
             const today = dateKey(todayDate);
-            return json({ ok: true, conversations: ['private:10600', 'private:10609'].map(key => ({ key, targetDate: today, hasDiary: true,
+            return json({ ok: true, conversations: ['private:60006', 'private:60007'].map(key => ({ key, targetDate: today, hasDiary: true,
               diaryChars: 120, diarySource: 'memory', lastDiaryDate: today, targetSent: true, sentAt: Date.now(),
               deliveryStatus: 'sent', diaryPending: false })) });
           }
@@ -496,7 +537,11 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
           case '/api/socialV2/feedback': return json({ ok: true, entries: state.feedback });
           case '/api/socialV2/memory': return json({ ok: true, raw: { activeTopics: [{ text: '周末的阅读计划', pendingQuestion: '有没有推荐的书？' }], pendingThoughts: [{ text: '分享一张风景照片', motivation: '轻松交流' }], memberImpressions: { 演示群友: { traits: ['友善', '喜欢技术'], interactionCount: 6 } } } });
           case '/api/socialV2/state': return json({ ok: true, key: url.searchParams.get('key'), wakeConfig: { mode: 'diving', infinite: false, sleepUntil: '2026-09-20T09:00:00.000Z', triggers: { atMention: true, keywords: ['小鲸鱼'] }, wakeCount: 4 }, wakeSafety: { guaranteed: true }, unreadCount: 2, lastWakeReason: 'atMention' });
-          case '/api/socialV2/states': return json({ ok: true, conversations: state.sessions.map(x => ({ key: x.key, phase: 'diving', unreadCount: 2 })) });
+          case '/api/socialV2/states': return json({ ok: true, conversations: state.sessions.map((x,index) => ({ key: x.key, phase: 'diving', unreadCount: 2,
+            moodState:index===2?null:{score:index===0?37:71,mode:index===0?'critical':'normal',modeName:index===0?'AI':'正太',unansweredStreak:2,welcomeBurstActive:false,welcomeBurstUntil:null,cooldownUntil:Date.parse(timestamp)+3600000},
+            moodHistory:index===0?[{source:'unanswered',at:Date.parse(timestamp),recordedAt:Date.parse(timestamp),reason:'原主动回合到期未答',before:37,after:37,delta:0,voided:true,originalPenalty:-10,correction:{reason:'迟到真实回执证明截止前已回应'}}]:[],
+            proactive:index===2?null:{stage:3,willingness:45,source:'activity',lastAI:{value:35,reason:'结束当前话题',at:Date.parse(timestamp)},effectiveProbability:0.126,effectiveInterval:{minMinutes:20,maxMinutes:40},nextAt:Date.parse(timestamp)+600000,blockedReason:index===0?'curfew':null,intent:null,phase:'silence',lastFinishedReason:'purpose_sent'},sendBudget:null
+          })) });
           case '/api/socialV2/initial-prompt': {
             const key = url.searchParams.get('key') || '';
             if (!key) {
@@ -505,7 +550,7 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
                 maxChars: 2000,
                 writable: true,
                 entries: state.initPrompt
-                  ? [{ key: 'group:10608', chars: String(state.initPrompt).length, updatedAt: Date.now(), preview: String(state.initPrompt).slice(0, 80) }]
+                  ? [{ key: 'group:60000', chars: String(state.initPrompt).length, updatedAt: Date.now(), preview: String(state.initPrompt).slice(0, 80) }]
                   : []
               });
             }
@@ -518,25 +563,25 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
           case '/api/voice/list':
           case '/api/socialV2/voices': return json({
             ok: true,
-            key: url.searchParams.get('key') || 'group:10608',
+            key: url.searchParams.get('key') || 'group:60000',
             count: 2,
             voices: [
               { name: '演示-问候.mp3', ok: true, bytes: 20480, detail: '2秒 · 20.0 KB · mp3 · 24.0kHz · 单声道', seconds: 2 },
               { name: '演示-太长.wav', ok: false, bytes: 99999999, error: '时长 12分00秒 超过上限 5分00秒' },
             ],
-            limits: { maxSeconds: 300, maxBytes: 20971520, maxPerMinute: 2, maxPerHour: 10 },
+            limits: { maxSeconds: 300, maxBytes: 20971520, maxPerMinute: 8, maxPerHour: 100 },
             hint: '用 qq_send_voice 传 name 即可把其中一个当语音发出去',
           });
           case '/api/slang': return json({ ok: true, entries: state.slang, config: state.slangConfig });
           case '/api/plugins': return json({
-            ok: true, count: 1, total: 1,
-            plugins: [{ id: 'life-daily-worklog', name: '运维日报', version: '1.0.0', description: '每日工作总结', layer: 'O', enabled: true, hooks: ['onTick'], schedule: { everyMs: 60000 }, metrics: {}, tools: [{ name: 'worklog_history', description: '只读日报历史' }], stateFile: 'state/plugins/life-daily-worklog.json' }],
-            tools: [{ name: 'worklog_history', plugin: 'life-daily-worklog', description: '只读日报历史' }]
+            ok: true, count: componentFixtures.size, total: componentFixtures.size,
+            plugins: [...componentFixtures.values()].map(({config,state,configSchema,...summary})=>summary),
+            tools: [...componentFixtures.values()].flatMap(p=>p.tools.map(tool=>({...tool,plugin:p.id})))
           });
+          case '/api/tools/catalog': return json({ok:true,stale:false,servers:[],sessions:[{preset:'qq-chat-v2',toolCount:Object.keys(TOOL_CONFIG_FLAGS).length}],tools:[...Object.keys(TOOL_CONFIG_FLAGS).map(name=>({name,qualifiedName:'mcp__snowluma__'+name,description:'隔离测试工具',server:'snowluma',audience:'qq',registered:true,injectedSessions:1,botInjectedSessions:1})),{name:'fixture_pending',qualifiedName:'mcp__fixture__pending',description:'待注入证据',server:'fixture',audience:'qq',registered:true,botInjectedSessions:0},{name:'fixture_admin',qualifiedName:'mcp__fixture__admin',description:'管理通道工具',server:'fixture',audience:'admin',registered:true,botInjectedSessions:0}]});
           case '/api/plugins/detail': {
             const id = url.searchParams.get('id');
-            if (id === 'life-daily-worklog') return json({ ok: true, plugin: { id, name: '运维日报', version: '1.0.0', description: '每日工作总结', layer: 'O', enabled: true, config: { hour: 23, minute: 0, maxChars: 6000, sendToOwner: true }, state: { lastGeneratedDate: '2026-10-26' }, schedule: { everyMs: 60000 }, tools: [{ name: 'worklog_history', description: '只读日报历史' }] } });
-            if (id === 'life-user-availability') return json({ ok: true, plugin: { id, state: { plans: { 'private:10600': { kind: 'quiet', start: Date.now(), end: Date.now() + 3600000 } } } } });
+            if (componentFixtures.has(id)) return json({ok:true,plugin:componentFixtures.get(id)});
             return json({ ok: false, error: '演示组件不存在' }, 404);
           }
           // state/ 的 ACL 收紧结果：用离线示例值演示「未收紧」的告警条（Windows 上未提权时的真实情况）
@@ -556,13 +601,12 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
           case '/api/tokens/budgets/replies': return json({ ok: true,
             privateReplies: state.mechanicalReplies?.privateReplies || DEFAULT_PRIVATE_REPLIES,
             groupReplies: state.mechanicalReplies?.groupReplies || DEFAULT_GROUP_REPLIES });
-          case '/api/tokens/budgets': return json({ ok: true, symbol: '¥', global: { cost: 0.09, turns: 3, limit: state.globalBudgetLimit || 0, remaining: state.globalBudgetLimit ? Math.max(0, state.globalBudgetLimit - 0.09) : null, reached: false, partial: false }, rows: usageSummaryFixture().conversations.map((item) => ({
+          case '/api/tokens/budgets': return json({ ok: true, symbol: '¥', owner:{key:'private:60006',budgetEnabled:state.ownerBudgetEnabled!==false},recoveryWindows:state.recoveryWindows||{privateMessages:5,groupMessages:5,groupAtMessages:5},global: { cost: 0.09, turns: 3, limit: state.globalBudgetLimit || 0, remaining: state.globalBudgetLimit ? Math.max(0, state.globalBudgetLimit - 0.09) : null, reached: false, partial: false }, rows: usageSummaryFixture().conversations.map((item) => ({
             key: item.key, cost: 0.03, turns: 1, stage: 'normal', partial: false,
             remainingYuan: state.budgetConfigs?.[item.key]?.hardLimitYuan ? Math.max(0, state.budgetConfigs[item.key].hardLimitYuan - 0.03) : null,
             coldLimitYuan: state.budgetConfigs?.[item.key]?.coldLimitYuan || 0,
             hardLimitYuan: state.budgetConfigs?.[item.key]?.hardLimitYuan || 0,
             weakMinIntervalMin: state.budgetConfigs?.[item.key]?.weakMinIntervalMin || 30,
-            recoveryWindowMessages: state.budgetConfigs?.[item.key]?.recoveryWindowMessages || 5,
             recoveryPending: 0
           })) });
           case '/api/tokens/series': return json(usageSeriesFixture(url.searchParams.get('hours')));
@@ -571,6 +615,11 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
         }
       }
       if (method === 'POST') {
+        if (path === '/api/tokens/budgets/recovery-windows') {
+          if(['privateMessages','groupMessages','groupAtMessages'].some(field=>!Number.isSafeInteger(body[field])||body[field]<1||body[field]>30))return json({ok:false,error:'三个恢复窗口均需为 1–30 条整数'},400);
+          state.recoveryWindows=structuredClone(body);return json({ok:true,recoveryWindows:state.recoveryWindows});
+        }
+        if(path==='/api/tokens/budgets/owner'){state.ownerBudgetEnabled=body.ownerBudgetEnabled;return json({ok:true,owner:{key:'private:60006',budgetEnabled:state.ownerBudgetEnabled}});}
         if (path === '/api/tokens/budgets/replies') {
           state.mechanicalReplies = { privateReplies: body.privateReplies, groupReplies: body.groupReplies };
           return json({ ok: true, ...state.mechanicalReplies });
@@ -586,6 +635,10 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
         }
         switch (path) {
           case '/api/plugins/call': {
+            if(body.tool==='profile_snapshot')return json({ok:true,plugin:'ctx-memory-profile-store',result:{ok:true,version:1,updatedAt:Date.now(),profiles:{'60006':{hobbies:'离线档案兴趣'}},people:{'60006':{name:'演示用户',keys:['private:60006']}}}});
+            if(body.tool==='image_generation_secret'&&body.input?.op==='status')return json({ok:true,plugin:'exec-image-generation',result:{ok:true,configured:false}});
+            if(body.tool==='image_generation_status')return json({ok:true,plugin:'exec-image-generation',result:{ok:true,day:'2026-10-29',globalUsed:0,globalLimit:10,sessionLimit:3,quotaMode:'requests'}});
+            if(body.tool==='campus_watch_status')return json({ok:true,plugin:'life-campus-watch',result:{ok:true,enabled:true,watchUrls:[],scripts:[],running:[],lastRun:null}});
             if (body.tool === 'diary_read') {
               return json({ ok: true, plugin: 'ctx-memory-store', result: { ok: true, date: body.input?.date, text: '自动加载的日记预览' } });
             }
@@ -596,7 +649,7 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
               todayDate.setDate(todayDate.getDate() - 1);
               const yesterday = dateKey(todayDate);
               return json({ ok: true, plugin: 'ctx-memory-store', result: { ok: true, dates: [{ date: yesterday, count: 1, chars: 120,
-                deliveries: ['private:10600', 'private:10609'].map(key => ({ key, status: state.diaryCatchUpSent[key] ? 'sent' : 'archive_only' })) }] } });
+                deliveries: ['private:60006', 'private:60007'].map(key => ({ key, status: state.diaryCatchUpSent[key] ? 'sent' : 'archive_only' })) }] } });
             }
             if (body.tool !== 'worklog_history') return json({ ok: false, error: '演示工具不存在' }, 404);
             const reports = [
@@ -680,12 +733,12 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
             }
             state.security = body;
             return json({ ok: true });
-          case '/api/console/token': return json({ ok: true, token: body.token || 'offline-demo-token-607', generated: !body.token });
+          case '/api/console/token': return json({ ok: true, token: body.token || 'offline-demo-token-60002', generated: !body.token });
           case '/api/test-send': return json({ ok: true, message_id: 'mock-message-001' });
           // 语音试发（操作者通道）：离线只回执，不产生任何真实 QQ 消息
           case '/api/voice/send': return json(body.dryRun
             ? { ok: true, dryRun: true, target: body.target, file: body.file, detail: '2秒 · 20.0 KB · mp3 · 24.0kHz · 单声道', verified: false }
-            : { ok: true, target: body.target, file: body.file, detail: '2秒 · 20.0 KB · mp3', messageId: 9001, verified: true, limits: { maxSeconds: 300, maxBytes: 20971520, maxPerMinute: 2, maxPerHour: 10 } });
+            : { ok: true, target: body.target, file: body.file, detail: '2秒 · 20.0 KB · mp3', messageId: 9001, verified: true, limits: { maxSeconds: 300, maxBytes: 20971520, maxPerMinute: 8, maxPerHour: 100 } });
           case '/api/console/notify-ai': return json({ ok: true, sessionId: 'mock-dsh-session' });
           case '/api/restart': return json({ ok: true, message: '离线预览：已模拟重启，实际服务未改变。' });
           case '/api/workspace/reset': state.sessions = []; return json({ ok: true, archivedCount: 3 });
@@ -723,13 +776,15 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
     }
   });
   await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolveListen); });
-  return { server, state, learningStates, learningContexts, requests, readToolCalls, unknownRequests, url: `http://127.0.0.1:${server.address().port}`, close: () => new Promise(resolveClose => server.close(resolveClose)) };
+  return { server, state, learningStates, learningContexts, requests, reads, componentFixtures,readToolCalls, unknownRequests, affairsStore,
+    url: `http://127.0.0.1:${server.address().port}`, close: () => new Promise(resolveClose => server.close(() => { rmSync(memoryFixtureRoot, { recursive: true, force: true }); resolveClose(); })) };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const value = name => args.find(x => x.startsWith(`${name}=`))?.slice(name.length + 1);
-  const fixture = await startConsoleFixture({ port: Number(value('--port') || 4173), original: args.includes('--original'), htmlPath: value('--html') ? resolve(value('--html')) : undefined, logWrites: true });
+  if(args.includes('--original'))throw Error('Legacy preview mode has been retired. Use the current console or an explicit --html path.');
+  const fixture = await startConsoleFixture({ port: Number(value('--port') || 4173), htmlPath: value('--html') ? resolve(value('--html')) : undefined, logWrites: true });
   console.log(`Offline console preview: ${fixture.url}\nAll data is synthetic; writes stay in memory.\nRecorded requests: ${fixture.url}/__fixture/requests`);
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await fixture.close(); process.exit(0); });
 }

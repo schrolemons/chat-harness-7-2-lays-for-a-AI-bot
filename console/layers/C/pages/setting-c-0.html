@@ -1,0 +1,36 @@
+<section id="section-setting-c-0" data-page="setting-c-0" class="card span-all commercial-component" hidden>
+<h2>心情与表情</h2>
+<details class="settings-group" open><summary>心情管理</summary><div class="settings-content">
+<div data-component-slot="ctx-user-mood"></div>
+<div class="policy-facts"><b>固定结算规则</b><p>每个主动回合到期未获回应扣 10 分；上海时间每日首次人类文本或图片把分数至少恢复到 60。心情不随时间自动回升。</p><p>分数 ≥ 形态阈值采用普通形态；低于阈值采用临界形态。行为规则由 AI 结合语境判断，不是关键词自动触发。</p><p>被叫回后的热情回应仅影响同一发送计划的闲聊选择，不另设条数。冷却 0 分钟表示无冷却，仍保留待回复的 5 分钟安全窗口。</p></div>
+<div class="mood-live-head"><span class="mood-live-title">各会话实际心情与历史</span><span id="v2MoodUpdated" class="mood-live-stamp"></span><button id="v2MoodRefresh" class="small" type="button">刷新当前心情</button></div>
+<div id="v2MoodCurrent" class="mood-live-grid" aria-live="polite">读取中…</div>
+</div></details>
+<details class="settings-group"><summary><span class="layer-tag" data-layer="C">C</span>表情与表情包管理（收藏表情 / 消息 emoji）</summary><div class="settings-content">
+      <div class="row">
+        <div class="setting-field"><label for="v2StickerEnabled">启用表情包体系</label><input type="checkbox" id="v2StickerEnabled" style="width:auto"><small class="parameter-example" data-example-for="v2StickerEnabled">例：关闭后不按该表情体系组织候选；文字聊天由自身设置控制。</small></div>
+        <div class="setting-field"><label for="v2StickerSyncTtlSec">同步缓存 TTL（秒）</label><input type="number" id="v2StickerSyncTtlSec" min="1" style="width:90px"><small class="parameter-example" data-example-for="v2StickerSyncTtlSec">例：设为60：表情列表缓存有效约1分钟，过期后再同步。</small></div>
+        <div class="setting-field"><label for="v2StickerMaxList">列表最大返回数</label><input type="number" id="v2StickerMaxList" min="1" max="500" style="width:90px"><small class="parameter-example" data-example-for="v2StickerMaxList">例：设为100：一次列表最多返回100个表情，不代表全部注入模型。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2StickerPromptMax">提示中列出常用表情数</label><input type="number" id="v2StickerPromptMax" min="1" max="30" style="width:90px"><small class="parameter-example" data-example-for="v2StickerPromptMax">例：设为8：提示词只列出有限的8个常用候选，不要求发8张。</small></div>
+        <div class="setting-field"><label for="v2StickerIncludePrompt">在 prompt/唤醒里附带表情摘要</label><input type="checkbox" id="v2StickerIncludePrompt" style="width:auto"><small class="parameter-example" data-example-for="v2StickerIncludePrompt">例：关闭后不主动附带候选摘要，模型仍可按工具权限主动查询表情。</small></div>
+        <span class="meta" style="flex:2">关闭后 AI 仍可主动调用 qq_list_stickers，只是不主动喂到上下文。</span>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2StickerRecentCooldown">最近发过的冷却（分）</label><input type="number" id="v2StickerRecentCooldown" min="0" style="width:90px"><small class="parameter-example" data-example-for="v2StickerRecentCooldown">例：设为30：最近30分钟已发的表情尽量不重复推荐。</small></div>
+        <span class="meta" style="flex:2">收藏表情按语境抽取候选，每轮尽量挑一张发送；若候选不合适，普通对话可用正文 emoji/颜文字补位。图片表情与消息内表情统一按语境管理，通常选一种，避免重复堆叠；冷却期内尽量不重复。</span>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2StickerCollectEnabled">AI 收藏表情</label><input type="checkbox" id="v2StickerCollectEnabled" style="width:auto"><small class="parameter-example" data-example-for="v2StickerCollectEnabled">例：开启后可按语境收藏表情，仍受每分钟与每小时上限限制。</small></div>
+        <div class="setting-field"><label for="v2StickerCollectPerMin">每分钟最多收藏</label><input type="number" id="v2StickerCollectPerMin" min="0" style="width:80px"><small class="parameter-example" data-example-for="v2StickerCollectPerMin">例：设为2：一分钟最多新收藏2个表情。</small></div>
+        <div class="setting-field"><label for="v2StickerCollectPerHour">每小时最多收藏</label><input type="number" id="v2StickerCollectPerHour" min="0" style="width:80px"><small class="parameter-example" data-example-for="v2StickerCollectPerHour">例：设为10：一小时最多新收藏10个表情，不能靠分批绕过。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2StickerCollectRemarkMax">收藏备注最大字数</label><input type="number" id="v2StickerCollectRemarkMax" min="1" max="50" style="width:80px"><small class="parameter-example" data-example-for="v2StickerCollectRemarkMax">例：设为20：收藏备注最多写20字，不把整段聊天保存成备注。</small></div>
+        <span class="meta" style="flex:2">AI 收藏别人表情时写的简短备注长度上限。</span>
+      </div>
+
+      </div></details>
+<div class="row"><button class="small primary v2-save" type="button" data-save-action>保存全局表情规则</button><span class="meta v2-save-msg" role="status"></span></div>
+</section>

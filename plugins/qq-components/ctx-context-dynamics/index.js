@@ -10,27 +10,13 @@
 import { buildStickerContext, buildStickerStrategyHint, findSticker } from '../../../src/sticker-lib.js';
 
 function buildMoodBlock(moodState) {
-  if (!moodState || !moodState.config || moodState.config.enabled === false) return '';
-  const cfg = moodState.config;
-  const eff = Number(moodState.value);
-  if (!Number.isFinite(eff)) return '';
-  const label = eff >= cfg.highThreshold ? '不错' : eff >= cfg.lowThreshold ? '还行' : '有点低';
-  const guide = eff >= cfg.highThreshold
-    ? '心情好：可以活跃点，2~3 条短句 + 1~2 张表情，主动接梗开玩笑'
-    : eff >= cfg.lowThreshold
-      ? '心情一般：1~2 条短句 + 1 张表情，正常聊'
-      : '心情低落（刚被嫌吵或被凶）：短一点、安静一点，允许委屈，温和表达感受，尊重对方需要的距离';
-  const extra = eff >= cfg.highThreshold
-    ? '心情好时可以更主动：追问对方的细节、接住话题往下聊、主动起新话题；偶尔可以连发 2~3 条（允许重复强调同一句，像真人激动刷屏），别太克制。'
-    : '';
-  let text = '【小鲸鱼的心情】' + label + '（' + eff + '/100）。' + guide + '。' + extra;
-  if (moodState.unmuteBurst) {
-    text += '\n【刚被叫回来】对方之前让你别吵/说忙，现在主动找你（问“在吗”之类）：可以先把憋着的一两句话说完整（最多 2~3 条 + 1~2 张表情），热情一点但别刷屏，然后看他反应。';
-  }
-  if (moodState.recovering) {
-    text += '\n【恢复期】刚从静音恢复，别一上来就潜水；正常接话，慢慢回到日常频率，别变社恐。';
-  }
-  return text;
+  if(!moodState||moodState.enabled===false||!Number.isFinite(moodState.score))return '';
+  const rules=[...(moodState.policy?.positiveRules||[]),...(moodState.policy?.negativeRules||[])];
+  const history=(moodState.history||[]).slice(0,5);
+  return '【当前形态】'+moodState.modeName+'（'+moodState.score+'/100）。'+moodState.styleInstruction
+    +'\n形态风格优先于角色卡中的惯常语气；身份事实与安全边界保持，严肃任务先完成内容。'
+    +(rules.length?'\n【行为规则】'+rules.map(r=>r.id+': '+r.label+'（'+r.delta+'）'+r.description).join('；')+'。仅在实际语境支持时使用 qq_mood，不按关键词自动变分。':'')
+    +(history.length?'\n【最近真实变化】'+history.map(h=>h.source+' '+h.before+'→'+h.after+' '+h.reason).join('；'):'');
 }
 
 function buildStickerBlock(payload) {
@@ -85,7 +71,7 @@ export function createPlugin(ctx) {
     hooks: {
       beforePrompt(payload = {}) {
         if (phi(payload).mode !== 'off') return '';
-        if (/^(memoryWrite|selfReview|selfOptimize|slangLearn)$/.test(String(payload?.reason||''))) return '';
+        if (/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview|slangLearn)$/.test(String(payload?.reason||''))) return '';
         if (!disabled.has('mood')) {
           const mood = buildMoodBlock(payload.moodState);
           if (mood) ctx.addPromptBlock(mood);

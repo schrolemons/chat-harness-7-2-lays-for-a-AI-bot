@@ -3,7 +3,7 @@
   "name": "会话推进（追问 / 起话题）",
   "version": "0.1.0",
   "description": "私聊内与群聊内由模型判断是否自然追问；另提供群聊后跨私聊的关系校验与限频发送能力。",
-  "category": "上下文与记忆",
+  "category": "生命周期与编排",
   "order": 10,
   "tags": [
     "追问",
@@ -22,11 +22,9 @@
     "minIntervalMinutes": 180,
     "dailyLimit": 1,
     "sessionLimits": {},
-    "followUpProbability": 0.5,
-    "newTopicProbability": 0.35,
     "followUpCooldownMinutes": 8,
     "newTopicCooldownMinutes": 45,
     "newTopicMaxPerHour": 2
   },
-  "layer": "C"
+  "layer": "L"
 }

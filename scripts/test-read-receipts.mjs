@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
-import { bridgeHarness } from './audit-bridge-harness.mjs';
+import { bridgeHarness,fixtureReplyTurn } from './audit-bridge-harness.mjs';
 
 const KEY = 'private:123';
 let failures = 0;
@@ -28,7 +28,7 @@ async function open({ savedState } = {}) {
   const server = h.startConsoleServer();
   if (!server.listening) await new Promise((resolve) => server.once('listening', resolve));
   const port = server.address().port;
-  const call = (route, { body, query = '', token, agent = true } = {}) => new Promise((resolve, reject) => {
+  const call = async (route, { body, query = '', token, agent = true } = {}) => {if(agent && /send-message|send-burst|reply$|\/api\/send\//.test(route))await fixtureReplyTurn(h,KEY);return new Promise((resolve, reject) => {
     const st = h.getSocialV2State(KEY);
     // 控制台服务端即使对 agent 调用也会先过 x-console-token 鉴权，缺了就是 401。
     const headers = { 'x-console-token': 'fixture-console-token' };
@@ -51,6 +51,7 @@ async function open({ savedState } = {}) {
     req.setTimeout(4000, () => req.destroy(new Error(`fixture HTTP request timed out: ${route}`)));
     req.end(body === undefined ? undefined : JSON.stringify({ key: KEY, ...body }));
   });
+  };
   const append = (text) => {
     const st = h.getSocialV2State(KEY);
     const id = `fixture-${st.lastUnreadSeq + 1}`;
@@ -127,6 +128,20 @@ await test('messages-purpose wait remains available after the reply receipt clos
   } finally { await c.close(); }
 });
 
+await test('a message returned by wait is persisted as seen before the next receipt report', async () => {
+  const c = await open();
+  try {
+    const waiting = c.call('wait', { body: { purpose: 'messages', timeoutMs: 800 } });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    const seq = c.append('arrived during wait');
+    const result = await waiting;
+    assert.equal(result.status, 200, JSON.stringify(result.data));
+    const offered = result.data.newMessages.find((item) => item.seq === seq);
+    assert.ok(offered?.seenAt > 0, 'wait-returned messages must be stamped seen before they reach the model');
+    assert.ok(c.st().unread.find((item) => item.seq === seq)?.seenAt > 0, 'seenAt must be stored, not only added to the response');
+  } finally { await c.close(); }
+});
+
 await test('legacy mark-read cannot infer repliedAt while JSON receipt reporting is enabled', async () => {
   const c = await open();
   try {
@@ -162,6 +177,64 @@ await test('reading stamps seenAt and a batch reply stamps repliedAt', async () 
     const saved = c.readSavedState().conversations[KEY];
     assert.deepEqual(seqs(saved.unread), []);
     assert.equal(saved.lastReadThroughSeq, 1);
+  } finally { await c.close(); }
+});
+
+await test('a successful send remains valid reply evidence after a bridge restart', async () => {
+  let c = await open();
+  c.append('message delivered while the agent was waiting');
+  const read = await c.call('unread');
+  assert.ok(read.data.messages[0].seenAt > 0);
+  const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply before restart' } });
+  assert.equal(sent.status, 200);
+  const savedState = c.readSavedState();
+  assert.deepEqual(savedState.conversations[KEY].receiptSendPendingSeqs, [1], 'persist only the seen message for which a successful send is evidence');
+  await c.close();
+
+  c = await open({ savedState });
+  try {
+    const report = await c.call('/api/socialV2/receipt-report', {
+      body: { conversationId: KEY, receipts: [{ seq: 1, status: 'replied' }] },
+    });
+    assert.equal(report.status, 200, `known successful send must remain reportable after restart: ${JSON.stringify(report.data)}`);
+    assert.deepEqual(seqs(c.st().unread), []);
+  } finally { await c.close(); }
+});
+
+await test('a successful send cannot authorize a message that arrived afterward', async () => {
+  const c = await open();
+  try {
+    c.append('first message seen before sending');
+    await c.call('unread');
+    const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply to first' } });
+    assert.equal(sent.status, 200);
+    const secondSeq = c.append('second message arrived after the successful send');
+    const read = await c.call('unread', { query: '&afterSeq=1' });
+    assert.ok(read.data.messages.some((item) => item.seq === secondSeq && item.seenAt > 0));
+    const report = await c.call('/api/socialV2/receipt-report', {
+      body: { conversationId: KEY, receipts: [{ seq: secondSeq, status: 'replied' }] },
+    });
+    assert.equal(report.status, 409);
+    assert.match(report.data.error, /没有对应的成功发送记录/);
+    assert.deepEqual(seqs(c.st().unread), [1, 2]);
+  } finally { await c.close(); }
+});
+
+await test('a delegated send records reply evidence on the conversation that received the reply', async () => {
+  const c = await open();
+  try {
+    const targetKey = 'group:456';
+    const target = c.h.getSocialV2State(targetKey);
+    c.h.appendSocialV2Message(targetKey, 'fixture-person', 'reply arrived during the delegated wait', 'reply arrived during the delegated wait', false, false, 'group-fixture-1', [], '789', []);
+    target.unread[0].seenAt = Date.now();
+    const sent = await c.h.sendAgentReplyV2(targetKey, 'acknowledgment in target conversation', { token: c.st().agentToken });
+    assert.equal(sent.sent, 1);
+    assert.deepEqual(Array.from(target.receiptSendPendingSeqs), [1], 'the target conversation needs its own seq-scoped send evidence');
+    const report = await c.call('/api/socialV2/receipt-report', {
+      body: { conversationId: targetKey, receipts: [{ seq: 1, status: 'replied' }] },
+    });
+    assert.equal(report.status, 200, `delegated reply must close the target receipt: ${JSON.stringify(report.data)}`);
+    assert.deepEqual(Array.from(target.unread), []);
   } finally { await c.close(); }
 });
 

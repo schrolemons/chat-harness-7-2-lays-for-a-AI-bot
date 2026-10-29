@@ -11,9 +11,14 @@
 // 数据由桥接提供（payload）：key / reason / preSleepMs / triggeredLine / history /
 // taskReport / reminderItems / peer / maxItems / maxChars / unreadCount。
 
+// The host versions entry URLs; carry that query through every owned dependency.
+const helperUrl = relative => { const url = new URL(relative, import.meta.url); url.search = new URL(import.meta.url).search; return url.href; };
+const [{ createProactive }, { validateProactivePolicy }] = await Promise.all([
+  import(helperUrl('./proactive.mjs')), import(helperUrl('./proactive-policy.mjs'))
+]);
 const REASON_NAMES = new Set([
   'bootstrap', 'timeout', 'replyCheck', 'careCheck', 'newsShare', 'idleRescue',
-  'selfOptimize', 'selfReview', 'memoryWrite', 'newFriend', 'timeBubble',
+  'selfOptimize', 'selfReview', 'userFeedbackReview', 'memoryWrite', 'newFriend', 'timeBubble',
   'startupGreeting', 'taskDone', 'reminder', 'proactiveCheck', 'poke', 'budgetRecovery'
 ]);
 const BILI_BV_RE = /^BV[0-9A-Za-z]{10}$/;
@@ -24,6 +29,7 @@ function cleanBiliMetadata(value, maxChars) {
 
 export function createPlugin(ctx) {
   const cfg = ctx.config || {};
+  const proactive = createProactive(ctx);
   const disabled = new Set(Array.isArray(cfg.disabledReasons) ? cfg.disabledReasons.map(String) : []);
 
   function tail(payload) {
@@ -63,11 +69,13 @@ export function createPlugin(ctx) {
       case 'idleRescue':
         return '【空闲兜底】\n（主动开口，不是回复谁）这个会话已经很久没有主动说话了。随口冒一句就行——可以小声说想喝牛奶了、问对方在忙什么、或接一个轻松话题；一条短句 + 可选 1 张表情，别长篇、别连着发很多条。';
       case 'selfOptimize':
-        return String(payload.history || '') + '【自我迭代｜按建议直接动手】按上面插件给出的要求挑 1~3 项功能/代码/配置问题直接改，改完写进 _optimization.md 并汇报。';
+        return String(payload.history || '') + '【自我迭代｜按结构化摘要复核】上方记录仅作历史背景，不代表待处理队列；本轮先核实当前仍成立的问题，再挑 1~3 项功能/代码/配置问题处理，结果写入 _optimization.md 的结构化摘要，并以 Console 反馈队列状态为准。';
       case 'selfReview':
         return '【自我迭代｜功能与代码自查】按上面插件给出的自查清单执行（只动功能/代码/配置），完成后汇报 1~3 句。';
+      case 'userFeedbackReview':
+        return '【用户反馈定向处理】只处理上方列出的用户反馈队列条目；复核未再现可记录为可能已由人工或其他工具修复。逐条提交规定的结果标记，未解决条目保留并累计尝试次数。';
       case 'memoryWrite':
-        return '【记忆更新】按上面插件给出的格式重写记忆（只写记忆，不发 QQ），写完直接收尾。';
+        return '【记忆更新】先按上面插件的证据标准逐栏补充权限内的人物档案，再按格式重写本会话记忆；确认工具成功才记已更新，不发 QQ，写完直接收尾。';
       case 'newFriend':
         return '【新好友】管理员刚通过了一个新的好友申请（QQ ' + String(payload.peer || '') + '）。主动打招呼：1~2 条短句，简单介绍自己是 DeepSeek 的正太小肥鱼，一只温柔、慢热的蓝色小鲸鱼；再自然接一个轻松话题。对新朋友保持礼貌，不擅自叫哥哥，不讲旧人设的饮食和口癖梗。可以配 1 张合适的表情包；别像客服、别复述这条提示。';
       case 'budgetRecovery':
@@ -103,7 +111,7 @@ export function createPlugin(ctx) {
           + completionRule + '不要复述这条系统提示，也不要说“系统提醒我”之类的话。';
       }
       case 'proactiveCheck':
-        return `【主动机会】${key}\n原因：群里已经安静了一段时间，这是一次你可以主动冒泡的机会。\n优先主动开个话题、追问上次没聊完的事、分享一个刚想到的想法；如果一时想不到，可以用 mcp__web-search-safe__web_search 搜一下当前热点/时事/网络热梗，再结合记忆里的群友兴趣挑一个自然角度。只要内容自然，就大胆开口；如果实在没话想说，再安静收尾（qq_mark_read 或 qq_set_wake_config）。`;
+        return `【主动机会】${key}\n原因：本会话的统一静默调度已经允许本轮主动机会。\n${payload.mood?.styleInstruction ? `当前形态「${payload.mood.modeName || ''}」：${payload.mood.styleInstruction}。\n` : ''}结合当前QQ本人档案、已确认作息和近期内容选择一个具体切入点，自然邀请对方回应；追问或换题遵循同一语义提示，不重复未回答的问题，尊重收尾和等待。不为找话题额外搜索热点，不照抄固定套句；存在探索只是可选内容。没有适合的内容可安静收尾（qq_mark_read 或 qq_set_wake_config），不假称已经发出消息。条数服从本轮统一发送计划。`;
       case 'poke':
         return '【唤醒】' + key + '\n原因：有人拍了一拍（可能拍了你，也可能拍了别人）。\n【拍一拍要自然响应】先看未读/最近消息里的 [拍一拍] 事件、是谁拍的：\n- 拍你的：通常回一下。可以 ①qq_send_poke 回拍对方；②qq_send_message 软软地回一句（"诶？我在呢""唔，怎么啦"）；③回一张合适的表情包。按关系选择，不必每次组合。\n- 拍别人的：觉得有趣可以轻轻接梗，也可以不插话。\n- 被连着戳/多人戳：可以害羞或有点困惑，温和表达想安静一下，不用嘴硬回怼。\n- 一条短句就够，轻松场合可配 1 张表情；回应完正常收尾。';
       default:
@@ -112,7 +120,12 @@ export function createPlugin(ctx) {
   }
 
   return {
+    validateConfig: validateProactivePolicy,
+    services: { proactive },
     hooks: {
+      onTick({ now = Date.now() } = {}) {
+        for (const key of Object.keys(ctx.state.get().proactiveByKey || {})) proactive.refresh({ key, now });
+      },
       wakeTail(payload) {
         try {
           const input = payload || {};

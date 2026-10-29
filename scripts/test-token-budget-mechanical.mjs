@@ -23,12 +23,25 @@ test('mechanical replies count unique private messages and group at-mentions wit
   assert.equal(onIncoming({ ...common, key: 'private:1', kind: 'private', messageId: '8', periodStart: 456 }).text, null);
 });
 
+test('per-conversation weak-reply interval uses minutes at the real dispatch boundary', () => {
+  let state={};
+  const config={sessions:{'private:1':{coldLimitYuan:0.1,hardLimitYuan:0,weakMinIntervalMin:7}}};
+  const plugin=createPlugin({config,state:{get:()=>state,set:patch=>{state={...state,...patch};}}});
+  const budget=plugin.services.tokenBudget;
+  assert.equal(budget.assess({key:'private:1',cost:0.2}).stage,'weak');
+  budget.noteDispatch({key:'private:1',stage:'weak',now:1_000_000});
+  assert.equal(budget.canDispatch({key:'private:1',stage:'weak',now:1_000_000+7*60_000-1}),false);
+  assert.equal(budget.canDispatch({key:'private:1',stage:'weak',now:1_000_000+7*60_000}),true);
+  config.sessions['private:1'].weakMinIntervalMin=8;
+  assert.equal(budget.canDispatch({key:'private:1',stage:'weak',now:1_000_000+7*60_000}),false,'changed parameter must affect dispatch');
+});
+
 test('recovery processes only the configured recent private window once', async () => {
   let state = {};
   let stage = 'silent';
   const delivered = [];
   const plugin = createPlugin({
-    config: { recoveryWindows: { privateMessages: 2 } },
+    config: { recoveryWindows: {privateMessages:2,groupMessages:5,groupAtMessages:5} },
     state: { get: () => structuredClone(state), set: (patch) => { state = { ...state, ...structuredClone(patch) }; } },
     capabilities: {
       budgetRecoveryStatus: () => ({ stage, allowed: true }),
@@ -49,35 +62,49 @@ test('recovery processes only the configured recent private window once', async 
   assert.equal(delivered.length, 1);
 });
 
-test('group recovery requires a real mention and retains mention and context windows independently', async () => {
- let state = {}, accepted = false;
- const delivered = [];
- const plugin = createPlugin({ config: { recoveryWindows: { groupMessages: 2, groupAtMessages: 1 } },
-  state: { get: () => structuredClone(state), set: patch => { state = { ...state, ...structuredClone(patch) }; } },
-  capabilities: { budgetRecoveryStatus: () => ({ stage: 'normal', allowed: true }),
-   dispatchBudgetRecovery: async request => { delivered.push(request); return { ok: accepted }; } } });
- const incoming = plugin.services.tokenBudget.onSilentIncoming;
- incoming({ key: 'group:2', kind: 'group', messageId: '0', stage: 'silent', text: 'ordinary', at: 100 });
- await plugin.hooks.onTick();
- assert.equal(delivered.length, 0);
- for (const [id, atSelf] of [[1,true],[2,false],[3,false]]) incoming({
-  key: 'group:2', kind: 'group', messageId: String(id), stage: 'silent', text: String(id), at: id*1000, atSelf });
- await plugin.hooks.onTick();
- assert.deepEqual(delivered[0].messages.map(message => message.id), ['1','2','3']);
- await plugin.hooks.onTick();
- assert.equal(delivered.length, 2);
- accepted = true;
- await plugin.hooks.onTick();
- assert.equal(delivered.length, 3);
- await plugin.hooks.onTick();
- assert.equal(delivered.length, 3);
+test('group recovery independently selects context and at-mention windows and retries failed dispatch', async () => {
+  let state = {};
+  let accepted = false;
+  const delivered = [];
+  const plugin = createPlugin({
+    config: { recoveryWindows: {privateMessages:5,groupMessages:2,groupAtMessages:1} },
+    state: { get: () => structuredClone(state), set: (patch) => { state = { ...state, ...structuredClone(patch) }; } },
+    capabilities: {
+      budgetRecoveryStatus: () => ({ stage: 'normal', allowed: true }),
+      dispatchBudgetRecovery: async (request) => { delivered.push(request); return { ok: accepted }; }
+    }
+  });
+  const incoming = plugin.services.tokenBudget.onSilentIncoming;
+  incoming({ key: 'group:2', kind: 'group', messageId: '1', stage: 'silent', periodStart: 123, text: '过早背景', at:1000 });
+  incoming({ key: 'group:2', kind: 'group', messageId: '2', stage: 'silent', periodStart: 123, text: '群聊消息2', at:2000 });
+  incoming({ key: 'group:2', kind: 'group', messageId: '3', stage: 'silent', periodStart: 123, text: '群聊消息3', at:3000 });
+  await plugin.hooks.onTick();
+  assert.equal(delivered.length, 0);
+  assert.equal(plugin.services.tokenBudget.recoveryPending({key:'group:2'}),0,'background-only group window should be settled without a model request');
+  incoming({ key: 'group:2', kind: 'group', messageId: '4', stage: 'silent', periodStart: 456, text: '较早的 @', atSelf: true,at:4000 });
+  incoming({ key: 'group:2', kind: 'group', messageId: '5', stage: 'silent', periodStart: 456, text: '被截去的背景',at:5000 });
+  incoming({ key: 'group:2', kind: 'group', messageId: '6', stage: 'silent', periodStart: 456, text: '新的 @', atSelf: true,at:6000 });
+  incoming({ key: 'group:2', kind: 'group', messageId: '7', stage: 'silent', periodStart: 456, text: '保留背景7',at:7000 });
+  incoming({ key: 'group:2', kind: 'group', messageId: '8', stage: 'silent', periodStart: 456, text: '保留背景8',at:8000 });
+  await plugin.hooks.onTick();
+  assert.equal(delivered.length, 1);
+  assert.deepEqual(delivered[0].messages.map(message=>message.id),['6','7','8'],'latest @ survives even when it predates the ordinary-context window');
+  assert.equal(plugin.services.tokenBudget.recoveryPending({key:'group:2'}),5,'failed dispatch must retain pending messages');
+  await plugin.hooks.onTick();
+  assert.equal(delivered.length, 2);
+  accepted = true;
+  await plugin.hooks.onTick();
+  assert.equal(delivered.length, 3);
+  assert.equal(plugin.services.tokenBudget.recoveryPending({key:'group:2'}),0);
+  await plugin.hooks.onTick();
+  assert.equal(delivered.length, 3);
 });
 
 test('maximum recovery window retains its last message without truncating the prompt', async () => {
   let state = {};
   const delivered = [];
   const plugin = createPlugin({
-    config: { recoveryWindows: { privateMessages: 30 } },
+    config: { recoveryWindows: {privateMessages:30,groupMessages:30,groupAtMessages:30} },
     state: { get: () => structuredClone(state), set: (patch) => { state = { ...state, ...structuredClone(patch) }; } },
     capabilities: {
       budgetRecoveryStatus: () => ({ stage: 'normal', allowed: true }),
@@ -127,8 +154,8 @@ test('hard cap routes private and group inbound messages to mechanical replies o
 });
 
 test('bridge restores only the latest configured messages after the cap is lifted', async () => {
-  const h = await bridgeHarness({ files: { 'state/plugins/config/life-token-budget.json': {
-    sessions: { 'private:123': { hardLimitYuan: 0.1 } }, recoveryWindows: { privateMessages: 2 }
+  const h = await bridgeHarness({ config:{socialV2:{persistentMemory:{enabled:false},dailyDiary:{enabled:false}}},files: { 'state/plugins/config/life-token-budget.json': {
+    sessions: { 'private:123': { hardLimitYuan: 0.1 } },recoveryWindows:{privateMessages:2,groupMessages:5,groupAtMessages:5}
   } } });
   try {
     h.setMode('reserved2');
@@ -147,9 +174,8 @@ test('bridge restores only the latest configured messages after the cap is lifte
     } }).ok, true);
     await h.pluginHost.reload('life-token-budget');
     await h.pluginHost.tick();
-    const recoveryTurns = h.calls.prompts.filter(call => call.content[0].text.includes('额度恢复后的补处理'));
-    assert.equal(recoveryTurns.length, 1);
-    const submitted = recoveryTurns[0].content[0].text;
+    assert.equal(h.calls.prompts.length, 1);
+    const submitted = h.calls.prompts[0].content[0].text;
     assert.ok(submitted.includes('恢复消息2'));
     assert.ok(submitted.includes('恢复消息3'));
     assert.ok(!submitted.includes('恢复消息1'));
@@ -159,8 +185,8 @@ test('bridge restores only the latest configured messages after the cap is lifte
 });
 
 test('recovery attaches a still-staged incoming image to the model turn', async () => {
-  const h = await bridgeHarness({ files: { 'state/plugins/config/life-token-budget.json': {
-    sessions: { 'private:123': { hardLimitYuan: 0.1 } }, recoveryWindows: { privateMessages: 1 }
+  const h = await bridgeHarness({ config:{socialV2:{persistentMemory:{enabled:false},dailyDiary:{enabled:false}}},files: { 'state/plugins/config/life-token-budget.json': {
+    sessions: { 'private:123': { hardLimitYuan: 0.1 } },recoveryWindows:{privateMessages:1,groupMessages:5,groupAtMessages:5}
   } } });
   try {
     h.setMode('reserved2');
@@ -178,9 +204,8 @@ test('recovery attaches a still-staged incoming image to the model turn', async 
     } });
     await h.pluginHost.reload('life-token-budget');
     await h.pluginHost.tick();
-    const recoveryTurns = h.calls.prompts.filter(call => call.content[0].text.includes('额度恢复后的补处理'));
-    assert.equal(recoveryTurns.length, 1);
-    assert.ok(recoveryTurns[0].content.some((part) => part.type === 'image'));
+    assert.equal(h.calls.prompts.length, 1);
+    assert.ok(h.calls.prompts[0].content.some((part) => part.type === 'image'));
   } finally { await h.close(); }
 });
 
@@ -229,17 +254,19 @@ test('console manages separate private and group mechanical reply lists', async 
   } finally { await new Promise(resolve => server.close(resolve)); await h.close(); }
 });
 
-test('console validates and persists the three independent recovery windows', async () => {
- const h = await bridgeHarness(); const server = h.startConsoleServer();
- try {
-  if (!server.listening) await new Promise(resolve => server.once('listening', resolve));
-  const base = `http://127.0.0.1:${server.address().port}/api/tokens/budgets`;
-  const headers = { 'x-console-token': 'fixture-console-token', 'content-type': 'application/json' };
-  const post = body => fetch(base + '/recovery-windows', { method: 'POST', headers, body: JSON.stringify(body) });
-  const valid = { privateMessages: 7, groupMessages: 4, groupAtMessages: 2 };
-  for (const value of [0,31,2.5]) assert.equal((await post({...valid,privateMessages:value})).status,400);
-  assert.equal((await post(valid)).status,200);
-  const data = await fetch(base,{headers}).then(response=>response.json());
-  assert.deepEqual(data.recoveryWindows, valid);
- } finally { await new Promise(resolve=>server.close(resolve)); await h.close(); }
+test('console validates and persists each private/group/group-at recovery window', async () => {
+  const h = await bridgeHarness();
+  const server = h.startConsoleServer();
+  try {
+    if (!server.listening) await new Promise(resolve => server.once('listening', resolve));
+    const url = `http://127.0.0.1:${server.address().port}/api/tokens/budgets`;
+    const headers = { 'x-console-token': 'fixture-console-token', 'content-type': 'application/json' };
+    const base = {privateMessages:7,groupMessages:8,groupAtMessages:9};
+    const post = (body) => fetch(url+'/recovery-windows', { method: 'POST', headers, body: JSON.stringify(body) });
+    for(const field of Object.keys(base))for(const invalid of [0,31,2.5])assert.equal((await post({...base,[field]:invalid})).status,400,`${field} rejects ${invalid}`);
+    assert.equal((await post(base)).status, 200);
+    const data = await fetch(url, { headers }).then(response => response.json());
+    assert.deepEqual(data.recoveryWindows,base);
+    assert.deepEqual(h.pluginHost.callService('tokenBudget','recoveryWindows'),base,'saved windows must survive the API-triggered component reload');
+  } finally { await new Promise(resolve => server.close(resolve)); await h.close(); }
 });

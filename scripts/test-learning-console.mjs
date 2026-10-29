@@ -3,20 +3,27 @@ import {startConsoleFixture} from './console-ui-fixture.mjs';
 const {chromium}=createRequire(import.meta.url)('playwright');
 const executablePath=[path.join(process.env.PROGRAMFILES||'','Google/Chrome/Application/chrome.exe'),path.join(process.env['PROGRAMFILES(X86)']||'','Microsoft/Edge/Application/msedge.exe')].find(fs.existsSync);
 const fixture=await startConsoleFixture({learningFixtures:{aliases:[
- {alias:'明明',qq:'10608',status:'confirmed'},{alias:'小明',qq:'10608',status:'confirmed'},
- {alias:'快递猫',qq:'',status:'candidate',reason:'邀约中的疑似称呼',sourceKey:'group:10608',evidence:[{key:'group:10608',text:'快递猫还不来玩游戏吗',time:Date.now()}]}
-],terms:[{id:'demo-game',term:'摸金撤离',topic:'三角洲行动',category:'游戏玩法',summary:'候选玩法摘要',status:'candidate',sourceKey:'*',sources:[],evidence:[{key:'group:10608',text:'撤离路线怎么选',time:Date.now()}],research:{status:'failed',error:'研究未给出可核实来源'},revision:1}] }});
+ {alias:'明明',qq:'60000',status:'confirmed'},{alias:'小明',qq:'60000',status:'confirmed'},
+ {alias:'快递猫',qq:'',status:'candidate',reason:'邀约中的疑似称呼',sourceKey:'group:60000',evidence:[{key:'group:60000',text:'快递猫还不来玩游戏吗',time:Date.now()}]}
+],terms:[{id:'demo-game',term:'摸金撤离',topic:'三角洲行动',category:'游戏玩法',summary:'候选玩法摘要',status:'candidate',sourceKey:'*',sources:[],evidence:[{key:'group:60000',text:'撤离路线怎么选',time:Date.now()}],research:{status:'failed',error:'研究未给出可核实来源'},revision:1}] }});
 const browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});const errors=[];
 try{
  const page=await browser.newPage({viewport:{width:1440,height:1080}});page.on('pageerror',e=>errors.push(e.message));
  await page.goto(fixture.url+'/#alias');await page.waitForSelector('#aliasCandidateList [data-alias-id]');
- const suspect=page.locator('#aliasCandidateList [data-alias-id]').filter({hasText:'快递猫'});await suspect.locator('[data-alias-edit]').click();await page.locator('#aliasModalQq').fill('10608');await page.locator('#aliasModalConfirm').click();
+ const suspect=page.locator('#aliasCandidateList [data-alias-id]').filter({hasText:'快递猫'});await suspect.locator('[data-alias-edit]').click();await page.locator('#aliasModalQq').fill('60000');await page.locator('#aliasModalConfirm').click();
  await page.waitForFunction(()=>document.getElementById('aliasMsg').textContent.includes('确认'));
- assert.equal(fixture.learningStates.alias.entries.filter(x=>x.qq==='10608'&&x.status==='confirmed').length,3);
+ assert.equal(fixture.learningStates.alias.entries.filter(x=>x.qq==='60000'&&x.status==='confirmed').length,3);
  await page.locator('#aliasPanelCandidate>.row .compact-actions').evaluate(el=>el.open=true);await page.locator('#aliasRefreshCandidates').click();await page.waitForFunction(()=>document.getElementById('aliasMsg').textContent.includes('刷新完成'));
- await page.locator('#aliasName').fill('手动测试绰号');await page.locator('#aliasQq').fill('10608');await page.locator('#aliasAdd').click();await page.waitForFunction(()=>document.getElementById('aliasMsg').textContent.includes('已添加'));
- assert.ok(fixture.learningStates.alias.entries.some(x=>x.alias==='手动测试绰号'&&x.qq==='10608'&&x.status==='confirmed'));
+ await page.locator('#aliasName').fill('手动测试绰号');await page.locator('#aliasQq').fill('60000');await page.locator('#aliasAdd').click();await page.waitForFunction(()=>document.getElementById('aliasMsg').textContent.includes('已添加'));
+ assert.ok(fixture.learningStates.alias.entries.some(x=>x.alias==='手动测试绰号'&&x.qq==='60000'&&x.status==='confirmed'));
  await page.locator('#aliasTabs [data-alias-tab="confirmed"]').click();await page.locator('#aliasConfirmedList').getByText('手动测试绰号').waitFor();
+ const aliasSettings=page.locator('#aliasConfigSave').locator('xpath=ancestor::details');if(await aliasSettings.getAttribute('open')===null)await aliasSettings.locator(':scope > summary').click();
+ await page.locator('#aliasAutoSemantic').uncheck();await page.locator('#aliasMinMessages').fill('9');await page.locator('#aliasCooldown').fill('7');await page.locator('#aliasMaxCalls').fill('3');await page.locator('#aliasConfigSave').click();
+ await page.waitForFunction(()=>document.getElementById('aliasConfigMsg')?.textContent.includes('已保存'));
+ assert.deepEqual(fixture.learningContexts.alias.config,{autoExtract:true,autoSemantic:false,minMessages:9,cooldownMs:420000,maxCallsPerHour:3});
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'expanded alias settings must fit a phone');await page.setViewportSize({width:1440,height:1080});
+ await page.reload();await page.locator('#mainNav [data-view="alias"]').click();await page.waitForFunction(()=>document.getElementById('aliasCooldown')?.value==='7');
+ assert.equal(await page.locator('#aliasAutoSemantic').isChecked(),false);assert.equal(await page.locator('#aliasMinMessages').inputValue(),'9');assert.equal(await page.locator('#aliasMaxCalls').inputValue(),'3');
  await page.locator('#mainNav [data-view="slang"]').click();await page.locator('#slangCandidateList [data-slang-select="demo-candidate"]').check();
  fixture.state.slang.push({id:'uncertain-candidate',content:'语境不足词',status:'candidate',count:1,lastInferenceCount:0,meaning:'',risk:'研究未确定：群内证据不足',source:'auto',evidence:[]});
  await page.reload();await page.locator('#mainNav [data-view="slang"]').click();
@@ -27,7 +34,7 @@ try{
  assert.equal(fixture.state.slang.find(x=>x.id==='demo-candidate').meaning,'已研究的演示释义');
  await page.locator('#slangCandidateList [data-slang-select="demo-candidate"]').uncheck();
  for(let i=0;i<6;i++)fixture.state.slang.push({id:'batch-'+i,content:'批量词-'+i,status:'candidate',count:1,meaning:'',source:'auto',evidence:[]});
- await page.evaluate(()=>refreshSlang());
+ await page.reload();await page.locator('#mainNav [data-view="slang"]').click();await page.locator('#slangCandidateList [data-slang-select="batch-5"]').waitFor();
  for(let i=0;i<6;i++)await page.locator('#slangCandidateList [data-slang-select="batch-'+i+'"]').check();
  await page.locator('#slangBatchResearch').click();await page.waitForFunction(()=>document.getElementById('slangMsg').textContent.includes('研究已写回'));
  assert.deepEqual(fixture.requests.filter(x=>x.path==='/api/plugins/call'&&x.body.tool==='slang_research_batch').slice(-2).map(x=>x.body.input.ids.length),[5,1]);

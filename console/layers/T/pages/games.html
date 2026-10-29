@@ -1,0 +1,18 @@
+<section id="section-games" data-page="games" class="card span-all">
+  <h2><span class="layer-tag" data-layer="T">T</span>Games · 独立互动 MCP</h2>
+  <div class="meta">独立列在 T · 工具接口与协议层。MCP server：<code>games</code>；规则与提示词：<code>plugins/qq-components/tool-games/</code>。只生成互动文本，不会自行发送 QQ 消息。每局规则和启停状态保存在 Games 专用配置中。</div>
+  <div id="gamesRegistry" class="games-grid"><div class="meta">正在读取游戏清单…</div></div>
+  <details class="games-create">
+    <summary>保存模型生成的自定义游戏</summary>
+    <p class="meta">模型可根据你的描述生成受限 JSON GameAdapter；粘贴完整 JSON 后保存。此适配器只允许声明初始状态、动作输入和 set / increment / randomInt 转移，不执行 JavaScript。</p>
+    <textarea id="gamesDefinition" rows="14" spellcheck="false" aria-label="自定义游戏 JSON" placeholder='{"id":"custom-coin-guess","name":"猜硬币","summary":"猜正反面","rules":"猜测一次硬币结果。","initialState":{"result":"","guesses":0},"actions":[{"type":"guess","label":"猜正反","description":"提交正面或反面","inputs":[{"name":"side","type":"choice","options":["正面","反面"]}],"effects":[{"op":"set","field":"result","input":"side"},{"op":"increment","field":"guesses","by":1,"min":0,"max":10}],"message":"猜测已记录。","endsGame":true}]}'></textarea>
+    <div class="row"><button id="gamesSaveDefinition" class="small primary" data-save-action>校验并保存此游戏</button><button id="gamesReload" class="small">刷新游戏清单</button><span id="gamesSaveMessage" class="meta" role="status"></span></div>
+  </details>
+  <div class="tool-reference-list" aria-label="Games MCP 工具">
+    <div class="tool-reference-item"><code>games_catalog</code><span>查看已启用游戏、规则与参数。</span></div>
+    <div class="tool-reference-item"><code>games_create</code><span>按用户描述生成并校验受限 JSON GameAdapter，保存为自定义游戏。</span></div>
+    <div class="tool-reference-item"><code>games_start</code><span>开始已启用的任一游戏；小火花要求参与者本人明确同意。</span></div>
+    <div class="tool-reference-item"><code>games_action</code><span>执行内置玩法或自定义 adapter 声明的合法动作。</span></div>
+    <div class="tool-reference-item"><code>games_status / games_stop</code><span>查询或结束当前互动；拒绝、不适或要求停止时立即结束。</span></div>
+  </div>
+</section>

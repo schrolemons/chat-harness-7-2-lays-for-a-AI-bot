@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer-core';
 import fs from 'node:fs';
-import vm from 'node:vm';
+import os from 'node:os';
+import path from 'node:path';
+import { restoreCookies, classifySnapshot } from './campus-browser-session.mjs';
 import { extractPageSnapshot } from '../plugins/qq-components/life-campus-watch/web-changes.mjs';
 import { apply as restrictSummaryTools } from '../plugins/qq-agent-presets/summary-tool-restrict.mjs';
 
@@ -30,14 +32,33 @@ test('summary preset exposes no tools and rejects every attempted tool execution
   assert.equal(typeof guard({ name: 'mcp__snowluma__qq_send_message' }), 'string');
 });
 
-test('cookie setup never initializes restored stale tabs and always closes its own temporary page', async () => {
-  const source = fs.readFileSync(new URL('./campus-watch.mjs', import.meta.url), 'utf8');
-  const code = source.slice(source.indexOf('async function injectCookies(browser)'), source.indexOf('\nasync function fetchPage('));
+test('cookie restore uses browser context without initializing restored stale tabs', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cookie-context-')); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const jar = path.join(root, 'cookies.json'); fs.writeFileSync(jar, JSON.stringify([{ name: 'test', value: 'example', domain: 'example.test' }]));
   const calls = [];
-  const context = vm.createContext({ ROOT: '.', path: { join: () => 'cookie-jar' }, fs: { existsSync: () => true, readFileSync: () => JSON.stringify([{name: 'test', value: 'example', domain: 'example.test'}]) } });
-  vm.runInContext(code, context);
-  const page = { createCDPSession: async () => ({ send: async method => calls.push(method), detach: async () => {} }), close: async () => calls.push('close') };
-  await context.injectCookies({ pages: async () => { throw Error('restored stale target'); }, newPage: async () => page });
-  assert.ok(calls.includes('Network.setCookie'));
-  assert.ok(calls.includes('close'));
+  await restoreCookies({ pages: async () => { throw Error('restored stale target'); }, newPage: async () => { throw Error('must not create a tab'); }, defaultBrowserContext: () => ({ setCookie: async (...cookies) => calls.push(...cookies) }) }, jar);
+  assert.deepEqual(calls.map(cookie => cookie.name), ['test']);
+});
+
+test('actual extractor classifies same-URL password and SSO prompts without treating course prose as login', async () => {
+  const browser = await puppeteer.launch({ executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', headless: true, args: ['--no-first-run', '--no-default-browser-check'] });
+  try {
+    const page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on('request', request => request.respond({ status: 200, contentType: 'text/html', body: '<main>course</main>' }));
+    await page.goto('https://synthetic.example/course');
+    await page.setContent('<main><h1>Account</h1><h2>Sign in</h2><form><label>Username<input autocomplete="username"></label><label>Password<input type="password"></label><button>Sign in</button></form></main>');
+    const password = await page.evaluate(extractPageSnapshot);
+    assert.equal(password.url, 'https://synthetic.example/course');
+    assert.equal(classifySnapshot(password, password.url), 'login');
+    await page.setContent('<main><h1>Sign in</h1><p>Continue using your university account</p><a role="button" href="/sso">Continue with university</a></main>');
+    const sso = await page.evaluate(extractPageSnapshot);
+    assert.equal(classifySnapshot(sso, sso.url), 'login');
+    await page.setContent('<header><a href="/sso">Sign in</a></header><main><h1>Course resources</h1><p>The lecture explains the sign-in protocol and username/password security.</p><a href="/notes">Download notes</a></main>');
+    const course = await page.evaluate(extractPageSnapshot);
+    assert.equal(classifySnapshot(course, course.url), 'ready');
+    await page.setContent('<main><h1>Sign-in protocol</h1><p>Course notes cover account authentication.</p><form><input type="search"><button>Search</button></form><input type="password" hidden></main>');
+    const notes = await page.evaluate(extractPageSnapshot);
+    assert.equal(classifySnapshot(notes, notes.url), 'ready');
+  } finally { await browser.close(); }
 });

@@ -15,7 +15,20 @@ export function extractPageSnapshot() {
   const omitted = new Set([...root?.querySelectorAll(ignored) || []].flatMap(el => (el.innerText || '').split('\n').map(normalize)));
   const lines = [...new Set(String(root?.innerText || '').split('\n').map(normalize).filter(line => line && !omitted.has(line)))].slice(0, 500);
   const links = [...root?.querySelectorAll('a[href]') || []].filter(a => !a.closest(ignored)).map(a => ({ t: normalize(a.innerText).slice(0, 160), h: a.getAttribute('href') || '' })).slice(0, 300);
-  return { url: location.href, title: document.title, text: lines.join(' '), lines, links, contentVersion: 2 };
+  // Authentication evidence must be captured in the same DOM snapshot as text:
+  // the content URL can stay unchanged and normalization merges heading lines.
+  const visible = el => !!el && !el.hidden && el.getClientRects().length > 0 &&
+    getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
+  const password = [...document.querySelectorAll('input[type="password"]')].some(visible);
+  const authTitle = /^(?:(?:account\s+)?(?:sign[ -]?in|log[ -]?in)(?:\s+(?:to|with)\b.*)?|登录|账号登录|统一身份认证(?:登录)?)$/i;
+  const authAction = /^(?:(?:sign[ -]?in|log[ -]?in)(?:\s+(?:to|with)\b.*)?|continue with\s+.+|登录|统一身份认证(?:登录)?|使用.+登录)$/i;
+  const headings = [...root?.querySelectorAll('h1,h2,h3,[role="heading"]') || []];
+  const actions = [...root?.querySelectorAll('button,[role="button"],input[type="submit"],form a[href]') || []];
+  const heading = headings.some(el => visible(el) && authTitle.test(normalize(el.innerText)));
+  const action = actions.some(el => visible(el) && authAction.test(normalize(el.innerText || el.value || el.getAttribute('aria-label'))));
+  const username = [...root?.querySelectorAll('input[autocomplete="username"],input[type="email"]') || []].some(visible);
+  const signInPrompt = action && (heading || username);
+  return { url: location.href, title: document.title, text: lines.join(' '), lines, links, password, signInPrompt, contentVersion: 2 };
 }
 
 function safeLinks(links, base) {

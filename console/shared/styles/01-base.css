@@ -1,0 +1,45 @@
+/* ================= 背景动效（纯装饰，不参与布局） ================= */
+.bg-decor {
+  position:fixed;
+  inset:0;
+  z-index:0;
+  overflow:hidden;
+  pointer-events:none
+}
+.bg-decor::before,
+.bg-decor::after {
+  content:"";
+  position:absolute;
+  border-radius:50%
+}
+.bg-decor::before {
+  width:58vmax;
+  height:58vmax;
+  left:-16vmax;
+  top:-20vmax;
+  background:radial-gradient(circle at 50% 50%,var(--decor-a),transparent 68%);
+  animation:decorDriftA 46s ease-in-out infinite alternate
+}
+.bg-decor::after {
+  width:50vmax;
+  height:50vmax;
+  right:-18vmax;
+  top:-10vmax;
+  background:radial-gradient(circle at 50% 50%,var(--decor-b),transparent 70%);
+  animation:decorDriftB 62s ease-in-out infinite alternate
+}
+@keyframes decorDriftA {
+  from { transform:translate3d(0,0,0) scale(1) }
+  50% { transform:translate3d(3%,4%,0) scale(1.08) }
+  to { transform:translate3d(-2%,7%,0) scale(1.03) }
+}
+@keyframes decorDriftB {
+  from { transform:translate3d(0,0,0) scale(1.04) }
+  50% { transform:translate3d(-4%,3%,0) scale(1) }
+  to { transform:translate3d(2%,-3%,0) scale(1.09) }
+}
+/* 内容层必须浮在装饰层之上 */
+.workspace {
+  position:relative;
+  z-index:1
+}

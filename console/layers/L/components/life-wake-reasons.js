@@ -1,0 +1,19 @@
+export default {saveLabel:"保存静默主动规则",title:'统一主动调度',fields:[
+{key:'proactiveEnabled',label:'启用静默主动',type:'boolean',group:'静默与概率'},
+{key:'silenceMinutes',label:'静默阈值（分钟）',type:'number'},
+{key:'initialProbability',label:'初始概率（0–1）',type:'number'},
+{key:'probabilityStep',label:'每阶段概率增长（0–1）',type:'number'},
+{key:'probabilityMax',label:'概率上限（0–1）',type:'number'},
+{key:'checkMinMinutes',label:'检验间隔下限（分钟）',type:'number',group:'检验间隔'},
+{key:'checkMaxMinutes',label:'检验间隔上限（分钟）',type:'number'},
+{key:'intervalStepMinutes',label:'每阶段间隔变化（分钟）',type:'number',help:'可为负数，负数让后续检验更频繁。'},
+{key:'checkFloorMinutes',label:'间隔硬下限（分钟）',type:'number'},
+{key:'minActiveGapMinutes',label:'主动最小间距（分钟）',type:'number'},
+{key:'maxSilenceMinutes',label:'最大静默兜底（分钟）',type:'number'},
+{key:'initialWillingness',label:'未评估时默认意愿（0–100）',type:'number',group:'聊天意愿'},
+{key:'activityWillingnessDelta',label:'人类回来时意愿变化',type:'number'},
+{key:'purposeWillingnessDelta',label:'主动或目的发送后意愿变化',type:'number'},
+{key:'curfewEnabled',label:'启用宵禁',type:'boolean',group:'宵禁（上海时间）'},
+{key:'curfewStartHour',label:'开始（小时）',type:'number'},
+{key:'curfewEndHour',label:'结束（小时）',type:'number'}
+]};

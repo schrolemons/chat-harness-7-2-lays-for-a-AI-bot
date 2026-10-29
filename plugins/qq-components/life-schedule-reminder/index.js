@@ -506,7 +506,7 @@ export function createPlugin(ctx) {
         fireDue(now);
       },
       beforePrompt(payload = {}) {
-        if (/^(memoryWrite|selfReview|selfOptimize|slangLearn)$/.test(String(payload?.reason || ''))) return '';
+        if (/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview|slangLearn)$/.test(String(payload?.reason || ''))) return '';
         const key = normalizeKey(payload.key);
         if (!key) return '';
         const c = cfg();

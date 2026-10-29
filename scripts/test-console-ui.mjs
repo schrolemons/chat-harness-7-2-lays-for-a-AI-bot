@@ -1,23 +1,19 @@
 #!/usr/bin/env node
 /** Real-browser tests against an isolated fixture. Never starts qq-bridge or sends real messages. */
 import assert from 'node:assert/strict';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve, join } from 'node:path';
-import { homedir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { resolve, join } from 'node:path';
 import { startConsoleFixture } from './console-ui-fixture.mjs';
+import { TOOL_CONFIG_FLAGS } from '../src/tools/flags.js';
+import { isInternalPromptComponent } from '../console/shared/components/presentation.js';
+import { COMPONENT_OWNERS, componentPage } from '../console/shared/components/ownership.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
-const original = args.includes('--original');
-const record = args.includes('--record-baseline');
 const artifacts = args.find(x => x.startsWith('--artifacts='))?.slice('--artifacts='.length);
-const views = ['overview', 'sessions', 'persona', 'social-v2', 'social-v1', 'slang', 'usage', 'access', 'operations', 'reference', 'games'];
-const legacyIds = JSON.parse((await readFile(join(here, 'console-ui-legacy-ids.json'), 'utf8')).replace(/^\uFEFF/, ''));
-const baselinePath = join(here, 'console-ui-contracts.json');
-if (record && !original) throw new Error('--record-baseline requires --original; only the pre-redesign console can define the baseline.');
+const views = ['overview','sessions','persona','social-v1','slang','alias','terms','usage','access','operations','reference','games','codex-peer','injection-lab','v2-t','v2-e','setting-c-0','setting-c-1','setting-c-2','setting-l-0','setting-l-1','setting-l-2','setting-o-0','setting-o-1','setting-o-2','environments','layer-v','human','layer-s','registry'];
+if (args.some(arg=>['--original','--record-baseline'].includes(arg))) throw new Error('Legacy baseline modes have been retired; tests exercise the current modular console.');
 
 async function loadPlaywright() {
   const require = createRequire(import.meta.url);
@@ -32,8 +28,9 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || [
   join(process.env.PROGRAMFILES || '', 'Google/Chrome/Application/chrome.exe'),
   join(process.env['PROGRAMFILES(X86)'] || '', 'Microsoft/Edge/Application/msedge.exe'),
 ].find(x => existsSync(x));
-const fixture = await startConsoleFixture({ original });
+const fixture = await startConsoleFixture();
 let browser;
+let testedBuild;
 const results = [];
 const errors = [];
 const blockedRequests = [];
@@ -57,12 +54,14 @@ try {
   page.setDefaultTimeout(8000);
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  page.on('response', response => { if(response.status()>=400)errors.push(response.status()+' '+new URL(response.url()).pathname); });
   page.on('dialog', dialog => dialog.accept());
   await page.goto(fixture.url);
-  await page.waitForFunction(() => document.getElementById('v2AgentPreset')?.value === 'qq-chat-v2' && document.getElementById('wlGroups')?.value.includes('10608'));
+  testedBuild=await page.locator('script[src^="/console/app.js"]').getAttribute('src');
+  assert.match(testedBuild,/\/console\/app\.js\?v=[a-f0-9]+$/,'Fixture must serve the versioned modular build');
+  await page.waitForFunction(() => document.getElementById('v2ContextRecentLimit')?.value === '100' && document.getElementById('wlGroups')?.value.includes('60000'));
 
   async function navigate(view) {
-    if (original) return;
     if (await page.locator(`[data-page="${view}"]:visible`).count()) return;
     const nav = page.locator(`[data-view="${view}"]`).first();
     if (!await nav.isVisible()) {
@@ -70,6 +69,7 @@ try {
       if (await toggle.count()) await toggle.click();
     }
     await nav.click();
+    await page.locator('[data-page=\"'+view+'\"]:visible').first().waitFor();
   }
   async function reveal(selector) {
     const target = page.locator(selector).first();
@@ -93,14 +93,47 @@ try {
     return fixture.requests.at(-1)?.body;
   }
 
-  await test('All 222 retained legacy IDs remain present and every DOM ID is unique', async () => {
+  await test('Current controls have unique DOM IDs and retired navigation is absent', async () => {
     const ids = await page.locator('[id]').evaluateAll(nodes => nodes.map(x => x.id));
-    assert.equal(legacyIds.length, 222);
-    assert.deepEqual(legacyIds.filter(x => !ids.includes(x)), []);
+    assert.equal(await page.locator('#mainNav [data-view=\"v2-c\"], #mainNav [data-view=\"v2-o\"]').count(), 0);
+    for (const id of ['v2MoodCurrent','v2MemoryOutput','v2PmContent','messageAckComponentRoot','v2FollowupSessionEditor']) assert(ids.includes(id), id);
     assert.equal(new Set(ids).size, ids.length, 'Duplicate DOM IDs detected');
+    const flags=await page.locator('[data-v2-tool]').evaluateAll(nodes=>nodes.map(el=>el.dataset.v2Tool));
+    assert.equal(new Set(flags).size,flags.length,'Tool configuration sources must be unique');
+    assert.deepEqual([...flags].sort(),[...new Set(Object.values(TOOL_CONFIG_FLAGS))].sort(),'Tool switches must match the MCP registration mapping');
   });
 
-  if (!original) await test('Games is a separate T-layer page with its own MCP tools', async () => {
+  await test('Tool catalog displays actual injection evidence and separates pending and admin tools', async()=>{
+    await navigate('reference');
+    await page.waitForFunction(()=>document.getElementById('toolReferenceRoot')?.textContent.includes('mcp__snowluma__qq_status'));
+    assert(fixture.reads.some(read=>read.path==='/api/tools/catalog'));
+    const active=await page.locator('#toolReferenceRoot').innerText();
+    assert.match(active,/mcp__snowluma__qq_status/);
+    assert.doesNotMatch(active,/mcp__fixture__(pending|admin)/);
+    assert.match(await page.locator('#toolPendingRoot').textContent(),/mcp__fixture__pending/);
+    assert.match(await page.locator('#toolAdminRoot').textContent(),/mcp__fixture__admin/);
+    assert.match(await page.locator('#toolsCatalogStatus').innerText(),/实际注入记录/);
+  });
+
+  await test('Every registered component reaches its owning page and loads its real form', async()=>{
+    for(const [id,component] of fixture.componentFixtures){
+      if(isInternalPromptComponent(component)){assert.equal(await page.locator('[data-component-id="'+id+'"],.comp-card[data-id="'+id+'"]').count(),0);continue;}
+      const view=componentPage(component);
+      await navigate(view);
+      const dedicated=COMPONENT_OWNERS[id]?.selector;
+      const root=dedicated?page.locator(dedicated).first():page.locator(`[data-component-id="${id}"],.comp-card[data-id="${id}"]`).first();
+      assert.equal(await root.count(),1,`${id} missing on ${view}`);
+      await reveal(dedicated||`[data-component-id="${id}"],.comp-card[data-id="${id}"]`);
+      assert.equal(await root.isVisible(),true,`${id} hidden on ${view}`);
+      const body=root.locator('.comp-body').first();
+      if(await body.count()){
+        await page.waitForFunction(el=>el.dataset.loaded==='1',await body.elementHandle());
+        assert.doesNotMatch(await body.innerText(),/读取详情失败|演示组件不存在/,id);
+      }
+    }
+  });
+
+  await test('Games is a separate T-layer page with its own MCP tools', async () => {
     await navigate('games');
     const section = page.locator('#section-games');
     assert.equal(await section.isVisible(), true);
@@ -112,24 +145,27 @@ try {
     assert.match(content, /参与者本人明确同意/);
   });
 
-  if (!original) await test('All navigation destinations work and preserve unsaved form values across polling', async () => {
+  await test('All navigation destinations work and preserve unsaved form values across polling', async () => {
+    const actualViews=await page.locator('#mainNav [data-view]').evaluateAll(nodes=>nodes.map(el=>el.dataset.view));
+    assert.equal(new Set(actualViews).size,actualViews.length,'Navigation destinations must be unique');
+    assert.deepEqual([...actualViews].sort(),[...views].sort(),'Every canonical destination must be covered');
     for (const view of views) {
       await navigate(view);
       const visiblePages = await page.locator('[data-page]').evaluateAll(nodes => nodes.filter(x => x.getClientRects().length && getComputedStyle(x).visibility !== 'hidden').map(x => x.dataset.page));
       assert(visiblePages.length > 0, `${view} has no visible content`);
       assert(visiblePages.every(x => x === view), `${view} exposes another page: ${visiblePages.join(', ')}`);
     }
-    const drafts = { wlGroups: '600, 100002', roleInput: '未保存的角色', v2AgentPreset: 'draft-preset', sKeywords: '未保存关键词', slangMeaning: '未保存的含义', tsMsg: '未发送的测试消息' };
+    const drafts = { wlGroups: '60006, 100002', roleInput: '未保存的角色', v2MemoryKey: 'private:60006', sKeywords: '未保存关键词', slangMeaning: '未保存的含义', tsMsg: '未发送的测试消息' };
     for (const [id, value] of Object.entries(drafts)) await fill(id, value);
     await navigate('overview');
     await page.waitForTimeout(3300); // Exercise the real 3-second status polling interval.
     for (const [id, value] of Object.entries(drafts)) assert.equal(await (await reveal(`#${id}`)).inputValue(), value, `${id} lost its draft`);
-    // Restore fixture defaults so the independent payload baseline remains deterministic.
+    // Restore fixture defaults for independent API payload assertions.
     await page.reload();
-    await page.waitForFunction(() => document.getElementById('v2AgentPreset')?.value === 'qq-chat-v2');
+    await page.waitForFunction(() => document.getElementById('v2ContextRecentLimit')?.value === '100');
   });
 
-  if (!original) await test('Operational worklog UI lists and previews reports without generating or sending', async () => {
+  await test('Operational worklog UI lists and previews reports without generating or sending', async () => {
     await navigate('setting-o-1');
     await page.waitForSelector('.worklog-console');
     await page.waitForFunction(() => document.querySelector('.worklog-date[data-date="2026-10-26"]'));
@@ -147,9 +183,9 @@ try {
     assert.equal(fixture.requests.some(x => x.path === '/api/test-send' || x.body?.tool === 'worklog_generate'), false);
   });
 
-  if (!original) await test('Daily diary catch-up excludes today, shows one send timestamp and disables after delivery', async () => {
-    await page.evaluate(() => refreshV2Diary());
-    const card = page.locator('.diary-session-card').filter({ hasText: 'private:10600' }).first();
+  await test('Daily diary catch-up excludes today, shows one send timestamp and disables after delivery', async () => {
+    await page.locator('#v2DdRefresh').click();
+    const card = page.locator('.diary-session-card').filter({ hasText: 'private:60006' }).first();
     await card.waitFor();
     const detail = await card.locator('.diary-session-detail').innerText();
     assert.match(detail, /最近确认发送：/);
@@ -158,16 +194,16 @@ try {
     assert.equal(await card.locator('[data-dd-action="sendNow"]').isDisabled(), false, 'manual resend should remain available after a prior same-day send');
     const catchUp = card.locator('[data-dd-action="catchUpAll"]');
     assert.equal(await catchUp.isDisabled(), false, 'yesterday archive should be eligible');
-    const otherUserCard = page.locator('.diary-session-card').filter({ hasText: 'private:10609' }).first();
+    const otherUserCard = page.locator('.diary-session-card').filter({ hasText: 'private:60007' }).first();
     assert.equal(await otherUserCard.locator('[data-dd-action="catchUpAll"]').isDisabled(), false, 'another user with backlog has an independent catch-up action');
     await catchUp.click();
     await page.waitForFunction(() => document.getElementById('v2DdMsg')?.textContent.includes('补发完成'));
-    await page.waitForFunction(() => document.querySelector('.diary-session-card [data-dd-key="private%3A600"][data-dd-action="catchUpAll"]')?.disabled === true);
+    await page.waitForFunction(() => document.querySelector('.diary-session-card [data-dd-key="private%3A60006"][data-dd-action="catchUpAll"]')?.disabled === true);
     assert.equal(await card.locator('[data-dd-action="catchUpAll"]').isDisabled(), true, 'the selected user disables after their backlog is sent');
     assert.equal(await otherUserCard.locator('[data-dd-action="catchUpAll"]').isDisabled(), false, 'another user with backlog remains independently available');
     assert.equal(await page.locator('#v2DdCatchUp').isDisabled(), false, 'global catch-up remains available while another user has backlog');
-    assert.equal(fixture.state.diaryCatchUpSent['private:10600'], true, 'catch-up should reach the offline service for the selected user');
-    assert.equal(fixture.state.diaryCatchUpSent['private:10609'], false, 'the other user must not be changed by the selected user catch-up');
+    assert.equal(fixture.state.diaryCatchUpSent['private:60006'], true, 'catch-up should reach the offline service for the selected user');
+    assert.equal(fixture.state.diaryCatchUpSent['private:60007'], false, 'the other user must not be changed by the selected user catch-up');
     const otherCatchUp = otherUserCard.locator('[data-dd-action="catchUpAll"]');
     await page.locator('#v2DdMsg').evaluate(el => { el.textContent = ''; });
     const [otherResponse] = await Promise.all([
@@ -178,10 +214,10 @@ try {
     await page.waitForFunction(() => document.getElementById('v2DdMsg')?.textContent.includes('补发完成'));
     await page.waitForFunction(() => document.querySelectorAll('.diary-session-card [data-dd-action="catchUpAll"]:disabled').length === 2);
     assert.equal(await page.locator('#v2DdCatchUp').isDisabled(), true, 'global catch-up disables only after every user is caught up');
-    assert.equal(fixture.state.diaryCatchUpSent['private:10609'], true, 'the second user can be caught up independently');
+    assert.equal(fixture.state.diaryCatchUpSent['private:60007'], true, 'the second user can be caught up independently');
   });
 
-  if (!original) await test('Opening daily diary history automatically loads dates and the newest preview', async () => {
+  await test('Opening daily diary history automatically loads dates and the newest preview', async () => {
     await page.evaluate(() => {
       const section = document.getElementById('v2DaRefresh').closest('details.settings-group');
       section.open = true;
@@ -193,8 +229,8 @@ try {
     assert(fixture.readToolCalls.some(x => x.tool === 'diary_read'), 'opening the archive should read the newest entry');
   });
 
-  if (!original) await test('Quiet-time plans load automatically without pressing refresh', async () => {
-    await page.waitForFunction(() => document.getElementById('availabilityRoot')?.textContent.includes('private:10600'));
+  await test('Quiet-time plans load automatically without pressing refresh', async () => {
+    await page.waitForFunction(() => document.getElementById('availabilityRoot')?.textContent.includes('private:60006'));
     assert.match(await page.locator('#availabilityStatus').innerText(), /1 条计划/);
   });
 
@@ -219,12 +255,12 @@ try {
   });
 
   await test('Whitelist numeric parsing and security contracts', async () => {
-    for (const [id, value] of Object.entries({ wlGroups: '608，601', wlPrivate: '600 100002', dnGroups: '800001,800002', dnPrivate: '900001', ownerQQ: '10600' })) await fill(id, value);
-    assert.deepEqual(await clickWrite('#wlSave', '/api/whitelist'), { allow: { private: [600, 100002], groups: [608, 601] }, deny: { private: [900001], groups: [800001, 800002] }, ownerQQ: '10600' });
+    for (const [id, value] of Object.entries({ wlGroups: '60000，60008', wlPrivate: '60006 100002', dnGroups: '800001,800002', dnPrivate: '900001', ownerQQ: '60006' })) await fill(id, value);
+    assert.deepEqual(await clickWrite('#wlSave', '/api/whitelist'), { allow: { private: [60006, 100002], groups: [60000, 60008] }, deny: { private: [900001], groups: [800001, 800002] }, ownerQQ: '60006' });
     await check('secInterceptNotify', false);
-    assert.deepEqual(await clickWrite('#secNotifySave', '/api/security'), { interceptNotify: false });
+    assert.deepEqual(await clickWrite('#secInterceptNotifySave', '/api/security'), { interceptNotify: false });
     await fill('secInterceptText', '安全拦截提示测试文案');
-    assert.deepEqual(await clickWrite('#secTextSave', '/api/security'), { interceptNotifyText: '安全拦截提示测试文案' });
+    assert.deepEqual(await clickWrite('#secInterceptTextSave', '/api/security'), { interceptNotifyText: '安全拦截提示测试文案' });
   });
 
   // state/ 的 ACL 收紧需要管理员权限，未提权时桥接会明确报告 hardened:false。
@@ -239,19 +275,21 @@ try {
     }));
     assert.match(shown.path, /state/, '应当显示 state 目录路径');
     assert.match(shown.cmd, /icacls/, '应当给出可复制的提权命令');
-    // 只验证按钮确实发起「重新检测」请求，**不**写进/触发 baseline 的写载荷契约
-    // （baseline 记录的是改版前控制台的表单写载荷，这条不算表单写）。
+    // 验证重新检测动作在自己的 API 边界提交，并显示最终状态。
     await page.waitForFunction(() => document.getElementById('stateDirReharden') !== null);
     const [request] = await Promise.all([
-      page.waitForRequest(r => new URL(r.url()).pathname === '/api/security' && r.method() === 'POST'),
+      page.waitForRequest(r => new URL(r.url()).pathname === '/api/security' && r.method() === 'GET'),
       page.click('#stateDirReharden'),
     ]);
-    assert.deepEqual(JSON.parse(request.postData() || '{}'), { rehardenStateDir: true });
+    assert.equal(request.postData(),null,'Recheck must never mutate ACLs');
+    fixture.state.hardenStateDir=true;
+    await page.reload();
+    await navigate('access');
     await page.waitForFunction(() => document.getElementById('stateDirWarn')?.style.display === 'none');
   });
 
-  await test('Second-generation complete save payload, units, zero values and tool switches', async () => {
-    await fill('v2AgentPreset', 'contract-v2');
+  await test('Page-scoped saves preserve other drafts, units, zero values and tool switches', async () => {
+    assert.equal(await page.locator('#v2DoubleStampWindowCount').inputValue(),'12','Initial count must come from configuration');
     await fill('v2RecSleepMin', 7);
     await fill('v2SleepMinMs', 42);
     await fill('v2PreSleepWaitMin', 0);
@@ -259,28 +297,26 @@ try {
     await fill('v2RecKeywords', '鲸鱼，DeepSeek, 测试');
     await fill('v2AutoReplyCheckSec', 17);
     await fill('v2WaitDefaultQuietMs', 0);
-    await fill('v2MaxSendMin', 0);
-    await fill('v2DoubleStampWindow', 180);
+
+    await fill('v2DoubleStampWindowCount', 18);
     await check('v2DoubleStampEnabled', false);
-    await check('v2ProvideRecommendations', false);
     const firstTool = page.locator('[data-v2-tool]').first();
     await reveal('[data-v2-tool]');
     await firstTool.setChecked(false);
-    const body = await clickWrite('#v2ConfigSaveTop', '/api/socialV2/config');
-    assert.equal(body.wake.recommendedSleepMinMs, 420000);
-    assert.equal(body.wake.sleepMinMs, 42000);
-    assert.equal(body.wake.preSleepWaitMs, 0);
-    assert.equal(body.wake.recommendedProbability, 0);
-    assert.deepEqual(body.wake.recommendedKeywords, ['鲸鱼', 'DeepSeek', '测试']);
-    assert.equal(body.autoReplyCheckMs, 17000);
-    assert.equal(body.wait.defaultQuietMs, 0);
-    assert.equal(body.send.maxSendPerMinute, 0);
-    assert.deepEqual(body.doubleStamp, { enabled: false, checkWindowMs: 180000 });
-    assert.equal(body.provideRecommendations, false);
-    assert.equal(body.tools[await firstTool.getAttribute('data-v2-tool')], false);
-    // The lower save button must submit the same complete configuration.
-    await page.waitForFunction(() => document.getElementById('v2AgentPreset').value === 'contract-v2');
-    assert.deepEqual(await clickWrite('#v2ConfigSave', '/api/socialV2/config'), body);
+    const firstFlag=await firstTool.getAttribute('data-v2-tool');
+    for(const proxy of await page.locator(`[data-tool-proxy="${firstFlag}"]`).all())assert.equal(await proxy.isChecked(),false,'Layer proxy should follow its unique source');
+    const timing=await clickWrite('#section-setting-l-1 .v2-save','/api/socialV2/config');
+    assert.deepEqual(Object.keys(timing).sort(),['autoReplyCheckMs','wait']);
+    assert.equal(timing.autoReplyCheckMs,17000);assert.equal(timing.wait.defaultQuietMs,0);
+    assert.equal(await page.locator('#v2RecSleepMin').inputValue(),'7','Saving timing must preserve an unsaved wake draft');
+    const wake=await clickWrite('#section-setting-l-0 .v2-save','/api/socialV2/config');
+    assert.deepEqual(Object.keys(wake).sort(),['doubleStamp','wake']);
+    assert.equal(wake.wake.recommendedSleepMinMs,420000);assert.equal(wake.wake.sleepMinMs,42000);assert.equal(wake.wake.preSleepWaitMs,0);
+    assert.equal(wake.wake.recommendedProbability,0);assert.deepEqual(wake.wake.recommendedKeywords,['鲸鱼','DeepSeek','测试']);
+    assert.deepEqual(wake.doubleStamp,{enabled:false,windowCount:18});
+    const tools=await clickWrite('#section-v2-t .v2-save','/api/socialV2/config');assert.deepEqual(Object.keys(tools),['tools']);assert.equal(tools.tools[firstFlag],false);
+    const expression=await clickWrite('#section-setting-c-0 .v2-save','/api/socialV2/config');assert.deepEqual(Object.keys(expression),['sticker']);
+    for(const key of ['send','mood','proactive','curfew','care','idleRescue'])assert.equal(Object.hasOwn(timing,key),false,key+' is owned by a component');
     assert.deepEqual(await clickWrite('#v2PauseBtn', '/api/socialV2/activity'), { paused: true });
     assert.deepEqual(await clickWrite('#v2ResumeBtn', '/api/socialV2/activity'), { paused: false });
   });
@@ -293,8 +329,8 @@ try {
     assert.equal(body.triggerProbability, 0.35);
     assert.equal(body.activeCheckMinMs, 12000);
     assert.deepEqual(body.mustReplyKeywords, ['鲸鱼', '测试']);
-    await (await reveal('#sStateKey')).selectOption('group:10608');
-    assert.deepEqual(await clickWrite('#sStateIdle', '/api/social/state'), { key: 'group:10608', phase: 'idle' });
+    await (await reveal('#sStateKey')).selectOption('group:60000');
+    assert.deepEqual(await clickWrite('#sStateIdle', '/api/social/state'), { key: 'group:60000', phase: 'idle' });
     assert.deepEqual(await clickWrite('#socialFlush', '/api/social/flush'), {});
   });
 
@@ -321,25 +357,18 @@ try {
 
   await test('Test message and AI notification reach only the mock endpoints', async () => {
     await (await reveal('#tsKind')).selectOption('group');
-    await fill('tsId', '10608');
+    await fill('tsId', '60000');
     await fill('tsMsg', '离线测试，不会发往 QQ。');
-    assert.deepEqual(await clickWrite('#tsSend', '/api/test-send'), { kind: 'group', id: '10608', message: '离线测试，不会发往 QQ。' });
+    assert.deepEqual(await clickWrite('#tsSend', '/api/test-send'), { kind: 'group', id: '60000', message: '离线测试，不会发往 QQ。' });
     await (await reveal('#aiNotifyKind')).selectOption('private');
-    await fill('aiNotifyId', '10600');
+    await fill('aiNotifyId', '60006');
     await fill('aiNotifyMessage', '离线提醒，不会发往 DSH。');
-    assert.deepEqual(await clickWrite('#aiNotifySend', '/api/console/notify-ai'), { key: 'private:10600', message: '离线提醒，不会发往 DSH。' });
+    assert.deepEqual(await clickWrite('#aiNotifySend', '/api/console/notify-ai'), { key: 'private:60006', message: '离线提醒，不会发往 DSH。' });
   });
 
-  if (record) {
-    assert(results.every(x => x.ok), 'Cannot record a baseline from a failed suite');
-    await writeFile(baselinePath, JSON.stringify(fixture.requests, null, 2) + '\n');
-    console.log(`Recorded original API contracts: ${baselinePath}`);
-  } else await test('All submitted payloads exactly match the pre-redesign console baseline', async () => {
-    const expected = JSON.parse(await readFile(baselinePath, 'utf8'));
-    assert.deepEqual(fixture.requests, expected);
-  });
+  // Each mutation is asserted at its owning API boundary above; obsolete whole-run baseline removed.
 
-  if (!original) await test('Token usage panel renders totals, per-conversation and per-turn cost', async () => {
+  await test('Token usage panel renders totals, per-conversation and per-turn cost', async () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await navigate('usage');
     await page.waitForFunction(() => document.getElementById('metricUsageTokens')?.textContent !== '—');
@@ -352,14 +381,14 @@ try {
 
     // 按会话（群 / 私聊 / 内部）明细
     const conversations = await page.textContent('#usageConversations');
-    assert.match(conversations, /group:10608/, '按会话表应列出群会话');
-    assert.match(conversations, /private:10600/, '按会话表应列出私聊会话');
+    assert.match(conversations, /group:60000/, '按会话表应列出群会话');
+    assert.match(conversations, /private:60006/, '按会话表应列出私聊会话');
     assert.match(conversations, /internal:黑话学习/, '按会话表应列出内部（黑话学习）用量');
     assert.match(conversations, /¥/, '按会话表应显示花费列');
     assert.match(conversations, /未命中输入/, '按会话表应拆分缓存命中 / 未命中');
 
     // 下钻逐轮：点会话行 → 加载该会话的逐轮花费
-    await page.click('#usageConversations [data-usage-key="group:10608"]');
+    await page.click('#usageConversations [data-usage-key="group:60000"]');
     await page.waitForFunction(() => /#\d+/.test(document.getElementById('usageTurns')?.textContent || ''));
     const turns = await page.textContent('#usageTurns');
     assert.match(turns, /#42/, '逐轮明细应显示轮次编号');
@@ -368,19 +397,19 @@ try {
     assert.match(turns, /¥/, '逐轮明细应显示每轮花费');
 
     // 会话下拉与逐轮表同步
-    assert.equal(await page.inputValue('#usageKeySelect'), 'group:10608', '下拉框应跟随选中的会话');
+    assert.equal(await page.inputValue('#usageKeySelect'), 'group:60000', '下拉框应跟随选中的会话');
 
     // 实时流水与价目表
-    assert.match(await page.textContent('#usageRecent'), /group:10608|private:10600/, '最近流水应列出采样');
+    assert.match(await page.textContent('#usageRecent'), /group:60000|private:60006/, '最近流水应列出采样');
     assert.match(await page.textContent('#usagePrices'), /deepseek-flash/, '价目表应列出模型单价');
   });
 
-  if (!original) await test('Token budget controls save per-conversation and global caps', async () => {
+  await test('Token budget controls save per-conversation and global caps', async () => {
     await navigate('usage');
-    await page.waitForSelector('#usageBudgets [data-budget-key="group:10608"]');
+    await page.waitForSelector('#usageBudgets [data-budget-key="group:60000"]');
     await page.locator('#usageGlobalLimit').fill('2.5');
     await page.locator('#usageGlobalSave').click();
-    const row = page.locator('#usageBudgets [data-budget-key="group:10608"]');
+    const row = page.locator('#usageBudgets [data-budget-key="group:60000"]');
     await row.locator('input').nth(0).fill('0.5');
     await row.locator('input').nth(1).fill('1.25');
     await row.locator('input').nth(2).fill('45');
@@ -389,10 +418,10 @@ try {
     assert.equal(await page.inputValue('#usageGlobalLimit'), '2.5');
     assert.equal(await row.locator('input').nth(0).inputValue(), '0.5');
     assert(fixture.requests.some((request) => request.path === '/api/tokens/budgets/global' && request.body.globalHardLimitYuan === 2.5));
-    assert(fixture.requests.some((request) => request.path === '/api/tokens/budgets' && request.body.key === 'group:10608' && request.body.hardLimitYuan === 1.25));
+    assert(fixture.requests.some((request) => request.path === '/api/tokens/budgets' && request.body.key === 'group:60000' && request.body.hardLimitYuan === 1.25));
   });
 
-  if (!original) await test('Token usage trend chart renders bars, tiers and range/metric switching', async () => {
+  await test('Token usage trend chart renders bars, tiers and range/metric switching', async () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await navigate('usage');
     await page.waitForFunction(() => document.querySelectorAll('#usageChart svg rect.usage-bar-off, #usageChart svg rect.usage-bar-peak').length > 0);
@@ -423,13 +452,13 @@ try {
     // 切范围：重新请求并按生产同一套桶宽阶梯换粒度
     // （24h→30min / 3d→2h / 7d→6h / 30d→24h，桶数始终 ≤ 48）
     await page.click('#usageChartControls [data-usage-hours="168"]');
-    await page.waitForFunction(() => /每格 \d+ 分钟/.test(document.getElementById('usageChartHint')?.textContent || '')
+    await page.waitForFunction(() => /每格 360 分钟/.test(document.getElementById('usageChartHint')?.textContent || '')
       && document.querySelector('#usageChartControls [data-usage-hours="168"]')?.classList.contains('active'));
     assert.match(await page.textContent('#usageChartHint'), /每格 360 分钟/, '切到 7 天后桶宽变成 6 小时');
 
     // 粗桶会把高峰窗口整个包在中间 → 必须标『跨时段』（细桶边界对齐则不会，这也是真账本的行为）
     await page.click('#usageChartControls [data-usage-hours="720"]');
-    await page.waitForFunction(() => /每格 \d+ 分钟/.test(document.getElementById('usageChartHint')?.textContent || '')
+    await page.waitForFunction(() => /每格 1440 分钟/.test(document.getElementById('usageChartHint')?.textContent || '')
       && document.querySelector('#usageChartControls [data-usage-hours="720"]')?.classList.contains('active'));
     assert.match(await page.textContent('#usageChartHint'), /每格 1440 分钟/, '切到 30 天后桶宽变成 24 小时');
     const coarse = await page.evaluate(() => ({
@@ -451,14 +480,14 @@ try {
     await page.waitForFunction(() => document.querySelector('#usageChartControls [data-usage-hours="24"]')?.classList.contains('active'));
   });
 
-  if (!original) await test('Mobile and tablet layouts have no document-level horizontal overflow', async () => {
+  await test('Mobile and tablet layouts have no document-level horizontal overflow', async () => {
     for (const width of [390, 768]) {
       await page.setViewportSize({ width, height: 844 });
       for (const view of views) {
         await navigate(view);
         const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
         assert(dimensions.document <= dimensions.viewport + 1, `${width}px / ${view}: ${JSON.stringify(dimensions)}`);
-        if (artifacts && width === 390 && ['overview', 'social-v2', 'slang'].includes(view)) {
+        if (artifacts && width === 390 && ['overview', 'setting-l-1', 'slang'].includes(view)) {
           await mkdir(resolve(artifacts), { recursive: true });
           await page.screenshot({ path: resolve(artifacts, `mobile-${view}.png`), fullPage: true, animations: 'disabled' });
         }
@@ -466,7 +495,7 @@ try {
     }
   });
 
-  if (!original) await test('Dark mode toggles, persists across reload and stays overflow-free', async () => {
+  await test('Dark mode toggles, persists across reload and stays overflow-free', async () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const snapshot = () => page.evaluate(() => ({
       theme: document.documentElement.dataset.theme,
@@ -507,7 +536,7 @@ try {
     assert.equal((await snapshot()).theme, 'light', '应能切回浅色');
   });
 
-  if (!original) await test('Console follows the system preference when no theme was chosen', async () => {
+  await test('Console follows the system preference when no theme was chosen', async () => {
     const systemDark = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark', serviceWorkers: 'block' });
     await systemDark.route('**/*', route => new URL(route.request().url()).origin === fixture.url ? route.continue() : route.abort('blockedbyclient'));
     const systemPage = await systemDark.newPage();
@@ -518,7 +547,7 @@ try {
     await systemDark.close();
   });
 
-  if (!original) await test('Reduced-motion preference disables decorative motion', async () => {
+  await test('Reduced-motion preference disables decorative motion', async () => {
     const calm = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     await calm.route('**/*', route => new URL(route.request().url()).origin === fixture.url ? route.continue() : route.abort('blockedbyclient'));
     const calmPage = await calm.newPage();
@@ -536,7 +565,7 @@ try {
     await calm.close();
   });
 
-  if (!original) await test('人格管理：新建 → 载入编辑 → 保存修改 → 重命名 → 删除', async () => {
+  await test('人格管理：新建 → 载入编辑 → 保存修改 → 重命名 → 删除', async () => {
     await navigate('persona');
     const created = '回归人格A';
     const renamed = '回归人格B';
@@ -578,7 +607,7 @@ try {
     assert.match(await page.locator('#roleCreateMsg').textContent(), /已删除/);
   });
 
-  if (!original) await test('仿真提示词默认可查看、解锁后可编辑、保存后提示需重启 DSH', async () => {
+  await test('仿真提示词默认可查看、解锁后可编辑、保存后提示需重启 DSH', async () => {
     await navigate('persona');
     await page.waitForFunction(() => document.getElementById('simPromptText').value.length > 0);
     assert.equal(await page.locator('#simPromptText').getAttribute('readonly'), '', '默认应为只读');
@@ -599,7 +628,7 @@ try {
     assert.equal(await page.locator('#simPromptText').getAttribute('readonly'), '', '保存后应回到只读');
   });
 
-  if (!original) await test('仿真提示词可切换到一代/二代，两代内容相互独立', async () => {
+  await test('仿真提示词可切换到一代/二代，两代内容相互独立', async () => {
     await navigate('persona');
     await page.waitForFunction(() => document.getElementById('simPromptText').value.length > 0);
     const v2 = await page.locator('#simPromptText').inputValue();
@@ -614,7 +643,7 @@ try {
     await page.waitForFunction((prev) => document.getElementById('simPromptText').value === prev, v2);
   });
 
-  if (!original) await test('人格注入上限可调，且随模式筛选后统计', async () => {
+  await test('人格注入上限可调，且随模式筛选后统计', async () => {
     await navigate('persona');
     await page.waitForFunction(() => document.querySelectorAll('#roleList .persona-item').length > 0);
     const before = await page.locator('#roleInjectMax').inputValue();
@@ -633,7 +662,7 @@ try {
     await page.waitForFunction(() => document.getElementById('roleInjectMaxMsg').textContent.includes('6000'));
   });
 
-  if (!original) await test('思考强度：档位来自 DSH、默认 max、可切换并明示全局副作用', async () => {
+  await test('思考强度：档位来自 DSH、默认 max、可切换并明示全局副作用', async () => {
     await navigate('overview');
     await page.waitForFunction(() => document.getElementById('dshEffortSelect').options.length > 0);
     const options = await page.locator('#dshEffortSelect option').evaluateAll((nodes) => nodes.map((n) => n.value));
@@ -657,22 +686,20 @@ try {
   if (artifacts) {
     await mkdir(resolve(artifacts), { recursive: true });
     await page.setViewportSize({ width: 1440, height: 1000 });
-    for (const view of original ? ['overview'] : ['overview', 'persona', 'social-v2', 'slang', 'access']) {
+    for (const view of ['overview', 'persona', 'setting-l-1', 'slang', 'access']) {
       await navigate(view);
-      await page.screenshot({ path: resolve(artifacts, `${original ? 'original' : 'desktop'}-${view}.png`), fullPage: true, animations: 'disabled' });
+      await page.screenshot({ path: resolve(artifacts, `desktop-${view}.png`), fullPage: true, animations: 'disabled' });
     }
-    if (!original) {
-      await page.locator('#themeToggle').click();
-      for (const view of ['overview', 'social-v2']) {
-        await navigate(view);
-        await page.screenshot({ path: resolve(artifacts, `dark-${view}.png`), fullPage: true, animations: 'disabled' });
-      }
-      await page.setViewportSize({ width: 390, height: 844 });
-      await navigate('overview');
-      await page.screenshot({ path: resolve(artifacts, 'dark-mobile-overview.png'), fullPage: true, animations: 'disabled' });
-      await page.setViewportSize({ width: 1440, height: 1000 });
-      await page.locator('#themeToggle').click();
+    await page.locator('#themeToggle').click();
+    for (const view of ['overview', 'setting-l-1']) {
+      await navigate(view);
+      await page.screenshot({ path: resolve(artifacts, `dark-${view}.png`), fullPage: true, animations: 'disabled' });
     }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await navigate('overview');
+    await page.screenshot({ path: resolve(artifacts, 'dark-mobile-overview.png'), fullPage: true, animations: 'disabled' });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.locator('#themeToggle').click();
   }
   await test('No JavaScript errors, unknown API routes or external requests', async () => {
     assert.deepEqual(errors, []);
@@ -684,7 +711,7 @@ try {
   await fixture.close();
   if (artifacts) {
     await mkdir(resolve(artifacts), { recursive: true });
-    await writeFile(resolve(artifacts, 'test-results.json'), JSON.stringify({ original, results, requests: fixture.requests, errors, blockedRequests }, null, 2) + '\n');
+    await writeFile(resolve(artifacts, 'test-results.json'), JSON.stringify({ testedBuild,componentCount:fixture.componentFixtures.size,results, requests: fixture.requests, unknownRequests:fixture.unknownRequests, errors, blockedRequests }, null, 2) + '\n');
   }
 }
 const failed = results.filter(x => !x.ok);

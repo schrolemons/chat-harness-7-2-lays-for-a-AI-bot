@@ -29,14 +29,14 @@ test('shared learning transport serializes requests and captures a turn ending b
  assert.equal(max,1);assert.deepEqual(results.map(JSON.parse),[{turn:1},{turn:2}]);assert.equal(h.calls.created.length,1);
 }));
 test('alias submission never exposes another group evidence or manual notes',()=>withBridge(async(h,request)=>{
- await h.pluginHost.callTool('alias_submit',{alias:'测试猫',qq:'10608',key:'group:789',note:'B_GROUP_PRIVATE_EVIDENCE'});
- const r=await request('alias/submit',{body:{alias:'测试猫',qq:'10608',note:'A_GROUP_CONTEXT'}});
+ await h.pluginHost.callTool('alias_submit',{alias:'测试猫',qq:'60000',key:'group:789',note:'B_GROUP_PRIVATE_EVIDENCE'});
+ const r=await request('alias/submit',{body:{alias:'测试猫',qq:'60000',note:'A_GROUP_CONTEXT'}});
  assert.equal(r.status,200);assert.doesNotMatch(JSON.stringify(r.data),/B_GROUP_PRIVATE_EVIDENCE|group:789|evidence/);
 }));
 test('agent requests cannot approve learning candidates through the generic plugin endpoint',()=>withBridge(async h=>{
  const st=h.getSocialV2State('group:456');const server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));
  try{
-   const entry=(await h.pluginHost.callTool('alias_submit',{alias:'待审核',qq:'10608',key:'group:456'})).result.entry;
+   const entry=(await h.pluginHost.callTool('alias_submit',{alias:'待审核',qq:'60000',key:'group:456'})).result.entry;
    const response=await fetch('http://127.0.0.1:'+server.address().port+'/api/plugins/call',{method:'POST',headers:{'content-type':'application/json','x-console-token':'fixture-console-token','x-agent-token':st.agentToken,'x-agent-call':'1'},body:JSON.stringify({tool:'alias_confirm',input:{id:entry.id}})});
    assert.equal(response.status,403);assert.equal((await h.pluginHost.callTool('alias_list',{})).result.entries[0].status,'candidate');
  }finally{await new Promise(r=>server.close(r));}

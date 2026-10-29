@@ -21,7 +21,7 @@ const now = Date.now();
 const st = {
   unread: [{ text: '在吗' }, { text: '问你个事' }],
   recentMessages: [
-    { isSelf: false, sender: '管理员', text: '问你个事，明天有空吗，我跟你讲', tail: '我跟你讲', time: now - 5 * 60 * 1000 },
+    { isSelf: false, sender: '十二', text: '问你个事，明天有空吗，我跟你讲', tail: '我跟你讲', time: now - 5 * 60 * 1000 },
     { isSelf: true, text: '在', time: now - 6 * 60 * 1000 }
   ],
   lastAiReplyAt: now - 10 * 60 * 1000
@@ -40,7 +40,7 @@ check('角色名', text.includes('【当前角色】大肥鱼'));
 check('身份（昵称+QQ）', text.includes('DeepSeek大肥鱼') && text.includes('2799274749') && text.includes('不要当成别人'));
 check('会话令牌', text.includes('【会话令牌】token-abc'));
 check('状态：未读', text.includes('未读 2 条'));
-check('状态：最近来信', text.includes('管理员') && text.includes('问你个事'));
+check('状态：最近来信', text.includes('十二') && text.includes('问你个事'));
 check('状态：没说完', text.includes('对方可能没说完'));
 check('状态：上次发言', text.includes('你上次发言 10 分钟前'));
 check('初始提示词', text.includes('本群氛围'));

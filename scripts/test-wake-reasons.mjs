@@ -21,7 +21,7 @@ const check = (name, ok, detail) => {
 };
 
 const plugin = createPlugin(mkCtx());
-const base = { key: 'private:10610', preSleepMs: 300000, triggeredLine: '' };
+const base = { key: 'private:60004', preSleepMs: 300000, triggeredLine: '' };
 const tail = (reason, extra = {}) => plugin.hooks.wakeTail({ ...base, reason, ...extra }) || '';
 
 check('bootstrap', tail('bootstrap').includes('引导唤醒'));
@@ -31,7 +31,7 @@ check('careCheck', tail('careCheck').includes('主动关心'));
 const biliShareTail = tail('newsShare', {
   maxItems: 2,
   biliShareKeywords: ['海洋纪录片', '鲸鱼'],
-  biliPreferredUploader: '正太肥鱼与龙少的日常',
+  biliPreferredUploader: '示例海洋记录员',
   biliShareItems: [{
     bvid: 'BV1ab411c7mD',
     title: '鲸鱼纪录片',
@@ -39,25 +39,25 @@ const biliShareTail = tail('newsShare', {
     description: '记录鲸群迁徙。'
   }]
 });
-check('newsShare 要求按主题调用搜索工具', biliShareTail.includes('bili_search') && biliShareTail.includes('海洋纪录片、鲸鱼') && biliShareTail.includes('少于 2 条'));
+check('newsShare 仅分享已核实候选', biliShareTail.includes('只分享下面这些') && biliShareTail.includes('不要另找视频'));
 check('newsShare 含可核实视频字段', biliShareTail.includes('鲸鱼纪录片') && biliShareTail.includes('海洋频道') && biliShareTail.includes('https://www.bilibili.com/video/BV1ab411c7mD'));
-check('newsShare 按指定三项格式介绍并表达感受', biliShareTail.includes('【URL或BV号】') && biliShareTail.includes('【介绍视频内容】') && biliShareTail.includes('【介绍自己的感受】'));
-check('newsShare 定向命中时至少保留一条抽中 UP', biliShareTail.includes('正太肥鱼与龙少的日常') && biliShareTail.includes('至少推荐 1 条该 UP 主的视频') && biliShareTail.includes('只有定向搜索没有合格结果时'));
-check('newsShare 没有候选时禁止编造', tail('newsShare', { maxItems: 2 }).includes('不要编造或用其他来源替代'));
-check('newsShare 接受链接或真实 BV 号', tail('newsShare', { maxItems: 2 }).includes('完整链接或真实 BV 号'));
+check('newsShare 保留标题UP链接与简介边界', ['标题：','UP 主：','链接：','简介能支持'].every(x=>biliShareTail.includes(x)));
+check('newsShare 不由模型重新选择UP', biliShareTail.includes('不要另找视频'));
+check('newsShare 没有候选安静收尾', tail('newsShare', {maxItems:2}).includes('不要发送推荐或替补内容'));
+check('newsShare 拒绝缺少核实信息的候选', tail('newsShare', {biliShareItems:[{bvid:'BV1ab411c7mD'}]}).includes('不要发送推荐'));
 const scheduledBiliTail = tail('newsShare', {
   maxItems: 3,
   biliShareKeywords: ['鲸鱼'],
   biliPreferredUploader: ''
 });
-check('定时推荐将基础权重转成寻找新 UP 的动作', scheduledBiliTail.includes('抽中的主题“鲸鱼”') && scheduledBiliTail.includes('挑选 3 条') && scheduledBiliTail.includes('抽中基础权重') && scheduledBiliTail.includes('新的 UP 主'));
+check('定时推荐无候选不临时搜索', scheduledBiliTail.includes('不要发送推荐或替补内容'));
 check('idleRescue', tail('idleRescue').includes('空闲兜底'));
 const opt = tail('selfOptimize', { history: '【最新优化记录】\n历史记录内容\n\n' });
 check('selfOptimize 带历史', opt.includes('历史记录内容') && opt.includes('自我迭代'));
 check('selfReview', tail('selfReview').includes('功能与代码自查'));
 check('memoryWrite', tail('memoryWrite').includes('记忆更新'));
-check('newFriend 带 peer', tail('newFriend', { peer: '10607' }).includes('QQ 607'));
-check('新好友使用正太小鲸鱼身份', tail('newFriend', { peer: '10607' }).includes('正太小肥鱼') && !/鲸鱼娘|爱吃白饭|吃 token/.test(tail('newFriend', { peer: '10607' })));
+check('newFriend 带 peer', tail('newFriend', { peer: '60002' }).includes('QQ 60002'));
+check('新好友使用正太小鲸鱼身份', tail('newFriend', { peer: '60002' }).includes('正太小肥鱼') && !/鲸鱼娘|爱吃白饭|吃 token/.test(tail('newFriend', { peer: '60002' })));
 check('主动唤醒遵循新卡', ['newsShare', 'reminder', 'poke'].every((reason) => !/大肥鱼的口吻|大肥鱼味|傲娇装烦/.test(tail(reason))));
 check('timeBubble', tail('timeBubble').includes('时间冒泡'));
 check('startupGreeting', tail('startupGreeting').includes('开机起床'));
@@ -68,7 +68,7 @@ check('reminder 带条目', rem.includes('日程｜2026-10-25 23:00｜开会'));
 check('proactiveCheck', tail('proactiveCheck').includes('主动机会'));
 check('poke', tail('poke').includes('拍一拍'));
 const plain = tail('private', { triggeredLine: '（触发这条是 1 分钟前发的）' });
-check('普通唤醒走默认尾巴', plain.includes('【唤醒】private:10610') && plain.includes('原因：private') && plain.includes('1 分钟前'));
+check('普通唤醒走默认尾巴', plain.includes('【唤醒】private:60004') && plain.includes('原因：private') && plain.includes('1 分钟前'));
 check('未知 reason 也走默认尾巴', tail('someNewReason').includes('原因：someNewReason'));
 
 // 配置禁用某个 reason：返回空，让桥接走兜底

@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { inspectWhaleMcpServers, readToolCatalog } from '../src/tools/catalog.js';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const snapshot=await inspectWhaleMcpServers(root);
+fs.writeFileSync(path.join(root,'state/tool-catalog.json'),JSON.stringify(snapshot,null,2));
+const catalog=readToolCatalog(root);
+for(const server of catalog.servers)console.log(`${server.ok?'PASS':'FAIL'} ${server.name}: ${server.toolCount} registered tools${server.error?' ('+server.error+')':''}`);
+console.log(JSON.stringify({actualRequestHeaders:catalog.sessions.length,botInjected:catalog.tools.filter(t=>t.botInjectedSessions>0).length,registered:catalog.tools.length,stale:catalog.stale}));
+if(catalog.servers.some(server=>!server.ok))process.exitCode=1;

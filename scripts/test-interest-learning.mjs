@@ -43,7 +43,7 @@ test('confirmed entries inject only relevant topics and respect group scope',asy
 });
 test('group collection deduplicates hooks, ignores private messages, and batches learning',async()=>{
   const h=await fixture();await h.plugin.hooks.onIncoming({key:'private:123',text:'私人话题',messageId:'p'});
-  const m={key:'group:456',text:'三角洲这个打法不错',messageId:'a',userId:'10608'};
+  const m={key:'group:456',text:'三角洲这个打法不错',messageId:'a',userId:'60000'};
   await h.plugin.hooks.onIncoming(m);await h.plugin.hooks.onIncoming(m);
   await h.plugin.hooks.onIncoming({...m,text:'撤离路线怎么选',messageId:'b'});
   await h.plugin.hooks.onTick({now:Date.now()});
@@ -109,7 +109,7 @@ test('model extraction cannot promote group evidence to public scope',async()=>{
  await h.plugin.hooks.onTick({now:Date.now()});assert.equal(h.state().entries[0].sourceKey,'group:456');assert.equal(h.state().entries[0].status,'candidate');
 });
 test('manual refresh backfills recent group history and extracts at most one term in one model call',async()=>{
- const h=await fixture();let scanned=0;h.ctx.capabilities.getLearningHistory=async options=>{scanned++;assert.equal(options.limit,100);return [{key:'group:456',text:'三角洲的撤离机制',messageId:'recent-1',userId:'10608'},{key:'group:456',text:'撤离路线和玩法讨论',messageId:'recent-2',userId:'987654321'}];};
+ const h=await fixture();let scanned=0;h.ctx.capabilities.getLearningHistory=async options=>{scanned++;assert.equal(options.limit,100);return [{key:'group:456',text:'三角洲的撤离机制',messageId:'recent-1',userId:'60000'},{key:'group:456',text:'撤离路线和玩法讨论',messageId:'recent-2',userId:'987654321'}];};
  h.ctx.capabilities.learningPrompt=async()=>{h.prompts.push('refresh');return JSON.stringify({entries:[{term:'撤离机制',topic:'三角洲行动',category:'游戏玩法',sourceIds:[1]},{term:'第二个词条',topic:'三角洲行动',category:'游戏玩法',sourceIds:[2]}]});};
  const result=await h.call('term_refresh');assert.equal(scanned,1);assert.equal(h.prompts.length,1);assert.equal(result.processed,1);assert.equal(h.state().entries.length,1);assert.equal(h.state().entries[0].term,'撤离机制');
 });

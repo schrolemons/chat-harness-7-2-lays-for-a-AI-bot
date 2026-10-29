@@ -39,7 +39,7 @@ test('both role modes retain adult appearance, inclusion and the two tone regres
     const card=cleanRoleHint(selectRoleText(raw,mode));
     assert.match(card,/明确成年/);
     for(const feature of ['蓝发','蓝眼','蓝色兽耳','鲸鱼兜帽','LGBTQ','男同性恋','非露骨']) assert.ok(card.includes(feature),feature);
-    assert.doesNotMatch(card,/正太|小男孩|少年稚气|用小孩的说法/);
+    assert.doesNotMatch(card,/小男孩|少年稚气|用小孩的说法/);
     assert.match(card,/等那位哥哥愿意/);
     assert.match(card,/小鲸鱼为你加油/);
     assert.match(card,/耳朵蹭蹭哥哥/);

@@ -1,0 +1,30 @@
+.comp-layer{ border:1px solid var(--border,#2a3342); border-radius:10px; padding:8px 10px; margin:10px 0; background:rgba(255,255,255,.02); }
+    .comp-layer-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+    .comp-card{ border:1px solid var(--border,#232a36); border-radius:8px; margin:6px 0; padding:6px 8px; }
+    .comp-card summary{ cursor:pointer; display:flex; align-items:center; gap:8px; }
+    .comp-config{ width:100%; min-height:120px; font:12px/1.5 ui-monospace,Consolas,monospace; background:var(--surface); color:var(--text-strong); border:1px solid var(--border-subtle); border-radius:8px; padding:8px; box-sizing:border-box; }
+    .comp-field{ margin:8px 0; }
+    .comp-field .meta{ margin-bottom:3px; }
+    .comp-flag{ display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border:1px solid var(--border-subtle); border-radius:6px; background:var(--surface); cursor:pointer; }
+    .comp-flag input{ margin:0; }
+    .comp-form-lines, .comp-form-num, .comp-form-minutes, .comp-form-text, .comp-form-select{ background:var(--surface); color:var(--text-strong); border:1px solid var(--border-subtle); border-radius:6px; padding:7px 10px; }
+    .comp-item{ display:flex; align-items:center; gap:6px; margin:4px 0; }
+    .comp-item .comp-item-val{ flex:1; background:var(--surface); color:var(--text-strong); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 9px; }
+    .comp-item .comp-item-on{ margin:0; }
+    .comp-item-new{ flex:1; background:var(--surface); color:var(--text-strong); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 9px; }
+    .worklog-console{margin-top:16px;padding:16px;border:1px solid var(--border-subtle);border-radius:14px;background:linear-gradient(145deg,rgba(127,168,255,.07),var(--surface) 58%)}
+    .worklog-console-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border-subtle)}
+    .worklog-console-head h3{margin:0;font-size:19px;font-weight:700}.worklog-console-head p{margin:4px 0 0}.worklog-send-setting{margin-top:9px}.worklog-send-setting .comp-field{margin:0}.worklog-send-setting .comp-help{display:block;margin-top:4px;max-width:620px}.worklog-console-head>.row{flex:0 0 auto;justify-content:flex-end}
+    .worklog-sources{margin:12px 0;padding:12px 14px;border:1px solid var(--border-subtle);border-radius:10px;background:var(--surface)}.worklog-sources-title{font-weight:650}.worklog-sources-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 18px;margin:10px 0 0;padding:0;list-style:none}.worklog-source{display:grid;gap:3px;min-width:0}.worklog-source code{width:max-content;max-width:100%;white-space:normal;overflow-wrap:anywhere}.worklog-source span{color:var(--text-muted);font-size:12px;line-height:1.5}
+    .worklog-status{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 14px}
+    .worklog-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--border-subtle);border-radius:999px;background:var(--surface);font-size:12px}
+    .worklog-layout{display:grid;grid-template-columns:minmax(180px,250px) minmax(0,1fr);gap:12px;min-height:220px}
+    .worklog-list,.worklog-preview{min-width:0;border:1px solid var(--border-subtle);border-radius:10px;background:var(--surface)}
+    .worklog-list{padding:8px;max-height:390px;overflow:auto}.worklog-date{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;margin:2px 0;padding:9px 10px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-strong);cursor:pointer}
+    .worklog-date:hover{background:rgba(127,168,255,.08)}.worklog-date.active{border-color:rgba(127,168,255,.45);background:rgba(127,168,255,.13)}
+    .worklog-date.active,.worklog-date.active small{color:var(--text-strong)}
+    .worklog-date small{display:block;color:var(--text-muted);font-size:11px}.worklog-preview{overflow:hidden}
+    .worklog-preview-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-subtle)}
+    .worklog-preview pre{max-height:340px;overflow:auto;margin:0;padding:14px;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,Consolas,monospace;color:var(--text-strong)}
+    .worklog-empty{padding:14px;color:var(--text-muted);font-size:13px}
+    @media(max-width:700px){.worklog-console-head{flex-direction:column}.worklog-console-head>.row{width:100%;justify-content:flex-start;flex-wrap:wrap}.worklog-sources-list{grid-template-columns:1fr}.worklog-layout{grid-template-columns:1fr}.worklog-list{display:flex;gap:4px;max-height:none;overflow-x:auto}.worklog-date{width:auto;min-width:135px;flex:0 0 auto}.worklog-preview pre{max-height:55vh}}

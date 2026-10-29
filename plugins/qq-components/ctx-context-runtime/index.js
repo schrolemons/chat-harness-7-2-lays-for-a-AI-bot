@@ -15,7 +15,7 @@ export function createPlugin(ctx) {
   return {
     hooks: {
       beforePrompt(payload = {}) {
-        if (/^(memoryWrite|selfReview|selfOptimize|slangLearn)$/.test(String(payload?.reason||''))) return '';
+        if (/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview|slangLearn)$/.test(String(payload?.reason||''))) return '';
         if (!disabled.has('participation')) {
           const p = buildParticipation(payload.st, Number(payload.directUnread) || 0);
           if (p) ctx.addPromptBlock(p);

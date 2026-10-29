@@ -11,9 +11,9 @@ const check = (name, ok, detail) => {
 };
 
 const plugin = createPlugin({ warn: (m) => console.error('warn:', m) });
-const text = plugin.services['admin-dev'].line({ aliasEntries: '管理员=private:10612', rootEscaped: 'C:\\\\repo' });
+const text = plugin.services['admin-dev'].line({ aliasEntries: '十二=private:60003', rootEscaped: 'C:\\\\repo' });
 check('包含管理员开发模式', text.includes('管理员开发模式'));
-check('包含昵称对照', text.includes('管理员=private:10612'));
+check('包含昵称对照', text.includes('十二=private:60003'));
 check('包含根路径', text.includes('C:\\\\repo'));
 check('包含传话/真实发送约束', text.includes('传话') && text.includes('带到了'));
 check('空参数不崩', typeof plugin.services['admin-dev'].line({}) === 'string');

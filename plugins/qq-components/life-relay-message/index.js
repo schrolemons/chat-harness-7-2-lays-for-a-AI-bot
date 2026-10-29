@@ -86,7 +86,7 @@ export function createPlugin(ctx) {
       return !!q && contacts.some((contact) => [contact.nickname, contact.remark].some((label) => normalizeName(label) === q));
     };
     let command = parseRelayCommand(text, { resolve: resolver });
-    // “问问成员乙醒没醒”一类弱意图没有标点边界：先把常见问句尾语切开，
+    // “问问艾莉醒没醒”一类弱意图没有标点边界：先把常见问句尾语切开，
     // 然后按近似联系人搜索并确认；不会把模糊称呼直接当作收件人。
     if (command?.weak && !command.content) {
       const rest = String(text || '').trim().replace(/^(?:嗯|哦|诶|欸|哎|唉|好|行|那|对了|顺便|帮我|请你|请|问问|问一下|问下|问一问|打听一下|打听打听)+\s*/, '');
@@ -339,7 +339,7 @@ export function createPlugin(ctx) {
           }
           if (!pr.target) {
             // 目标未解析时只把明确的 QQ/群号当作补充；普通句子属于新消息，
-            // 清掉旧上下文并交给正常对话，避免把「电电成员乙」误当成目标输入。
+            // 清掉旧上下文并交给正常对话，避免把「电电艾莉」误当成目标输入。
             if (!/^(?:(?:private|group):)?\d{5,12}$/.test(text)) {
               delete pending[key];
               writePending(pending);
@@ -361,7 +361,7 @@ export function createPlugin(ctx) {
               return handled(payload, { action: 'await-content', target });
             }
             if (!claim()) return duplicate();
-            void sendText(key, '还是没对上人。给我 QQ 号或群号（例：608），或者先说「给 608 带句话」。');
+            void sendText(key, '还是没对上人。给我 QQ 号或群号（例：60000），或者先说「给 60000 带句话」。');
             return handled(payload, { action: 'await-target-retry' });
           }
         }

@@ -1,31 +1,30 @@
-const clamp = (value) => Math.max(0, Math.min(100, value));
-const validKey = (key) => /^(group|private):\d+$/.test(String(key));
-const validUser = (userId) => /^\d+$/.test(String(userId));
+const { clamp, moodPolicy, validKey, validUser, validateMoodConfig } = await import((()=>{const u=new URL('./policy.mjs',import.meta.url);u.search=new URL(import.meta.url).search;return u.href;})());
+const { createMoodLedger } = await import((()=>{const u=new URL('./ledger.mjs',import.meta.url);u.search=new URL(import.meta.url).search;return u.href;})());
 
 export function createPlugin(ctx) {
-  function effective(entry, { initial = 60, decayPerHour = 6, now = Date.now() } = {}) {
+  function effective(entry, { initial = 60 } = {}) {
     const base = Number.isFinite(Number(entry.score)) ? Number(entry.score) : Number(initial);
-    const drift = Math.max(0, now - Number(entry.updatedAt || now)) / 3600000 * Math.max(0, Number(decayPerHour) || 0);
-    return Math.round(clamp(base < initial ? Math.min(initial, base + drift) : Math.max(initial, base - drift)));
+    return Math.round(clamp(base));
   }
-  return { services: { 'mood-users': {
-    record({ key, userId, delta, initial = 60, decayPerHour = 6, now = Date.now() } = {}) {
+  const mood = createMoodLedger(ctx, () => moodPolicy(ctx.config));
+  return { validateConfig: validateMoodConfig, hooks: { onTick: payload => mood.settle(payload) }, services: { mood, 'mood-users': {
+    record({ key, userId, delta, initial = 60, now = Date.now() } = {}) {
       if (!validKey(key) || !validUser(userId) || !Number.isFinite(Number(delta)) || Number(delta) === 0) return { ok: false };
       const members = { ...(ctx.state.get().members || {}) };
       const id = key + '#' + userId;
       const previous = members[id] || { score: clamp(Number(initial)), updatedAt: now };
-      const score = Math.round(clamp(effective(previous, { initial, decayPerHour, now }) + Number(delta)));
+      const score = Math.round(clamp(effective(previous, { initial }) + Number(delta)));
       members[id] = { score, updatedAt: now };
       const entries = Object.entries(members).sort((a, b) => Number(b[1].updatedAt) - Number(a[1].updatedAt)).slice(0, 200);
       ctx.state.set({ members: Object.fromEntries(entries) });
       return { ok: true, score };
     },
-    list({ key, initial = 60, decayPerHour = 6, now = Date.now() } = {}) {
+    list({ key, initial = 60 } = {}) {
       if (!validKey(key)) return { ok: false, items: [] };
       const prefix = key + '#';
       return { ok: true, items: Object.entries(ctx.state.get().members || {})
         .filter(([id]) => id.startsWith(prefix))
-        .map(([id, entry]) => ({ userId: id.slice(prefix.length), mood: effective(entry, { initial, decayPerHour, now }), updatedAt: Number(entry.updatedAt) || 0 }))
+        .map(([id, entry]) => ({ userId: id.slice(prefix.length), mood: effective(entry, { initial }), updatedAt: Number(entry.updatedAt) || 0 }))
         .sort((a, b) => b.updatedAt - a.updatedAt) };
     }
   } } };

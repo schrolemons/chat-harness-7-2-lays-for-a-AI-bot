@@ -1,3 +1,4 @@
+import { readConsoleTestSource } from './console-test-source.mjs';
 // 二代仿真「会话初始提示词」回归：操作者在控制台为某个群/私聊预写环境说明，
 // 只在该会话**首次唤醒**（bootstrap）时注入给 AI。
 //
@@ -167,7 +168,7 @@ await test('非法 key / 超长 / 缺 text 都被拒，且不会误删已有内�
     assert.equal(h.getInitialPrompt('group:456').text.length, 100, '被拒的写入不得覆盖原有内容');
 
     await withServer(h, async (port) => {
-      for (const key of ['', 'group:', 'group:abc', 'private:0', 'group:-1', 'wechat:123', 'group:10613']) {
+      for (const key of ['', 'group:', 'group:abc', 'private:0', 'group:-1', 'wechat:123', 'group:60012']) {
         const res = await call(port, '/api/socialV2/initial-prompt', { method: 'POST', headers: ADMIN, body: { key, text: 'x' } });
         assert.equal(res.status, 400, `非法 key「${key}」必须 400，实际 ${res.status}`);
       }
@@ -288,7 +289,7 @@ await test('端到端：群消息进线触发的首次唤醒，投递给 DSH 的
 // ── 9. 控制台静态接线（无浏览器环境下的替代回归） ────────────────────────────
 await test('控制台有初始提示词面板，且事件/接口都已接线', async () => {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const html = fs.readFileSync(path.join(root, 'public', 'console.html'), 'utf8');
+  const html = readConsoleTestSource();
   for (const id of ['v2InitPromptKey', 'v2InitPromptText', 'v2InitPromptLoad', 'v2InitPromptSave', 'v2InitPromptClear', 'v2InitPromptMsg', 'v2InitPromptCount', 'v2InitPromptMax']) {
     const n = (html.match(new RegExp(`id="${id}"`, 'g')) ?? []).length;
     assert.equal(n, 1, `控制台元素 ${id} 必须存在且唯一（实际 ${n} 处）`);

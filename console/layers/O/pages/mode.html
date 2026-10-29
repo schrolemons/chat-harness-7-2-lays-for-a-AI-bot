@@ -1,0 +1,13 @@
+<section id="section-mode" data-page="overview" class="card span-all">
+      <h2>运行模式</h2>
+      <div class="mode-row" id="modeRow">
+        <button data-mode="chat" aria-pressed="false"><span class="mode-indicator" aria-hidden="true"></span><strong>聊天模式</strong><small>白名单内，随时对话</small></button>
+        <button data-mode="closed-agent" aria-pressed="false"><span class="mode-indicator" aria-hidden="true"></span><strong>封闭 Agent</strong><small>仅管理员，完整工具</small></button>
+        <button data-mode="reserved" aria-pressed="false"><span class="mode-indicator" aria-hidden="true"></span><strong>一代仿真</strong><small>按策略自然参与群聊</small></button>
+        <button data-mode="reserved2" aria-pressed="false"><span class="mode-indicator" aria-hidden="true"></span><strong>二代仿真</strong><small>自主阅读、发言与潜水</small></button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div class="setting-field"><label style="flex:1;margin:0" for="closedPreset">封闭 Agent 使用的 DSH 预设</label><select id="closedPreset" style="max-width:260px"><option value="">（DSH 默认 preset）</option></select><small class="parameter-example" data-example-for="closedPreset">例：选择一个预设：封闭Agent模式使用它；不会更换普通群聊的预设。</small></div>
+      </div>
+      <div class="meta">切换后即时保存。二代参数由“发送与等待”等组件设置；封闭 Agent 仅允许管理员私聊。</div>
+    </section>

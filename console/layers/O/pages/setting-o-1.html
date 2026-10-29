@@ -1,0 +1,41 @@
+<section id="section-setting-o-1" data-page="setting-o-1" class="card span-all commercial-component" hidden>
+<h2>日记与反馈</h2>
+<details open class="settings-group"><summary><span class="layer-tag" data-layer="O">O</span>每日日记（按 22:00 划分日期；错过自动补发）</summary><div class="settings-content">
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="v2DdEnabled">启用每日日记</label><input type="checkbox" id="v2DdEnabled" style="width:auto"><small class="parameter-example" data-example-for="v2DdEnabled">例：开启后按每日日记排程处理；关闭不删除已有历史日记。</small></div>
+        <div class="setting-field"><label style="flex:1" for="v2DdHour">发送时间</label><div class="setting-range"><input type="number" id="v2DdHour" min="0" max="23" style="width:70px"><span aria-hidden="true">:</span><input aria-label="发送时间分钟" type="number" id="v2DdMinute" min="0" max="59" style="width:70px"></div><small class="parameter-example" data-example-for="v2DdHour">例：填22:00：按选定发送时刻处理日记，日期窗口仍以22点划分。</small></div>
+        <div class="setting-field"><label style="flex:1" for="v2DdMaxChars">发送最大字数</label><input type="number" id="v2DdMaxChars" min="50" max="2000" style="width:90px"><small class="parameter-example" data-example-for="v2DdMaxChars">例：设为500：发到QQ的日记文字最多按500字预算处理，归档另行保存。</small></div>
+      </div>
+      <div class="diary-window-note"><b>日期口径</b><span>XX 日日记 = 前一日 22:00 至 XX 日当晚 22:00 发生的事情。午夜不切分日记；历史列表按结束日期标记。</span></div>
+      <div class="meta">到达发送时间后先刷新该会话记忆，再把对应时间窗的【日记】发到 QQ；如果到点时服务未运行，恢复后会补发。</div>
+      <div class="row" style="margin-top:6px">
+        <button id="v2DdRefresh" class="small">刷新日记状态</button>
+        <button id="v2DdCatchUp" class="small">全部补发错过</button>
+        <span class="meta" id="v2DdMsg"></span>
+      </div>
+      <div id="v2DdList" class="diary-session-grid">（空）</div>
+      </div></details>
+<details open class="settings-group"><summary><span class="layer-tag" data-layer="O">O</span>日记历史（按天归档，可翻看以前的日记）</summary><div class="settings-content">
+      <div class="diary-history-head">
+        <button id="v2DaRefresh" class="small">刷新历史</button>
+        <span class="meta" id="v2DaMsg">按结束日期查看；每份日记覆盖前一日 22:00 至当日 22:00。</span>
+      </div>
+      <div class="diary-history-layout">
+        <nav id="v2DaList" class="diary-history-sidebar" aria-label="日记归档日期">（还没有归档）</nav>
+        <pre id="v2DaContent" class="diary-history-content">点击「刷新历史」，再选左边的日期查看当天日记。</pre>
+      </div>
+      </div></details>
+<details open class="settings-group"><summary><span class="layer-tag" data-layer="O">O</span>反馈工具参数（用户反馈 / Bot自我发现 / 管理员即时反馈）</summary><div class="settings-content">
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="v2FeedbackMaxLength">反馈最大长度</label><input type="number" id="v2FeedbackMaxLength" min="1" style="width:90px"><small class="parameter-example" data-example-for="v2FeedbackMaxLength">例：设为1000：单条反馈材料按1000字符上限接收和组织。</small></div>
+        <div class="setting-field"><label style="flex:1" for="v2FeedbackNotifyOwner">错误级通知 owner</label><input type="checkbox" id="v2FeedbackNotifyOwner" style="width:auto"><small class="parameter-example" data-example-for="v2FeedbackNotifyOwner">例：关闭后不向管理员单独推送这类错误级通知，反馈记录仍保留。</small></div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="v2FeedbackLoad" class="small">加载反馈历史与队列</button>
+        <span class="meta" id="v2FeedbackMsg"></span>
+      </div>
+      <div class="meta" id="v2FeedbackStatusSummary" style="margin-top:6px">反馈历史总账：提交后永久保留；历史数量与当前处理队列分开统计。</div>
+      <div id="v2FeedbackHistoryOutput" class="feedback-history">正在自动加载反馈历史…</div>
+      </div></details>
+<div class="row"><button class="small primary v2-save" type="button" data-save-action>保存全局日记、报告与反馈规则</button><span class="meta v2-save-msg" role="status"></span></div>
+</section>

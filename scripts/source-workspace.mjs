@@ -4,7 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-const roots = ['src', 'plugins', 'public', 'dsh', 'scripts', 'roles', 'docs'];
+const roots = ['src', 'plugins', 'public', 'console', 'dsh', 'scripts', 'roles', 'docs'];
 const excluded = new Set(['node_modules', '.git', 'state', 'private', 'knowledge', 'venv', '__pycache__']);
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 

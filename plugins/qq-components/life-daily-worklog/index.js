@@ -14,7 +14,10 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { buildDailyWorklog, dateKeyLocal } from './worklog.js';
+// 入口热载时辅助模块也跟随 generation，防止仍执行旧模板。
+const generation = new URL(import.meta.url).search;
+const { buildDailyWorklog, dateKeyLocal } = await import('./worklog.js' + generation);
+const { buildDailyWorklogSummary } = await import('./summary.js' + generation);
 
 const RETRY_MS = 30 * 60 * 1000;
 
@@ -33,6 +36,17 @@ export function createPlugin(ctx) {
   const capabilities = ctx.capabilities || {};
   const root = ctx.root;
   const dir = path.join(root, 'state', 'memory', 'worklog');
+  const summary = dateKey => buildDailyWorklogSummary({ root, dateKey, maxChars: Math.min(maxChars, 880),
+    isExcluded: key => { try { return capabilities.isConsoleConversationExcluded?.(key) === true; } catch { return false; } }
+  });
+
+  function generateReport(dateKey) {
+    const markdown = buildDailyWorklog({ root, dateKey, maxChars });
+    if (!markdown) return { ok: false, error: '这一天没有可汇总的数据' };
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, dateKey + '.md'), markdown, 'utf8');
+    return { ok: true, dateKey, file: 'state/memory/worklog/' + dateKey + '.md', chars: markdown.length, markdown };
+  }
 
   const scheduledAt = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute, 0, 0).getTime();
 
@@ -75,11 +89,9 @@ export function createPlugin(ctx) {
     handler: async (input = {}) => {
       const wanted = String(input.date || '').trim();
       const dateKey = /^\d{4}-\d{2}-\d{2}$/.test(wanted) ? wanted : dateKeyLocal(new Date());
-      const markdown = buildDailyWorklog({ root, dateKey, maxChars });
-      if (!markdown) return { ok: false, error: '这一天没有可汇总的数据' };
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, dateKey + '.md'), markdown, 'utf8');
-      return { ok: true, dateKey, file: 'state/memory/worklog/' + dateKey + '.md', chars: markdown.length };
+      const result = generateReport(dateKey);
+      if (!result.ok) return result;
+      return { ok: true, dateKey: result.dateKey, file: result.file, chars: result.chars };
     }
   });
 
@@ -124,6 +136,14 @@ export function createPlugin(ctx) {
   });
 
   return {
+    services: {
+      worklog: {
+        generateNow() {
+          const result = generateReport(dateKeyLocal(new Date()));
+          return result.ok ? { ...result, sendText: summary(result.dateKey) } : result;
+        }
+      }
+    },
     hooks: {
       async onTick({ now = Date.now() } = {}) {
         try {
@@ -145,8 +165,7 @@ export function createPlugin(ctx) {
           if (dueToday) ctx.state.set({ lastGeneratedDate: today });
           ctx.log('已生成每日工作总结 state/memory/worklog/' + target + '.md（' + markdown.length + ' 字）');
           if (sendToOwner && target===today && typeof ctx.capabilities?.notifyOwnerOnce === 'function') {
-            const head = markdown.length > 900 ? markdown.slice(0, 900) + '\n…（完整版见 state/memory/worklog/' + target + '.md）' : markdown;
-            await ctx.capabilities.notifyOwnerOnce('【每日工作总结】\n' + head,{id:'worklog:'+target,sourceAt:now,expiresAt:now+2*3600000});
+            await ctx.capabilities.notifyOwnerOnce('【每日工作总结】\n' + summary(target),{id:'worklog:'+target,sourceAt:now,expiresAt:now+2*3600000});
           }
         } catch (error) {
           ctx.warn('生成每日工作总结失败：' + (error?.message ?? error));

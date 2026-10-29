@@ -1,12 +1,14 @@
+import { readConsoleTestSource } from './console-test-source.mjs';
 // 控制台静态校验：在无法跑 Playwright 的环境里，替代性地检查 HTML/JS 结构契约。
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TOOL_CONFIG_FLAGS } from '../src/tools/flags.js';
 // 独立发语音工具在仓库上一级（不在本仓库里）：位置解析与"不在时怎么跳过"走共享口径。
 import { hasVoiceTool, skipVoiceTool, voiceToolPath } from './voice-tool-locator.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const html = fs.readFileSync(path.join(ROOT, 'public', 'console.html'), 'utf8');
+const html = readConsoleTestSource();
 
 let bad = 0;
 const ok = (cond, name, extra = '') => {
@@ -28,17 +30,27 @@ const views = [...new Set([...html.matchAll(/data-view="([a-z0-9-]+)"/g)].map((m
 const pages = [...new Set([...html.matchAll(/data-page="([a-z0-9-]+)"/g)].map((m) => m[1]))].sort();
 ok(JSON.stringify(views) === JSON.stringify(pages), 'data-view 与 data-page 一一对应', `${views.length} 个：${views.join(', ')}`);
 
+console.log('## 二代模式的统一入口');
+const modeSection = html.match(/<section id="section-mode"[\s\S]*?<\/section>/)?.[0] || '';
+ok(!/v2AgentPreset|v2ProvideRecommendations/.test(modeSection), '运行模式不再提供 agentPreset 或额外推荐参数开关');
+ok(!/v2AgentPreset|v2ProvideRecommendations|provideRecommendations:\s*document/.test(html), '控制台不再采集或提交二代预设/推荐开关');
+ok(/id="section-setting-l-0"[^>]*data-page="setting-l-0"/.test(html) && /id="v2DoubleStampWindowCount"/.test(html), '生命周期组件页保留实际可编辑的双戳参数');
+ok(!ids.includes('v2SendHint') && /data-component-slot="ctx-chat-reply-shape"/.test(html), '发送数量与间隔只由唯一发送计划组件管理');
+ok(/send: activeTurnEnvelopes[\s\S]{0,160}callService\('replyPlan','policy'\)/.test(fs.readFileSync(path.join(ROOT,'src','bridge.js'),'utf8')), 'qq_get_prompt 返回实际发送计划，不恢复退役提示参数');
+
 console.log('## 工具开关');
-const tools = [...html.matchAll(/data-v2-tool="([A-Za-z]+)"/g)].map((m) => m[1]);
-ok(tools.includes('sendVoice'), 'sendVoice 开关存在', `共 ${tools.length} 个开关`);
-ok(new Set(tools).size === tools.length, '工具开关无重复');
+const inventory = fs.readFileSync(path.join(ROOT, 'console/layers/T/tool-inventory.js'), 'utf8');
+const tools = [...new Set(Object.values(TOOL_CONFIG_FLAGS))];
+ok(tools.includes('sendVoice') && /Object\.entries\(TOOL_CONFIG_FLAGS\)/.test(inventory) && /id="v2Tools"/.test(html), '工具开关由唯一 MCP 注册映射生成', `共 ${tools.length} 个开关`);
+ok(/groups\.has\(flag\)/.test(inventory) && /groups\.get\(flag\)\.push\(name\)/.test(inventory), '工具分组仍按唯一flag去重，分组不增生开关');
+ok(/api\('\/api\/tools\/catalog'\)/.test(inventory) && /botInjectedSessions>0/.test(inventory), '工具目录读取真实注入证据');
 
 console.log('## 双戳窗口回查控制');
 ok(ids.includes('v2DoubleStampEnabled'), '双戳窗口回查启用开关存在');
-ok(ids.includes('v2DoubleStampWindow'), '双戳回查窗口输入存在');
+ok(ids.includes('v2DoubleStampWindowCount') && !ids.includes('v2DoubleStampWindow'), '双戳回查按条数输入，无旧毫秒输入');
 ok(/getElementById\('v2DoubleStampEnabled'\)\.checked = ds\.enabled !== false/.test(html), '双戳启用状态从配置载入');
-ok(/doubleStamp:\s*\{\s*enabled:\s*document\.getElementById\('v2DoubleStampEnabled'\)\.checked,\s*checkWindowMs:/.test(html), '双戳开关与窗口写入配置 payload');
-ok(/安排补处理回合/.test(html) && /本地窗口无法补回原消息/.test(html), '界面说明补处理与本地事件边界');
+ok(/doubleStamp:\s*\{\s*enabled:\s*document\.getElementById\('v2DoubleStampEnabled'\)\.checked,\s*windowCount:/.test(html), '双戳开关与条数写入配置 payload');
+ok(/不按秒数计/.test(html) && /Harness 验证并立即更新 repliedAt/.test(html), '界面说明消息窗口单位和逐条回执验证');
 
 console.log('## 已移除会话快速选择的启动接线');
 ok(!/\bloadV2SessionOptions\s*\(/.test(html), '启动流程不再调用已移除的白名单会话快速选择加载器');
@@ -52,9 +64,11 @@ ok(/typeof loadVoiceLibrary === 'function'|async function loadVoiceLibrary/.test
 
 console.log('## JS 语法');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-const big = scripts.sort((a, b) => b.length - a.length)[0];
-try { new Function(big); ok(true, '主 script 语法可解析', `${big.length} 字符`); }
-catch (e) { ok(false, '主 script 语法', e.message); }
+for (const [index, script] of scripts.entries()) {
+  try { new Function(script); }
+  catch (e) { ok(false, `script ${index + 1} 语法`, e.message); }
+}
+ok(scripts.length > 1, '所有拥有模块的 script 语法均检查', `${scripts.length} 个模块/内联脚本`);
 
 console.log('## 语音图形界面的音量控件');
 if (!hasVoiceTool()) {

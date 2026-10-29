@@ -18,7 +18,6 @@
   "enabled": true,
   "config": {
     "maxConcurrentTasks": 3,
-    "maxTasks": 20,
-    "ownerQQ": ""
+    "maxTasks": 20
   }
 }

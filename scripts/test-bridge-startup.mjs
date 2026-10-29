@@ -11,7 +11,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 function run(t,body,args=[]){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bridge-start-check-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const fixture=path.join(dir,'fetch.mjs');fs.writeFileSync(fixture,body);
- return spawnSync(process.execPath,['--import',pathToFileURL(fixture).href,path.join(root,'scripts/start-da-feiyu.mjs'),...args],{cwd:root,encoding:'utf8',timeout:3000,windowsHide:true});
+ return spawnSync(process.execPath,['--import',pathToFileURL(fixture).href,path.join(root,'scripts/start-da-feiyu.mjs'),...args],{cwd:root,encoding:'utf8',timeout:10000,windowsHide:true});
 }
 test('--check 对401只报诊断鉴权问题，不启动网关、扫描端口或改配置',t=>{
  const before=fs.readFileSync(path.join(root,'config.json'));
@@ -29,8 +29,9 @@ test('网关已连接但上游退化不能误报已就绪，也不强制重启',
 test('--once 子进程退出不能安排五秒后自动重拉',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bridge-once-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));const fixture=path.join(dir,'once.mjs');
  const script=pathToFileURL(path.join(root,'scripts/start-da-feiyu.mjs')).href;
- fs.writeFileSync(fixture,'const {onChildExit}=await import('+JSON.stringify(script)+');onChildExit(1);console.log("ONCE_EXITED");');
- const r=spawnSync(process.execPath,[fixture,'--once'],{cwd:root,encoding:'utf8',timeout:1500,windowsHide:true});
+ // Reject the restart action itself; cold module import time is unrelated to --once semantics.
+ fs.writeFileSync(fixture,'const {onChildExit}=await import('+JSON.stringify(script)+');globalThis.setTimeout=()=>{throw Error("UNEXPECTED_RESTART_TIMER")};onChildExit(1);console.log("ONCE_EXITED");');
+ const r=spawnSync(process.execPath,[fixture,'--once'],{cwd:root,encoding:'utf8',timeout:10000,windowsHide:true});
  assert.equal(r.status,0,r.stderr||r.error?.message);assert.match(r.stdout,/ONCE_EXITED/);assert.doesNotMatch(r.stdout,/后重拉/);
 });
 test('--once 遇到已被信号结束的子进程立即返回，不等待已发出的exit事件',async()=>{

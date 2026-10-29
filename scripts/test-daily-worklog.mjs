@@ -20,7 +20,7 @@ const today = dateKeyLocal(new Date());
 const [y, m, d] = today.split('-');
 
 // 1) 中期进度：一条今天的、一条昨天的（昨天的应被过滤）
-fs.writeFileSync(path.join(memoryDir, 'tasks-private_608.md'), [
+fs.writeFileSync(path.join(memoryDir, 'tasks-private_60000.md'), [
   `## [2026/1/1 00:00:00]`,
   '旧的一天，不该出现在今天的日报里。',
   `## [${y}/${Number(m)}/${Number(d)} 17:32:38]`,
@@ -44,16 +44,16 @@ fs.writeFileSync(path.join(stateDir, 'tasks.json'), JSON.stringify({
 // 3) 工具调用：一次成功、一次失败
 const nowIso = new Date().toISOString();
 fs.writeFileSync(path.join(stateDir, 'tool-calls.jsonl'), [
-  JSON.stringify({ type: 'call', time: nowIso, key: 'private:10608', tool: 'qq_send_message' }),
-  JSON.stringify({ type: 'result', time: nowIso, key: 'private:10608', tool: 'qq_send_message', ok: true }),
-  JSON.stringify({ type: 'call', time: nowIso, key: 'private:10608', tool: 'qq_wait_for_messages' }),
-  JSON.stringify({ type: 'result', time: nowIso, key: 'private:10608', tool: 'qq_wait_for_messages', ok: false, error: 'boom' }),
+  JSON.stringify({ type: 'call', time: nowIso, key: 'private:60000', tool: 'qq_send_message' }),
+  JSON.stringify({ type: 'result', time: nowIso, key: 'private:60000', tool: 'qq_send_message', ok: true }),
+  JSON.stringify({ type: 'call', time: nowIso, key: 'private:60000', tool: 'qq_wait_for_messages' }),
+  JSON.stringify({ type: 'result', time: nowIso, key: 'private:60000', tool: 'qq_wait_for_messages', ok: false, error: 'boom' }),
   ''
 ].join('\n'));
 
 // 4) token 用量
 fs.writeFileSync(path.join(stateDir, 'token-usage.jsonl'), [
-  JSON.stringify({ k: 'turn', t: Date.now(), sid: 'session-x', key: 'private:10608', model: 'deepseek-flash', b: { cacheMiss: 100, cacheHit: 900, output: 50 } }),
+  JSON.stringify({ k: 'turn', t: Date.now(), sid: 'session-x', key: 'private:60000', model: 'deepseek-flash', b: { cacheMiss: 100, cacheHit: 900, output: 50 } }),
   ''
 ].join('\n'));
 
@@ -66,7 +66,7 @@ const ctx = {
   log: () => {},
   warn: (msg) => console.error('warn:', msg),
   registerTool: (name, spec) => tools.set(name, spec),
-  capabilities: { isConsoleConversationExcluded: key => key === 'group:10604' }
+  capabilities: { isConsoleConversationExcluded: key => key === 'group:60010' }
 };
 
 let failed = 0;
@@ -114,12 +114,12 @@ if (tools.has('worklog_history')) {
     '- 模型调用：20 步，输入 1000 tokens，输出 100 tokens',
     '## 五、Token 用量',
     '| 会话 | 步数 | 输入 | 输出 |',
-    '| group:10604 | 10 | 800 | 80 |',
-    '| private:10608 | 10 | 200 | 20 |',
+    '| group:60010 | 10 | 800 | 80 |',
+    '| private:60000 | 10 | 200 | 20 |',
     ''
   ].join('\n'));
   const filtered = await tools.get('worklog_history').handler({ date: filteredDate });
-  check('排除会话不会导致整份日报预览丢失', filtered?.ok === true && filtered.text.includes('工作总结') && !filtered.text.includes('group:10604'));
+  check('排除会话不会导致整份日报预览丢失', filtered?.ok === true && filtered.text.includes('工作总结') && !filtered.text.includes('group:60010'));
   check('排除会话对应的汇总与明细不出现在预览', !filtered.text.includes('模型调用') && !filtered.text.includes('Token 用量'));
 }
 

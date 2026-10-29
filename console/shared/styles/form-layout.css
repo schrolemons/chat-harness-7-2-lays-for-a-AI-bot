@@ -1,0 +1,65 @@
+/* Shared form geometry. A flex basis must never become a single-line control's height. */
+.card input:is([type=text],[type=search],[type=password],[type=url],[type=email],[type=number],:not([type])),
+.card select:not([multiple]):not([size]) {
+  box-sizing: border-box; height: 40px; min-height: 40px; max-height: 40px;
+  width: min(320px, 100%) !important; max-width: 100%; flex: 0 1 auto !important;
+}
+.card input[type=number] { width: 104px !important; }
+.setting-field {
+  display: flex; flex: 0 1 320px; flex-direction: column; align-items: flex-start;
+  gap: 6px; min-width: 0; max-width: 100%;
+}
+.setting-field > label { margin: 0 !important; flex: none !important; font-weight: 500; }
+.setting-field:has(> input[type=checkbox]) { flex: 0 1 auto; flex-direction: row; align-items: center; }
+.setting-field > textarea { width: 100%; flex: none; }
+.row:has(> .setting-field) { align-items: flex-end; }
+.row:has(> .setting-field) > button { box-sizing: border-box; min-height: 40px; margin-bottom: 0; }
+.settings-content > .row { gap: 12px 18px; margin: 12px 0; align-items: flex-end; }
+.comp-field {
+  display: grid; grid-template-columns: minmax(120px,170px) minmax(0,320px);
+  gap: 6px 12px; align-items: center; margin: 12px 0;
+}
+.comp-field > .meta:first-child { font-weight: 550; color: var(--text); }
+.comp-field > .comp-help { grid-column: 2; margin: 0; }
+.comp-field:has(textarea), .comp-field:has(.comp-item), .comp-field:has(.comp-flag), .comp-field:has(.comp-form-bool) { display: block; }
+.comp-field textarea { max-width: 640px !important; min-height: 70px; }
+.comp-body .row { justify-content: flex-start; gap: 10px; }
+.learning-editor-grid { grid-template-columns: repeat(2,minmax(0,320px)); gap: 14px 18px; }
+.learning-editor-grid label { margin: 0; align-items: flex-start; justify-content: flex-start; }
+.learning-editor-grid input[type=number] { flex: none !important; }
+.image-generation-console { max-width: 680px; }
+.image-secret-input { flex: 0 1 auto !important; }
+.card h3, .component-heading h2 { font-size: 16px !important; font-weight: 650; color: var(--text-strong); }
+.card h3 { margin: 20px 0 10px; }
+.component-heading h2 { margin-bottom: 8px; }
+.commercial-component, .env-card { margin-block: 12px !important; }
+.env-card > summary { font-size: 14px; font-weight: 600; }
+.env-card > .meta { margin: 8px 0; }
+.comp-form-title { font-weight: 600; margin: 10px 0; }
+.session-options { margin: 0; }
+.monitor-lamp.stale { color: var(--warn-fg); }
+@media(max-width:640px) {
+  .comp-field, .learning-editor-grid { grid-template-columns: 1fr; }
+  .comp-field > .comp-help { grid-column: 1; }
+  .setting-field { flex-basis: auto; width: 100%; }
+}
+
+.session-state-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:10px 0;border-bottom:1px solid var(--border-subtle)}.session-state-row span{font-size:12px;color:var(--text-secondary)}.session-state-raw{margin-top:12px}.session-state-raw pre{max-height:280px;overflow:auto}
+
+.parameter-example{display:block;grid-column:2;max-width:56ch;color:var(--text-secondary);font-size:12px;line-height:1.6;margin-top:4px}.comp-field.mood-rules>.parameter-example{max-width:76ch}.comp-field:has(textarea)>.parameter-example{grid-column:auto}@media(max-width:640px){.parameter-example{grid-column:1}}
+
+.setting-field:has(>input[type=checkbox]){flex-wrap:wrap;flex-basis:320px}.setting-field:has(>input[type=checkbox])>.parameter-example{flex-basis:100%;grid-column:1/-1}.setting-field:has(>input[type=checkbox])>label{max-width:calc(100% - 30px)}.settings-content>.row{margin:8px 0;padding:8px 0}.row:has(>.setting-field):has(>button){align-items:flex-start}.row:has(>.setting-field)>button{margin-top:26px;min-height:40px}.row:has(>.setting-field)>[role=status]{align-self:center}.comp-ack-group>.parameter-example,.mood-rules>.parameter-example{grid-column:1/-1}
+
+.dsh-effort-field{flex-basis:440px}.form-control-row{display:flex;align-items:center;gap:10px;width:100%;min-width:0}.form-control-row>select{min-width:0;flex:1 1 auto!important}.form-control-row>button{box-sizing:border-box;height:40px;flex:none;margin:0}
+
+.setting-range{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%}.setting-range>input{min-width:0}.setting-range>span{color:var(--text-secondary)}
+
+.component-fields>.parameter-group{grid-column:1/-1;min-width:0}.parameter-group,.parameter-block{border:0;border-top:1px solid var(--border-subtle);border-radius:0;background:transparent;margin:8px 0}.parameter-group>summary,.parameter-block>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--text-strong);padding:10px 0}.parameter-group>.component-fields{margin:6px 0 8px;gap:10px 18px}.parameter-block>.row{margin:8px 0}.parameter-group:not([open]){margin-bottom:0}
+
+button[data-save-action],button.comp-save{font-weight:650;min-height:40px;padding-inline:18px;box-shadow:0 2px 5px var(--accent-ring)}.comp-body>.row:has(>.comp-save),.row:has(>.v2-save),.row:has(>#v2SelfReviewSave){margin-top:16px!important;padding-top:12px!important;border-top:1px solid var(--border-subtle);align-items:center;gap:12px}.row>[data-save-action][disabled],.comp-save[disabled]{cursor:wait;opacity:.65}
+
+#v2Tools{display:block}.tool-parameter-group{border-bottom:1px solid var(--border-subtle);margin:0}.tool-parameter-group>summary{padding:13px 2px;font-weight:600;cursor:pointer}.tool-parameter-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:6px 0 14px}.tool-parameter-options .meta{display:block;overflow-wrap:anywhere}.tool-parameter-options .parameter-example{margin-top:6px}@media(max-width:640px){.tool-parameter-options{grid-template-columns:1fr}}
+
+.card>h2,.component-heading h2{font-size:19px!important;line-height:1.45;font-weight:700;color:var(--text-strong)}.settings-group+.settings-group{margin-top:22px}.settings-group>summary{font-size:14px;font-weight:650;color:var(--text-strong)}.card+.card{margin-top:8px}.owned-component+.owned-component{margin-top:22px}.comp-body>.row:has(>.comp-save){padding-block:14px 4px!important}
+
+.parameter-scope{font-size:12px;line-height:1.6;color:var(--muted,#65738a);margin:8px 0 12px;overflow-wrap:anywhere}.parameter-scope b{font-weight:650;color:var(--text,#26364d)}

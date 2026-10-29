@@ -111,4 +111,3 @@ export const Config = z.object({
 export function apply(ctx) {
   diag(`apply called; settings service=${typeof ctx.settings}; namespace=${QQMODE_NAMESPACE} (0.2.0: no registration needed)`);
 }
-

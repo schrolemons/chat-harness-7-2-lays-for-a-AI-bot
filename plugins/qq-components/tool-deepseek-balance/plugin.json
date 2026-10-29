@@ -3,10 +3,14 @@
   "name": "DeepSeek 余额查询",
   "version": "0.1.0",
   "description": "只读查询 DeepSeek API 账户余额；工具仅管理员私聊可调用。",
-  "category": "可观测性与运维",
-  "layer": "O",
+  "category": "工具接口与协议",
+  "layer": "T",
   "order": 95,
-  "tags": ["DeepSeek", "余额", "运维"],
+  "tags": [
+    "DeepSeek",
+    "余额",
+    "运维"
+  ],
   "main": "index.js",
   "enabled": true
 }

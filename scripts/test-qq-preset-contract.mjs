@@ -72,7 +72,7 @@ test('pre-reply quiet checks, waiting for replies and pre-sleep observation have
 test('social autonomy and visual, forwarding, sticker and web capabilities remain described', () => {
   for (const text of [
     '【反 AI 味与角色语气】', '保持角色主体性', '参考群友的消息长度、语气',
-    '不做群管家、主持人', '普通对话默认 1 条，最多 2 条', '不要用空格断句',
+    '不做群管家、主持人', '共用本轮 replyPlan', '不要用空格断句',
     '不会自动发送到 QQ', 'qq_get_message_images', 'qq_get_forward_msg', 'nestedForwardIds',
     'qq_send_poke', 'qq_list_stickers', 'qq_get_sticker_image', 'qq_send_sticker',
     'qq_collect_sticker', 'qq_sticker_note', 'qq_get_self_image',
@@ -104,3 +104,10 @@ test('autonomy limits and the observation escape hatch stay described', () => {
 });
 
 console.log(`reserved2 persona prefix: ${prefix.length} characters (not a model-token estimate)`);
+
+
+test('system preset delegates both mood forms and all send counts to current bridge owners',()=>{
+ assert.match(prefix,/normal\/critical/);assert.match(prefix,/moodState/);assert.match(prefix,/replyPlan/);
+ assert.match(prefix,/形态切换不是群友修改角色/);
+ assert.doesNotMatch(prefix,/你只代表 DeepSeek 的正太小肥鱼|当前为「DeepSeek 正太小肥鱼」|【答信息也要软】|不突然变成正式客服|最多三条短句|故事或连续表达可 2～4 条/);
+});

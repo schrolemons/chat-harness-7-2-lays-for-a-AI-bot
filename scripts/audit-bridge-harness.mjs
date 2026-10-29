@@ -17,6 +17,13 @@ import * as replyPolicy from '../src/qq-reply-policy.js';
 import * as modeSettings from '../src/bridge-core/mode-settings.js';
 import * as mediaSegments from '../src/bridge-core/media-segments.js';
 import * as receiptState from '../src/bridge-core/receipt-state.js';
+import * as directTimedNotices from '../src/bridge-core/direct-timed-notices.js';
+import {migrateOutboundMood} from '../src/migrations/outbound-mood.mjs';
+import * as outboundTransport from '../src/outbound-context.js';
+import * as consoleDocument from '../src/console/document.js';
+import * as toolCatalog from '../src/tools/catalog.js';
+import { routePluginManagement } from '../src/console/plugin-management.js';
+import { routeMemoryManagement } from '../src/console/memory-management.js';
 import * as scheduleLocks from '../plugins/qq-components/life-proactive-time-bubble/schedule-locks.mjs';
 import * as gamesStore from '../plugins/qq-components/tool-games/games-store.mjs';
 import {createPluginHost} from '../src/plugin-host.js';
@@ -41,6 +48,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   fs.mkdirSync(path.join(temp, 'src'));
   fs.copyFileSync(path.join(root,'src/bridge.js'),path.join(temp,'src/bridge.js'));
   fs.copyFileSync(path.join(root,'src/plugin-host.js'),path.join(temp,'src/plugin-host.js'));
+  fs.cpSync(path.join(root,'console'),path.join(temp,'console'),{recursive:true});
+  fs.cpSync(path.join(root,'public/console'),path.join(temp,'public/console'),{recursive:true});
   fs.mkdirSync(path.join(temp, 'state'));
   fs.writeFileSync(path.join(temp, 'config.json'), JSON.stringify({
     dsh: { authToken: 'fixture-only' }, ownerQQ: 123,
@@ -96,7 +105,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
         })
       };
     }
-    return { ok: true, status: 200, json: async () => ({ status: 'ok', retcode: 0, data: { message_id: 9001 } }) };
+    return { ok: true, status: 200, json: async () => ({ status: 'ok', retcode: 0, data: { message_id: 9001 + calls.http.length } }) };
   };
   const success = (value) => ({ result: { ok: true, value } });
   const api = {
@@ -144,8 +153,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
       if (action === 'get_friend_list') {
         return { status: 'ok', retcode: 0, data: [
           { user_id: 123, nickname: '管理员', remark: '主人' },
-          { user_id: 10611, nickname: '成员乙哥哥', remark: '' },
-          { user_id: 10612, nickname: '管理员哥哥', remark: '' },
+          { user_id: 60011, nickname: '艾莉哥哥', remark: '' },
+          { user_id: 60003, nickname: '十二哥哥', remark: '' },
           { user_id: 999, nickname: '未授权联系人', remark: '' }
         ] };
       }
@@ -177,7 +186,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     ensureSession, ensureSlangLearnerSession, resolvePresetName, deliverPrompt, drainPromptQueue,
     buildTaskPrompt, handleTaskTurnEnd, tasksStore, queueDshEnvelope,
     sendToQQ, sendAgentReplyV2: typeof sendAgentReplyV2 === 'function' ? sendAgentReplyV2 : undefined,
-    sendStickerV2, handleIncoming, startConsoleServer, cfg, state, api, promptQueues,
+    onebotHttpAction, outboundContext, sendStickerV2, handleIncoming, startConsoleServer, cfg, state, api, promptQueues,
     getSocialV2State, appendSocialV2Message, recordSentMessagesV2,
     buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2,
     // 唤醒排队去重 / 补话武装的内部入口：给 scripts/test-wake-dedupe.mjs 断言用。
@@ -192,7 +201,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     messageAckInboundAt: typeof messageAckInboundAt !== 'undefined' ? messageAckInboundAt : undefined,
     syncStickerLibrary, listStickersForV2, getStickerImageData,
     refreshMode, modeAllowed, trackTurnEvent, replayPendingWakeReasonsV2,
-    collectors, setupSleepTimerV2,
+    collectors, setupSleepTimerV2, activeTurnEnvelopes, pendingTurnEnvelopes,
     getInitialPrompt, setInitialPrompt, loadInitialPrompts, formatInitialPromptV2,
     initialPrompts, initialPromptMaxChars,
     extractMediaFromSegments, segmentsToText, fetchOneBotImage, fetchMediaData, resolveMediaList, imageAssetStore,
@@ -230,9 +239,11 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     NodeApiClient: class { constructor() { return api; } },
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
-    ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker,
-    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState,
+    ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, migrateOutboundMood,
+    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...consoleDocument, ...toolCatalog,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
+    routePluginManagement,
+    routeMemoryManagement,
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
     sniffImage: mediaNormalize.sniffImage,
@@ -274,4 +285,13 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     for (const timer of timers) clearTimeout(timer);
     fs.rmSync(temp, { recursive: true, force: true });
   } };
+}
+
+// Transport fixtures enter through actual prompt admission before agent sends.
+export async function fixtureReplyTurn(h,key){
+ const sid=await h.ensureSession(key);
+ if(h.activeTurnEnvelopes.has(sid))return sid;
+ await h.deliverPrompt(key,'fixture human reply');
+ await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:1}}}});
+ return sid;
 }

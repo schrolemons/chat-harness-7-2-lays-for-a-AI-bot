@@ -1,0 +1,13 @@
+<section id="section-whitelist" data-page="access" class="card span-all">
+      <h2>白名单 / 管理员</h2>
+      <div class="setting-field"><label for="wlGroups">允许的群号（逗号分隔）</label><input type="text" id="wlGroups" placeholder="60000, 60002"><small class="parameter-example" data-example-for="wlGroups">例：填10001,10002：只把这两个群加入允许范围，多个值用逗号分开。</small></div>
+      <div class="setting-field"><label for="wlPrivate">允许的私聊 QQ（逗号分隔）</label><input type="text" id="wlPrivate" placeholder="60000"><small class="parameter-example" data-example-for="wlPrivate">例：填10001：允许这个QQ的私聊，不代表授予管理员权限。</small></div>
+      <div class="setting-field"><label for="ownerQQ">管理员 QQ（ownerQQ，最高权限）</label><input type="text" id="ownerQQ" placeholder="60000"><small class="parameter-example" data-example-for="ownerQQ">例：填10001：指定唯一管理员QQ；留空清除后不再有管理员身份。</small></div>
+      <div class="meta">管理员是唯一可执行管理命令/审批/closed-agent 的 QQ；可留空清除（清除后无管理员，fail-closed）。</div>
+      <div class="setting-field"><label for="dnGroups">拒绝的群号（黑名单，逗号分隔）</label><input type="text" id="dnGroups" placeholder=""><small class="parameter-example" data-example-for="dnGroups">例：填10002：明确拒绝这个群，不依赖群名匹配。</small></div>
+      <div class="setting-field"><label for="dnPrivate">拒绝的私聊 QQ（黑名单，逗号分隔）</label><input type="text" id="dnPrivate" placeholder=""><small class="parameter-example" data-example-for="dnPrivate">例：填10002：明确拒绝这个QQ的私聊，不自动删除它的历史资料。</small></div>
+      <div class="row" style="margin-top:10px">
+        <button id="wlSave" class="primary" data-save-action>保存全局白名单</button>
+        <span class="meta">保存后立即生效并写入 config.json</span>
+      </div>
+    </section>

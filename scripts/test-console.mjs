@@ -73,18 +73,18 @@ const sameIds = (a, b) => JSON.stringify((a || []).map(String).sort()) === JSON.
 r = await api('/api/whitelist');
 const origAllow = r.body.allow;
 ok('白名单读取', origAllow && Array.isArray(origAllow.groups), JSON.stringify(origAllow));
-const testGroups = [...new Set([...(origAllow.groups || []), 608])];
+const testGroups = [...new Set([...(origAllow.groups || []), 60000])];
 r = await api('/api/whitelist', 'POST', { allow: { private: origAllow.private || [], groups: testGroups }, deny: { private: [], groups: [] } });
-ok('白名单写入（含测试群）', r.body.ok === true && (r.body.allow.groups || []).map(String).includes('10608'), JSON.stringify(r.body.allow));
+ok('白名单写入（含测试群）', r.body.ok === true && (r.body.allow.groups || []).map(String).includes('60000'), JSON.stringify(r.body.allow));
 r = await api('/api/whitelist', 'POST', { allow: origAllow, deny: { private: [], groups: [] } });
 ok('白名单恢复原值', r.body.ok === true && sameIds(r.body.allow.groups, origAllow.groups) && sameIds(r.body.allow.private, origAllow.private), JSON.stringify(r.body.allow));
 
 // 8. 测试发送到机器人测试群（真实发送）
 // 先把测试群临时加入白名单：这样既能验证白名单放行，也能验证 /api/test-send 真的走到网关。
 // 若 SnowLuma 未启动，发送会失败——这属于环境问题（不是控制台回归），按「已过白名单校验」计为通过。
-const withTestGroup = [...new Set([...(origAllow.groups || []).map(String), '10608'])];
+const withTestGroup = [...new Set([...(origAllow.groups || []).map(String), '60000'])];
 await api('/api/whitelist', 'POST', { allow: { private: origAllow.private || [], groups: withTestGroup }, deny: { private: [], groups: [] } });
-r = await api('/api/test-send', 'POST', { kind: 'group', id: '10608', message: '【控制台测试】新控制台功能验证成功 ✅' });
+r = await api('/api/test-send', 'POST', { kind: 'group', id: '60000', message: '【控制台测试】新控制台功能验证成功 ✅' });
 const snowlumaDown = typeof r.body.error === 'string' && !/白名单/.test(r.body.error);
 ok('测试发送群消息', r.body.ok === true || snowlumaDown,
   r.body.ok === true ? JSON.stringify(r.body) : `SnowLuma 不可达（非白名单拦截）：${r.body.error}`);
@@ -92,7 +92,7 @@ ok('测试发送群消息', r.body.ok === true || snowlumaDown,
 await api('/api/whitelist', 'POST', { allow: origAllow, deny: { private: [], groups: [] } });
 
 // 9. 测试发送到非白名单（应拒绝）
-r = await api('/api/test-send', 'POST', { kind: 'group', id: '10601', message: 'x' });
+r = await api('/api/test-send', 'POST', { kind: 'group', id: '60008', message: 'x' });
 ok('非白名单发送被拒', r.body.ok === false && r.status === 403, JSON.stringify(r.body));
 
 // 10. 清理测试人格（用绝对路径，不依赖运行目录）

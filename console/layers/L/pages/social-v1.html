@@ -1,0 +1,89 @@
+<section id="section-social-v1" data-page="social-v1" class="card span-all">
+      <h2>一代仿真模式（reserved）</h2>
+      <div class="meta" id="socialStatus">加载中…</div>
+
+      <div class="row" style="margin-top:10px">
+        <div class="setting-field"><label style="flex:1" for="sTrigger">普通消息触发概率（观望期）</label><input type="number" id="sTrigger" step="0.05" min="0" max="1" style="width:80px"><small class="parameter-example" data-example-for="sTrigger">例：设为0.2：一代观望期普通消息以20%概率尝试进入回应流程。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sCheckMin">活跃检测间隔（秒）</label><div class="setting-range"><input type="number" id="sCheckMin" min="5" style="width:70px"><span aria-hidden="true">~</span><input aria-label="活跃检测间隔（秒）上限" type="number" id="sCheckMax" min="5" style="width:70px"></div><small class="parameter-example" data-example-for="sCheckMin">例：填10至30：一代活跃检查从10到30秒区间取间隔。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sActiveDelayMin">活跃回复延迟（秒）</label><div class="setting-range"><input type="number" id="sActiveDelayMin" min="0" style="width:70px"><span aria-hidden="true">~</span><input aria-label="活跃回复延迟（秒）上限" type="number" id="sActiveDelayMax" min="0" style="width:70px"></div><small class="parameter-example" data-example-for="sActiveDelayMin">例：填1至3：一代活跃回复前从1到3秒延迟区间取值。</small></div>
+      </div>
+      <details class="settings-group"><summary>群聊活跃超时主动退出</summary><div class="settings-content">
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sActiveDurationEnabled">启用</label><input type="checkbox" id="sActiveDurationEnabled" style="width:auto"><small class="parameter-example" data-example-for="sActiveDurationEnabled">例：开启后，一代活跃状态达到时长上限会退出，避免一直高频参与。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sActiveDurationMin">活跃最长持续时间（分）</label><div class="setting-range"><input type="number" id="sActiveDurationMin" min="1" style="width:70px"><span aria-hidden="true">~</span><input aria-label="活跃最长持续时间（分）上限" type="number" id="sActiveDurationMax" min="1" style="width:70px"></div><small class="parameter-example" data-example-for="sActiveDurationMin">例：设为20：一代单次活跃阶段最长持续约20分钟。</small></div>
+      </div>
+      <div class="meta">从进入群聊活跃那一刻起随机取一个时长；到点后即使群里还在聊，也会提示 AI 说一句收尾话并回到观望。私聊不自动退场。</div>
+
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sIdleWindow">冷场窗口（分）</label><input type="number" id="sIdleWindow" min="1" style="width:80px"><small class="parameter-example" data-example-for="sIdleWindow">例：设为30：一代按30分钟安静窗口判断冷场。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sIdleRetry">冷场试探概率</label><input type="number" id="sIdleRetry" step="0.05" min="0" max="1" style="width:80px"><small class="parameter-example" data-example-for="sIdleRetry">例：设为0.2：冷场检查以20%概率尝试接话，不是每次检查必发。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sIdleWait">试探等待窗口（分）</label><input type="number" id="sIdleWait" min="1" style="width:80px"><small class="parameter-example" data-example-for="sIdleWait">例：设为5：一代冷场试探后用约5分钟窗口观察后续。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sSkipProb">普通消息沉默概率</label><input type="number" id="sSkipProb" step="0.05" min="0" max="1" style="width:80px"><small class="parameter-example" data-example-for="sSkipProb">例：设为0.3：对普通消息保留约30%概率不接话，明确触发条件另行处理。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sSurrenderProb">抬杠时退让概率</label><input type="number" id="sSurrenderProb" step="0.05" min="0" max="1" style="width:80px"><small class="parameter-example" data-example-for="sSurrenderProb">例：设为0.5：一代抬杠语境有50%参考概率选择退让，不用于额度判断。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sContextWindow">附带上下文条数</label><input type="number" id="sContextWindow" min="1" max="100" style="width:80px"><small class="parameter-example" data-example-for="sContextWindow">例：设为20：一代每次附带最近20条上下文，不加载无限历史。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sMaxChars">单条消息长度上限（字）</label><input type="number" id="sMaxChars" min="1" style="width:80px"><small class="parameter-example" data-example-for="sMaxChars">例：设为300：一代单条回复按300字上限处理。</small></div>
+      </div>
+
+      </div></details>
+<details class="settings-group"><summary>分条发送（按空格分句）</summary><div class="settings-content">
+      <div class="meta" style="margin-bottom:8px">AI 用空格表示“分成下一条消息”；中英文/数字之间的空格也会被当成分条信号，不想分条就不要加空格、用标点连接。单条只做安全长度上限，不再限制条数。</div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sBurstEnabled">启用分条发送</label><input type="checkbox" id="sBurstEnabled" style="width:auto"><small class="parameter-example" data-example-for="sBurstEnabled">例：关闭后，一代不按分条方式连续发送；二代使用自己的唯一发送计划。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sBurstIntervalMin">条间间隔（毫秒）</label><div class="setting-range"><input type="number" id="sBurstIntervalMin" min="0" style="width:70px"><span aria-hidden="true">~</span><input aria-label="条间间隔（毫秒）上限" type="number" id="sBurstIntervalMax" min="0" style="width:70px"></div><small class="parameter-example" data-example-for="sBurstIntervalMin">例：填1000至3000：一代分条间隔在1到3秒范围。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sLongGapProb">长间隔概率</label><input type="number" id="sLongGapProb" step="0.05" min="0" max="1" style="width:80px"><small class="parameter-example" data-example-for="sLongGapProb">例：设为0.2：一代分条时有20%概率采用长间隔区间。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sLongGapMin">长间隔范围（毫秒）</label><div class="setting-range"><input type="number" id="sLongGapMin" min="0" style="width:70px"><span aria-hidden="true">~</span><input aria-label="长间隔范围（毫秒）上限" type="number" id="sLongGapMax" min="0" style="width:70px"></div><small class="parameter-example" data-example-for="sLongGapMin">例：填5000至10000：一代抽中长间隔时等待5到10秒。</small></div>
+      </div>
+      <div class="setting-field"><label for="sKeywords">必回关键词（逗号分隔）</label><input type="text" id="sKeywords" placeholder="deepseek, 在吗"><small class="parameter-example" data-example-for="sKeywords">例：填“帮我看看,小鲸鱼”：一代将这些词作为明确参与线索，不更改二代静默概率。</small></div>
+
+      </div></details>
+<details class="settings-group"><summary>主动开话题（观望期第三种触发）</summary><div class="settings-content">
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sProactiveEnabled">启用主动开话题</label><input type="checkbox" id="sProactiveEnabled" style="width:auto"><small class="parameter-example" data-example-for="sProactiveEnabled">例：开启后允许一代在冷场时尝试开话题；不影响二代统一主动组件。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sProactiveIdle">群安静多久判定（分）</label><input type="number" id="sProactiveIdle" min="1" style="width:80px"><small class="parameter-example" data-example-for="sProactiveIdle">例：设为60：一代在群安静约1小时后才考虑主动。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sProactiveCheckMin">判定间隔（分）</label><div class="setting-range"><input type="number" id="sProactiveCheckMin" min="1" style="width:70px"><span aria-hidden="true">~</span><input aria-label="判定间隔（分）上限" type="number" id="sProactiveCheckMax" min="1" style="width:70px"></div><small class="parameter-example" data-example-for="sProactiveCheckMin">例：填10至20：一代按10到20分钟范围进行一次主动判定。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="sProactiveProb">判定成功概率</label><input type="number" id="sProactiveProb" step="0.05" min="0" max="1" style="width:80px"><small class="parameter-example" data-example-for="sProactiveProb">例：设为0.3：满足一代安静条件后，单次判定有30%参考概率主动。</small></div>
+      </div>
+
+</div></details>
+<div class="save-bar">      <div class="row" style="margin-top:10px">
+        <button id="socialSave" class="primary" data-save-action>保存社交配置</button>
+        <button id="socialFlush">立刻投喂摘要</button>
+        <span class="meta" id="socialMsg"></span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <select id="sStateKey" style="flex:1"><option value="">选择会话</option></select>
+        <button id="sStateActive" class="small">设为活跃</button>
+        <button id="sStateIdle" class="small">设为观望</button>
+      </div>
+      <div class="meta">一代仿真模式状态机：观望期按“明确点名 / 小概率”触发进入活跃；活跃期每 10~20 秒批量查看新消息并回应；群聊活跃超过随机上限会主动提示 AI 收尾退场；冷场后大概率回观望、小概率让 AI 试探一句。可手动强制切换状态。</div>
+    </div></section>

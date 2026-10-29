@@ -73,7 +73,7 @@ export function createRuntime({ dir, config }) {
   }
   function candidates(text, mode) {
     const cosmos = /宇宙|时空|量元|衍影|多维/.test(text);
-    const nature = /管理员元素|自然万态|神束|元素体系|自然哲法|自然自意/.test(text);
+    const nature = /十二元素|自然万态|神束|元素体系|自然哲法|自然自意/.test(text);
     const ranked = topics.filter(t => !restricted(t) && !t.flags.includes('stub') && !t.title.includes('脚注') &&
       (t.group !== '宇宙基础' || cosmos) && (t.group !== '自然万态' || nature)).map(t => ({
       t, score: t.keywords.reduce((s, k) => s + (text.includes(k) ? Math.min(k.length, 6) : 0), 0) + (mode === 'care' && /^LIFE-0(737|741|745|749)$/.test(t.id) && t.keywords.some(k => text.includes(k)) ? 2 : 0)

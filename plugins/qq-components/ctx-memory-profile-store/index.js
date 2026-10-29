@@ -257,7 +257,7 @@ export function createPlugin(ctx) {
         const profile = ensurePerson(id);
         const lines = Object.entries(profile).filter(([, value]) => String(value || '').trim())
           .map(([field, value]) => `- ${field}: ${String(value).trim()}`);
-        return lines.length ? `【当前私聊对象人物档案｜QQ ${id}】以下 JSON 字段只描述本人；只在相关时自然参考，不要主动暴露或机械复述。\n${JSON.stringify(profile, null, 2)}` : '';
+        return lines.length ? `【当前私聊对象人物档案｜QQ ${id}】稳定资料的权威来源，以下 JSON 字段只描述本人。会话临时画像和窗口行为印象不能覆盖这些资料；本人明确更正时核对来源并更新档案。具体当天事件留会话事实，待办留当前事务，日记只是展示文本。只在相关时自然参考，不要主动暴露或机械复述。\n${JSON.stringify(profile, null, 2)}` : '';
       }
     }
   };

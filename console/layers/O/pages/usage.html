@@ -1,0 +1,66 @@
+<section id="section-usage" data-page="usage" class="card span-all">
+      <h2 data-note="每 3 秒自动同步">令牌与花费</h2>
+      <div class="meta">数据来源是 DSH 会话事件里的 provider usage。<b>累计总量</b>取 <code>tokenUsage</code> 投影（整条会话日志的权威累计，含桥接启动前的历史）；<b>逐轮明细</b>由 <code>assistant/message</code> 的 usage 折叠而来，能追溯到多深取决于会话开场快照带回的历史条数。金额按 DeepSeek 官方价目表折算，区分高峰 / 空闲时段（高峰单价为空闲的 2 倍）。</div>
+      <div class="overview-summary" id="usageSummary">
+        <div class="metric"><span>总花费</span><strong id="metricUsageCost">—</strong><small id="metricUsageCostHint">读取中…</small></div>
+        <div class="metric"><span>累计 token</span><strong id="metricUsageTokens">—</strong><small id="metricUsageTokensHint">输入 / 输出</small></div>
+        <div class="metric"><span>缓存命中率</span><strong id="metricUsageHitRate">—</strong><small id="metricUsageHitHint">命中输入 ÷ 总输入</small></div>
+        <div class="metric"><span>平均每轮</span><strong id="metricUsagePerTurn">—</strong><small id="metricUsagePerTurnHint">按已归属回合</small></div>
+      </div>
+      <div class="row usage-controls">
+        <button id="usageRefresh" class="small">刷新</button>
+        <button id="usageClear" class="small danger">清空账本</button>
+        <span class="meta" id="usageMsg">读取中…</span>
+      </div>
+      <h3 class="usage-h3">消耗走势</h3>
+      <div class="row usage-chart-controls" id="usageChartControls">
+        <span class="meta">时间范围</span>
+        <button class="tag active" data-usage-hours="24">近 24 小时</button>
+        <button class="tag" data-usage-hours="72">近 3 天</button>
+        <button class="tag" data-usage-hours="168">近 7 天</button>
+        <button class="tag" data-usage-hours="720">近 30 天</button>
+        <span class="meta">纵轴</span>
+        <button class="tag active" data-usage-metric="cost">花费</button>
+        <button class="tag" data-usage-metric="tokens">token</button>
+      </div>
+      <div class="usage-chart-head">
+        <strong id="usageChartTotal">—</strong>
+        <span class="meta" id="usageChartHint">读取中…</span>
+      </div>
+      <div class="usage-chart" id="usageChart">加载中…</div>
+      <div class="usage-legend">
+        <span><i class="off"></i>空闲时段</span>
+        <span><i class="peak"></i>高峰时段（单价 ×2）</span>
+        <span><i class="mixed"></i>跨时段</span>
+      </div>
+      <div class="meta" id="usageChartNote" style="margin-top:6px"></div>
+      <h3 class="usage-h3">按会话（群 / 私聊）</h3>
+      <div class="tool-log-table" id="usageConversations">加载中…</div>
+      <details class="settings-group"><summary>小鲸鱼调用档位与成本策略</summary><div class="settings-content"><div data-component-slot="obs-cost-policy"></div></div></details>
+<h3 class="usage-h3">会话花费阈值</h3>
+      <div class="row usage-controls"><strong>全局恢复窗口</strong><label>私聊 N（条）<input id="usageRecoveryPrivate" type="number" min="1" max="30" value="5" style="width:70px"></label><label>群聊普通 B（条，不含 @）<input id="usageRecoveryGroup" type="number" min="1" max="30" value="5" style="width:70px"></label><label>群聊 @ C（条）<input id="usageRecoveryGroupAt" type="number" min="1" max="30" value="5" style="width:70px"></label><button id="usageRecoverySave" class="small primary" data-save-action>保存全局恢复窗口</button></div>
+      <div class="meta">每晚 22:00（北京时间）重新计入新周期。金额按本周期可归属的调用计算；0 表示不启用对应阈值。达到冷漠阈值后会降低回复频率并缩短注入内容；达到上限后改用机械回复。恢复时每个会话只补处理最近窗口内的消息。</div>
+      <div class="row usage-controls"><span>全部会话及后台任务本周期：<strong id="usageGlobalTurns">—</strong> 轮，花费 <strong id="usageGlobalCost">—</strong></span><label>统一花费上限（元） <input id="usageGlobalLimit" type="number" min="0" step="0.01" value="0" style="width:100px"></label><button id="usageGlobalSave" class="small primary" data-save-action>保存全局花费上限</button><span id="usageGlobalState" class="meta"></span></div>
+      <div class="row"><label><input id="usageOwnerBudgetEnabled" type="checkbox" checked> 管理员 owner 受额度限制</label><button id="usageOwnerBudgetSave" class="small primary" data-save-action>保存管理员额度规则</button><span class="meta">关闭后，owner 私聊及其发起的任务不受个人、全局额度和低频限制；花费仍计入统计。</span></div>
+      <div class="tool-log-table" id="usageBudgets">加载中…</div>
+      <div class="meta" id="usageBudgetMsg"></div>
+      <h3 class="usage-h3">静默后的机械回复</h3>
+      <div class="meta">达到会话或全局硬上限后，私聊每累计 5 条消息随机回一句；群聊仅被 @ 时随机回一句。词条不调用模型，每行一条，私聊与群聊分别管理。</div>
+      <div class="row" style="align-items:flex-start;margin-top:10px">
+        <label style="flex:1;min-width:230px">私聊词条<textarea id="usageMechanicalPrivate" rows="8" spellcheck="false" placeholder="每行一条"></textarea></label>
+        <label style="flex:1;min-width:230px">群聊词条<textarea id="usageMechanicalGroup" rows="8" spellcheck="false" placeholder="每行一条"></textarea></label>
+      </div>
+      <div class="row" style="margin-top:8px"><button id="usageMechanicalSave" class="small primary" data-save-action>保存全局机械回复词条</button><span id="usageMechanicalMsg" class="meta"></span></div>
+      <h3 class="usage-h3">逐轮花费 <span class="meta" id="usageTurnScope">—</span></h3>
+      <div class="row usage-controls">
+        <div class="setting-field"><label class="sr-only" for="usageKeySelect">选择要查看逐轮明细的会话</label><select id="usageKeySelect"></select><small class="parameter-example" data-example-for="usageKeySelect">例：选择一个会话：下钻查看它的逐轮用量，不改变该会话预算。</small></div>
+        <button id="usageTurnsLoad" class="small">加载逐轮明细</button>
+      </div>
+      <div class="tool-log-table" id="usageTurns">选择会话后加载逐轮明细…</div>
+      <details class="settings-group"><summary>最近调用流水（实时，最新 40 条）</summary><div class="settings-content">
+      <div class="tool-log-table" id="usageRecent">（空）</div>
+      </div></details>
+      <details class="settings-group"><summary>当前生效的价目表</summary><div class="settings-content">
+      <div id="usagePrices" class="meta">读取中…</div>
+      </div></details>
+    </section>

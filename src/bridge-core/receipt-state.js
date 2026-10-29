@@ -6,10 +6,31 @@ export function messageFullyProcessedV2(msg) {
   return !!msg && receiptStateV2(msg) === 'complete';
 }
 
+// Admission is separate from QQ receipt stamps. A message can be stored for the
+// console while still being unavailable to a running model round.
+export function isModelVisibleMessageV2(msg) {
+  return !!msg && !['pending', 'rejected'].includes(msg.quotaAdmission)
+    && msg.budgetDisposition !== 'outside-cold-window';
+}
+
+export function modelStateViewV2(st, { allowedSeqs } = {}) {
+  // Message reads are constrained, but business hooks must still clear pending
+  // bubble/task flags on the real state rather than on a disposable copy.
+  return new Proxy(st, {
+    get(target, field) {
+      const value = Reflect.get(target, field);
+      if (field === 'unread' || field === 'recentMessages') return (value || []).filter(message =>
+        isModelVisibleMessageV2(message) && (!allowedSeqs || allowedSeqs.has(message.seq)));
+      return value;
+    },
+    set(target, field, value) { return Reflect.set(target, field, value); }
+  });
+}
+
 /** 窗口内还没双戳齐全的消息（按 seq 升序；unread 本身就是入站顺序）。 */
 export function pendingMessagesV2(st) {
   return (Array.isArray(st?.unread) ? st.unread : [])
-    .filter((m) => m && Number.isSafeInteger(m.seq) && m.seq > 0 && !messageFullyProcessedV2(m));
+    .filter((m) => isModelVisibleMessageV2(m) && Number.isSafeInteger(m.seq) && m.seq > 0 && !messageFullyProcessedV2(m));
 }
 
 /** 重启后/新回合从哪一条开始：窗口内第一个无双戳的消息；没有就 null。 */

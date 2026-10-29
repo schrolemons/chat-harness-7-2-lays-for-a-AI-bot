@@ -1,0 +1,29 @@
+<section id="section-setting-c-2" data-page="setting-c-2" class="card span-all commercial-component" hidden>
+<h2>会话背景</h2>
+<details class="settings-group"><summary><span class="layer-tag" data-layer="C">C</span>初始提示词（预写某个群/私聊的环境，只在 AI 首次唤醒时看一次）</summary><div class="settings-content">
+      <div class="meta" style="margin-bottom:8px">
+        在这里提前告诉 AI「这个群是什么圈子、什么氛围、聊什么、有什么忌讳」。AI 只在<b>该会话的第一次唤醒</b>时收到一次，
+        之后不会重复注入（那时它已经在会话上下文里了）；AI 读不到也改不了这份设置。
+        如果 AI 已经在这个会话里首次唤醒过，需要重置该会话（「会话映射」里重置，或「重置二代状态」）后，下一次首次唤醒才会带上它。
+        留空保存等于删除；只写环境背景，别写指令式的要求（那是人格卡/仿真提示词的事）。
+      </div>
+      <p class="parameter-scope"><b>此会话背景</b> · 只修改下方选中群聊或私聊的背景。</p>
+      <div class="row">
+        <input type="text" id="v2InitPromptKey" placeholder="group:60000" style="flex:1" aria-label="初始提示词的会话 key">
+        <button id="v2InitPromptLoad" class="small">加载</button>
+        <button id="v2InitPromptSave" class="small primary" data-save-action>保存此会话背景</button>
+        <button id="v2InitPromptClear" class="small danger">删除</button>
+        <span class="meta" id="v2InitPromptMsg"></span>
+      </div>
+      <textarea id="v2InitPromptText" rows="5" aria-label="初始提示词正文" placeholder="例如：这是一个偏技术的闲聊群，群友喜欢玩梗、聊模型和本地部署；氛围轻松，别长篇大论，遇到配置问题直接给结论。"></textarea>
+      <div class="meta">
+        当前 <span id="v2InitPromptCount">0</span> / <span id="v2InitPromptMax">2000</span> 字符（上限可在 config.json 的
+        <code>socialV2.initialPromptMaxChars</code> 调整）。
+      </div>
+      <div id="v2InitPromptList" class="tool-log-table">（点「加载」且 key 留空时，列出所有已设置的会话）</div>
+
+</div></details>
+
+<details class="settings-group" open><summary>人物档案（按 QQ 管理）</summary><div class="settings-content"><div data-component-slot="ctx-memory-profile-store" data-hide-toggle="1"></div></div></details>
+<details class="settings-group"><summary>专业问答限额</summary><div class="settings-content"><div data-component-slot="ctx-knowledge-quota" data-hide-toggle="1"></div></div></details>
+</section>

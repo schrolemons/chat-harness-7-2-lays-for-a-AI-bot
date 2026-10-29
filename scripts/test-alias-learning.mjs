@@ -8,8 +8,8 @@ export function aliasFixture(config={}) {
   const ctx={config:{autoExtract:true,...config},runtime:{},isActive:()=>true,
     state:{get:()=>structuredClone(state),set:p=>(state={...state,...structuredClone(p)})},
     registerTool:(n,s)=>tools.set(n,s),log:()=>{},warn:()=>{},
-    capabilities:{getOwnerQQ:()=>608,getLearningMembers:async()=>[
-      {userId:'10608',nickname:'小明',card:'明明'},{userId:'987654321',nickname:'阿乙',card:'阿乙'}
+    capabilities:{getOwnerQQ:()=>60000,getLearningMembers:async()=>[
+      {userId:'60000',nickname:'小明',card:'明明'},{userId:'987654321',nickname:'阿乙',card:'阿乙'}
     ]}};
   return {ctx,plugin:createPlugin(ctx),state:()=>state,call:(name,input={})=>tools.get(name).handler(input)};
 }
@@ -18,14 +18,14 @@ test('an empty alias table still tells the bot the real query and submission too
   assert.match(prompt,/qq_alias_submit/);assert.match(prompt,/qq_alias_query/);assert.doesNotMatch(prompt,/alias_add 登记/);
 });
 test('one QQ can have multiple aliases without replacing confirmed aliases',()=>{
-  const h=aliasFixture();h.call('alias_add',{alias:'小明',qq:'10608'});
-  h.call('alias_submit',{alias:'金牌快递员',qq:'10608',key:'group:456'});
+  const h=aliasFixture();h.call('alias_add',{alias:'小明',qq:'60000'});
+  h.call('alias_submit',{alias:'金牌快递员',qq:'60000',key:'group:456'});
   assert.equal(h.state().entries.length,2);
   assert.equal(h.state().entries.find(x=>x.alias==='小明').status,'confirmed');
 });
 test('explicit third-party statements resolve the target, never the speaker',async()=>{
   const h=aliasFixture();await h.plugin.hooks.onIncoming({key:'group:456',userId:'987654321',sender:'阿乙',text:'金牌快递员是明明的绰号',messageId:'msg-1'});
-  assert.equal(h.state().entries[0].alias,'金牌快递员');assert.equal(h.state().entries[0].qq,'10608');
+  assert.equal(h.state().entries[0].alias,'金牌快递员');assert.equal(h.state().entries[0].qq,'60000');
   assert.equal(h.state().entries[0].status,'candidate');assert.ok(h.state().entries[0].evidence.length);
 });
 test('possible names in invitations and questions stay unbound for administrator review',async()=>{
@@ -34,19 +34,19 @@ test('possible names in invitations and questions stay unbound for administrator
     await h.plugin.hooks.onIncoming({key:'group:456',userId:'987654321',sender:'阿乙',text,messageId:'suspect-'+i});
   assert.ok(h.state().entries.some(x=>x.alias==='快递猫'&&!x.qq));
   assert.ok(h.state().entries.some(x=>x.alias==='橘子猫'&&!x.qq));
-  assert.ok(h.state().entries.some(x=>x.alias==='小黄猫'&&x.qq==='10608'));
+  assert.ok(h.state().entries.some(x=>x.alias==='小黄猫'&&x.qq==='60000'));
 });
 test('unbound candidates require a QQ before confirmation and can be edited by id',async()=>{
   const h=aliasFixture();await h.plugin.hooks.onIncoming({key:'group:456',userId:'987654321',text:'你去问问快递猫',messageId:'m'});
   const entry=h.state().entries[0];assert.equal(h.call('alias_confirm',{id:entry.id}).ok,false);
-  assert.equal(h.call('alias_confirm',{id:entry.id,alias:'快递猫',qq:'10608'}).ok,true);
-  assert.match(h.plugin.hooks.beforePrompt({key:'group:456'}),/快递猫 = 608/);
+  assert.equal(h.call('alias_confirm',{id:entry.id,alias:'快递猫',qq:'60000'}).ok,true);
+  assert.match(h.plugin.hooks.beforePrompt({key:'group:456'}),/快递猫 = 60000/);
 });
 test('duplicate hooks merge evidence and deleting an alias cannot delete another alias of the QQ',async()=>{
-  const h=aliasFixture();const message={key:'group:456',userId:'10608',text:'叫我小黄猫',messageId:'same'};
+  const h=aliasFixture();const message={key:'group:456',userId:'60000',text:'叫我小黄猫',messageId:'same'};
   await h.plugin.hooks.onIncoming(message);await h.plugin.hooks.onIncoming(message);
   assert.equal(h.state().entries.length,1);assert.equal(h.state().entries[0].evidence.length,1);
-  h.call('alias_add',{alias:'另一个称呼',qq:'10608'});
+  h.call('alias_add',{alias:'另一个称呼',qq:'60000'});
   h.call('alias_reject',{id:h.state().entries[0].id});assert.equal(h.state().entries.length,1);
   assert.equal(h.state().entries[0].alias,'另一个称呼');
 });
@@ -62,8 +62,8 @@ test('agent submissions may omit QQ, but cannot confirm or change existing confi
 });
 test('manual refresh scans allowed history and analyzes one nickname candidate once',async()=>{
  const h=aliasFixture();let scans=0,calls=0;
- h.ctx.capabilities.getLearningHistory=async input=>{scans++;assert.equal(input.limit,100);return [{key:'group:456',userId:'10608',sender:'小明',text:'叫我快递猫',messageId:'refresh-1'},{key:'group:456',userId:'987654321',sender:'阿乙',text:'快递猫今天上线了',messageId:'refresh-2'}];};
- h.ctx.capabilities.learningPrompt=async()=>{calls++;return JSON.stringify({entries:[{alias:'快递猫',qq:'10608',targetName:'小明',sourceIds:[1],confidence:.99,reason:'明确自称'}]});};
+ h.ctx.capabilities.getLearningHistory=async input=>{scans++;assert.equal(input.limit,100);return [{key:'group:456',userId:'60000',sender:'小明',text:'叫我快递猫',messageId:'refresh-1'},{key:'group:456',userId:'987654321',sender:'阿乙',text:'快递猫今天上线了',messageId:'refresh-2'}];};
+ h.ctx.capabilities.learningPrompt=async()=>{calls++;return JSON.stringify({entries:[{alias:'快递猫',qq:'60000',targetName:'小明',sourceIds:[1],confidence:.99,reason:'明确自称'}]});};
  const result=await h.call('alias_refresh');assert.equal(scans,1);assert.equal(calls,1);assert.equal(result.processed,1);assert.equal(h.state().entries.filter(x=>x.alias==='快递猫').length,1);
 });
 test('rejecting a suspected alias prevents automatic resubmission of the same claim',async()=>{
@@ -87,7 +87,7 @@ test('the live alias query route unwraps the plugin envelope',async()=>{
   const h=await bridgeHarness();h.setMode('reserved2');const st=h.getSocialV2State('group:456');
   const server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));
   try{
-    await h.pluginHost.callTool('alias_add',{alias:'路由测试',qq:'10608'});
+    await h.pluginHost.callTool('alias_add',{alias:'路由测试',qq:'60000'});
     const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/socialV2/alias/query?key=group:456&q='+encodeURIComponent('路由测试'),{headers:{'x-console-token':'fixture-console-token','x-agent-token':st.agentToken}});
     const data=await r.json();assert.equal(r.status,200);assert.equal(data.entries.length,1);assert.equal(data.entries[0].alias,'路由测试');
   }finally{await new Promise(r=>server.close(r));await h.close();}

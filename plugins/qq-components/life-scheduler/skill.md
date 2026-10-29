@@ -10,4 +10,16 @@
 
 文件锁不自动抢占。若崩溃遗留锁，应在生产方停止、确认独占维护后由机主恢复，不能删除运行中的锁。
 
+## 主动行为、定时冒泡与日程提醒
+
+`scheduler.wakePolicy({incomingReason,activeReason})` 保存优先关系：proactiveCheck/careCheck/newsShare/idleRescue 可替代排队中的本会话时间冒泡，也可请求中止正在运行的 timeBubble；日程 reminder 回合不被这些普通主动行为抢占。reminder 也可优先于时间冒泡。这里只判断关系，DSH 传输操作仍由 bridge 提供。
+
+取消调度句柄只取消尚未执行的任务，不能当作已经中止模型。桥接用 turn/start 将真实 turn 与投递原因关联，通过 `session/cancel` 只取消当前冒泡，不清 DSH inbox；旧回合结束且取消请求明确返回后，才重放后继唤醒。排队日程优先，日程条目和明确完成状态由 life-schedule-reminder 持有，不因冒泡取消而删除。
+
+抢占先持久认领 `wake-preempt:<sessionId>:<turn>` 凭据，结果不明记 uncertain，不自动重发取消、也不放行后继模型回合，防止迟到的取消请求误伤新提醒。此状态是待核实阻塞，不代表已成功抢占；提醒载荷保留，管理员核查后可明确打断或重置会话恢复。禁止删除生产锁试错。
+
+已抢占的回合轮换令牌；旧出站在执行前复查所属回合，迟到文字/end 由回合身份和持久凭据抑制。已经进入网关的发送不能撤回。日程载荷只由 reminder 回合读取，成功工具发送/自动回复后才消费对应批次；派发失败保留，后续周期可重试，提醒发送不等于用户已完成。
+
+隔离行为验证：`node --test scripts/test-proactive-priority.mjs`。采用临时状态、桩 QQ/DSH，不发送真实消息。
+
 详见 `docs/guides/PLUGIN_RUNTIME_CONTRACT.md`；验证 `scripts/test-scheduler.mjs` 和 `scripts/test-notification-delivery.mjs`。

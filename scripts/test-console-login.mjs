@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { bridgeHarness } from './audit-bridge-harness.mjs';
+import { renderConsoleDocument } from '../src/console/document.js';
+import { fileURLToPath } from 'node:url';
 
 const loginHtml = fs.readFileSync(new URL('../public/console-login.html', import.meta.url), 'utf8');
-const consoleHtml = fs.readFileSync(new URL('../public/console.html', import.meta.url), 'utf8');
+const consoleHtml = renderConsoleDocument(fileURLToPath(new URL('..',import.meta.url)));
 const loginScript = loginHtml.match(/<script>([\s\S]*?)<\/script>/)[1];
-const rememberScript = consoleHtml.match(/<script>\s*(\(function \(\) \{[\s\S]*?\}\)\(\);)\s*async function api/)[1];
+const rememberScript = fs.readFileSync(new URL('../console/shared/api.js', import.meta.url),'utf8').match(/\(function \(\) \{[\s\S]*?\}\)\(\);/)[0];
 
 function run(code, href, storage, answer = null) {
   const result = { redirects: [], prompts: [], replaced: [] };

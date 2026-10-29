@@ -1,3 +1,4 @@
+import { buildWakeGuidance } from '../life-wake-reasons/guidance.js';
 // ctx-context-lifecycle（C/L 层｜唤醒/节奏/收尾提示）
 //
 // 从 buildWakePromptV2 搬走：
@@ -76,12 +77,14 @@ export function createPlugin(ctx) {
   return {
     services: {
       lifecycle: {
-        wakeReminder(payload = {}) { return buildWakeReminder(payload); }
+        wakeReminder(payload = {}) { return buildWakeReminder(payload); },
+        wakeGuidance({wake = {}, proactive = null} = {}) { return buildWakeGuidance(wake, proactive); }
       }
     },
     hooks: {
       beforePrompt(payload = {}) {
         if (/^(memoryWrite|selfReview|selfOptimize|slangLearn)$/.test(String(payload?.reason||''))) return '';
+        ctx.addPromptBlock(buildWakeGuidance(payload.wakeConfig || {}, payload.proactivePolicy || null));
         if (on('muted') && payload.mutedJustClearedNow) {
           ctx.addPromptBlock('【刚解除静音】对方之前说过忙/别吵/等会再聊，现在他主动找你。可以正常回，但简短一点，别提“你刚才说忙”，也别借机多聊；对方没叫你时不要再主动搭话。');
         }

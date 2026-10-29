@@ -13,12 +13,19 @@
     "configure": "node scripts/configure.mjs",
     "setup": "node scripts/install.mjs",
     "doctor": "node scripts/doctor.mjs",
-    "test": "node --test scripts/test-token-budget-mechanical.mjs scripts/test-global-budget-check.mjs scripts/test-release.mjs scripts/test-schedule-display.mjs scripts/test-whale-inner-world.mjs scripts/test-web-change-summary.mjs scripts/test-scheduler.mjs scripts/test-availability.mjs scripts/test-notification-delivery.mjs scripts/test-plugin-contract.mjs scripts/test-plugin-delivery.mjs scripts/test-task-tool-guard.mjs scripts/test-session-concurrency.mjs scripts/test-read-receipts.mjs scripts/test-qq-reply-policy.mjs plugins/qq-components/ctx-chat-topic-drive/followup-policy.test.mjs plugins/qq-components/ctx-chat-topic-drive/private-followup.test.mjs plugins/qq-components/tool-bilibili/test/bili-cache.test.mjs plugins/qq-components/tool-bilibili/test/bili-client.test.mjs plugins/qq-components/tool-bilibili/test/bili-core.test.mjs plugins/qq-components/tool-bilibili/test/plugin-tools.test.mjs plugins/qq-components/tool-bilibili/test/video-frames.test.mjs scripts/test-image-generation.mjs scripts/test-image-transport.mjs scripts/test-image-console.mjs scripts/test-image-asset-store.mjs scripts/test-image-ingress.mjs scripts/test-relay-image.mjs scripts/test-safe-fetch-protocol.mjs scripts/test-source-workspace.mjs scripts/test-console-login.mjs scripts/test-message-ack-active-turn.mjs scripts/test-token-budget-owner.mjs scripts/test-bili-share.mjs scripts/test-games-mcp.mjs scripts/test-relay-target-resolver.mjs scripts/test-learning-routes.mjs scripts/test-admin-session-startup-race.mjs scripts/test-profile-sharing.mjs scripts/test-memory-profile-promotion.mjs plugins/qq-components/tool-deepseek-balance/test/balance.test.mjs",
+    "test": "node --test --test-timeout=60000 scripts/test-token-budget-mechanical.mjs scripts/test-global-budget-check.mjs scripts/test-release.mjs scripts/test-schedule-display.mjs scripts/test-whale-inner-world.mjs scripts/test-web-change-summary.mjs scripts/test-scheduler.mjs scripts/test-availability.mjs scripts/test-notification-delivery.mjs scripts/test-plugin-contract.mjs scripts/test-plugin-delivery.mjs scripts/test-task-tool-guard.mjs scripts/test-session-concurrency.mjs scripts/test-read-receipts.mjs scripts/test-qq-reply-policy.mjs plugins/qq-components/ctx-chat-topic-drive/followup-policy.test.mjs plugins/qq-components/ctx-chat-topic-drive/private-followup.test.mjs plugins/qq-components/tool-bilibili/test/bili-cache.test.mjs plugins/qq-components/tool-bilibili/test/bili-client.test.mjs plugins/qq-components/tool-bilibili/test/bili-core.test.mjs plugins/qq-components/tool-bilibili/test/plugin-tools.test.mjs plugins/qq-components/tool-bilibili/test/video-frames.test.mjs scripts/test-image-generation.mjs scripts/test-image-transport.mjs scripts/test-image-console.mjs scripts/test-image-asset-store.mjs scripts/test-image-ingress.mjs scripts/test-relay-image.mjs scripts/test-safe-fetch-protocol.mjs scripts/test-source-workspace.mjs scripts/test-console-login.mjs scripts/test-message-ack-active-turn.mjs scripts/test-token-budget-owner.mjs scripts/test-bili-share.mjs scripts/test-games-mcp.mjs scripts/test-relay-target-resolver.mjs scripts/test-learning-routes.mjs scripts/test-admin-session-startup-race.mjs scripts/test-profile-sharing.mjs scripts/test-memory-profile-promotion.mjs plugins/qq-components/tool-deepseek-balance/test/balance.test.mjs",
     "privacy:check": "node scripts/privacy-check.mjs",
     "postinstall": "node scripts/patch-snowluma-sdk.mjs",
     "test:workspace": "node --test scripts/test-source-workspace.mjs",
     "test:runtime-contracts": "node --test scripts/test-console-login.mjs scripts/test-message-ack-active-turn.mjs scripts/test-token-budget-owner.mjs scripts/test-bili-share.mjs scripts/test-games-mcp.mjs scripts/test-relay-target-resolver.mjs scripts/test-learning-routes.mjs scripts/test-admin-session-startup-race.mjs",
-    "test:profile-ui": "node --test scripts/test-person-profile-console.mjs"
+    "test:profile-ui": "node --test scripts/test-person-profile-console.mjs",
+    "build:console": "node scripts/build-console.mjs",
+    "lint:console": "eslint console",
+    "test:console-ui": "node scripts/test-console-ui.mjs",
+    "test:console-layout": "node scripts/test-console-ui-polish.mjs",
+    "audit:tools": "node scripts/audit-tool-registry.mjs",
+    "test:console-modules": "node --test scripts/test-console-component-contract.mjs scripts/test-console-document.mjs && node scripts/test-console-bootstrap.mjs",
+    "test:outbound": "node --test scripts/test-mood-lifecycle.mjs scripts/test-proactive-policy.mjs scripts/test-outbound-migration.mjs scripts/test-outbound-facts.mjs scripts/test-outbound-host.mjs scripts/test-outbound-hot-reload.mjs scripts/test-wake-guidance.mjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh-host-apiproxy": "0.1.1-rc.2",
@@ -32,5 +39,11 @@
     "undici": "^7.30.1",
     "ws": "^8.18.0",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "acorn": "^8.19.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0"
   }
 }

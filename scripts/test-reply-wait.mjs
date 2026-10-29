@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { test } from 'node:test';
-import { bridgeHarness } from './audit-bridge-harness.mjs';
+import { bridgeHarness,fixtureReplyTurn } from './audit-bridge-harness.mjs';
 
 async function fixture(run, cfg = {}) {
   const h = await bridgeHarness({ config: { socialV2: {
@@ -16,9 +16,9 @@ async function fixture(run, cfg = {}) {
   const st = h.getSocialV2State(key);
   const server = h.startConsoleServer();
   if (!server.listening) await new Promise(resolve => server.once('listening', resolve));
-  const request = (route, body) => new Promise((resolve, reject) => {
+  const request = async (route, body) => { if(/send-message|send-burst|\/api\/send\//.test(route))await fixtureReplyTurn(h,key);return new Promise((resolve, reject) => {
     const req = http.request({ hostname: '127.0.0.1', port: server.address().port,
-      path: `/api/socialV2/${route}?key=${encodeURIComponent(key)}`,
+      path: `${route.startsWith("/") ? route : `/api/socialV2/${route}`}?key=${encodeURIComponent(key)}`,
       method: body === undefined ? 'GET' : 'POST',
       headers: { 'x-console-token': 'fixture-console-token', 'x-agent-token': st.agentToken, 'content-type': 'application/json' },
     }, res => {
@@ -30,6 +30,7 @@ async function fixture(run, cfg = {}) {
     req.setTimeout(5000, () => req.destroy(new Error('Fixture request timed out')));
     req.end(body === undefined ? undefined : JSON.stringify({ key, ...body }));
   });
+  };
   // GET routes carry their options in the query string, not the body.
   const get = (route, query = '') => new Promise((resolve, reject) => {
     const req = http.request({ hostname: '127.0.0.1', port: server.address().port,
@@ -120,13 +121,19 @@ test('reply timeout is a hard budget and cannot grant sleep observation, even wi
   } finally { clearTimeout(timer); }
 }));
 
-test('ordinary and omitted purpose keep waiting for future messages', () => fixture(async ({ st, request, append }) => {
+test('messages purpose waits for future messages after a confirmed reply', () => fixture(async ({ st, request, append }) => {
   append('already known');
   await request('unread');
   st.lastIncomingAt = Date.now() - 10000;
-  for (const purpose of [undefined, 'messages']) {
+  await request('mark-read', { throughSeq: 1 });
+  // messages waiting requires completed receipts.
+  const sent = await request('/api/send/group', { token: st.agentToken, groupId: '456', message: 'fixture completed answer' });
+  assert.equal(sent.status, 200, JSON.stringify(sent.data));
+  const report = await request('receipt-report', { conversationId: 'group:456', receipts: [{ seq: 1, status: 'replied' }] });
+  assert.equal(report.status, 200, JSON.stringify(report.data));
+  for (const purpose of ['messages']) {
     const result = await request('wait', { purpose, timeoutMs: 600, quietMs: 100 });
-    assert.ok(result.data.waitedMs >= 600);
+    assert.ok(result.data.waitedMs >= 600, JSON.stringify(result));
     assert.equal(result.data.timeout, true);
     assert.equal(result.data.quiet, false);
     assert.deepEqual(result.data.newMessages, []);

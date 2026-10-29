@@ -7,6 +7,11 @@ export function createPlugin(ctx) {
  const receipts=ctx.root ? createDeliveryLedger({file:path.join(ctx.root,'state','plugins','delivery-receipts.json')}) : null;
  function cancel(handle){const id=typeof handle==='string'?handle:handle?.scheduledId;const j=jobs.get(id);if(j && (!handle?.generation || j.generation===handle.generation))return jobs.delete(id);return false;}
  const scheduler={
+  wakePolicy({incomingReason='',activeReason=''}={}){
+   const incoming=String(incomingReason).split(':')[0],active=String(activeReason).split(':')[0];
+   const ordinary=new Set(['proactiveCheck','careCheck','newsShare','idleRescue']);
+   return {preempt:active==='timeBubble'&&(ordinary.has(incoming)||incoming==='reminder'),supersedeBubble:ordinary.has(incoming),protected:active==='reminder'};
+  },
   schedule(spec={}){
    const id=String(spec.id||'');if(!id || !Number.isFinite(Number(spec.at)) || typeof spec.run!=='function')return null;
    if(!jobs.has(id)&&jobs.size>=max)return null;

@@ -1,3 +1,4 @@
+import { readConsoleTestSource } from './console-test-source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,7 +9,7 @@ import { createPluginHost } from '../src/plugin-host.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bridge = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
-const consoleHtml = fs.readFileSync(path.join(ROOT, 'public', 'console.html'), 'utf8');
+const consoleHtml = readConsoleTestSource();
 const selfReviewScript = fs.readFileSync(path.join(ROOT, 'scripts', 'self-review.mjs'), 'utf8');
 const pluginDir = path.join(ROOT, 'plugins', 'qq-components', 'obs-self-review');
 

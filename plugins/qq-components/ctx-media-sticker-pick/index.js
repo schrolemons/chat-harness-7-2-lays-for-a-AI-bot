@@ -5,7 +5,7 @@ import { pickStickers } from '../../../src/sticker-picker.js';
 import { planReplyShape } from '../../../src/reply-shape.js';
 import { createTurnPolicy } from '../schnie-core/turn-policy.mjs';
 
-const NON_CHAT_REASONS = /^(selfReview|selfOptimize|memoryWrite|timeBubble|startupGreeting|reminder|newFriend|newsShare|careCheck|idleRescue|proactiveCheck|replyCheck)/;
+const NON_CHAT_REASONS = /^(selfReview|selfOptimize|userFeedbackReview|memoryWrite|timeBubble|startupGreeting|reminder|newFriend|newsShare|careCheck|idleRescue|proactiveCheck|replyCheck)/;
 
 export function createPlugin(ctx) {
   const phi = createTurnPolicy(ctx);
@@ -18,13 +18,7 @@ export function createPlugin(ctx) {
         if (payload?.stickerAllowed === false) return '';
         const entries = Array.isArray(payload?.stickerEntries) ? payload.stickerEntries : [];
         if (!entries.length) return '';
-        const shape = planReplyShape({
-          state: payload?.st,
-          incomingText: payload?.incomingText || '',
-          mood: payload?.mood,
-          moodLowThreshold: payload?.moodLowThreshold,
-          config: payload?.replyShapeConfig || {}
-        });
+        const shape = payload?.replyPlan || {kind:'serious'};
         const pick = pickStickers({
           entries,
           incomingText: payload?.incomingText || '',

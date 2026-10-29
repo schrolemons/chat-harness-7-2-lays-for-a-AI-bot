@@ -3,6 +3,18 @@
 
 export function createPlugin(ctx) {
   const cfg = ctx.config || {};
+  const clean = (value, max = 100) => String(value || '').replace(/[\r\n]/g, ' ').trim().slice(0, max);
+  const personalContext = (key, supplied) => {
+    const data = supplied || ctx.capabilities?.getTimeBubbleContext?.(String(key || '')) || {};
+    return { displayName: clean(data.displayName, 20), confirmedRoutine: clean(data.confirmedRoutine, 100),
+      context: clean(data.context, 200), mood: data.mood || {} };
+  };
+  const directText = (key, label, count, supplied) => {
+    const data = personalContext(key, supplied), name = data.displayName ? `${data.displayName}，` : '', when = clean(label, 20) || '这个时间点';
+    const detail = data.confirmedRoutine ? `你安排的${data.confirmedRoutine}` : `${when}这会儿的安排`;
+    const variants = [ `${name}${when}到了，${detail}还顺利吗？`, `${name}到${when}啦，${detail}今天想照常来，还是换个轻松点的节奏？`, `${name}${when}来打个招呼，${detail}进行得怎么样？` ];
+    return variants[count % variants.length];
+  };
   const activeSession = (key) => {
     const current = ctx.runtime?.bubbleSession;
     return current?.key === String(key || '') && Date.now() - Number(current.at) < 20 * 60000;
@@ -34,6 +46,15 @@ export function createPlugin(ctx) {
     return {state,today,count:entry.day===today ? Number(entry.count)||0 : 0,max:Number.isFinite(configured) ? Math.max(0, Math.round(configured)) : 3};
   };
   return {
+    services: { timeBubble: { releaseDirect({ key } = {}) {
+      const { state, today, count } = quota(key);
+      ctx.state.set({ byKey: { ...(state.byKey || {}), [String(key)]: { day: today, count: Math.max(0, count - 1) } } });
+    }, prepareDirect({ key, label, context } = {}) {
+      const { state, today, count, max } = quota(key);
+      if (count >= max) return '';
+      ctx.state.set({ byKey: { ...(state.byKey || {}), [String(key)]: { day: today, count: count + 1 } } });
+      return directText(key, label, count, context);
+    } } },
     canWake(p={}) {const q=quota(p.key);return q.count<q.max;},
     hooks: {
       beforePrompt(payload) {
@@ -51,6 +72,7 @@ export function createPlugin(ctx) {
         const label = String(tb.label || '这个时间点').slice(0, 20);
         const hint = String(tb.hint || '').slice(0, 60);
         const where = String(payload?.key || '').startsWith('group:') ? '群里' : '私聊里';
+        const personal = personalContext(payload.key, payload.timeBubbleContext);
         // 每天最多几条（插件自己的状态里记）
         const {state,today,count,max}=quota(payload.key);
         if(count>=max)return '';
@@ -58,9 +80,11 @@ export function createPlugin(ctx) {
         if(Object.keys(byKey).length>200)delete byKey[Object.keys(byKey)[0]];
         ctx.state.set({byKey});
         return [
-          `【本轮时间冒泡｜${label}】现在到了${label}${hint ? '（' + hint + '）' : ''}。`,
-          `你在主动开口，不是在回复谁：直接${where}发一句自然的时间梗冒泡（举个例：唔，天亮了呀 / 该喝牛奶啦 / 好困哦，该睡了）。`,
-          '要求：换个说法别每次一样；不要接旧话题，不要用“你刚才/你按/你说”这种接话句式；1 条就够，轻松场合可配 1 张表情。'
+          `【本轮时间冒泡｜${label}】现在到了${label}。${hint ? `创作要求（不得照抄）：${hint}。` : ''}`,
+          `当前QQ本人资料：${personal.displayName || '未提供称呼'}；已确认作息：${personal.confirmedRoutine || '未提供，不猜测'}；近期上下文：${personal.context || '使用本轮已有真实上下文，不伪造刚发生的事'}。`,
+          personal.mood.styleInstruction ? `当前形态「${clean(personal.mood.modeName, 30)}」：${clean(personal.mood.styleInstruction, 200)}` : '',
+          `你在主动开口：直接在${where}围绕本人资料、当前时段和一个具体切入点组织自然短句，给一个容易接的话口。不要暴露别人的私聊档案，不随意联网搜索，不照抄hint或套固定饮食例句。`,
+          '换个自然说法，不假称用户刚刚说过旧内容；实际条数和风格服从本轮统一发送计划。日程提醒优先，不抢占目的事件。'
         ].join('\n');
       }
     }

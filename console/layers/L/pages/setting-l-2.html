@@ -1,0 +1,93 @@
+<section id="section-setting-l-2" data-page="setting-l-2" class="card span-all commercial-component" hidden>
+<h2>主动行为</h2>
+<details class="settings-group" open><summary><span class="layer-tag" data-layer="L">L</span>定时主动消息（timeBubbles：按会话配置时段）</summary><div class="settings-content">
+      <p class="parameter-scope"><b>此会话时段</b> · 只保存选中会话的时段与锁定状态；全局数量上限单独保存。</p>
+      <div class="row">
+        <div class="setting-field"><label for="v2TbKey">会话 key</label><select id="v2TbKey" style="flex:1"><option value="">（先刷新排程）</option></select><small class="parameter-example" data-example-for="v2TbKey">例：选择一个会话：只编辑这个会话的时间冒泡，切换会话不会复制排程。</small></div>
+        <button id="v2TbLoad" class="small">加载该会话</button>
+        <button id="v2TbSave" class="small primary" data-save-action>保存此会话时段</button>
+        <button id="v2TbReset" class="small danger">清空时段</button>
+      </div>
+      <span class="meta" id="v2TbMsg"></span>
+      <div class="row"><label style="flex:1"><input id="v2TbAllLocked" type="checkbox" style="width:auto"> 锁定此会话全部时段</label><span class="meta">锁定后鲸鱼和控制台均不能改时段；取消勾选即可解锁。</span></div>
+      <div id="v2TimeBubbleRows"></div>
+      <div class="row" style="margin-top:6px">
+        <button id="v2TimeBubbleAdd" class="small">+ 添加时段</button>
+        <span class="meta">每个会话独立配置；列表为空或没有配置时，不发送时间冒泡。添加时段即开始按时提醒。</span>
+      </div>
+      <div class="meta" id="v2TbCapacityMsg" aria-live="polite"></div>
+      </div></details>
+<details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>话题跟进（全局策略与私聊 session 限制）</summary><div class="settings-content">
+      <div id="v2FollowupGlobalAnchor"></div>
+      <div id="v2FollowupSessionEditor" class="followup-session-editor">
+        <div class="followup-session-heading"><b>单独设置私聊会话限制</b><span class="meta">选择目标私聊后，可设置更严格的跟进频率；留空继承全局值，最终采用全局与单会话限制中较严格的一项。</span></div>
+        <div class="followup-session-controls">
+          <div class="followup-session-field"><div class="setting-field"><label for="v2FollowupSessionKey">目标私聊会话</label><select id="v2FollowupSessionKey"><option value="">（先刷新会话）</option></select><small class="parameter-example" data-example-for="v2FollowupSessionKey">例：选择private:10001：编辑这位好友的私聊跟进限制。</small></div></div>
+          <button id="v2FollowupSessionRefresh" class="small">刷新会话</button>
+          <div class="followup-session-field"><div class="setting-field"><label for="v2TbFollowupInterval">最小间隔（分钟）</label><input type="number" id="v2TbFollowupInterval" min="0" max="10080" placeholder="继承全局"><small class="parameter-example" data-example-for="v2TbFollowupInterval">例：设为90：该私聊跟进至少间隔90分钟；若全局要求更久则取更久值。</small></div></div>
+          <div class="followup-session-field"><div class="setting-field"><label for="v2TbFollowupDaily">每日上限（次）</label><input type="number" id="v2TbFollowupDaily" min="0" max="30" placeholder="继承全局"><small class="parameter-example" data-example-for="v2TbFollowupDaily">例：设为1：这位好友每天最多跟进1次；不能通过局部值放宽全局上限。</small></div></div>
+          <button class="small primary" id="v2TbFollowupSave" data-save-action>保存此私聊跟进限制</button>
+        </div>
+        <span class="meta" id="v2TbFollowupMsg"></span>
+      </div>
+      </div></details>
+<details class="settings-group"><summary>每日 B 站推荐</summary><div class="settings-content">
+      <div class="row">
+        <div class="setting-field"><label for="v2NewsEnabled">每日 B 站推荐</label><input type="checkbox" id="v2NewsEnabled" style="width:auto"><small class="parameter-example" data-example-for="v2NewsEnabled">例：开启后按推荐计划寻找并分享视频；不是每次随机主动都强塞一条推荐。</small></div>
+      </div>
+      <div class="row v2-news-time-row">
+        <div class="v2-news-time-field">
+          <label for="v2NewsHour">时间</label>
+          <div class="v2-news-time-inputs">
+            <input type="number" id="v2NewsHour" min="0" max="23" aria-label="小时">
+            <span aria-hidden="true">:</span>
+            <input type="number" id="v2NewsMinute" min="0" max="59" aria-label="分钟">
+          </div>
+        </div>
+        <div class="v2-news-count-field">
+          <div class="setting-field"><label for="v2NewsMax">条数</label><input type="number" id="v2NewsMax" min="1" max="5"><small class="parameter-example" data-example-for="v2NewsMax">例：设为2：一次最多选择2个有可核实元数据的视频候选。</small></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2NewsKeywords">推荐主题关键词</label><textarea id="v2NewsKeywords" rows="3" maxlength="600" style="flex:1;min-width:260px" placeholder="每行一个主题，基础权重 1，例如：鲸鱼、海洋纪录片、少年成长"></textarea><small class="parameter-example" data-example-for="v2NewsKeywords">例：每行写一个主题：搜索视频时优先围绕这些方向，不代表把关键词原样发到QQ。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2NewsUploaders">主题关联 UP 主（权重）</label><textarea id="v2NewsUploaders" rows="2" maxlength="3000" style="flex:1;min-width:260px" placeholder="主题 | UP 主 | 权重，例如：鲸鱼 | 示例海洋记录员 | 2"></textarea><small class="parameter-example" data-example-for="v2NewsUploaders">例：填“主题|UP主|权重”：在相应主题中调整候选偏好，不等于保证找到或推荐。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2NewsSessions">支持传达的 session 白名单</label><textarea id="v2NewsSessions" rows="3" maxlength="3000" style="flex:1;min-width:260px" placeholder="每行一个：group:群号 或 private:QQ号"></textarea><small class="parameter-example" data-example-for="v2NewsSessions">例：只填private:10001：每日推荐仅考虑此允许会话，不扩散到全部群。</small></div>
+      </div>
+      <div class="meta">抽样规则：主题权重 = 基础权重 1 + 该主题关联 UP 权重总和；主题概率 = 该主题权重 / 全部主题权重之和。选中主题后，关联 UP 的抽中概率 = 该 UP 权重 /（基础权重 1 + 同主题关联 UP 权重总和）；抽中基础权重时搜索新的 UP 主。</div>
+      <div class="meta">视频规则：抽中关联 UP 后先按“主题 + UP 名”搜索；若找到与主题相关且信息可核实的视频，推荐中至少包含 1 条该 UP 视频。只有定向搜索没有合格结果时，才全部用其他 UP 补足；其余条数仍可选名单外更热门、更有意思或更贴题的视频。抽中基础权重时广泛搜索新 UP 主。</div>
+      <div class="meta">session 白名单支持 group:群号 和 private:QQ号。每条推荐按 URL 或 BV 号、视频内容介绍、主观感受三项发送；信息不全时不编造。</div>
+
+      <div class="row"><button class="small primary v2-save" type="button" data-save-action>保存全局每日推荐规则</button><span class="meta v2-save-msg" role="status"></span></div>
+</div></details>
+<details class="settings-group" open><summary><span class="layer-tag" data-layer="L">L</span>日程提醒与排程总览（讲座/考试/课程等）</summary><div class="settings-content">
+      <div class="row" id="v2ScheduleComponentSettings">
+        <button id="v2ScheduleRefresh" class="small">刷新排程</button>
+        <span class="meta" id="v2ScheduleMsg">读取中…</span>
+      </div>
+      <div id="v2ScheduleList" class="schedule-list">（空）</div>
+      <div class="row" style="margin-top:8px">
+        <div class="setting-field"><label for="v2ReminderKey">会话 key</label><select id="v2ReminderKey" style="flex:1"><option value="">（先刷新排程）</option></select><small class="parameter-example" data-example-for="v2ReminderKey">例：选择private:10001：这个日程只属于当前私聊，不会向群转发。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2ReminderDate">日期</label><input type="date" id="v2ReminderDate" style="flex:1"><small class="parameter-example" data-example-for="v2ReminderDate">例：选2030-01-02：与下面时间组合成日程发生时间，不是创建日期。</small></div>
+        <div class="setting-field"><label for="v2ReminderTime">时间</label><input type="time" id="v2ReminderTime" style="flex:1"><small class="parameter-example" data-example-for="v2ReminderTime">例：填09:00：在选定日期的9点发生，提醒提前量另设。</small></div>
+        <div class="setting-field"><label for="v2ReminderRepeat">重复</label><select id="v2ReminderRepeat" style="flex:1"><option value="无">无</option><option value="每天">每天</option><option value="每周">每周</option></select><small class="parameter-example" data-example-for="v2ReminderRepeat">例：选每天：保留重复规则；选不重复则是单次日程。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2ReminderLead">提醒开始提前(分)</label><input type="number" id="v2ReminderLead" min="0" max="1440" step="1" placeholder="默认 30" style="flex:0 0 130px"><small class="parameter-example" data-example-for="v2ReminderLead">例：设为10：可从事件前10分钟开始提醒，而不是修改事件本身的时间。</small></div>
+        <div class="setting-field"><label for="v2ReminderInterval">间歇周期(分)</label><input type="number" id="v2ReminderInterval" min="1" max="1440" step="1" placeholder="默认 30" style="flex:0 0 130px"><small class="parameter-example" data-example-for="v2ReminderInterval">例：设为15：未明确完成时按15分钟间隔重复提醒，仍受暂停与有效期规则约束。</small></div>
+        <span class="meta" style="flex:1">到提醒开始时间后，按间歇周期反复提醒；只有明确说“我已经去做这事了”才停止。范围分别为 0–1440 和 1–1440 分钟。</span>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2ReminderText">内容</label><input type="text" id="v2ReminderText" placeholder="讲座：大模型推理优化（线上腾讯会议）" style="flex:1"><small class="parameter-example" data-example-for="v2ReminderText">例：写“带上实验记录本”：提醒时携带这段具体事项，不用把整张人物档案发出去。</small></div>
+        <button id="v2ReminderAdd" class="small primary" data-save-action>添加到此会话</button>
+      </div>
+      <div class="meta schedule-help">日程通过 <code>qq_schedule</code> 登记和管理，按会话独立保存。从提醒开始时间起按间歇周期反复提醒，直到用户明确说“我已经去做这事了”；“知道了”“谢谢”等不算完成。卡片可修改开始提前量和间歇周期，也可确认完成或删除。</div>
+      </div></details>
+<details class="settings-group"><summary>开机起床问候</summary><div class="settings-content"><div data-component-slot="life-proactive-startup-greeting"></div></div></details>
+
+</section>

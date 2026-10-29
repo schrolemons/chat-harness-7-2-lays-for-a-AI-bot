@@ -1,0 +1,11 @@
+<section id="section-dsh" data-page="overview" class="card span-all">
+      <h2 data-note="DSH 全局默认值">DSH 模型与思考强度</h2>
+      <p class="parameter-scope"><b>DSH 全局默认</b> · 影响 DSH 新建会话的默认值；小鲸鱼的每次请求仍服从调用档位与成本策略。</p>
+      <div class="meta">模型：<span id="dshModelText">-</span> ｜ 提供方：<span id="dshProviderText">-</span></div>
+      <div class="row" style="margin-top:10px">
+        <div class="setting-field dsh-effort-field"><label style="flex:0 0 auto" for="dshEffortSelect">思考强度</label><div class="form-control-row"><select id="dshEffortSelect" style="flex:0 1 220px"></select><button id="dshEffortSave" class="primary" data-save-action>保存 DSH 全局默认</button><span class="meta" id="dshEffortMsg"></span></div><small class="parameter-example" data-example-for="dshEffortSelect">例：选low并保存：写入DSH全局默认档位；小鲸鱼的实际请求仍服从成本策略。</small></div>
+      </div>
+      <div class="meta" id="dshEffortNote"></div>
+      <div class="meta" id="dshEffortSideEffect"></div>
+    <p class="meta">小鲸鱼实际请求还受“令牌与花费 → 调用档位与成本策略”控制；这里修改DSH全局默认，不等于强制覆盖bot每一轮的路由。</p>
+</section>

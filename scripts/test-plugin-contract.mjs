@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createPluginHost} from '../src/plugin-host.js';
-import { bridgeHarness } from './audit-bridge-harness.mjs';
 const temp=()=>fs.mkdtempSync(path.join(os.tmpdir(),'plugin-contract-'));
 function fixture(root,id,code,extra={},user=false){const d=path.join(root,'plugins',user?'qq-components-user':'qq-components',id);fs.mkdirSync(d,{recursive:true});fs.writeFileSync(path.join(d,'plugin.json'),JSON.stringify({id,main:'index.mjs',...extra}));fs.writeFileSync(path.join(d,'index.mjs'),code);fs.writeFileSync(path.join(d,'skill.md'),'fixture');}
 async function using(fn){const root=temp();try{await fn(root);}finally{fs.rmSync(root,{recursive:true,force:true});}}
@@ -51,17 +50,13 @@ test('hanging factory and dispose time out so neighbors and later reload survive
  fixture(root,'good',`export function createPlugin(){return {dispose(){return new Promise(()=>{})},hooks:{beforePrompt(){return 'good'}}}}`);
  const h=createPluginHost({root,lifecycleTimeoutMs:25});await h.loadAll();assert.deepEqual(h.collectPromptBlocks({}),['good']);await h.reload();assert.deepEqual(h.collectPromptBlocks({}),['good']);await h.dispose();
 }));
-test('bridge builds real prompt blocks before bootstrap/normal delivery', async () => {
- const h = await bridgeHarness();
- try {
-  const calls = [];
-  const collect = h.pluginHost.collectPromptBlocks.bind(h.pluginHost);
-  h.pluginHost.collectPromptBlocks = payload => { calls.push(payload); return [...collect(payload), 'REAL_PLUGIN_BLOCK']; };
-  assert.ok(h.buildWakePromptV2('private:123', 'bootstrap').includes('REAL_PLUGIN_BLOCK'));
-  assert.equal(calls.at(-1).reason, 'bootstrap');
-  assert.ok(h.buildWakePromptV2('private:123', 'message').includes('REAL_PLUGIN_BLOCK'));
-  assert.equal(calls.at(-1).reason, 'message');
-  assert.equal(calls.at(-1).key, 'private:123');
-  assert.equal(calls.at(-1).initialPromptText, '');
- } finally { await h.close(); }
+test('bridge builds real prompt blocks before bootstrap/normal delivery',()=>{
+ const code=fs.readFileSync(new URL('../src/bridge.js',import.meta.url),'utf8');
+ const start=code.indexOf('  function buildWakePromptV2('),end=code.indexOf('\n  function buildWakeReminderPromptV2',start);
+ const fn=code.slice(start,end);
+ // Compile the actual production function with controlled boundary dependencies, no bridge launch.
+ const make=new Function('deps',`with(deps){${fn};return buildWakePromptV2;}`);
+ const calls=[],assemblyErrors=[];let state={unread:[],recentMessages:[],agentToken:'fixture-token'};
+ const deps={receiptWindowCountV2:()=>5,v2ToolEnabled:()=>true,resolveShareConfig:()=>({}),pickVideos:()=>[],modelFacingStateV2:()=>state,modelStateViewV2:state=>state,log(message){assemblyErrors.push(message)},stickerEntries:[],readRoleState:()=>({role:'fixture'}),getSocialV2State:()=>state,cfg:{socialV2:{}},replyTimingV2:()=>({}),isDirectedAtAi:()=>false,isAdminDevKey:()=>false,readPersistMemoryV2:()=>({}),readTaskNotesV2:()=>'',formatInitialPromptV2:()=> 'BOOT',lastIncomingTextV2:()=>'',pluginHost:{callService:()=>'',get:()=>({config:{}}),collectPromptBlocks(p){calls.push(p);return ['REAL_PLUGIN_BLOCK']},collectWakeTails:()=> 'TAIL'},selfDisplayName:'fish',selfUserId:'1',wakeReasonSeq:()=>null};
+ const build=make(deps);assert.ok(build('private:1','bootstrap').includes('REAL_PLUGIN_BLOCK'));assert.equal(calls[0].initialPromptText,'BOOT');assert.ok(build('private:1','message').includes('REAL_PLUGIN_BLOCK'));assert.equal(calls[1].initialPromptText,'');assert.deepEqual(assemblyErrors,[],'actual prompt assembly must not silently swallow missing boundary dependencies');
 });

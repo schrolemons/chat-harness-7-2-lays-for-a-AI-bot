@@ -6,7 +6,13 @@ test('session followup controls cannot exceed global interval or daily cap', () 
   assert.deepEqual(effectiveFollowupLimits(
     { minIntervalMinutes: 120, dailyLimit: 3 },
     { minIntervalMinutes: 240, dailyLimit: 1 }
-  ), { minIntervalMinutes: 120, dailyLimit: 1 });
+  ), { minIntervalMinutes: 240, dailyLimit: 1 });
+});
+
+test('shorter session interval cannot relax the global followup wait', () => {
+  const limits = effectiveFollowupLimits({ minIntervalMinutes: 240, dailyLimit: 3 }, { minIntervalMinutes: 5, dailyLimit: 9 });
+  assert.equal(isFollowupAllowed({ limits, lastSentAt: 1000, sentToday: 0, now: 1000 + 10 * 60000 }), false);
+  assert.deepEqual(limits, { minIntervalMinutes: 240, dailyLimit: 3 });
 });
 
 test('followup policy blocks when either effective interval or daily limit is reached', () => {

@@ -1,14 +1,152 @@
 {
   "id": "ctx-user-mood",
-  "name": "分用户心情记录",
-  "version": "0.1.0",
-  "description": "记录小鲸鱼对各群成员的心情变化；会话总心情仍由既有规则计算。",
+  "name": "心情管理",
+  "version": "0.2.0",
+  "description": "统一保存会话心情、每日首次恢复与主动未答账本，保留分用户观察；心情不随时间回升。",
   "category": "上下文与记忆",
   "layer": "C",
   "order": 21,
-  "tags": ["心情", "用户", "实时状态"],
+  "tags": [
+    "心情",
+    "用户",
+    "实时状态"
+  ],
   "main": "index.js",
   "enabled": true,
-  "hooks": [],
-  "config": {}
+  "hooks": [
+    "onTick"
+  ],
+  "schedule": {
+    "everyMs": 60000
+  },
+  "config": {
+    "enabled": true,
+    "initial": 60,
+    "noReplyAfterMinutes": 20,
+    "modeThreshold": 40,
+    "normalName": "正太",
+    "criticalName": "AI",
+    "normalStyle": "可爱、调皮、呆萌，随心情下降收敛",
+    "criticalStyle": "克制、沉浸、偏哲思的AI口吻",
+    "maxAdjustment": 20,
+    "burstEnabled": true,
+    "recoverMinutes": 20,
+    "positiveRules": [
+      {
+        "id": "friendly-greeting",
+        "label": "友好招呼",
+        "delta": 3,
+        "description": "对方主动友好地打招呼。"
+      },
+      {
+        "id": "engaged-response",
+        "label": "认真回应/分享",
+        "delta": 5,
+        "description": "对方认真回应当前话题或分享有内容的经历。"
+      },
+      {
+        "id": "praise-care",
+        "label": "称赞关心",
+        "delta": 5,
+        "description": "对方明确表达称赞、善意或关心。"
+      }
+    ],
+    "negativeRules": [
+      {
+        "id": "explicit-annoyance",
+        "label": "明确嫌烦",
+        "delta": -5,
+        "description": "对方明确表示当前互动使其感到烦扰，应尊重并收敛。"
+      },
+      {
+        "id": "insult-offense",
+        "label": "辱骂冒犯",
+        "delta": -10,
+        "description": "对方明确辱骂或冒犯，判断须结合语境。"
+      },
+      {
+        "id": "ignored-boundary",
+        "label": "忽视明确边界",
+        "delta": -5,
+        "description": "对方忽视已经明确表达的互动边界。"
+      }
+    ]
+  },
+  "configSchema": {
+    "enabled": {
+      "type": "boolean",
+      "label": "启用心情",
+      "example": "关闭后不再按心情调整聊天形态与频率；账户额度等独立限制仍然有效。"
+    },
+    "initial": {
+      "type": "number",
+      "min": 0,
+      "max": 100,
+      "label": "初始心情",
+      "example": "新会话初始设为60时，从60分开始；不会每小时自动回到60。"
+    },
+    "noReplyAfterMinutes": {
+      "type": "number",
+      "min": 1,
+      "max": 1440,
+      "label": "主动消息等待回应（分钟）",
+      "example": "设为20：一次主动回合发出后20分钟无人有效回应，只结算一次扣10分。"
+    },
+    "modeThreshold": {
+      "type": "number",
+      "min": 0,
+      "max": 100,
+      "label": "普通与临界形态阈值",
+      "example": "设为40：40分及以上使用普通形态，39分及以下切到临界形态。"
+    },
+    "normalName": {
+      "type": "string",
+      "label": "普通形态名称",
+      "example": "填“正太”：达到形态阈值时，以正太形态提供表达指引。"
+    },
+    "criticalName": {
+      "type": "string",
+      "label": "临界形态名称",
+      "example": "填“AI”：低于形态阈值时，以AI形态提供表达指引。"
+    },
+    "normalStyle": {
+      "type": "string",
+      "label": "普通形态风格",
+      "example": "填“呆萌、调皮但不刷屏”：普通形态按此描述表达，并结合真实对话收敛。"
+    },
+    "criticalStyle": {
+      "type": "string",
+      "label": "临界形态风格",
+      "example": "填“克制、沉浸、哲思”：临界形态不再沿用固定卖萌话术。"
+    },
+    "maxAdjustment": {
+      "type": "number",
+      "min": 1,
+      "max": 100,
+      "label": "AI自主单次调整上限",
+      "example": "设为20：AI单次add或dec不能超过20分，重复调用也受事件规则约束。"
+    },
+    "burstEnabled": {
+      "type": "boolean",
+      "label": "被叫回来时欢迎爆发",
+      "example": "开启后，从静默中被叫回来时可触发一次欢迎；仍受唯一发送计划限制。"
+    },
+    "recoverMinutes": {
+      "type": "number",
+      "min": 0,
+      "max": 1440,
+      "label": "欢迎爆发冷却（分钟，0为无冷却）",
+      "example": "设为20：欢迎触发后20分钟内不会再次触发；不代表每20分钟恢复心情。"
+    },
+    "positiveRules": {
+      "type": "array",
+      "label": "升分行为规则",
+      "example": "“认真回应”设为+5：AI结合语境确认符合该行为后，按规则调整心情。"
+    },
+    "negativeRules": {
+      "type": "array",
+      "label": "降分行为规则",
+      "example": "“明确嫌烦”设为−5：结合语境确认后降5分；不是看到关键词就机械扣分。"
+    }
+  }
 }

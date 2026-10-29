@@ -1,0 +1,100 @@
+<section id="section-setting-l-0" data-page="setting-l-0" class="card span-all commercial-component" hidden>
+<h2>生命周期组件</h2>
+<div class="row"><span id="v2ActivityStatus" class="meta">读取中…</span><button id="v2PauseBtn" type="button">暂停二代 bot</button><button id="v2ResumeBtn" type="button">恢复二代 bot</button><button id="v2ResetBtn" type="button">重置会话状态</button><span id="lifecycleActionMessage" class="meta" role="status"></span></div>
+<div class="meta">全局暂停二代 bot 的自动唤醒与发送，普通回复、日程提醒和自动通知也会暂停；不会清空会话资料。</div>
+<p class="meta">这里控制有新来信时的唤醒与回合收尾；无人来信时的阶段概率主动统一在“发送与等待”设置。</p>
+<details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>来信唤醒偏好（推荐值）</summary><div class="settings-content">
+      <div class="row">
+        <div class="setting-field"><label for="v2WakeDefaultMode">默认模式</label><select id="v2WakeDefaultMode" style="width:120px"><option value="diving">潜水</option><option value="active">活跃</option></select><small class="parameter-example" data-example-for="v2WakeDefaultMode">例：选潜水：默认按已开启触发条件判断来信；静默主动仍由“发送与等待”独立安排。</small></div>
+        <div class="setting-field"><label for="v2RecDefaultInfinite">不设置固定到点唤醒</label><input type="checkbox" id="v2RecDefaultInfinite" style="width:auto"><small class="parameter-example" data-example-for="v2RecDefaultInfinite">例：勾选后默认不设固定到点唤醒；不会关闭逐阶段静默主动机会。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2RecSleepMin">推荐潜水时长（分）</label><div class="setting-range"><input type="number" id="v2RecSleepMin" min="1" style="width:80px"> ~
+        <input type="number" id="v2RecSleepMax" min="1" style="width:80px"></div><small class="parameter-example" data-example-for="v2RecSleepMin">例：填5至30：有限潜水时参考5到30分钟，仍受硬性最小/最大潜水约束。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2RecProb">有新消息时的唤醒概率</label><input type="number" id="v2RecProb" step="0.05" min="0" max="1" style="width:80px"><small class="parameter-example" data-example-for="v2RecProb">例：设为0.15：有普通新消息时以15%参考概率判断唤醒；不是静默后主动概率。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2RecKeywords">推荐关键词（逗号分隔）</label><input type="text" id="v2RecKeywords" placeholder="小鲸鱼, DeepSeek" style="flex:1"><small class="parameter-example" data-example-for="v2RecKeywords">例：填“小鲸鱼,报告”：这些词可作为来信唤醒线索，不用于定时主动抽签。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2RecAt">推荐 @ 唤醒</label><input type="checkbox" id="v2RecAt" style="width:auto"><small class="parameter-example" data-example-for="v2RecAt">例：开启后推荐将明确@bot的消息作为唤醒条件，不等于每条群消息都唤醒。</small></div>
+        <div class="setting-field"><label for="v2RecName">推荐名字唤醒</label><input type="checkbox" id="v2RecName" style="width:auto"><small class="parameter-example" data-example-for="v2RecName">例：开启后，来信明确叫bot名字时可触发相应唤醒条件。</small></div>
+        <div class="setting-field"><label for="v2RecQuestion">推荐提问唤醒</label><input type="checkbox" id="v2RecQuestion" style="width:auto"><small class="parameter-example" data-example-for="v2RecQuestion">例：开启后，将符合提问规则的来信纳入唤醒条件，不把所有问号都当成找bot。</small></div>
+        <div class="setting-field"><label for="v2RecPoke">推荐拍一拍唤醒</label><input type="checkbox" id="v2RecPoke" style="width:auto"><small class="parameter-example" data-example-for="v2RecPoke">例：开启后拍一拍可参与唤醒判断，是否回应仍结合实际对象。</small></div>
+      </div>
+      <div class="setting-field"><label for="v2WakeHint">唤醒补充偏好（给 AI 看的文字）</label><textarea aria-description="具体时间和概率由当前参数自动生成；这里只写额外偏好，不重复固定数字" id="v2WakeHint" rows="2" placeholder="例如：如果你在潜水，推荐 5~120 分钟、普通消息概率 0.05…"></textarea><small class="parameter-example" data-example-for="v2WakeHint">例：写“有人明确叫我时优先接话”：补充表达偏好；具体时间与概率由当前参数生成。</small></div>
+
+      </div></details>
+<details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>唤醒频率与收尾限制</summary><div class="settings-content">
+      <div class="row">
+        <div class="setting-field"><label for="v2SleepMinMs">最小潜水（秒）</label><input type="number" id="v2SleepMinMs" min="0" style="width:90px"><small class="parameter-example" data-example-for="v2SleepMinMs">例：设为60：有限潜水至少60秒，界面单位是秒，保存时才换算毫秒。</small></div>
+        <div class="setting-field"><label for="v2SleepMaxMs">最大潜水（秒，0=不限）</label><input type="number" id="v2SleepMaxMs" min="0" style="width:90px"><small class="parameter-example" data-example-for="v2SleepMaxMs">例：设为600：有限潜水最多10分钟；0表示不设置这个硬上限。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2MaxWakeMin">每分钟最多唤醒</label><input type="number" id="v2MaxWakeMin" min="0" style="width:90px"><small class="parameter-example" data-example-for="v2MaxWakeMin">例：设为2：一分钟最多进入2次唤醒处理；超限延后重试，不丢未读。</small></div>
+        <div class="setting-field"><label for="v2MaxWakeHour">每小时最多唤醒</label><input type="number" id="v2MaxWakeHour" min="0" style="width:90px"><small class="parameter-example" data-example-for="v2MaxWakeHour">例：设为30：一小时最多进入30次唤醒处理；私聊与群聊遵循同一限频配置。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2BatchWindowMs">合并窗口（毫秒）</label><input type="number" id="v2BatchWindowMs" min="1000" step="500" style="width:100px"><small class="parameter-example" data-example-for="v2BatchWindowMs">例：设为2500：普通触发在2.5秒窗口内合并；明确找bot的来信使用更短的响应合并。</small></div>
+        <div class="setting-field"><label for="v2NoActionLimit">无行动兜底次数</label><input type="number" id="v2NoActionLimit" min="1" style="width:80px"><small class="parameter-example" data-example-for="v2NoActionLimit">例：设为3：连续3次唤醒既未发言也无有效动作时，重置卡住的唤醒配置。</small></div>
+        <div class="setting-field"><label for="v2MaxWakeConfigReminders">唤醒收尾提醒次数</label><input type="number" id="v2MaxWakeConfigReminders" min="1" style="width:80px"><small class="parameter-example" data-example-for="v2MaxWakeConfigReminders">例：设为2：模型忘记设置回合收尾时，按此次数边界限制继续追问，不无限唤醒。</small></div>
+      </div>
+      <div class="row">
+        <div class="setting-field"><label for="v2PreSleepWaitEnabled">启用沉睡前强制等待</label><input type="checkbox" id="v2PreSleepWaitEnabled" style="width:auto"><small class="parameter-example" data-example-for="v2PreSleepWaitEnabled">例：关闭后不要求完整沉睡前观察；回复前的短静默规则仍独立生效。</small></div>
+        <div class="setting-field"><label for="v2PreSleepWaitMin">沉睡前强制等待（分）</label><input type="number" id="v2PreSleepWaitMin" min="0" step="1" style="width:80px"><small class="parameter-example" data-example-for="v2PreSleepWaitMin">例：设为5：决定潜水前观察5分钟；这不是每次回复用户之前先等5分钟。</small></div>
+        <span class="meta" style="flex:2">AI 设置潜水/下一次唤醒前，默认必须先等够这个观察窗口；0 表示不限制。</span>
+      </div>
+
+      </div></details>
+<details class="settings-group">
+        <summary><span class="layer-tag" data-layer="L">L</span>模型思考期间的等待与补话</summary>
+        <div class="settings-content">
+          <div class="meta">四组分别控制启用状态、激活延迟和固定话术表；延迟从最新完整用户消息收到时起算。新消息作废旧轮；正式回复在实际发送前取消两个计时器，排队和思考不取消。</div>
+          <div id="messageAckComponentRoot"><div class="meta">正在读取组件设置…</div></div>
+        </div>
+      </details>
+<details class="settings-group" open>
+        <summary><span class="layer-tag" data-layer="L">L</span>免打扰时段（按会话，只读）</summary>
+        <div class="settings-content">
+          <div class="meta">来自 life-user-availability 组件：AI 自己分析用户的时间意愿后，用 qq_availability 登记（每天多时段 / 一次性免打扰 / 稍后联系 / 无限期）；这里只读展示当前计划，时间按 Asia/Shanghai 显示。</div>
+          <div class="row" style="gap:8px;margin:8px 0"><button id="availabilityRefresh" class="small">刷新</button><span class="meta" id="availabilityStatus"></span></div>
+          <div id="availabilityRoot"><div class="meta">加载中…</div></div>
+        </div>
+      </details>
+<details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>已读/已回复双时间戳（重启不重刷、不漏条）</summary><div class="settings-content">
+      <div class="row">
+        <input type="text" id="v2ReceiptKey" placeholder="group:60000" style="flex:1">
+        <button id="v2ReceiptLoad" class="small">查看双戳状态</button>
+        <span class="meta" id="v2ReceiptMsg"></span>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div class="setting-field"><label for="v2DoubleStampEnabled">启用新消息前双戳回查</label><input type="checkbox" id="v2DoubleStampEnabled" style="width:auto"><small class="parameter-example" data-example-for="v2DoubleStampEnabled">例：开启后，新消息会回查此前窗口内的已读与已回复状态，避免漏答或误标。</small></div>
+        <div class="setting-field"><label for="v2DoubleStampWindowCount">向前回查条数</label><input type="number" id="v2DoubleStampWindowCount" min="1" max="100" step="1" style="width:90px"><small class="parameter-example" data-example-for="v2DoubleStampWindowCount">例：设为8：检查当前来信之前最近8条，再加上当前消息；单位是条，不是秒。</small></div>
+      </div>
+      <div class="meta">每条新消息到达时，检查它之前最近 A 条入站消息，并把当前新消息一并放入处理窗口。seenAt 只在消息交给模型后写入；回复成功后模型必须用 qq_report_message_receipts 逐条提交 JSON，Harness 验证并立即更新 repliedAt。相似消息可合并回复，但状态仍逐条回报；异常状态须提交 anomaly，由 Harness 记录并上报。</div>
+      <div class="meta">窗口配置按消息条数计（1–100，默认 8），不按秒数计。两戳齐全＝已处理；只有 seenAt＝先前看过但尚未完成；两戳都无＝本轮首次看到，交给模型后再进入未回复处理；只有 repliedAt 或时间戳格式异常＝异常，不自动修补。</div>
+      <pre id="v2ReceiptOutput">（空）</pre>
+    </div></details>
+<details class="settings-group" open><summary><span class="layer-tag" data-layer="L">L</span>会话状态查看</summary><div class="settings-content">
+      <div class="row">
+        <input type="text" id="v2StateKey" placeholder="group:60000" style="flex:1">
+        <button id="v2StateView" class="small">查看</button>
+        <button id="v2ForceWake" class="small">立即唤醒</button>
+        <button id="v2StatesList" class="small">列出全部会话状态</button>
+      </div>
+      <div id="v2StateSummary" role="status" aria-live="polite">选择会话后查看状态。</div><details class="session-state-raw"><summary>查看原始状态 JSON</summary><pre id="v2StateOutput">（空）</pre></details>
+    </div></details>
+<details class="settings-group"><summary><span class="layer-tag" data-layer="L">L</span>唤醒状态（AI 当前设置的下一次唤醒条件/倒计时）</summary><div class="settings-content">
+      <div class="row">
+        <input type="text" id="v2WakeKey" placeholder="group:60000" style="flex:1">
+        <button id="v2WakeStatusLoad" class="small">查看唤醒状态</button>
+        <span class="meta" id="v2WakeStatusMsg"></span>
+      </div>
+      <div id="v2WakeStatusOutput" class="tool-log-table">（空）</div>
+
+</div></details>
+<details class="settings-group"><summary>高级：调度与独立任务容量</summary><div class="settings-content"><h3>调度队列</h3><div data-component-slot="life-scheduler" data-hide-toggle="1"></div><h3>独立任务</h3><div data-component-slot="life-task-session"></div></div></details>
+<div class="row"><button class="small primary v2-save" type="button" data-save-action>保存全局来信与唤醒规则</button><span class="meta v2-save-msg" role="status"></span></div>
+</section>

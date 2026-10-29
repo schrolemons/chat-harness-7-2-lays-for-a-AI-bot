@@ -1,0 +1,69 @@
+<section id="section-persona" data-page="persona" class="card span-all">
+      <h2>人格与角色</h2>
+      <div class="meta">当前人格：<span id="roleText">-</span> ｜ 状态：<span id="roleModeText">-</span></div>
+
+      <div class="layer-note">
+        <strong>两层提示词的分工</strong>
+        <ol>
+          <li><b>仿真提示词</b>（预设内置）：AI 怎么调工具、怎么参与群聊 —— <i>行为与协议</i>。</li>
+          <li><b>人格提示词</b>（本页编辑）：AI 是谁、什么性格、怎么说话，以及角色的互动边界 —— <i>人设与语气</i>。</li>
+        </ol>
+        <p>每条消息发给 AI 时，按 <code>仿真提示词 → 人格提示词 → 本轮消息</code> 的顺序拼装。人格层保存即生效；仿真层需重启 DSH。</p>
+      </div>
+
+      <h3>人格列表 <span class="meta" id="roleListHint"></span></h3>
+      <div id="roleList" class="persona-list">加载中…</div>
+
+      <details class="settings-group" open>
+        <summary>编辑人格提示词</summary>
+        <div class="settings-content">
+          <div class="meta" id="roleEditorMeta">当前是「新建」模式：填好名称与内容后点「新建人格」。</div>
+          <div class="row">
+            <div class="setting-field"><label style="flex:0 0 auto" for="roleInjectMax">注入上限（字符）</label><input type="number" id="roleInjectMax" min="1000" max="20000" step="500" style="flex:0 1 140px"><small class="parameter-example" data-example-for="roleInjectMax">例：设为4000：本轮人格材料按4000字符预算组织，不截断磁盘角色卡。</small></div>
+            <button id="roleInjectMaxSave" class="small primary" data-save-action>保存全局人格注入上限</button>
+            <span class="meta" id="roleInjectMaxMsg">每条约 4~6k token 的成本护栏；按模式筛完小节后才截断。</span>
+          </div>
+          <div class="setting-field"><label for="newRoleName">人格名（中文 / 字母 / 数字 / 横线）</label><input type="text" id="newRoleName" placeholder="如：猫娘"><small class="parameter-example" data-example-for="newRoleName">例：填“whale”：新建独立角色文件，名称不应含路径分隔符。</small></div>
+          <div class="setting-field"><label for="newRoleContent">人格提示词（Markdown）</label><textarea id="newRoleContent" class="role-editor" placeholder="- 性格：…&#10;- 说话风格：…&#10;- 背景设定：…"></textarea><small class="parameter-example" data-example-for="newRoleContent">例：写身份、语气与互动边界：选中该角色后作为人格提示使用，不替代工具权限。</small></div>
+          <div class="row" style="margin-top:8px">
+            <button id="roleCreate">新建人格</button>
+            <button id="roleDuplicate">另存为副本</button>
+            <button id="roleDelete" class="danger">删除</button>
+            <button id="roleFormReset">清空表单</button>
+            <span class="meta" id="roleCreateMsg"></span>
+          </div>
+          <div class="meta err" id="roleEditorWarnings"></div>
+        </div>
+      </details>
+
+      <details class="settings-group">
+        <summary>切换当前启用的人格</summary>
+        <div class="settings-content">
+          <div class="row" style="margin-top:10px">
+            <input type="text" id="roleInput" placeholder="选择已有角色或输入新角色名">
+            <button id="roleSet">设置</button>
+            <button id="roleClear">清除</button>
+          </div>
+          <div class="meta">清空当前人格后，AI 只按「仿真提示词」行动，不扮演任何角色。</div>
+        </div>
+      </details>
+
+      <h3 class="layer-heading">仿真提示词（预设内置）<span class="meta" id="simPromptStatus">加载中…</span></h3>
+      <div class="row" style="margin-bottom:8px">
+        <div class="setting-field"><label style="flex:0 0 auto" for="simPromptPreset">仿真代次</label><select id="simPromptPreset" style="flex:0 1 280px">
+          <option value="qq-chat-v2">二代仿真（reserved2 · qq-chat-v2）</option>
+          <option value="qq-chat">一代仿真（reserved · qq-chat）</option>
+        </select><small class="parameter-example" data-example-for="simPromptPreset">例：选择二代：查看二代预设提示，不会把一代内容混入编辑框。</small></div>
+        <span class="meta">两代机制不同（一代空格分条 / 二代一切皆工具），提示词各自独立。</span>
+      </div>
+      <div class="meta" id="simPromptWarnings"></div>
+      <textarea id="simPromptText" class="code-area" spellcheck="false" readonly></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="simPromptEdit">编辑</button>
+        <button id="simPromptSave" disabled class="primary" data-save-action>保存此代预设并同步 DSH</button>
+        <button id="simPromptRestore">还原上次备份</button>
+        <button id="simPromptCancel" disabled>取消编辑</button>
+        <span class="meta" id="simPromptMsg"></span>
+      </div>
+      <div class="meta" id="simPromptRestart"></div>
+    </section>

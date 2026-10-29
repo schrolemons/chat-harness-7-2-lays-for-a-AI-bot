@@ -1,0 +1,77 @@
+/* ================= 动效 ================= */
+button,
+.nav-item,
+.tag,
+summary,
+input,
+textarea,
+select,
+.metric-link,
+.brand {
+  transition:background .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease
+}
+button:not(.nav-item):hover:not(:disabled) {
+  transform:translateY(-1px)
+}
+button:active:not(:disabled) {
+  transform:translateY(0)
+}
+.tag:hover {
+  transform:translateY(-1px)
+}
+.card:hover {
+  border-color:var(--border)
+}
+[data-page]:not([hidden]) {
+  animation:pageIn .26s ease both
+}
+@keyframes pageIn {
+  from { opacity:0; transform:translateY(7px) }
+  to { opacity:1; transform:none }
+}
+.overview-summary,
+.page-heading {
+  animation:pageIn .3s ease both
+}
+.toast {
+  animation:toastIn .3s cubic-bezier(.22,1,.36,1) both
+}
+@keyframes toastIn {
+  from { opacity:0; transform:translate(-50%,14px) }
+  to { opacity:1; transform:translate(-50%,0) }
+}
+.modal {
+  animation:modalIn .24s cubic-bezier(.22,1,.36,1) both
+}
+@keyframes modalIn {
+  from { opacity:0; transform:translateY(12px) scale(.985) }
+  to { opacity:1; transform:none }
+}
+.search-results:not([hidden]) {
+  animation:pageIn .18s ease both
+}
+.status-badge:before {
+  transition:background .25s ease,box-shadow .25s ease
+}
+.status-badge.online:before {
+  box-shadow:0 0 0 3px var(--pill-green-bg)
+}
+.status-badge.offline:before {
+  box-shadow:0 0 0 3px var(--pill-red-bg)
+}
+@media(prefers-reduced-motion:reduce) {
+  .bg-decor::before,
+  .bg-decor::after,
+  [data-page]:not([hidden]),
+  .overview-summary,
+  .page-heading,
+  .toast,
+  .modal,
+  .search-results:not([hidden]) {
+    animation:none
+  }
+  button:not(.nav-item):hover:not(:disabled),
+  .tag:hover {
+    transform:none
+  }
+}

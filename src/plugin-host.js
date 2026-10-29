@@ -106,7 +106,7 @@ export function createPluginHost(opts = {}) {
   const baseDir = () => path.join(root, 'plugins', 'qq-components');
   const registryFile = () => path.join(root, 'state', 'plugins', 'registry.json');
   const configFile = id => path.join(root,'state','plugins','config',id+'.json');
-  const effectiveConfig = (id,manifest) => ({...(manifest.config||{}),...readJsonSafe(configFile(id),{})});
+  const effectiveConfig = (id,manifest) => { const saved=readJsonSafe(configFile(id),{}); return Object.fromEntries(Object.entries(manifest.config||{}).map(([key,value])=>[key,Object.hasOwn(saved,key)?saved[key]:value])); };
   const registry = () => {
     const raw = readJsonSafe(registryFile(), {});
     return {
@@ -211,7 +211,7 @@ export function createPluginHost(opts = {}) {
         schedule: inst.schedule || manifest.schedule || null,
         timer: null,
         builtin
-        , life, dispose: inst.dispose, canWake: inst.canWake, metrics: {calls:0,errors:0,lastCallAt:0,lastError:null}, tickBusy: false
+        , life, dispose: inst.dispose, canWake: inst.canWake, validateConfig: inst.validateConfig, metrics: {calls:0,errors:0,lastCallAt:0,lastError:null}, tickBusy: false
       });
       log('[plugin] 已加载 ' + id + (manifest.description ? ' — ' + manifest.description : ''));
     } catch (error) {
@@ -320,6 +320,7 @@ export function createPluginHost(opts = {}) {
           builtin: p.builtin !== false,
           tags: Array.isArray(p.manifest?.tags) ? p.manifest.tags : [],
           enabled: !p.disabled,
+          configKeys: Object.keys(p.manifest?.config || {}),
           hooks: Object.keys(p.hooks || {}),
           schedule: p.schedule || null,
           metrics: {...p.metrics},
@@ -349,6 +350,8 @@ export function createPluginHost(opts = {}) {
         schedule: p.schedule || null,
         main: p.manifest?.main || 'index.js',
         config: p.ctx?.config || effectiveConfig(p.id,p.manifest),
+        configKeys: Object.keys(p.manifest?.config || {}),
+        configSchema: p.manifest?.configSchema || {},
         metrics: {...p.metrics},
         services: Object.fromEntries(Object.entries(p.services||{}).map(([name,svc])=>[name,Object.keys(svc)])),
         skill: api.getSkill(p.id),
@@ -381,10 +384,14 @@ export function createPluginHost(opts = {}) {
       for(const [key,value] of Object.entries(patch)) {
         if(!Object.hasOwn(defaults,key) || ['__proto__','constructor','prototype'].includes(key))return {ok:false,error:'未知配置项：'+key};
         const ref=defaults[key];if((Array.isArray(ref)?!Array.isArray(value):typeof ref!==typeof value) || value===null || (typeof value==='number'&&!Number.isFinite(value)))return {ok:false,error:'配置类型错误：'+key};
-        const rule=schema[key]||{};if(rule.enum && !rule.enum.includes(value))return {ok:false,error:'配置取值无效：'+key};
+        const rule=schema[key]||{};if(rule.readOnly || rule.readonly)return {ok:false,error:"只读配置项："+key};if(rule.enum && !rule.enum.includes(value))return {ok:false,error:'配置取值无效：'+key};
         if(typeof value==='number' && ((rule.min!==undefined&&value<rule.min)||(rule.max!==undefined&&value>rule.max)))return {ok:false,error:'配置范围无效：'+key};
       }
       const config={...effectiveConfig(p.id,p.manifest),...patch};
+      if(typeof p.validateConfig==='function') {
+        try { const result=p.validateConfig(config); if(result?.then || result?.ok!==true)return {ok:false,error:(result?.errors||['配置校验失败']).join('；')}; }
+        catch(error){return {ok:false,error:error?.message||'配置校验失败'};}
+      }
       return writeJsonSafe(configFile(p.id),config) ? {ok:true,id:p.id,config} : {ok:false,error:'配置保存失败'};
     },
     setOrder(order) {

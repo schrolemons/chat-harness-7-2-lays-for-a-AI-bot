@@ -1,8 +1,8 @@
 {
   "id": "life-wake-reasons",
   "name": "唤醒原因尾巴",
-  "version": "1.0.0",
-  "description": "按唤醒原因产出本轮行动指令，并在每轮提醒模型按消息数检查双戳窗口、以 JSON 逐条回报处理状态；桥接负责校验并即时更新消息回执。",
+  "version": "1.1.0",
+  "description": "拥有统一静默阶段主动调度与意愿状态，按唤醒原因产出行动指令；保留双戳回执窗口。",
   "layer": "L",
   "category": "生命周期与编排",
   "order": 34,
@@ -14,9 +14,152 @@
   "main": "index.js",
   "enabled": true,
   "hooks": [
-    "wakeTail"
+    "wakeTail",
+    "onTick"
   ],
+  "schedule": {
+    "everyMs": 60000
+  },
   "config": {
-    "disabledReasons": []
+    "disabledReasons": [],
+    "proactiveEnabled": true,
+    "silenceMinutes": 20,
+    "initialProbability": 0.15,
+    "probabilityStep": 0.1,
+    "probabilityMax": 0.85,
+    "checkMinMinutes": 15,
+    "checkMaxMinutes": 30,
+    "intervalStepMinutes": -1,
+    "checkFloorMinutes": 1,
+    "minActiveGapMinutes": 30,
+    "maxSilenceMinutes": 180,
+    "initialWillingness": 60,
+    "activityWillingnessDelta": 10,
+    "purposeWillingnessDelta": -10,
+    "curfewEnabled": true,
+    "curfewStartHour": 23,
+    "curfewEndHour": 8
+  },
+  "configSchema": {
+    "disabledReasons": {
+      "type": "array",
+      "label": "禁用原因",
+      "example": "填selfReview：该原因不再附加专用唤醒指令；留空不额外过滤。"
+    },
+    "proactiveEnabled": {
+      "type": "boolean",
+      "label": "启用统一随机主动",
+      "example": "关闭后不再安排统一随机主动机会；独立的日程提醒仍按自身设置运行。"
+    },
+    "silenceMinutes": {
+      "type": "number",
+      "min": 0,
+      "max": 10080,
+      "label": "进入静默阶段（分钟）",
+      "example": "设为20：双方停止聊天20分钟后，进入静默阶段，而不是每20分钟必发一条。"
+    },
+    "initialProbability": {
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "label": "阶段初始概率",
+      "example": "设为0.15：第0阶段的基础概率是15%，实际值还受心情与聊天意愿缩放。"
+    },
+    "probabilityStep": {
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "label": "每阶段概率增量",
+      "example": "设为0.10：基础概率按15%、25%、35%逐阶段增加，直到概率上限。"
+    },
+    "probabilityMax": {
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "label": "概率上限",
+      "example": "设为0.85：阶段增长后的有效概率不会超过85%。"
+    },
+    "checkMinMinutes": {
+      "type": "number",
+      "min": 1,
+      "max": 10080,
+      "label": "检验区间下界（分钟）",
+      "example": "下界15、上界30：从这个区间选择检验间隔，心情与意愿还会调整实际区间。"
+    },
+    "checkMaxMinutes": {
+      "type": "number",
+      "min": 1,
+      "max": 10080,
+      "label": "检验区间上界（分钟）",
+      "example": "下界15、上界30：不是每30分钟发一次，而是在区间内安排下一次概率判定。"
+    },
+    "intervalStepMinutes": {
+      "type": "number",
+      "min": -10080,
+      "max": 10080,
+      "label": "每阶段区间变化（可负）",
+      "example": "设为−1：每深入一个阶段，基础检验区间两端各缩短1分钟。"
+    },
+    "checkFloorMinutes": {
+      "type": "number",
+      "min": 1,
+      "max": 10080,
+      "label": "检验间隔硬下限（分钟）",
+      "example": "设为1：即使阶段不断递增，检验间隔也不会短于1分钟。"
+    },
+    "minActiveGapMinutes": {
+      "type": "number",
+      "min": 0,
+      "max": 10080,
+      "label": "主动最小间距（分钟）",
+      "example": "设为30：两次随机主动之间至少隔30分钟，不要求30分钟后一定开口。"
+    },
+    "maxSilenceMinutes": {
+      "type": "number",
+      "min": 1,
+      "max": 10080,
+      "label": "最大静默兜底（分钟）",
+      "example": "设为180：静默达到3小时后尝试兜底；宵禁、免打扰或预算阻断时仍不强发。"
+    },
+    "initialWillingness": {
+      "type": "number",
+      "min": 0,
+      "max": 100,
+      "label": "未评估时默认聊天意愿",
+      "example": "设为60：AI尚未评估过该会话意愿时，先按60/100参与概率和间隔计算。"
+    },
+    "activityWillingnessDelta": {
+      "type": "number",
+      "min": -100,
+      "max": 100,
+      "label": "人类回来时意愿变化",
+      "example": "设为+10：有效人类活动结束静默时，意愿在原值上增加10，最高100。"
+    },
+    "purposeWillingnessDelta": {
+      "type": "number",
+      "min": -100,
+      "max": 100,
+      "label": "主动或目的发送后意愿变化",
+      "example": "设为−10：符合条件的目的发送后，意愿降低10，并重新开始静默阶段。"
+    },
+    "curfewEnabled": {
+      "type": "boolean",
+      "label": "启用宵禁",
+      "example": "开启23至8点宵禁：这段时间不安排闲聊主动；日程提醒保留独立投递规则。"
+    },
+    "curfewStartHour": {
+      "type": "number",
+      "min": 0,
+      "max": 23,
+      "label": "宵禁开始（上海时）",
+      "example": "开始23、结束8：跨午夜生效，即23:00到次日08:00。"
+    },
+    "curfewEndHour": {
+      "type": "number",
+      "min": 0,
+      "max": 23,
+      "label": "宵禁结束（上海时）",
+      "example": "开始23、结束8：08:00退出宵禁；开始和结束相同表示不限制整日。"
+    }
   }
 }

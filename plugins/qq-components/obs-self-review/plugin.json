@@ -16,10 +16,7 @@
     "onIncoming",
     "beforePrompt"
   ],
-  "config": {
-    "intervalHours": 6,
-    "maxFixesPerRound": 3
-  },
+  "config": {},
   "layer": "O",
   "wakeReasons": [
     "selfReview",

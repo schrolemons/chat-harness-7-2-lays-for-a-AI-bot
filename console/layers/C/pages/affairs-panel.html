@@ -1,0 +1,25 @@
+<details open class="settings-group" id="v2AffairsPanel">
+  <summary><span class="layer-tag" data-layer="C">C</span>当前事务（任务、承诺、随口安排）</summary>
+  <div class="settings-content">
+    <p class="meta">跟进正在处理的事；确认完成或取消后移出活跃列表。</p>
+    <div class="affairs-toolbar">
+      <div class="setting-field"><label for="v2AffairsKey">会话</label><select id="v2AffairsKey"><option value="">请选择会话</option></select><small class="parameter-example" data-example-for="v2AffairsKey">例：选择private:10001：只管理这个会话的事务，不把群聊事务混入。</small></div>
+      <div class="setting-field"><label for="v2AffairsFilter">范围</label><select id="v2AffairsFilter"><option value="active">活跃事务</option><option value="all">全部与历史</option><option value="needs_review">待核实</option><option value="done">已完成</option><option value="cancelled">已取消</option></select><small class="parameter-example" data-example-for="v2AffairsFilter">例：选择“进行中”：只显示仍需跟进的事项，已完成记录仍可按范围查看。</small></div>
+      <button class="small" type="button" id="v2AffairsLoad">刷新事务</button><button class="small primary" type="button" id="v2AffairsNew">新建事务</button>
+    </div>
+    <p class="meta" id="v2AffairsMsg" role="status"></p>
+    <div id="v2AffairsList">请选择会话</div>
+    <div class="affairs-pagination"><button class="small" id="v2AffairsPrev" type="button">上一页</button><span class="meta" id="v2AffairsPage"></span><button class="small" id="v2AffairsNext" type="button">下一页</button></div>
+    <dialog id="v2AffairEditor" class="affair-editor"><div class="affair-editor-heading"><h3 id="v2AffairEditorTitle">新增事务</h3><button type="button" class="small" id="v2AffairsCancel">关闭</button></div>
+    <div class="row"><div class="setting-field"><label for="v2AffairTitle">事项标题</label><input id="v2AffairTitle" maxlength="240" type="text" placeholder="例如：等报告结果、周五一起吃饭"><small class="parameter-example" data-example-for="v2AffairTitle">例：写“周五提交报告”：用可辨认的事项名，方便后续更新同一事务。</small></div></div>
+    <div class="row"><div class="setting-field"><label for="v2AffairStatus">状态</label><select id="v2AffairStatus"><option value="needs_review">待核实</option><option value="pending" selected>待处理</option><option value="doing">进行中</option><option value="waiting">等待结果</option><option value="done">已完成</option><option value="cancelled">已取消</option><option value="superseded">被新事项替代</option></select><small class="parameter-example" data-example-for="v2AffairStatus">例：选“已完成”：结束这件事的活跃跟进，不只是追加一句“做完了”。</small></div>
+      <div class="setting-field"><label for="v2AffairPriority">优先级</label><select id="v2AffairPriority"><option value="0">低</option><option value="1" selected>普通</option><option value="2">高</option></select><small class="parameter-example" data-example-for="v2AffairPriority">例：设为高优先级：上下文组织时优先关注，不会自动创建日程通知。</small></div></div>
+    <div class="setting-field"><label for="v2AffairDetail">现状与进度</label><textarea id="v2AffairDetail" rows="4" maxlength="20000"></textarea><small class="parameter-example" data-example-for="v2AffairDetail">例：写“提纲已完成，图表待补”：保存最新进度，避免只增不改。</small></div>
+    <div class="setting-field"><label for="v2AffairNextAction">下一步</label><textarea id="v2AffairNextAction" rows="2" maxlength="2000"></textarea><small class="parameter-example" data-example-for="v2AffairNextAction">例：写“明晚确认图表”：给下一次接续提供具体动作，不等于设置了定时器。</small></div>
+    <div class="setting-field"><label for="v2AffairSource">来源与日期（或关联日程 ID）</label><input type="text" id="v2AffairSource" maxlength="2000"><small class="parameter-example" data-example-for="v2AffairSource">例：写关联日程ID：便于核对来源，不会凭来源文字直接宣告完成。</small></div>
+    <div class="row"><button class="small primary" type="button" id="v2AffairsSave" data-save-action>保存此会话事务</button></div>
+    <p class="meta" id="v2AffairEditorMsg" role="status"></p>
+    </dialog>
+    <details class="affair-diagnostics"><summary>高级：本轮记忆选取</summary><p class="meta" id="v2AffairsPreviewInfo">按完整事项选择；与其他记忆合并时还受总预算约束。</p><pre id="v2AffairsPreview"></pre></details>
+  </div>
+</details>

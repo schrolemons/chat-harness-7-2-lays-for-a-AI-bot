@@ -1,28 +1,15 @@
-# skill：回复形态（reply-shape）
+# 回复形态与唯一发送计划
 
-## 它解决什么
-同一个 AI 有时一整段小作文、有时三连碎句。这个插件按话题性质与当前状态，给这一轮一个硬上限。
+本组件属于 L 层，拥有全部实际出站的分钟/小时账本、间隔和对话回合条数。桥接在真实模型投递前调用 `replyPlan.resolve`，冻结结果并随 pending/active/completed envelope 携带；beforePrompt 只展示该计划，表情选择也消费同一个计划。
 
-## 什么时候被调用
-每轮唤醒拼提示词前（`beforePrompt`）。产出形如「【本轮节奏】轻松闲聊，这一轮最多 3 条…」。
+`resolve({key,turnId,incomingText,mood,reason,phiMode?,agent=true,now?})` 返回不可变 kind/maxMessages/hourlyLimit/minIntervalMs/detailLevel/maxMessageChars/delayPlan/line。心情 replyCeiling 可收紧条数；有效欢迎可采用 casual 上限，仍服从 serious 和 phi（最多1条）。没有另一套低心情阈值或最近连发判断。
 
-## 判定口径
-| 情况 | 上限 |
-| --- | --- |
-| 正事/情绪明显不好/长消息（默认 >60 字） | 1 条，合并说完 |
-| 轻松闲聊（哈哈哈/梗/逗你/短句） | 3 条，短句分条 |
-| 普通话题 | 2 条 |
-| 心情低于阈值 / 2 分钟内已连发 ≥2 条 | 压到 1 条 |
+配置唯一来源为 plugin.json：maxMessagesNormal/Casual/Serious、longIncomingChars、intervalMinMs/MaxMs、longGapProbability、longGapMinMs/MaxMs、maxSendPerMinute/Hour、maxMessageChars。0频次上限表示不限制该时间窗口，0间隔表示无需等待；条数必须1–20。普通/长间隔必须合法有序，请求 fixed 延迟也受同计划边界约束。`src/reply-shape.js` 导出纯 `validateReplyPolicy` 供宿主与迁移共用。
 
-## 配置
-`plugin.json` 的 `config`：`maxMessagesNormal/Casual/Serious`、`longIncomingChars`。
-最近一次判定写在 `state/plugins/reply-shape.json` 的 `last`。
+发送调用 `reserve({key,plan,operationId,kind,now,requestedDelay?})`，同步持久预占成功才允许网络写入；`commit({key,operationId,sentAt,deliveryId})` 在物理成功后记账；`release({key,operationId,knownFailed:true})` 只释放确定失败。未知结果保留预占，不伪造成功、不自动重试。`remaining({key,plan})` 跨目标合计同一模型回合的条数；全部文字、图片、语音、表情、拍一拍和文件都占一条真实物理发送。
 
-## 边界
-- 只给上限，不替 AI 写内容；不参与表情、心情涨落。
-- 与贴纸、会话推进互不依赖，可单独停用。
+`initialize({conversations:[{key,sendTimes}],now?})` 仅在没有组件拥有账本的会话导入旧成功时间历史；不重复导入。`preview({key,now?})` 只读返回 minute/hour/successful/inflight/allowed/nextAt。`policy()` 返回配置；`delay({plan,requested?,random?})` 是唯一间隔求解。账本位于组件 state.sendLedger，重载/重启保留预占与成功凭据。
 
+停用或缺失本组件会明确拒绝模型投递与发送，不退回旧 socialV2.send 或无上限。操作者/机械/通知没有模型整轮条数，但仍共享实际目标的频次和间隔；可信存储通知保留既有模型预算豁免及暂停、静默、白名单、时效、收据防重守卫。
 
-## SCHNIE 正式模式协调（2026-10-26）
-
-通过 schnie-core/turn-policy.mjs 共用当前逐轮路由。phi/care/现实支持模式抑制与认真回应冲突的玩梗、多条碎句、表情或另起话题要求；普通闲聊保留既有行为。仅协调提示词，不记录心理判断、不自动发送消息。S层停用后恢复普通规则。
+验证：scripts/test-resolved-send-plan.mjs、test-outbound-facts.mjs、test-outbound-host.mjs 与隔离 test:plugin-audit；这些是模拟网关/模型证据，不代表生产QQ发送验收。

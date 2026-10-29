@@ -1,0 +1,9 @@
+/* ================= 主题切换控件 ================= */
+#themeToggle {
+  font-size:16px
+}
+#themeToggle[aria-pressed="true"] {
+  background:var(--accent-soft-bg);
+  border-color:var(--accent-border-soft);
+  color:var(--accent-soft-fg)
+}

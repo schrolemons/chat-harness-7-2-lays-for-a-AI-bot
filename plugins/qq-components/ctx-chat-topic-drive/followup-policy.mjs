@@ -8,7 +8,7 @@ export function effectiveFollowupLimits(global = {}, session = {}) {
   const sessionInterval = number(session.minIntervalMinutes, globalInterval);
   const sessionDaily = Math.round(number(session.dailyLimit, globalDaily));
   return {
-    minIntervalMinutes: Math.min(globalInterval, sessionInterval),
+    minIntervalMinutes: Math.max(globalInterval, sessionInterval),
     dailyLimit: Math.min(globalDaily, sessionDaily)
   };
 }

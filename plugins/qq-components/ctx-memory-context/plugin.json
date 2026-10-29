@@ -1,8 +1,8 @@
 {
   "id": "ctx-memory-context",
-  "name": "记忆注入（轻/中/长期）",
+  "name": "会话记忆与当前事务注入",
   "version": "1.0.0",
-  "description": "把当前会话话题、待说想法、未发言成员临时印象，以及长期和中期记忆格式化成提示词块；桥接只提供 st 与读到的文本。",
+  "description": "注入窗口内轻量记忆、会话事实/今日画像和完整活跃事务；日记仅在记忆整理回合参考，通知收据不注入，QQ稳定人物档案由独立组件负责。",
   "layer": "C",
   "category": "上下文与记忆",
   "order": 13,
@@ -17,6 +17,10 @@
   ],
   "config": {
     "maxChars": 4000,
-    "midTermSlice": 1500
+    "affairsMaxChars": 4000
+  },
+  "configSchema": {
+    "maxChars": { "min": 500, "max": 20000 },
+    "affairsMaxChars": { "min": 200, "max": 10000 }
   }
 }

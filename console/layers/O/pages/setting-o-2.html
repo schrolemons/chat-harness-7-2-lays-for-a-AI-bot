@@ -1,0 +1,23 @@
+<section id="section-setting-o-2" data-page="setting-o-2" class="card span-all commercial-component" hidden>
+<h2>自我更新与摘要</h2>
+<details open class="settings-group"><summary><span class="layer-tag" data-layer="O">O</span>自我更新（定期收集问题、分析会话并进行自查改进）</summary><div class="settings-content">
+      <div class="row">
+        <div class="setting-field"><label style="flex:1" for="v2SelfReviewEnabled">启用自我更新</label><input type="checkbox" id="v2SelfReviewEnabled" style="width:auto"><small class="parameter-example" data-example-for="v2SelfReviewEnabled">例：开启后，按自查间隔安排自动检查；不会每次打开控制台就扫描。</small></div>
+        <div class="setting-field"><label style="flex:1" for="v2SelfReviewHours">间隔（小时）</label><input type="number" id="v2SelfReviewHours" min="1" max="168" style="width:90px"><small class="parameter-example" data-example-for="v2SelfReviewHours">例：设为6：自动自查大约每6小时安排一次。</small></div>
+        <button id="v2SelfReviewRun" class="small">立即更新一次</button>
+        <div class="setting-field"><label style="flex:1" for="v2SelfReviewAuto">启用用户反馈定向修复</label><input type="checkbox" id="v2SelfReviewAuto" style="width:auto"><small class="parameter-example" data-example-for="v2SelfReviewAuto">例：关闭后不自动启动用户反馈的定向修复；反馈仍可记录和人工处理。</small></div>
+        <div class="setting-field"><label style="flex:1" for="v2SelfReviewCooldown">优化冷却（小时）</label><input type="number" id="v2SelfReviewCooldown" min="1" max="168" style="width:80px"><small class="parameter-example" data-example-for="v2SelfReviewCooldown">例：设为2：用户反馈修复队列按约2小时冷却，不与定期自查周期混同。</small></div>
+        <div class="setting-field"><label style="flex:1" for="v2SelfReviewFeedbackMax">用户反馈每轮最多修复数</label><input type="number" id="v2SelfReviewFeedbackMax" min="1" max="20" style="width:70px"><small class="parameter-example" data-example-for="v2SelfReviewFeedbackMax">例：设为3：一轮用户反馈修复最多选3条，不要求把队列全部清空。</small></div>
+        <div class="setting-field"><label style="flex:1" for="v2SelfReviewSelfMax">自我发现每轮最多修复数</label><input type="number" id="v2SelfReviewSelfMax" min="1" max="20" style="width:70px"><small class="parameter-example" data-example-for="v2SelfReviewSelfMax">例：设为3：一轮自我发现修复最多选3条，困难问题仍保留记录。</small></div>
+        <span class="meta" style="flex:2" id="v2SelfReviewMsg">定期自我更新按 6 小时处理自我发现/工具反馈；用户反馈由独立 2 小时队列处理；管理员反馈即时启动。具体条目、修复证据和困难问题请看下方质量与工具日志。</span>
+      </div>
+      <div class="meta">扫描中无法再次复现的问题可记录为“复核未再现”，视作可能已由人工或其他工具修复。处理三次仍未解决的条目进入困难问题列表。_optimization.md 仅作为结构化修复摘要，不用于统计或排队；旧版混合内容会保留在归档文件中。</div>
+      <div class="row" style="margin-top:10px"><button id="v2SelfReviewSave" class="small primary" type="button" data-self-review-save data-save-action>保存全局自我更新规则</button><span class="meta self-review-save-msg" aria-live="polite"></span></div>
+      </div></details>
+<details open class="settings-group optimization-summary-group" open><summary><span class="layer-tag" data-layer="O">O</span>自我更新发现与统一修复摘要</summary><div class="settings-content">
+      <div class="optimization-summary-head"><p class="meta">汇总主动扫描发现的问题，以及用户反馈、Bot 自我发现/工具、管理员即时反馈的处理记录。</p><button id="v2OptimizationSummaryLoad" class="small" type="button">刷新摘要</button></div>
+      <div class="meta" id="v2OptimizationSummaryMeta">正在读取摘要文件…</div>
+      <pre class="optimization-summary-content" id="v2OptimizationSummaryContent">正在读取…</pre>
+      </div></details>
+
+</section>

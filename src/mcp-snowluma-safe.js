@@ -1,3 +1,4 @@
+import { TOOL_CONFIG_FLAGS } from './tools/flags.js';
 // 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。
 //
 // 安全设计：
@@ -308,60 +309,7 @@ const server = new McpServer({ name: 'snowluma-safe', version: '0.2.1-r1' });
 // 只列**各模式共用的工具不在其中**：qq_send_group_message / qq_send_private_message / qq_reply
 // 同时服务 chat / reserved / closed-agent 模式，用 v2 的开关去决定它们是否注册会误伤其它模式，
 // 所以这三个仍然只在调用时由桥接校验。
-const TOOL_CONFIG_FLAGS = {
-  qq_status: 'status',
-  qq_get_prompt: 'getPrompt',
-  qq_get_unread_messages: 'getUnread',
-  qq_get_recent_messages: 'getRecent',
-  qq_social_state: 'socialState',
-  qq_mark_read: 'markRead',
-  qq_report_message_receipts: 'reportReceipts',
-  qq_set_wake_config: 'setWakeConfig',
-  qq_send_burst: 'sendBurst',
-  qq_send_message: 'sendMessage',
-  qq_wait_for_messages: 'waitMessages',
-  qq_report_feedback: 'feedback',
-  qq_get_my_recent_messages: 'getMyRecent',
-  qq_get_message_detail: 'getMessageDetail',
-  qq_get_active_members: 'getActiveMembers',
-  qq_get_group_members: 'getGroupMembers',
-  qq_task_note: 'taskNote',
-  qq_memory_append: 'memory',
-  qq_memory_query: 'memory',
-  qq_memory_remove: 'memory',
-  qq_memory_clear: 'memory',
-  qq_schedule: 'schedule',
-  time_bubble_manage: 'timeBubbleManage',
-  qq_availability: 'availability',
-  qq_slang_query: 'slangQuery',
-  qq_slang_submit: 'slangSubmit',
-  qq_term_query: 'termQuery',
-  qq_term_submit: 'termSubmit',
-  qq_send_voice: 'sendVoice',
-  qq_send_file: 'sendFile',
-  qq_list_voices: 'sendVoice',
-  // 下面这些曾经漏登记。漏一个不是"多注册一个工具"那么轻：桥接那边按 `v2ToolEnabled(flag)`
-  // 在**调用期**一律 403，而这里不登记就等于"控制台显示已关闭、模型每次请求仍收到它的完整
-  // 描述与参数 schema，然后调用它、再拿到 403"——既白烧 token（本文件开头 176 行起就是为省这份
-  // token 才改注册期过滤的），又诱导模型误调。`qq_set_sticker_remark` 默认就是 `false`
-  // （见 bridge.js 的 socialV2.tools 默认表），所以此前它一直是"默认关闭却仍然可见"。
-  qq_send_poke: 'sendPoke',
-  qq_get_message_images: 'getImages',
-  qq_make_meme: 'imageGeneration',
-  qq_get_meme_job: 'imageGeneration',
-  qq_send_image: 'imageTransfer',
-  qq_list_staged_images: 'imageTransfer',
-  qq_import_image: 'imageTransfer',
-  qq_relay_image: 'imageTransfer',
-  qq_get_forward_msg: 'getForwardMsg',
-  qq_list_stickers: 'listStickers',
-  qq_get_sticker_image: 'getStickerImage',
-  qq_send_sticker: 'sendSticker',
-  qq_collect_sticker: 'collectSticker',
-  qq_get_self_image: 'getSelfImage',
-  qq_sticker_note: 'stickerNote',
-  qq_set_sticker_remark: 'setStickerRemark',
-};
+
 const disabledTools = [];
 {
   const registerTool = server.tool.bind(server);
@@ -537,18 +485,20 @@ server.tool(
   'qq_reply',
   '在指定 QQ 群里引用/回复某条消息，并发送一条文本。多条待处理消息语义不同、对象不同或需要分别回应时，每条被回应的原消息都必须单独调用本工具并传入对应 messageId；不可用 qq_send_message 数组、qq_send_burst 或一次引用替代。若只有一条待处理消息，或多条消息本质含义相同且一个回答可完整回应，可用 qq_send_message 发送一条，不必为了引用而引用。需要引用时先核对原消息发送者、内容和 id，回复文本必须切实回应被引用消息；引用错对象或回复内容不对应都视为错误。可通过 qq_get_recent_messages / qq_get_unread_messages / qq_get_message_detail 查询消息内容和 id；messageId 不能用本地 seq/readThroughSeq 替代。发送前桥接会校验 id 存在且属于当前会话。reserved2 下必须携带会话令牌 token。目标群必须命中白名单（config.json 的 allow.groups），否则拒绝。',
   {
+    conversationIntent: z.enum(['reply','followup','newTopic']).optional().describe('本次实际发送内容的语义；追问/新话题计数以真实送达为准'),
+    topicId: z.string().max(120).optional().describe('实际新话题的简短标识，不填秘密或个人信息'),
     groupId: z.union([z.number(), z.string()]).describe('群号（必须在白名单内）'),
     replyToMessageId: z.union([z.number(), z.string()]).describe('被引用/回复的消息 id（非零整数，可为负数）'),
     message: z.string().describe('要发送的文本，纯文本，不要用 Markdown 或 CQ 码'),
     token: z.string().optional().describe('二代会话令牌（reserved2 模式下必填；closed-agent 模式不需要）')
   },
-  async ({ groupId, replyToMessageId, message, token }) => {
+  async ({ groupId, replyToMessageId, message, token, conversationIntent, topicId }) => {
     try {
       const cleanMessage = unquoteJsonString(message);
       const data = await agentApi('/api/send/reply', {
         method: 'POST',
         ...(token ? { headers: { 'x-agent-token': token } } : {}),
-        body: JSON.stringify({ groupId: String(groupId), replyToMessageId, message: cleanMessage, token: token || undefined })
+        body: JSON.stringify({ groupId: String(groupId), replyToMessageId, message: cleanMessage, token: token || undefined, conversationIntent, topicId })
       });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
     } catch (error) {
@@ -668,7 +618,7 @@ server.tool(
 
 server.tool(
   'qq_report_message_receipts',
-  '向 Harness 回报本轮逐条消息处理结果的 JSON。每条必须使用已读到的 seq：seen=已看但未回复，replied=本轮已成功发出回复，complete=本来就有双戳，anomaly=戳状态异常并需上报。Harness 会验证消息属于该会话且 replied 有成功发送凭据，然后立即更新 seenAt/repliedAt；不要把整个窗口统一标为 replied。',
+  '向 Harness 回报逐条消息处理结果的 JSON。每条使用已读到的 seq：seen=已看但未回复，replied=这条消息已有成功发送，complete=本来就有双戳，anomaly=戳状态异常并需上报。replied 必须对应发送成功时已读的同一 seq；成功凭据会在桥接重启后保留。若回执失败，先按错误说明检查已读戳或发送凭据；不要因回执失败再次发送，以免重复回复。',
   {
     conversationId: z.string().describe('会话 ID，格式 group:群号 或 private:QQ号，与唤醒快照的 key 相同'),
     token: z.string().describe('当前会话令牌'),
@@ -693,12 +643,24 @@ server.tool(
 );
 
 server.tool(
+  'qq_mood',
+  '按本会话真实语境调整心情。仅支持 add/dec；value 为正数，reason 说明依据，可引用当前规则 ruleId。不能设置绝对值、修改其他会话或按关键词自动加减。',
+  {key:z.string(),token:z.string(),action:z.enum(['add','dec']),value:z.number().positive().max(100),reason:z.string().min(1).max(500),ruleId:z.string().max(64).optional()},
+  async ({key,token,action,value,reason,ruleId})=>{
+    try {const data=await agentApi('/api/socialV2/mood',{method:'POST',headers:{'x-agent-token':token},body:JSON.stringify({key,action,value,reason,ruleId})});return {content:[{type:'text',text:serializeModelData(data)}]};}
+    catch(error){return {content:[{type:'text',text:'调整心情失败：'+error.message}],isError:true};}
+  }
+);
+
+server.tool(
   'qq_set_wake_config',
   '设置指定会话的二代唤醒配置：mode/无限期或有限时间/提前唤醒条件（@、名字、关键词、提问、拍一拍、概率、anyMessage、指定成员）。triggers.speakerIds 是可选的“指定群友发言唤醒”：填一个或多个群友 QQ 号后，只要其中任意一位在群里发言就会唤醒你；不设置则不启用。适合在等某个人回复、或某人反应慢怕错过时使用。triggers.poke 开启后，群里有人拍一拍（包括拍你或拍别人）会唤醒你。双戳回查启用时，throughSeq 只确认已读；已回复必须调用 qq_report_message_receipts 逐条提交 JSON。注意：每次设置潜水/下一次唤醒前需先用 qq_wait_for_messages(timeoutMs=300000) 完成一次沉睡前观察：5 分钟内没人说话可设置并沉睡；期间有人发新消息则先查看 newMessages，判断不需要你参与可直接设置并沉睡；若你参与了回复，则下次想睡需重新等待观察窗口。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
     throughSeq: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional().describe('可同时确认已读：使用已查看结果中的 readThroughSeq，省去额外 qq_mark_read；不传则只设置唤醒配置。双戳启用时不能借此设置 repliedAt；若 markRead 工具被关闭，该水位会被忽略'),
+    chatWillingness: z.number().min(0).max(100).optional().describe('收尾前评估此会话下一次闲聊意愿；只传此字段不会标已读或改变唤醒/静音'),
+    reason: z.string().max(300).optional().describe('本次意愿评估依据'),
     config: z.object({
       mode: z.enum(['diving', 'active']).optional().describe('diving=潜水，active=活跃（anyMessage 开启）'),
       infinite: z.boolean().optional().describe('true=无限期，只有条件命中才唤醒；false=有限时间'),
@@ -715,11 +677,11 @@ server.tool(
         probability: z.number().optional().describe('普通消息按该概率随机唤醒（0~1）')
       }).optional(),
       batchWindowMs: z.number().optional().describe('多条消息合并唤醒窗口（毫秒，>=1000）')
-    }).describe('要设置的唤醒配置，缺省字段保留原值')
+    }).optional().describe('要设置的唤醒配置，缺省字段保留原值')
   },
-  async ({ key, token, config, throughSeq }) => {
+  async ({ key, token, config, throughSeq, chatWillingness, reason }) => {
     try {
-      const data = await agentApi('/api/socialV2/wake-config', { method: 'POST', body: JSON.stringify({ key, config, throughSeq }), headers: { 'x-agent-token': token } });
+      const data = await agentApi('/api/socialV2/wake-config', { method: 'POST', body: JSON.stringify({ key, config, throughSeq, chatWillingness, reason }), headers: { 'x-agent-token': token } });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
     } catch (error) {
       return { content: [{ type: 'text', text: `设置唤醒配置失败：${error?.message ?? error}` }], isError: true };
@@ -731,11 +693,13 @@ server.tool(
   'qq_send_burst',
   '在指定 QQ 群分多条发送消息（二代仿真模式专用），桥接会按真人化随机间隔发送。暂不支持引用，需要引用请用 qq_reply。注意：数组里的每个字符串就是一条 QQ 消息，字符串内部不要用空格分隔中文短句，需要多条请用数组元素；每条消息要读起来完整，不要把同一句话拆到两条里。',
   {
+    conversationIntent: z.enum(['reply','followup','newTopic']).optional().describe('本次实际发送内容的语义；追问/新话题计数以真实送达为准'),
+    topicId: z.string().max(120).optional().describe('实际新话题的简短标识，不填秘密或个人信息'),
     groupId: z.union([z.number(), z.string()]).describe('群号（必须在白名单内）'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
     messages: z.union([z.array(z.string()).min(1), z.string()]).describe('要发送的消息数组，每条为纯文本；也兼容传入 JSON 数组字符串')
   },
-  async ({ groupId, token, messages }) => {
+  async ({ groupId, token, messages, conversationIntent, topicId }) => {
     try {
       const key = `group:${groupId}`;
       let finalMessages = messages;
@@ -758,7 +722,7 @@ server.tool(
       }
       const data = await agentApi('/api/socialV2/send-burst', {
         method: 'POST',
-        body: JSON.stringify({ key, messages: finalMessages }),
+        body: JSON.stringify({ key, messages: finalMessages, conversationIntent, topicId }),
         headers: { 'x-agent-token': token },
         timeoutMs: 300000
       });
@@ -773,16 +737,18 @@ server.tool(
   'qq_send_message',
   '统一发送工具：可发一条或多条，二代仿真模式专用。字符串=一条消息，数组=多条气泡。若只有一条入站消息，或多条消息本质含义相同且一个回答能完整回应，用本工具发送一条即可。若多条入站消息语义不同、对象不同或需要分别回应，对每条分别用 qq_reply 引用准确原消息；不要用数组代替多条引用回复。数组仍可用于拆分一段连续回复或主动发言。每条发送内容应完整、清楚，不要把同一句话拆碎。',
   {
+    conversationIntent: z.enum(['reply','followup','newTopic']).optional().describe('本次实际发送内容的语义；追问/新话题计数以真实送达为准'),
+    topicId: z.string().max(120).optional().describe('实际新话题的简短标识，不填秘密或个人信息'),
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
     messages: z.union([z.string(), z.array(z.string()).min(1)]).describe('要发送的内容：字符串=一条；数组=分多条'),
     replyToMessageId: z.union([z.number(), z.string()]).optional().describe('要引用/回复的消息 id（非零整数，可为负数，可选）'),
     atUserId: z.union([z.number(), z.string()]).optional().describe('要 @ 的群成员 QQ 号（群聊中用于点名某个人；与引用二选一即可，不要滥用）'),
-    gapMode: z.enum(['auto', 'fixed', 'byLength']).optional().describe('auto=桥接随机；fixed=固定间隔；byLength=按字数计算'),
+    gapMode: z.enum(['auto', 'fixed']).optional().describe('auto=本轮计划随机；fixed=请求间隔，仍受本轮计划范围约束'),
     gapMs: z.number().optional().describe('fixed 模式下的统一间隔（毫秒）'),
     gaps: z.array(z.number()).optional().describe('fixed 模式下逐条间隔（长度=条数-1）')
   },
-  async ({ key, token, messages, replyToMessageId, atUserId, gapMode, gapMs, gaps }) => {
+  async ({ key, token, messages, replyToMessageId, atUserId, gapMode, gapMs, gaps, conversationIntent, topicId }) => {
     try {
       let finalMessages = messages;
       if (typeof finalMessages === 'string') {
@@ -804,7 +770,7 @@ server.tool(
       }
       const data = await agentApi('/api/socialV2/send-message', {
         method: 'POST',
-        body: JSON.stringify({ key, messages: finalMessages, replyToMessageId, atUserId: atUserId ?? null, gapMode, gapMs, gaps }),
+        body: JSON.stringify({ key, messages: finalMessages, replyToMessageId, atUserId: atUserId ?? null, gapMode, gapMs, gaps, conversationIntent, topicId }),
         headers: { 'x-agent-token': token },
         timeoutMs: 300000
       });
@@ -1049,7 +1015,7 @@ server.tool(
 
 server.tool(
   'qq_memory_append',
-  '记录一条轻量记忆：activeTopic=进行中的话题；pendingThought=你想说但还没说的话；memberImpression=对某位群友的印象。记忆会持久化，并在后续唤醒/qq_get_prompt 中自动出现。',
+  '记录当前窗口的轻量记忆：activeTopic=当前话题；pendingThought=bot待说想法；memberImpression=窗口内实际发言用户的行为观察。持续价值先提炼成会话事实；稳定作息/爱好写人物档案，任务/承诺/随口安排写qq_task_note。不把印象当稳定性格。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -1113,22 +1079,32 @@ server.tool(
 
 server.tool(
   'qq_task_note',
-  '中期记忆（任务进度）：多步任务跨上下文重置/多次运行时保留进度。append=追加一条进度（完成项/待办/重要发现）；list=读取当前进度。',
+  '当前事务记忆：记录任务、承诺、随口安排的状态/进度/下一步。list 查看活跃或历史；upsert 新建或按 id 与 expectedRevision 更新。完成用 done、取消用 cancelled；不写通知流水、不因时间自动完成、不据旧笔记推定授权。存储没有15000字总上限。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    action: z.enum(['append', 'list']).describe('append=追加进度；list=读取'),
-    text: z.string().optional().describe('append 时写入的内容：完成项/待办/重要发现，简短分条')
+    action: z.enum(['upsert', 'list']).describe('upsert=新建或修改事务；list=查看'),
+    id: z.string().optional().describe('修改时传入已有事务ID；新建省略'),
+    expectedRevision: z.number().int().optional().describe('修改时必须传 list 返回的 revision；冲突后重读'),
+    title: z.string().max(240).optional(),
+    detail: z.string().max(20000).optional(),
+    nextAction: z.string().max(2000).optional(),
+    source: z.string().max(2000).optional().describe('真实来源、日期、消息标识；未知就留空'),
+    status: z.enum(['active', 'all', 'needs_review', 'pending', 'doing', 'waiting', 'done', 'cancelled', 'superseded']).optional(),
+    priority: z.number().int().min(0).max(2).optional(),
+    offset: z.number().int().min(0).optional(),
+    limit: z.number().int().min(1).max(100).optional()
   },
-  async ({ key, token, action, text }) => {
+  async ({ key, token, action, ...fields }) => {
     try {
       if (action === 'list') {
-        const data = await agentApi(`/api/socialV2/task-notes?key=${encodeURIComponent(key)}`, { headers: { 'x-agent-token': token } });
+        const query = new URLSearchParams({ key, ...Object.fromEntries(['status', 'offset', 'limit'].filter(k => fields[k] !== undefined).map(k => [k, String(fields[k])])) });
+        const data = await agentApi(`/api/socialV2/affairs?${query}`, { headers: { 'x-agent-token': token } });
         return { content: [{ type: 'text', text: serializeModelData(data) }] };
       }
-      const data = await agentApi('/api/socialV2/task-notes', {
+      const data = await agentApi('/api/socialV2/affairs', {
         method: 'POST',
-        body: JSON.stringify({ key, action: 'append', text }),
+        body: JSON.stringify({ key, action, ...fields }),
         headers: { 'x-agent-token': token }
       });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
@@ -1140,7 +1116,7 @@ server.tool(
 
 server.tool(
   'qq_memory_query',
-  '查看当前会话的轻量记忆：进行中的话题、你想说但还没说的话、对群友的印象（只读）。',
+  '查看当前会话的轻量记忆：当前话题、bot待说想法、当前小上下文窗口内实际发言用户的行为印象（只读）；任务/承诺用qq_task_note，稳定资料用人物档案工具。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -1236,7 +1212,7 @@ server.tool(
 
 server.tool(
   'qq_schedule',
-  '日程工具（讲座/考试/课程/活动/截止日期/和别人的约定/回访）。用户提到未来某件事时，先把时间理解成具体时刻再 action=add 登记；从日程时间前 leadMinutes 分钟（默认 30）开始，每 intervalMinutes 分钟（默认 30）唤醒并提醒，直到用户明确说“我已经去做这事了”。'
+  '日程工具（明确提醒的讲座/考试/课程/活动/截止日期/约定/回访）。随口安排先写当前事务qq_task_note，小事不必建日程；确认需要提醒且时间具体时才action=add。leadMinutes控制提前量（默认30），intervalMinutes控制提醒间隔（默认30），完成或取消需明确依据。'
   + 'action=add 必填 title + when：when 用 ISO（带时区，如 2026-11-22T23:59:00+08:00）或「YYYY-MM-DD HH:MM」；只知道日期就省略时刻（按当天 09:00）。时间含糊（“下周”“过几天”“回头”）先补问，不要猜。'
   + 'action=list 查看当前会话未完成日程（含 id、提醒开始时刻 remindAt、间歇周期和下次提醒时间）；action=update 用 id/match 修改标题、时间、地点、描述、重复、leadMinutes、intervalMinutes；只有用户明确说“我已经去做这事了”后，才用 action=complete 确认；action=cancel 取消。不要把沉默、“知道了”或“谢谢”当作完成。'
   + '只有确实需要到点提醒的事才登记，普通话题不要记成日程。',
@@ -1337,7 +1313,7 @@ server.tool(
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().min(1).describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    alias: z.string().describe('绰号（如 管理员）'),
+    alias: z.string().describe('绰号（如 十二）'),
     qq: z.string().optional().describe('有证据的对应 QQ；不确定可省略或留空，不能默认填发言者'),
     note: z.string().optional().describe('疑似称呼的原话语境与被称呼者线索')
   },
@@ -1363,29 +1339,6 @@ server.tool('qq_term_submit','提交共同兴趣词条候选，保留语境/公�
   try{const data=await agentApi('/api/socialV2/term/submit',{method:'POST',headers:{'x-agent-token':token},body:JSON.stringify({key,...input})});return {content:[{type:'text',text:serializeModelData(data)}]};}
   catch(error){return {isError:true,content:[{type:'text',text:'提交词条失败：'+error.message}]};}
 });
-
-server.tool(
-  'private_followup_send',
-  '群聊回复完成后，确认已成功送达；若本轮实际发言者值得关心，或你对其具体经历确实感兴趣并自然想了解后续，向该发言者私聊追问一句。只问一个简短、具体的问题，不复述群里回复。必须使用当前群聊 key、本轮实际发言者 QQ 和会话令牌；桥接会校验本轮发言、群/私聊关系、白名单与限频。不得用本工具代替群聊回复。',
-  {
-    groupKey: z.string().regex(/^group:\d+$/).describe('当前群聊 key，使用本轮唤醒提示中的 group key'),
-    userId: z.string().regex(/^\d{1,20}$/).describe('本轮群消息实际发送者 QQ，不要猜测或换成其他成员'),
-    text: z.string().trim().min(1).max(300).refine(value => !/[\r\n]/.test(value), '只能发送一条简短消息').describe('一句简短、具体的私聊追问'),
-    token: z.string().min(1).describe('当前群聊会话令牌')
-  },
-  async ({ groupKey, userId, text, token }) => {
-    try {
-      const data = await agentApi('/api/plugins/call', {
-        method: 'POST',
-        headers: { 'x-agent-token': token },
-        body: JSON.stringify({ tool: 'private_followup_send', input: { groupKey, userId, text } })
-      });
-      return { content: [{ type: 'text', text: serializeModelData(data) }] };
-    } catch (error) {
-      return { content: [{ type: 'text', text: `私聊追问失败：${error?.message ?? error}` }], isError: true };
-    }
-  }
-);
 
 server.tool(
   'profile_get',
@@ -1420,6 +1373,29 @@ server.tool(
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
     } catch (error) {
       return { content: [{ type: 'text', text: `修改人物档案失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  'private_followup_send',
+  '群聊回复完成后，确认已成功送达；若本轮实际发言者值得关心，或你对其具体经历确实感兴趣并自然想了解后续，向该发言者私聊追问一句。只问一个简短、具体的问题，不复述群里回复。必须使用当前群聊 key、本轮实际发言者 QQ 和会话令牌；桥接会校验本轮发言、群/私聊关系、白名单与限频。不得用本工具代替群聊回复。',
+  {
+    groupKey: z.string().regex(/^group:\d+$/).describe('当前群聊 key，使用本轮唤醒提示中的 group key'),
+    userId: z.string().regex(/^\d{1,20}$/).describe('本轮群消息实际发送者 QQ，不要猜测或换成其他成员'),
+    text: z.string().trim().min(1).max(300).refine(value => !/[\r\n]/.test(value), '只能发送一条简短消息').describe('一句简短、具体的私聊追问'),
+    token: z.string().min(1).describe('当前群聊会话令牌')
+  },
+  async ({ groupKey, userId, text, token }) => {
+    try {
+      const data = await agentApi('/api/plugins/call', {
+        method: 'POST',
+        headers: { 'x-agent-token': token },
+        body: JSON.stringify({ tool: 'private_followup_send', input: { groupKey, userId, text } })
+      });
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `私聊追问失败：${error?.message ?? error}` }], isError: true };
     }
   }
 );

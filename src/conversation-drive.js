@@ -1,167 +1,45 @@
-// 会话推进组件（conversation drive）
-//
-// 把「接住话题并反问」「冷场时主动起新话题」从模型的临场发挥，变成桥接层的确定性组件：
-//   · 每轮唤醒时过滤收尾语境、冷却和连续追问，再把可选追问提示交给模型自行判断；
-//   · 冷场开新话题仍按概率、冷却与频率上限控制。
-//
-// 只做判定与提示词文本，不发消息；状态补丁由调用方合并进 socialV2 会话状态后落盘。
-
-export const DEFAULT_CONVERSATION_DRIVE = {
-  enabled: true,
-  // 旧配置兼容字段；追问是否发生现由模型自行判断，不按概率抽签。
-  followUpProbability: 0.5,
-  // 冷场/无未读时主动起新话题的概率（0~1）
-  newTopicProbability: 0.35,
-  // 两次「追问」引导之间的最小间隔
-  followUpCooldownMinutes: 8,
-  // 两次「起新话题」引导之间的最小间隔 / 每小时上限
-  newTopicCooldownMinutes: 45,
-  newTopicMaxPerHour: 2,
-  // 短到只算「收尾」的回复（嗯/噢/好的/睡了…）≤ 这个字数时，最容易聊死
-  deadEndShortChars: 8,
-  // 自定义话题种子（留空则用内置池）
-  seeds: []
-};
-
-const ACK_RE = /^(嗯+|噢+|哦+|好+|行|可以|收到|知道了|懂了|草+|哈哈+|笑死|确实|是|对|没事|算了|不用了?|晚安|睡(觉)?了?|先这样|拜拜|再见|ok|okay|thx|谢谢|感谢|1|11|111)[\s。.!！~～]*$/i;
-
-const BUILTIN_SEEDS = [
-  '今天吃了什么／谁请客',
-  '最近在忙的一件事里最烦的那一步',
-  '刚看到的一条离谱新闻或热梗',
-  '最近有没有什么一直在拖、一直没做的事',
-  '天气/季节变化带来的具体小事（比如突然要穿外套）',
-  '在追的剧/番/游戏，最好具体到某一集或某个卡关',
-  '最近花得最值的一笔小钱',
-  '有没有那种「早就想学但一直没开始」的技能'
-];
-
-function clampProb(value, fallback) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(1, Math.max(0, n));
-}
-
-function minutes(value, fallback) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) return fallback;
-  return n;
-}
-
-/** 合并默认值 + 用户配置，输出安全的驱动配置。 */
-export function normalizeConversationDriveConfig(raw) {
-  const src = raw && typeof raw === 'object' ? raw : {};
+// Semantic guidance shared by replies and already-authorized proactive turns.
+// Timing belongs to life-wake-reasons. This pure selector never spends quota or draws a lottery.
+export const DEFAULT_CONVERSATION_DRIVE = { enabled: true, followUpCooldownMinutes: 8, newTopicCooldownMinutes: 45, newTopicMaxPerHour: 2, deadEndShortChars: 8, seeds: [] };
+const BUILTIN_SEEDS = ['最近在忙的一件具体小事', '最近喜欢的作品或游戏', '想开始但还没开始的一个小计划'];
+const ACK = /^(嗯+|噢+|哦+|好+|行|收到|知道了|懂了|没事|算了|不用了?|晚安|睡(觉)?了?|先这样|拜拜|再见|ok|okay|谢谢|感谢)[\s。.!！~～]*$/i;
+const CLOSING = /先别(发|问|说)|别再(发|问|说)|等我|等一下|稍后再|待会再|不想聊|不聊了|先这样|晚安|睡觉了|再见|拜拜/;
+const textOf = m => String(m?.plain ?? m?.text ?? m?.tail ?? '').replace(/\s+/g, ' ').trim();
+const timeOf = m => Number(m?.at ?? m?.time ?? m?.timestamp) || 0;
+const minutes = (v, d) => Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : d;
+export function normalizeConversationDriveConfig(raw = {}) {
   const d = DEFAULT_CONVERSATION_DRIVE;
-  return {
-    enabled: src.enabled !== false,
-    followUpProbability: clampProb(src.followUpProbability, d.followUpProbability),
-    newTopicProbability: clampProb(src.newTopicProbability, d.newTopicProbability),
-    followUpCooldownMinutes: minutes(src.followUpCooldownMinutes, d.followUpCooldownMinutes),
-    newTopicCooldownMinutes: minutes(src.newTopicCooldownMinutes, d.newTopicCooldownMinutes),
-    newTopicMaxPerHour: Math.max(0, Math.round(minutes(src.newTopicMaxPerHour, d.newTopicMaxPerHour))),
-    deadEndShortChars: Math.max(1, Math.round(Number(src.deadEndShortChars) || d.deadEndShortChars)),
-    seeds: Array.isArray(src.seeds) ? src.seeds.filter((s) => s && String(s).trim()).map((s) => String(s).trim().slice(0, 60)).slice(0, 20) : []
-  };
+  return { enabled: raw.enabled !== false, followUpCooldownMinutes: minutes(raw.followUpCooldownMinutes, d.followUpCooldownMinutes),
+    newTopicCooldownMinutes: minutes(raw.newTopicCooldownMinutes, d.newTopicCooldownMinutes), newTopicMaxPerHour: Math.round(minutes(raw.newTopicMaxPerHour, d.newTopicMaxPerHour)),
+    deadEndShortChars: Math.max(1, Math.round(minutes(raw.deadEndShortChars, d.deadEndShortChars))),
+    seeds: Array.isArray(raw.seeds) ? raw.seeds.map(String).map(s => s.trim().slice(0, 60)).filter(Boolean).slice(0, 20) : [] };
 }
-
-function textOf(msg) {
-  return String(msg?.plain ?? msg?.text ?? msg?.tail ?? '').replace(/\s+/g, ' ').trim();
-}
-
-function isAckLike(text, maxChars) {
-  const t = String(text || '').trim();
-  if (!t) return false;
-  // 纯表情/纯标点也算收尾
-  if (!/[\u4e00-\u9fa5a-zA-Z0-9]/.test(t)) return true;
-  if (t.length <= maxChars && ACK_RE.test(t)) return true;
-  return false;
-}
-
-function hasQuestion(text) {
-  return /[?？]/.test(String(text || ''));
-}
-
-function pickSeed(seeds, st, now) {
-  const pool = seeds.length ? seeds : BUILTIN_SEEDS;
-  // 优先接上次没聊完的话题，其次是按时间轮换的种子，避免每次都同一句。
-  const topics = Array.isArray(st?.activeTopics) ? st.activeTopics.filter((t) => t && t.text) : [];
-  if (topics.length) {
-    const t = topics[topics.length - 1];
-    const pending = t.pendingQuestion ? `（记得把上次没问出口的「${String(t.pendingQuestion).slice(0, 40)}」问出来）` : '';
-    return { text: String(t.text).slice(0, 60), source: 'activeTopic', suffix: pending };
-  }
-  const idx = Math.abs(Math.floor(now / 60000) + (Number(st?.driveCount) || 0)) % pool.length;
-  return { text: pool[idx], source: 'seed', suffix: '' };
-}
-
-/**
- * 判定这一轮要不要「往下追」/「起新话题」。
- * @param {{ state: object, config?: object, now?: number, isGroup?: boolean }} opts
- * @returns {{ kind: 'none'|'followup'|'newTopic', line: string, patch: object, reason: string }}
- */
 export function planConversationDrive(opts = {}) {
-  const none = { kind: 'none', line: '', patch: {}, reason: '' };
-  try {
-    const cfg = normalizeConversationDriveConfig(opts.config);
-    if (!cfg.enabled) return none;
-    const st = opts.state && typeof opts.state === 'object' ? opts.state : {};
-    const now = Number.isFinite(opts.now) ? opts.now : Date.now();
-
-    const recent = Array.isArray(st.recentMessages) ? st.recentMessages : [];
-    const unread = Array.isArray(st.unread) ? st.unread.filter((m) => m && !m.isSelf) : [];
-    const incoming = unread.length ? unread[unread.length - 1] : [...recent].reverse().find((m) => m && !m.isSelf);
-    const lastSelf = [...recent].reverse().find((m) => m && m.isSelf);
-    const lastIncomingText = textOf(incoming);
-
-    const lastDriveAt = Number(st.driveFollowUpAt) || 0;
-    const lastNewTopicAt = Number(st.driveNewTopicAt) || 0;
-    const lastKind = String(st.driveLastKind || '');
-    const newTopicTimes = Array.isArray(st.driveNewTopicTimes) ? st.driveNewTopicTimes.filter((t) => Number.isFinite(Number(t))) : [];
-    const hourAgo = now - 60 * 60 * 1000;
-    const newTopicsLastHour = newTopicTimes.filter((t) => Number(t) > hourAgo).length;
-
-    const aiAskedLast = lastSelf && lastSelf.time && incoming?.time
-      ? hasQuestion(textOf(lastSelf)) && Number(lastSelf.time) < Number(incoming.time)
-      : false;
-    const incomingIsQuestion = hasQuestion(lastIncomingText);
-    const ackLike = isAckLike(lastIncomingText, cfg.deadEndShortChars);
-    const cold = !incoming; // 没有任何来信：要么主动开口，要么这轮只是观察
-
-    // ① 起新话题：冷场或对方明显在收尾时，且冷却/频率都允许。
-    const newTopicAllowed = now - lastNewTopicAt >= cfg.newTopicCooldownMinutes * 60000
-      && newTopicsLastHour < cfg.newTopicMaxPerHour
-      && lastKind !== 'newTopic';
-    if ((cold || ackLike) && newTopicAllowed && Math.random() < cfg.newTopicProbability) {
-      const seed = pickSeed(cfg.seeds, st, now);
-      const line = '【会话推进｜起个新话题】' + (cold ? '这会儿没人说话，' : '对方这句基本是收尾（«' + lastIncomingText.slice(0, 16) + '»），')
-        + '你这轮自然抛一个新话题（可以接着对方的意思想像，也别硬掰）：' + seed.text + (seed.suffix ? seed.suffix : '')
-        + '。要求：用陈述句起头、具体到一个细节，不要问「有人吗/在聊什么」，不要一次抛两个话题。';
-      return {
-        kind: 'newTopic',
-        line,
-        reason: cold ? 'cold' : 'ack',
-        patch: { driveNewTopicAt: now, driveLastKind: 'newTopic', driveCount: (Number(st.driveCount) || 0) + 1, driveNewTopicTimes: [...newTopicTimes, now].slice(-10) }
-      };
-    }
-
-    // ② 往下追：有来信、不是纯收尾，且这句不是刚回答我的问题（别连着追问像审讯）。
-    const followAllowed = now - lastDriveAt >= cfg.followUpCooldownMinutes * 60000
-      && !aiAskedLast
-      && lastKind !== 'followup';
-    if (incoming && followAllowed) {
-      const line = '【会话推进｜可选追问】你先正常回复对方，再由你判断此刻是否适合自然追问；若值得继续，可问一个具体细节、后来怎样或对方的看法；若对方在收尾、气氛不合适或你没有真心想问的，就不要追问。'
-        + (incomingIsQuestion ? '（他刚问了你什么，答完再反问一句他那边的情况）' : '')
-        + '别用「然后呢/还有呢」这种空追问，也别把话题绕回你自己。最多问一句，不要变成审问。';
-      return {
-        kind: 'followup',
-        line,
-        reason: incomingIsQuestion ? 'question' : 'reply',
-        patch: { driveFollowUpAt: now, driveLastKind: 'followup', driveCount: (Number(st.driveCount) || 0) + 1 }
-      };
-    }
-
-    return none;
-  } catch {
-    return none;
-  }
+  const none = { kind: 'none', line: '', patch: {}, reason: '' }, cfg = normalizeConversationDriveConfig(opts.config);
+  if (!cfg.enabled) return none;
+  const st = opts.state || {}, now = opts.now ?? Date.now();
+  const recent = Array.isArray(st.recentMessages) ? st.recentMessages : [];
+  const unread = Array.isArray(st.unread) ? st.unread.filter(m => m && !m.isSelf) : [];
+  const incoming = unread.at(-1) || [...recent].reverse().find(m => m && !m.isSelf);
+  const lastSelf = [...recent].reverse().find(m => m?.isSelf), text = textOf(incoming);
+  if (CLOSING.test(text) || (text.length <= cfg.deadEndShortChars && ACK.test(text))) return none;
+  const style = opts.mood?.styleInstruction ? `当前形态「${String(opts.mood.modeName || '')}」：${opts.mood.styleInstruction}。` : '';
+  if (opts.needsClarification === true && incoming) return { kind: 'followup', reason: 'clarification', patch: {}, line: `【任务澄清】${style}先回答已确定部分，只询问完成用户实际请求所缺的必要信息；这不要求附加社交问题。` };
+  const unanswered = (lastSelf && /[?？]/.test(textOf(lastSelf)) && (!incoming || timeOf(lastSelf) >= timeOf(incoming)))
+    || (st.lastQuestionAt && (!incoming || st.lastQuestionAt >= timeOf(incoming)));
+  if (unanswered || opts.waiting === true) return none;
+  const followAllowed = !st.driveFollowUpAt || now - st.driveFollowUpAt >= cfg.followUpCooldownMinutes * 60000;
+  const newTopicTimes = (st.driveNewTopicTimes || []).filter(t => t > now - 3600000);
+  const newTopicAllowed = (!st.driveNewTopicAt || now - st.driveNewTopicAt >= cfg.newTopicCooldownMinutes * 60000)
+    && newTopicTimes.length < cfg.newTopicMaxPerHour;
+  const answeredOurQuestion = lastSelf && incoming && /[?？]/.test(textOf(lastSelf)) && timeOf(lastSelf) < timeOf(incoming);
+  if (incoming && followAllowed && !answeredOurQuestion && opts.topicIntent !== 'newTopic') return { kind: 'followup', reason: 'reply', patch: {}, line: `【会话推进｜可选追问】${style}先正常回应当前内容，再由你判断是否值得自然追问一个具体细节${newTopicAllowed ? '，或顺着当前内容换一个相关新话题' : ''}；收尾、等待、已经回答的问题不再追问。任务澄清按真实需要进行，不受社交追问冷却影响。不要每轮强塞问题。` };
+  if (opts.proactive !== true && !(incoming && opts.topicIntent === 'newTopic')) return none;
+  if (!newTopicAllowed) return none;
+  const topics = (st.activeTopics || []).filter(t => t?.text && !t.pendingQuestion).map(t => String(t.text).slice(0, 60));
+  const pool = [...topics, ...(cfg.seeds.length ? cfg.seeds : BUILTIN_SEEDS)].filter(t => t !== st.lastTopicId);
+  if (!pool.length) return none;
+  const selected = typeof opts.selectTopic === 'function' ? opts.selectTopic(pool, { state: st, now }) : pool[(Number(st.driveCount) || 0) % pool.length];
+  if (!pool.includes(selected)) return none;
+  return { kind: 'newTopic', topicId: selected, reason: 'authorized', patch: {}, line: `【会话推进｜起个新话题】${style}${opts.proactive ? '本轮已经获得主动机会。' : '先回应用户当前内容，再自然衔接。'}结合当前QQ本人档案、作息和近期语境，从「${selected}」选一个具体切入点，邀请对方轻松回应。不要重复未回答的问题，不假装刚发生旧事；存在探索只是可选内容。` };
 }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bridgeHarness } from './audit-bridge-harness.mjs';
 
-const hidden = 'group:10604';
+const hidden = 'group:60010';
 
 test('excluded conversation is omitted from console session and social-state lists', async () => {
   const h = await bridgeHarness({

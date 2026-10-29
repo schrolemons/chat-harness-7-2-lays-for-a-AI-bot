@@ -11,6 +11,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+const memoryModule = relative => { const url = new URL(relative, import.meta.url); url.search = new URL(import.meta.url).search; return import(url.href); };
+const { createAffairStore } = await memoryModule('./affairs.mjs');
+const { parseMemoryDocument, renderPersistentDocument, mergePersistentDocument } = await memoryModule('./sections.mjs');
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const dateKey = (d = new Date()) => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
@@ -48,10 +51,9 @@ function extractDiary(text) {
   }
   return body.join('\n').trim();
 }
-function writeMemory(root, key, text, maxChars) {
+function writeMemory(root, key, text) {
   const file = memoryFile(root, key);
-  const max = Math.max(500, Math.min(20000, Number(maxChars) || 4000));
-  const body = String(text || '').trim().slice(0, max);
+  const body = String(text || '').trim();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, body + '\n', 'utf8');
   return body.length;
@@ -201,6 +203,35 @@ export function createPlugin(ctx) {
   const root = ctx.root;
   const cap = ctx.capabilities || {};
   const RETRY_MS = 5 * 60 * 1000;
+  const affairStore = createAffairStore(root);
+  const readyKeys = new Set();
+  function ensureAffairs(key) {
+    if (!readyKeys.has(key)) {
+      affairStore.migrate({ key, persistentText: readMemory(root, key).text });
+      readyKeys.add(key);
+    }
+  }
+  const affairsService = Object.fromEntries(Object.entries(affairStore).map(([name, action]) => [name, input => {
+    ensureAffairs(input?.key);
+    try { return action(input); } catch (error) {
+      if (name === 'upsert') return { ok: false, error: error.message };
+      throw error;
+    }
+  }]));
+  function receiptNotes(key) { return affairsService.receipts({ key }); }
+  function writePersistent(key, text, merge = false) {
+    if (String(text || '').length > 200000) throw new Error('单次提交超过 200000 字符；未截断、未写入。自动事实累积容量不按此截断');
+    ensureAffairs(key);
+    const incoming = parseMemoryDocument(text);
+    for (const line of incoming.unfinished) {
+      const title = line.replace(/^[-*]\s*/, '').trim().slice(0, 120);
+      if (!title || /^(?:无|暂无|（无）)$/.test(title)) continue;
+      const existing = affairsService.find({ key, detail: line });
+      if (!existing) affairsService.upsert({ key, title, detail: line, status: 'needs_review', source: '会话记忆未完成事项导入；须核对现状' });
+    }
+    const body = merge ? mergePersistentDocument(readMemory(root, key).text, text) : renderPersistentDocument(incoming);
+    return writeMemory(root, key, body);
+  }
 
   const cfg = () => {
     try { return {...((typeof cap.memoryConfig === 'function' ? cap.memoryConfig() : null) || {}),...(ctx.config||{})}; } catch { return {}; }
@@ -244,7 +275,7 @@ export function createPlugin(ctx) {
     if (!/^(?:group|private):\d+$/.test(targetKey)) return { ok: false, reason: 'invalid_key' };
     if (!ARCHIVE_DATE_RE.test(String(day))) return { ok: false, reason: 'invalid_day', day: String(day || '') };
     const manualId = /^[a-zA-Z0-9-]{8,80}$/.test(String(manualRequestId || '')) ? String(manualRequestId) : '';
-    const st=state(),notes=typeof cap.readTaskNote==='function'?String(cap.readTaskNote(targetKey)||''):'';
+    const st=state(),notes=receiptNotes(targetKey);
     const noteDate = lastDiaryDateFromNotes(notes);
     const previousDate = mergeDiaryDate(st.lastDiaryDate[targetKey], noteDate);
     const recordedForDay = diaryDateRecorded({ key: targetKey, day, st, notes });
@@ -256,7 +287,7 @@ export function createPlugin(ctx) {
       if (receipt.status === 'sent') {
         st.lastDiaryDate[targetKey] = mergeDiaryDate(st.lastDiaryDate[targetKey], day);
         saveState({ lastDiaryDate: st.lastDiaryDate });
-        try { cap.appendTaskNote?.(targetKey, '日记已发：' + day + '（发送凭据核对）'); } catch {}
+        try { affairsService.appendReceipt({ key: targetKey, text: '日记已发：' + day + '（发送凭据核对）' }); } catch {}
         return { ok: false, reason: 'already_sent', day, lastDiaryDate: day, receiptStatus: 'sent', reconciled: true };
       }
       if (receipt.status === 'claimed' || receipt.status === 'uncertain') {
@@ -285,7 +316,7 @@ export function createPlugin(ctx) {
     const sent=true;
     if(sent){
       st.lastDiaryDate[targetKey]=mergeDiaryDate(st.lastDiaryDate[targetKey],day);saveState({lastDiaryDate:st.lastDiaryDate});
-      try { cap.appendTaskNote?.(targetKey,'日记已发：'+day); } catch (e) { ctx.warn('日记已发送，但任务记录写入失败（'+targetKey+' '+day+'）：'+(e?.message??e)); }
+      try { affairsService.appendReceipt({ key: targetKey, text: '日记已发：' + day }); } catch (e) { ctx.warn('日记已发送，但收据记录写入失败（'+targetKey+' '+day+'）：'+(e?.message??e)); }
       // 归档失败绝不能影响发送：独立 try/catch，只告警。
       // 归档存完整日记（diary），不是发给 QQ 的截断版（diaryText）：历史留档要完整。
       try{writeDiaryArchive({root,key:targetKey,day,text:diary,now,maxChars:diaryArchiveMaxChars(cfg()),replaceExisting:!!manualId});}
@@ -413,13 +444,14 @@ export function createPlugin(ctx) {
   }
   return {
     services: {
+      affairs: affairsService,
       memory: {
         sendDiary,
         sendDiaryDetailed,
         catchUpDiaries,
         async diaryStatus({ key, day } = {}) {
           const st = state();
-          const notes = typeof cap.readTaskNote === 'function' ? String(cap.readTaskNote(key) || '') : '';
+          const notes = receiptNotes(key);
           const noteDate = lastDiaryDateFromNotes(notes);
           const lastDiaryDate = mergeDiaryDate(st.lastDiaryDate[key], noteDate);
           if (lastDiaryDate > String(st.lastDiaryDate[key] || '')) {
@@ -453,17 +485,18 @@ export function createPlugin(ctx) {
           return { ok: true, key, day, available: !!result.text, chars: result.text.length, source: result.source };
         },
         read(payload = {}) {
-          return readMemory(root, payload.key);
+          ensureAffairs(payload.key);
+          const memory = readMemory(root, payload.key);
+          return { ...memory, text: memory.text ? renderPersistentDocument(parseMemoryDocument(memory.text)) : '' };
         },
         write(payload = {}) {
-          const c = cfg();
-          return writeMemory(root, payload.key, payload.text, c.maxChars);
+          return writePersistent(payload.key, payload.text);
         },
         capture(payload = {}) {
           const text = String(payload.text || '');
           const m = /<MEMORY>([\s\S]*?)<\/MEMORY>/i.exec(text);
           if (!m || !m[1].trim()) return { matched: false, chars: 0 };
-          const chars = writeMemory(root, payload.key, m[1].trim(), cfg().maxChars);
+          const chars = writePersistent(payload.key, m[1].trim(), true);
           return { matched: true, chars };
         },
         diaryText(payload = {}) {
@@ -501,7 +534,7 @@ export function createPlugin(ctx) {
           const dueDay = today;
           for (const key of allKeys) {
             let notes = '';
-            try { notes = typeof cap.readTaskNote === 'function' ? String(cap.readTaskNote(key) || '') : ''; } catch {}
+            try { notes = receiptNotes(key); } catch {}
             if (diaryDateRecorded({ key, day: dueDay, st, notes }) || diaryArchiveHasDay(key, dueDay)) continue;
             if (typeof cap.deliveryStatus === 'function') {
               let receipt;

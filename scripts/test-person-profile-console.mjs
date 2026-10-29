@@ -42,25 +42,20 @@ test('switching a profile cannot save stale fields into another person or accept
       return void reply({ ok: true });
     });
     await page.goto(fixture.url, { waitUntil: 'networkidle0' });
-    await page.waitForFunction(() => typeof window.__renderComponentsByIds === 'function');
-    await page.evaluate(async () => {
-      const root = document.createElement('section'); root.id = 'profile-editor-test';
-      document.getElementById('mainContent').prepend(root);
-      await window.__renderComponentsByIds(['ctx-memory-profile-store'], root);
-    });
-    const scope = '#profile-editor-test ';
+    await page.click('#mainNav [data-view=\"setting-c-2\"]');
+    const scope = '[data-component-id=\"ctx-memory-profile-store\"] ';
     await page.waitForSelector(scope + '.member-key option[value="10001"]');
     await page.select(scope + '.member-key', '10001');
-    await page.waitForFunction(() => document.querySelector('#profile-editor-test textarea[data-profile-key="hobbies"]')?.value === '甲的字段');
+    await page.waitForFunction(() => document.querySelector('[data-component-id="ctx-memory-profile-store"] textarea[data-profile-key="hobbies"]')?.value === '甲的字段');
     await page.select(scope + '.member-key', '10002'); await pendingB;
     assert.equal(await page.$eval(scope + '.profile-save', element => element.disabled), true, 'saving must be blocked while another person is loading');
     await page.select(scope + '.member-key', '10001');
-    await page.waitForFunction(() => document.querySelector('#profile-editor-test textarea[data-profile-key="hobbies"]')?.value === '甲的字段');
+    await page.waitForFunction(() => document.querySelector('[data-component-id="ctx-memory-profile-store"] textarea[data-profile-key="hobbies"]')?.value === '甲的字段');
     await releaseB(); await page.waitForNetworkIdle({ idleTime: 100, timeout: 5000 });
     assert.equal(await page.$eval(scope + '.profile-qq', element => element.value), '10001');
     assert.equal(await page.$eval(scope + 'textarea[data-profile-key="hobbies"]', element => element.value), '甲的字段');
     await page.click(scope + '.profile-save');
-    await page.waitForFunction(() => document.querySelector('#profile-editor-test .profile-status')?.textContent.includes('已保存'));
+    await page.waitForFunction(() => document.querySelector('[data-component-id="ctx-memory-profile-store"] .profile-status')?.textContent.includes('已保存'));
     assert.equal(writes.length, 1); assert.equal(writes[0].userId, '10001'); assert.equal(writes[0].profile.hobbies, '甲的字段');
   } finally { if (releaseB) await releaseB().catch(() => {}); await browser?.close(); await fixture.close(); }
 });

@@ -1,0 +1,41 @@
+<section id="section-alias" data-page="alias" class="card span-all">
+      <h2>成员绰号（谁是谁）</h2>
+      <div class="meta">一个人可有多个绰号。明确和疑似称呼都先进入候选；QQ 不确定时留空，由管理员结合语境编辑、确认或拒绝。只有确认的映射用于认人、@人和传话。</div>
+      <div class="slang-tabs learning-tabs" id="aliasTabs">
+        <button class="slang-tab active" data-alias-tab="candidate">候选绰号</button><button class="slang-tab" data-alias-tab="confirmed">已确认</button><button class="slang-tab" data-alias-tab="rejected">已拒绝</button>
+      </div><span class="meta" id="aliasMsg" role="status"></span>
+      <div class="slang-panel alias-panel active" id="aliasPanelCandidate">
+        <div class="row" style="margin-top:8px"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="aliasCandidateSelectAll"> 全选</label><button id="aliasConfirmSelected" class="small">确认所选</button><button id="aliasRejectSelected" class="small">拒绝所选</button><details class="compact-actions"><summary>更多操作</summary><div class="compact-actions-menu"><button id="aliasRefreshCandidates" class="small">刷新</button></div></details></div>
+        <div class="row" style="margin-top:8px"><input type="text" id="aliasSearchCand" placeholder="搜索绰号 / 被称呼者 / 语境" style="flex:1"><select id="aliasLimitCand" style="width:110px"><option>50</option><option selected>100</option><option>200</option><option>500</option></select></div>
+        <div class="slang-scroll" id="aliasCandidateList">加载中…</div>
+      </div>
+      <div class="slang-panel alias-panel" id="aliasPanelConfirmed">
+        <div class="row" style="margin-top:8px"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="aliasConfirmedSelectAll"> 全选</label><button id="aliasDeleteSelected" class="small danger">删除所选映射</button></div>
+        <div class="row" style="margin-top:8px"><input type="text" id="aliasSearchConfirmed" placeholder="搜索绰号 / QQ / 备注" style="flex:1"><select id="aliasLimitConfirmed" style="width:110px"><option>50</option><option selected>100</option><option>200</option><option>500</option></select></div>
+        <div class="slang-scroll" id="aliasConfirmedList">加载中…</div>
+      </div>
+      <div class="slang-panel alias-panel" id="aliasPanelRejected">
+        <div class="row" style="margin-top:8px"><input type="text" id="aliasSearchRejected" placeholder="搜索已拒绝绰号" style="flex:1"><select id="aliasLimitRejected" style="width:110px"><option>50</option><option selected>100</option><option>200</option><option>500</option></select></div>
+        <div class="slang-scroll" id="aliasRejectedList">加载中…</div>
+      </div>
+      <div id="aliasRoot" hidden></div>
+      <div class="divider"></div><div class="meta" style="margin-bottom:6px">手动添加成员绰号</div>
+      <div class="row"><input id="aliasName" type="text" placeholder="绰号（如 十二）" style="flex:1"><input id="aliasQq" type="text" placeholder="QQ号" style="flex:1"></div><div class="row" style="margin-top:6px"><input id="aliasNote" type="text" placeholder="备注（可选）" style="flex:1"></div><div class="row" style="margin-top:8px"><button id="aliasAdd" class="small primary">添加入库（确认）</button></div>
+      <details style="margin-top:10px"><summary class="meta">绰号学习设置</summary>
+        <label class="row"><input type="checkbox" id="aliasAutoExtract" style="width:auto"> 自动收集明确与疑似绰号 <span id="aliasAutoExtractMsg" class="meta"></span></label>
+        <label class="row"><input type="checkbox" id="aliasAutoSemantic" style="width:auto"> 自动分析群消息中的绰号候选</label>
+        <div class="row"><div class="setting-field"><label for="aliasMinMessages">开始分析前最少消息数</label><input type="number" id="aliasMinMessages" min="1" step="1" style="width:100px"><small class="parameter-example" data-example-for="aliasMinMessages">例：设为12：同群累计12条消息后才尝试一批绰号分析。</small></div></div>
+        <div class="row"><div class="setting-field"><label for="aliasCooldown">同一群自动分析冷却（分钟）</label><input type="number" id="aliasCooldown" min="1" step="1" style="width:100px"><small class="parameter-example" data-example-for="aliasCooldown">例：设为30：同群两次自动分析至少间隔30分钟。</small></div></div>
+        <div class="row"><div class="setting-field"><label for="aliasMaxCalls">每小时最多分析次数</label><input type="number" id="aliasMaxCalls" min="1" max="12" step="1" style="width:100px"><small class="parameter-example" data-example-for="aliasMaxCalls">例：设为4：每小时最多触发4次自动绰号分析。</small></div></div>
+        <div class="meta">自动分析只提交候选，仍需审核确认；关闭自动分析后可以继续手动刷新和维护已确认映射。</div>
+        <div class="row"><button id="aliasConfigSave" class="small primary" data-save-action>保存全局绰号学习规则</button><span id="aliasConfigMsg" class="meta" role="status"></span></div>
+      </details>
+      <div class="modal-overlay" id="aliasModalOverlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="aliasModalTitle" tabindex="-1">
+        <h3 id="aliasModalTitle">编辑成员绰号</h3><div class="meta" id="aliasModalContent"></div><input type="hidden" id="aliasEditId">
+        <div class="setting-field"><label for="aliasModalName">绰号</label><input type="text" id="aliasModalName" maxlength="50" placeholder="成员的称呼"><small class="parameter-example" data-example-for="aliasModalName">例：填“阿明”：保存这个称呼本身，不把它当作QQ账号。</small></div>
+        <div class="setting-field"><label for="aliasModalQq">对应 QQ（不确定可留空，不能确认）</label><input type="text" id="aliasModalQq" placeholder="5 到 12 位 QQ 号"><small class="parameter-example" data-example-for="aliasModalQq">例：填10001：将绰号对应到该QQ；留空时作为待确认线索。</small></div>
+        <div class="setting-field"><label for="aliasModalNote">备注 / 目标线索</label><input type="text" id="aliasModalNote" maxlength="400" placeholder="补充群内语境或目标线索"><small class="parameter-example" data-example-for="aliasModalNote">例：填“周五在群里这样自称”：保留判断依据，不能代替目标QQ确认。</small></div>
+        <div id="aliasModalEvidence" class="meta"></div>
+        <div class="row"><button id="aliasModalConfirm" class="small primary">确认映射</button><button id="aliasModalReject" class="small">拒绝候选</button><button id="aliasModalCancel" class="small">取消</button></div>
+      </div></div>
+    </section>

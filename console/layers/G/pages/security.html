@@ -1,0 +1,41 @@
+<section id="section-security" data-page="access" class="card">
+      <h2>安全拦截通知</h2>
+      <div class="security-setting-block">
+        <div><b>通知开关</b><div class="meta">控制安全拦截发生时，是否在群里发送提示。</div></div>
+        <div class="row" style="margin-top:8px">
+          <div class="setting-field"><label style="flex:1" for="secInterceptNotify">拦截时在群里发提示</label><input type="checkbox" id="secInterceptNotify" style="width:auto"><small class="parameter-example" data-example-for="secInterceptNotify">例：关闭后不在群内发拦截提示，安全检查和日志仍执行。</small></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="secInterceptNotifySave" class="small primary" data-save-action>保存全局通知开关</button>
+          <span class="meta" id="secInterceptNotifyMsg"></span>
+        </div>
+      </div>
+      <div class="security-setting-block">
+        <div><b>通知文案</b><div class="meta">单独编辑拦截时发送的提示内容，最多 300 字。</div></div>
+        <div class="setting-field"><label for="secInterceptText" style="display:block;margin-top:8px">拦截提示文案</label><textarea id="secInterceptText" maxlength="300" rows="3" style="width:100%;margin-top:4px" placeholder="本条回复被安全策略拦截，请联系管理员"></textarea><small class="parameter-example" data-example-for="secInterceptText">例：填“这条内容暂时不能发送”：发生拦截时使用此短句，不调用模型改写。</small></div>
+        <div class="row" style="margin-top:8px">
+          <button id="secInterceptTextSave" class="small primary" data-save-action>保存全局通知文案</button>
+          <span class="meta" id="secInterceptTextMsg"></span>
+        </div>
+      </div>
+      <div class="meta">关闭通知只会停止群内提示；安全拦截与日志记录仍照常执行。</div>
+      <div class="security-setting-block">
+        <div><b>当前安全策略</b><div class="meta">只读显示正在使用的出站泄漏、入站注入与违禁内容规则；策略通过本地配置维护，不在控制台在线编辑。</div></div>
+        <pre id="secSecurityPolicy" class="security-policy-text">正在读取安全策略…</pre>
+      </div>
+      <div id="stateDirWarn" style="display:none;margin-top:10px;padding:8px 10px;border-left:3px solid var(--warn,#d08700);background:rgba(208,135,0,.08)">
+        <b>⚠️ state/ 目录权限未收紧</b>
+        <div class="meta" style="margin:4px 0">上次检查未能确认权限已收紧： <code id="stateDirPath"></code>。它里面的控制台令牌、SnowLuma 令牌、各会话令牌与 QQ 聊天记录，本机任何已登录用户都可能读到。</div>
+        <div class="meta">先点击“重新检测”读取当前权限。若仍未收紧，可在终端执行下列命令；遇到拒绝访问时再以管理员身份执行，无需重启桥接。</div>
+        <pre id="stateDirCmd" style="user-select:all;overflow:auto;margin:4px 0;padding:6px;background:rgba(127,127,127,.12);border-radius:4px"></pre>
+        <button id="stateDirReharden" class="small">重新检测</button>
+        <span class="meta" id="stateDirMsg"></span>
+      </div>
+      <div id="snowlumaWarn" style="display:none;margin-top:10px;padding:8px 10px;border-left:3px solid var(--warn,#d08700);background:rgba(208,135,0,.08)">
+        <b>⚠️ QQ 网关连着，但收不到 QQ 的数据</b>
+        <div class="meta" style="margin:4px 0" id="snowlumaWarnHint"></div>
+        <div class="meta" id="snowlumaWarnDiag">最近一个上游事件包：<b id="snowlumaWarnPkt">unknown</b>；SnowLuma 自评接收链路 good=<b id="snowlumaWarnGood">unknown</b>。</div>
+        <div class="meta" style="margin:4px 0">这是 <b>SnowLuma 自己那边</b>的问题：它的 <code>[Hook]</code> 没能从 QQ 客户端取到数据，所以桥接的 WebSocket 连上了却始终没有内容可收。桥接没有原生 / 注入组件，也不改 SnowLuma，一条上游事件包都不会替你凭空造出来。</div>
+        <div class="meta">排查：打开 SnowLuma 的 <code>logs/snowluma-*.log</code>，搜 <code>[Hook]</code>，看有没有 <code>receive path stale</code> / <code>process enumeration timed out</code> 这类行；顺带考虑<b>升级 SnowLuma</b>（新版运行时对 hook 的兜底更好）。桥接这边不用重启。</div>
+      </div>
+    </section>

@@ -1,8 +1,8 @@
 {
   "id": "life-campus-watch",
-  "name": "网页监控与脚本协同",
+  "name": "课程监管调度",
   "version": "0.2.0",
-  "description": "调度使用者自配的通用网页监控；个人脚本只显示主动上报的心跳，不预装任何个人项目。",
+  "description": "L 层定时编排：每分钟快检讲座、每 30 分钟全检课程页，调桥接 spawnCampusWatch 拉起 campus-watch 脚本",
   "category": "生命周期与编排",
   "layer": "L",
   "order": 31,
@@ -21,21 +21,19 @@
   },
   "config": {
     "fastCheckMinutes": 1,
-    "fullCheckMinutes": 30,
+    "fullCheckMinutes": 5,
     "webWatchEnabled": false,
     "watchUrls": [],
-    "watchUrlsConfigured": false,
+    "watchUrlsConfigured": true,
     "scriptCollabEnabled": false,
     "scriptPaths": [],
     "bbCourses": [],
-    "bbCoursesDisabled": [],
-    "bbCoursesConfigured": false,
-    "enabledScripts": "bookmarks",
+    "bbCoursesConfigured": true,
+    "enabledScripts": "",
     "lecturesEnabled": false,
     "lecturesLocation": "",
     "lecturesIntervalMinutes": 10,
     "lecturesPortalUrl": "",
-    "lecturesApi": "",
-    "aiWebSummary": true
+    "lecturesApi": ""
   }
 }

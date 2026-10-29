@@ -6,15 +6,23 @@ export function createPlugin(ctx) {
   // 默认同一会话 3 小时内只冒一次；设成 0 可关掉冷却。
   const cooldownMinutes = Number(cfg.cooldownMinutes ?? 180);
   const cooldownMs = Number.isFinite(cooldownMinutes) ? Math.max(0, cooldownMinutes) * 60000 : 180 * 60000;
+  const canGreet = (key, now = Date.now()) => {
+    const lastAt = Number(ctx.state.get()?.lastAtByKey?.[String(key || '')]) || 0;
+    return !(cooldownMs > 0 && lastAt && now - lastAt < cooldownMs);
+  };
   return {
+    // An empty beforePrompt result only removes this component's wording: the
+    // wake-reasons component would still ask for a greeting. Veto the whole wake.
+    canWake(payload = {}) {
+      return payload.reason !== 'startupGreeting' || canGreet(payload.key);
+    },
     hooks: {
       beforePrompt(payload) {
         if (String(payload?.reason || '') !== 'startupGreeting') return '';
         const key = String(payload?.key || '');
         const state = ctx.state.get() || {};
         const now = Date.now();
-        const lastAt = Number(state.lastAtByKey?.[key]) || 0;
-        if (cooldownMs > 0 && lastAt && now - lastAt < cooldownMs) return '';
+        if (!canGreet(key, now)) return '';
         const lastAtByKey = { ...(state.lastAtByKey || {}), [key]: now };
         if (Object.keys(lastAtByKey).length > 200) delete lastAtByKey[Object.keys(lastAtByKey)[0]];
         ctx.state.set({ lastAtByKey });

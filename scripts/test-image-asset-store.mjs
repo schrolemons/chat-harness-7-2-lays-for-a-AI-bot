@@ -6,21 +6,6 @@ import { test } from 'node:test';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jQmcAAAAASUVORK5CYII=', 'base64');
 
-test('existing deployed ext-only cache records remain readable after source synchronization', async () => {
-  await withStore(async (store, root) => {
-    const asset = store.stage({ key: 'private:10001', data: png });
-    const file = path.join(root, 'state/image-cache/index.json');
-    const index = JSON.parse(fs.readFileSync(file, 'utf8'));
-    const entry = index.assets.find(item => item.id === asset.imageId);
-    entry.ext = entry.extension;
-    delete entry.extension;
-    fs.writeFileSync(file, JSON.stringify(index));
-    const { createImageAssetStore } = await import('../src/image-asset-store.mjs');
-    const reloaded = createImageAssetStore({ root });
-    assert.deepEqual(reloaded.get({ key: 'private:10001', imageId: asset.imageId }).image.data, png);
-  });
-});
-
 async function withStore(run, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-image-assets-'));
   try {

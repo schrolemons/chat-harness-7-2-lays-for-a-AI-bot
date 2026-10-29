@@ -10,10 +10,10 @@ const alias = createAlias({
   registerTool: (name, tool) => aliasTools.set(name, tool),
   log: () => {}
 });
-alias.hooks.onIncoming({ userId: '10608', sender: '自动候选' });
+alias.hooks.onIncoming({ userId: '60000', sender: '自动候选' });
 assert.deepEqual(aliasState.entries || [], [], '关闭自动提取后不生成候选');
-assert.equal(aliasTools.get('alias_add').handler({ alias: '手动绰号', qq: '10608' }).ok, true);
-assert.match(alias.hooks.beforePrompt(), /手动绰号 = 608/, '手动确认的绰号仍注入');
+assert.equal(aliasTools.get('alias_add').handler({ alias: '手动绰号', qq: '60000' }).ok, true);
+assert.match(alias.hooks.beforePrompt(), /手动绰号 = 60000/, '手动确认的绰号仍注入');
 
 const slang = createSlang({
   capabilities: {

@@ -1,77 +1,63 @@
-// 记忆注入组件回归测试：node scripts/test-memory-context.mjs
-import fs from 'node:fs';
+// Factories only; no production plugin host/state, timers, QQ or model calls.
+import test from 'node:test';
+import assert from 'node:assert/strict';
 import { createPlugin } from '../plugins/qq-components/ctx-memory-context/index.js';
 import { createPlugin as createMemoryUpdatePlugin } from '../plugins/qq-components/ctx-memory-update/index.js';
-import { createPluginHost } from '../src/plugin-host.js';
-
-let failed = 0;
-const check = (name, ok, detail) => {
-  if (ok) { console.log('✅ ' + name); return; }
-  failed += 1;
-  console.error('❌ ' + name + (detail ? ' — ' + detail : ''));
-};
-
-function build(payload, config = {}) {
-  const blocks = [];
-  const ctx = { config, promptBlocks: blocks, addPromptBlock: (t) => blocks.push(String(t)) };
-  createPlugin(ctx).hooks.beforePrompt(payload);
-  return blocks;
+import { windowImpressions } from '../plugins/qq-components/ctx-memory-context/light-window.mjs';
+function build(payload, config = {}, capabilities = {}) {
+  const blocks = []; createPlugin({ config, capabilities, addPromptBlock: text => blocks.push(text) }).hooks.beforePrompt(payload); return blocks;
 }
-
-const st = {
-  activeTopics: [{ text: '周末去哪玩', lastMentionAt: Date.now() - 5 * 60 * 1000, pendingQuestion: '要不要去爬山' }],
-  pendingThoughts: [{ text: '想问问他加班到几点', motivation: 'curiosity' }],
-  memberImpressions: { 管理员: { traits: ['爱吃肉', '话多'], interactionCount: 7 } }
-};
-const blocks = build({
-  st,
-  persistentMemory: { text: '【客观陈述】\n- 今天修了桥接', updatedAt: Date.now() - 3600_000 },
-  midTermText: '## [2026/10/25 23:00]\n23:00 完成记忆注入组件化',
-  maxChars: 4000
+test('each source has a separate block and normal chat excludes display diary and raw legacy tasks', () => {
+  const now = Date.now();
+  const blocks = build({ key: 'private:1', st: { recentMessages: [{ userId: '1', sender: '甲', at: now - 1000 }],
+    activeTopics: [{ text: '周末去哪玩' }], pendingThoughts: [{ text: '想问加班到几点' }],
+    memberImpressions: { 甲: { traits: ['本轮说话急'], lastSeenAt: now }, 乙: { traits: ['窗口外印象'] } } },
+    persistentMemory: { text: '【重要事实】\n- 用户原话\n【用户画像】\n- 今日比较忙\n【日记】\n展示日记', updatedAt: now },
+    affairsContext: { text: '[事务ID] 等报告结果' }, midTermText: '不再读取的旧笔记' });
+  const all = blocks.join('\n');
+  assert.equal(blocks.length, 4);
+  assert.match(blocks[1], /当前事务/);
+  assert.match(blocks[2], /每轮复核/);
+  assert.match(blocks[3], /持久化会话记忆/);
+  for (const value of ['周末去哪玩', '加班到几点', '本轮说话急', '用户原话', '等报告结果']) assert.ok(all.includes(value));
+  for (const value of ['窗口外印象', '展示日记', '不再读取的旧笔记']) assert.ok(!all.includes(value));
+});
+test('window impressions do not revive earlier behavior when the same speaker returns', () => {
+  const now = Date.now(), state = { recentMessages: [{ sender: '甲', at: now }], memberImpressions: { 甲: { traits: ['上次很急'], lastSeenAt: now - 60000 } } };
+  assert.deepEqual(windowImpressions(state), {});
+  state.memberImpressions.甲.lastSeenAt = now + 1;
+  assert.ok(windowImpressions(state).甲);
+});
+test('configured small window controls behavior impression visibility without counting duplicate messages twice', () => {
+  const now = Date.now(), old = { seq: 1, sender: '甲', time: now - 1000 }, latest = { seq: 2, sender: '乙', time: now };
+  const st = { recentMessages: [old, latest], unread: [{ ...latest }], memberImpressions: { 甲: { traits: ['旧窗口'], lastSeenAt: now }, 乙: { traits: ['新窗口'], lastSeenAt: now } } };
+  assert.deepEqual(Object.keys(windowImpressions(st, { limit: 1 })), ['乙']);
+  assert.deepEqual(Object.keys(windowImpressions(st, { limit: 2 })), ['甲', '乙']);
+});
+test('yesterdays provisional portrait does not masquerade as todays observation', () => {
+  const prompt = build({ st: {}, persistentMemory: { text: '【重要事实】\n- 原话事实\n【用户画像】\n- 昨天很焦虑', updatedAt: Date.now() - 86400000 } }).join('');
+  assert.ok(prompt.includes('原话事实')); assert.ok(!prompt.includes('昨天很焦虑'));
+});
+test('combined memory blocks fit host cap and affairs are recomputed under the remaining budget', () => {
+  const facts = Array.from({ length: 100 }, (_, i) => '- 事实' + i + '：' + '字'.repeat(80)).join('\n');
+  let requested;
+  const blocks = build({ key: 'private:1', st: {}, persistentMemory: { text: facts }, maxChars: 20000 }, { maxChars: 20000, affairsMaxChars: 10000 },
+    { readAffairsContext: (key, budget) => { requested = { key, budget }; return { text: '[事务] 完整条目' }; } });
+  assert.equal(requested.key, 'private:1'); assert.ok(requested.budget > 0 && requested.budget < 10000);
+  assert.ok(blocks.join('\n\n').length < 8000); assert.ok(blocks.join('').includes('完整条目'));
+  assert.deepEqual(build({ st: {} }), []);
+});
+test('refresh declares three persistent columns, independent affairs and evidence-based upward flow', () => {
+  const text = createMemoryUpdatePlugin({ config: { maxChars: 4000 } }).hooks.beforePrompt({ reason: 'memoryWrite' });
+  for (const value of ['逐条', '用户原话', '玩笑', '聊天喜好', '来源和日期', '临时人物画像', 'profile_get', 'profile_update', 'qq_task_note', 'expectedRevision', '向上更新', '不要发任何 QQ 消息']) assert.ok(text.includes(value), value);
+  assert.ok(!text.includes('\n【未完成事项】\n'));
+  assert.ok(text.includes('【重要事实】') && text.includes('【用户画像】') && text.includes('【日记】'));
+  assert.match(text, /前一日.{0,16}22:00.{0,30}XX 日当晚 22:00/s);
 });
 
-const all = blocks.join('\n\n');
-check('轻量记忆：话题', all.includes('【进行中的话题】') && all.includes('周末去哪玩'));
-check('轻量记忆：想说未说', all.includes('【想说还没说的】') && all.includes('加班到几点'));
-check('轻量记忆：群友印象', all.includes('【对本会话未发言成员的临时印象】') && all.includes('爱吃肉'));
-check('长期记忆注入', all.includes('【持久化记忆（长期）】') && all.includes('今天修了桥接'));
-check('中期记忆注入', all.includes('【中期记忆·任务进度') && all.includes('记忆注入组件化'));
-check('分段压入', blocks.length >= 3, 'blocks=' + blocks.length);
 
-const long = build({ st: {}, persistentMemory: { text: 'x'.repeat(9000), updatedAt: 0 }, midTermText: 'y'.repeat(5000), maxChars: 4000 });
-const longText = long.join('\n');
-check('长期记忆按 maxChars 截断', longText.includes('x'.repeat(4000)) && !longText.includes('x'.repeat(4001)));
-check('中期记忆按 slice 截断', longText.includes('y'.repeat(1500)) && !longText.includes('y'.repeat(1501)));
-
-check('无数据时不注入', build({ st: {} }).length === 0);
-
-const host = createPluginHost({ root: process.cwd(), capabilities: {} });
-const summary = await host.loadAll();
-check('插件宿主加载（至少 27 个）', summary.count >= 27, 'count=' + summary.count);
-check('宿主加载无警告', summary.warnings.length === 0, JSON.stringify(summary.warnings));
-const hostBlocks = host.collectPromptBlocks({
-  key: 'private:1',
-  st,
-  persistentMemory: { text: '长期记忆内容', updatedAt: Date.now() },
-  midTermText: '中期记忆内容',
-  maxChars: 4000
+test('ordinary chat actively reconciles affairs even before the first item exists',()=>{
+ const text=build({key:'private:1',st:{}}).join('');
+ for(const required of ['优先更新同一条','不重复新增','expectedRevision','done','cancelled','superseded','不反复追问','沉默'])assert.ok(text.includes(required),required);
+ assert.ok(!build({key:'private:1',st:{},reason:'memoryWrite'}).join('').includes('每轮复核'));
 });
-const hostText = hostBlocks.join('\n');
-check('宿主 collectPromptBlocks 注入记忆', hostText.includes('长期记忆内容') && hostText.includes('中期记忆内容') && hostText.includes('周末去哪玩'));
-
-const memoryUpdate = createMemoryUpdatePlugin({ config: { maxChars: 4000 } }).hooks.beforePrompt({ reason: 'memoryWrite' });
-check('持久化记忆偏向可核对的行为与经历', /可核对.{0,12}(行为|经历)|谁.{0,10}(做了什么|说了什么)/s.test(memoryUpdate));
-check('细腻偏好和边界归人物档案', /(偏好|回避项).{0,30}人物档案|人物档案.{0,30}细腻/s.test(memoryUpdate));
-check('未做事项与习惯归人物档案', /未做|没做|习惯/.test(memoryUpdate));
-check('记忆格式标签保留', ['<MEMORY>', '【客观陈述】', '【重要信息】', '【用户画像】', '【日记】', '</MEMORY>'].every((x) => memoryUpdate.includes(x)));
-check('记忆写入仍受长度上限约束', memoryUpdate.includes('不超过 4000 字'));
-check('日记日期明确表示前一日 22 点至命名日当晚 22 点窗口', /前一日.{0,16}22:00.{0,30}XX 日当晚 22:00/s.test(memoryUpdate));
-
-const bridge = fs.readFileSync('src/bridge.js', 'utf8');
-for (const marker of ['memoryLine', 'persistMemoryLine', 'midTermLine', 'const memoryText = formatMemoryV2']) {
-  check('bridge 已移除 ' + marker, !bridge.includes(marker));
-}
-check('bridge payload 传 persistentMemory/midTermText', bridge.includes('persistentMemory: readPersistMemoryV2(key)') && bridge.includes('midTermText: readTaskNotesV2(key).trim()'));
-
-if (failed) { console.error(`\n${failed} 项失败`); process.exit(1); }
-console.log('\n记忆注入组件测试通过');

@@ -1,3 +1,4 @@
+import { readConsoleTestSource } from './console-test-source.mjs';
 // 日程工具/提醒调度组件回归测试：node scripts/test-schedule-reminder.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -267,7 +268,7 @@ check('bridge：有 /api/socialV2/schedules 路由', bridge.includes("url.pathna
 check('bridge：schedule 工具开关默认开', /schedule:\s*true/.test(bridge));
 check('bridge：route 校验 agent token 与开关', bridge.includes('工具未启用：qq_schedule') && bridge.includes("callService('schedules'"));
 check('mcp：注册 qq_schedule', mcp.includes("'qq_schedule'"));
-check('mcp：qq_schedule 走 schedule 开关', /qq_schedule:\s*'schedule'/.test(mcp));
+check('mcp：qq_schedule 走唯一的 schedule 开关定义', mcp.includes(["from", "'./tools/flags.js'"].join(" ")) && /qq_schedule:\s*'schedule'/.test(fs.readFileSync('src/tools/flags.js', 'utf8')));
 check('bridge：schedules 路由支持 update/complete 并透传提前量和间歇周期', bridge.includes("action === 'update'")
   && bridge.includes("action === 'complete'") && bridge.includes('intervalMinutes: body.intervalMinutes'));
 check('mcp：qq_schedule 暴露提醒周期、修改和完成确认', mcp.includes('intervalMinutes') && mcp.includes('action=complete')
@@ -276,7 +277,7 @@ check('plugin.json：全局默认 advanceMinutes 仍是 30', (() => {
   try { return JSON.parse(fs.readFileSync('plugins/qq-components/life-schedule-reminder/plugin.json', 'utf8')).config.advanceMinutes === 30; } catch { return false; }
 })());
 check('chat-style：提示词改用 qq_schedule', fs.readFileSync('plugins/qq-components/ctx-chat-style/index.js', 'utf8').includes('qq_schedule'));
-const consoleHtml = fs.readFileSync('public/console.html', 'utf8');
+const consoleHtml = readConsoleTestSource();
 check('bridge：跨会话 list 包含独立存储里的会话', bridge.includes("pluginHost.hasService('schedules', 'listAll')") && bridge.includes('global?.conversations'));
 check('控制台：不保留迁移入口、旧日程行或新旧标签', !consoleHtml.includes('v2ScheduleMigrate') && !consoleHtml.includes('data-rem-key')
   && !consoleHtml.includes('标记「旧」') && !consoleHtml.includes('旧日程迁入新存储') && !consoleHtml.includes('>旧</span>')
@@ -285,7 +286,7 @@ check('控制台：使用结构化日程卡片展示日期、对象与删除操�
   && consoleHtml.includes('schedule-card-date') && consoleHtml.includes('data-sch-key') && consoleHtml.includes('schedule-empty'));
 check('控制台：可查看并逐条编辑提醒起点/间歇周期及完成确认', consoleHtml.includes('v2ReminderLead') && consoleHtml.includes('v2ReminderInterval')
   && consoleHtml.includes('data-lead-save') && consoleHtml.includes('data-sch-complete') && consoleHtml.includes("action: 'complete'")
-  && consoleHtml.includes("['主动行为', [6, 7, 8, 9, 10]]"));
+  && consoleHtml.includes('id=\"section-setting-l-2\"'));
 check('旧日程路径已移除', !bridge.includes('scheduleReminderTimerV2') && !bridge.includes('parseScheduleEntryV2')
   && !bridge.includes("action === 'migrate'") && typeof S.importLegacy === 'undefined');
 

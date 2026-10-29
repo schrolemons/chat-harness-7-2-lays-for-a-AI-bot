@@ -1,0 +1,16 @@
+<section id="section-notify" data-page="operations" class="card span-all">
+      <h2>后台控制端引导</h2>
+      <div class="meta">直接向指定 QQ 会话的 DSH agent 投递一条“后台控制端提醒”，用于给 AI 引导/提醒；该消息不是群友消息。二代模式（reserved2）下会自动附带会话令牌和二代工具协议说明，AI 的文本输出不会自动转发，发言需通过发送工具。</div>
+      <div class="row" style="margin-top:10px">
+        <select id="aiNotifyKind" style="width:110px">
+          <option value="group">群</option>
+          <option value="private">私聊</option>
+        </select>
+        <input type="text" id="aiNotifyId" placeholder="群号 / QQ 号" style="width:180px">
+      </div>
+      <div class="setting-field"><label for="aiNotifyMessage">提醒内容（发给 DSH agent 的引导/提醒）</label><textarea id="aiNotifyMessage" placeholder="例如：接下来群里聊到某个话题时，你可以更主动一点；或：先潜水，等我叫你。"></textarea><small class="parameter-example" data-example-for="aiNotifyMessage">例：写“先查询现有事务再回答”：给目标agent后台引导，不伪装成群友消息。</small></div>
+      <div class="row" style="margin-top:8px">
+        <button id="aiNotifySend">发送到 DSH</button>
+        <span class="meta" id="aiNotifyMsg"></span>
+      </div>
+    </section>

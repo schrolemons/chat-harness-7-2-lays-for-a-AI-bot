@@ -2,7 +2,7 @@
   "id": "ctx-chat-reply-shape",
   "name": "回复形态（条数节奏）",
   "version": "0.1.0",
-  "description": "按话题性质、心情、刚连发与否，给这一轮定条数上限：正事 1 条、普通 2 条、闲聊 3 条、心情低或刚连发压到 1 条。",
+  "description": "唯一发送计划：同轮文字及媒体条数、公共分钟/小时额度、间隔与长度共同校验。",
   "category": "上下文与记忆",
   "order": 20,
   "tags": [
@@ -18,7 +18,77 @@
     "maxMessagesNormal": 2,
     "maxMessagesCasual": 3,
     "maxMessagesSerious": 1,
-    "longIncomingChars": 60
+    "longIncomingChars": 60,
+    "intervalMinMs": 1500,
+    "intervalMaxMs": 3000,
+    "longGapProbability": 0.1,
+    "longGapMinMs": 4000,
+    "longGapMaxMs": 8000,
+    "maxSendPerMinute": 8,
+    "maxSendPerHour": 100,
+    "maxMessageChars": 500
   },
-  "layer": "C"
+  "layer": "L",
+  "configSchema": {
+    "maxMessagesNormal": {
+      "min": 1,
+      "max": 20,
+      "example": "设为3：普通聊天本轮最多发送3条，不要求发满，也不能靠换发送工具绕过。"
+    },
+    "maxMessagesCasual": {
+      "min": 1,
+      "max": 20,
+      "example": "设为2：轻松闲聊最多2条；多个拆分发送累计计算。"
+    },
+    "maxMessagesSerious": {
+      "min": 1,
+      "max": 20,
+      "example": "设为5：严肃话题的基础上限是5条，实际计划还结合心情等条件。"
+    },
+    "longIncomingChars": {
+      "min": 20,
+      "max": 500,
+      "example": "设为300：达到这个字符量的来信，会参与长消息/深度回复计划的判断。"
+    },
+    "intervalMinMs": {
+      "min": 0,
+      "max": 3600000,
+      "example": "下界1000、上界3000：一般条间基础间隔在1到3秒之间。"
+    },
+    "intervalMaxMs": {
+      "min": 0,
+      "max": 3600000,
+      "example": "下界1000、上界3000：一般间隔的上界是3秒，长间隔规则另行判断。"
+    },
+    "longGapProbability": {
+      "min": 0,
+      "max": 1,
+      "example": "设为0.2：在适用的分条间隔中，有20%的概率选择长间隔区间。"
+    },
+    "longGapMinMs": {
+      "min": 0,
+      "max": 3600000,
+      "example": "设为5000：抽中长间隔时，从至少5秒的区间取值。"
+    },
+    "longGapMaxMs": {
+      "min": 0,
+      "max": 3600000,
+      "example": "下界5000、上界10000：抽中长间隔时，在5到10秒之间等待。"
+    },
+    "maxSendPerMinute": {
+      "min": 0,
+      "max": 3600000,
+      "example": "设为8：同一会话一分钟内最多8条物理发送；0表示取消这一分钟窗口限制。"
+    },
+    "maxSendPerHour": {
+      "min": 0,
+      "max": 3600000,
+      "example": "设为60：一小时最多60条；更换成图片或其他发送工具不能重置该计数。"
+    },
+    "maxMessageChars": {
+      "min": 1,
+      "max": 4000,
+      "example": "设为500：单条文字不得超过500字符；超长内容需要在发送计划内分条处理。"
+    }
+  }
 }

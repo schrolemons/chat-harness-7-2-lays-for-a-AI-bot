@@ -1,0 +1,52 @@
+/* ================= 对比度与层次 ================= */
+.card {
+  box-shadow:var(--shadow-card)
+}
+.sidebar {
+  border-right-color:var(--card-border)
+}
+.metric {
+  transition:background .18s ease,box-shadow .18s ease
+}
+.metric-link:hover {
+  background:var(--surface-hover)
+}
+.metric strong {
+  letter-spacing:-.6px
+}
+.nav-item.active {
+  box-shadow:inset 3px 0 0 var(--accent)
+}
+.settings-group {
+  overflow:hidden
+}
+.settings-group summary {
+  position:relative;
+  transition:background .18s ease,color .18s ease;
+  padding-right:42px
+}
+.settings-group summary::after {
+  content:"";
+  position:absolute;
+  right:20px;
+  top:50%;
+  width:7px;
+  height:7px;
+  margin-top:-5px;
+  border-right:1.6px solid var(--muted-soft);
+  border-bottom:1.6px solid var(--muted-soft);
+  transform:rotate(45deg);
+  transition:transform .22s ease
+}
+.settings-group[open] summary::after {
+  transform:rotate(-135deg)
+}
+.settings-group[open] summary {
+  background:var(--surface-open)
+}
+.v2-tool-item {
+  transition:background .18s ease,border-color .18s ease
+}
+.v2-tool-item:hover {
+  background:var(--surface-hover)
+}

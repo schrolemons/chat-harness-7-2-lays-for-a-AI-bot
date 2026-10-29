@@ -1,0 +1,12 @@
+<section id="section-v2-t" data-page="v2-t" class="card span-all">
+  <h2>工具开关</h2>
+  <div class="meta">勾选后向 AI 提供工具；取消勾选后停止提供。保存后写入配置，DSH 重启时刷新工具清单。</div>
+<div class="settings-content">
+      <div class="v2-tool-list" id="v2Tools"></div>
+      <div id="toolSwitchExtras"></div>
+      <details class="settings-group"><summary>Bilibili 视频处理参数</summary><div class="settings-content"><div data-component-slot="tool-bilibili"></div></div></details>
+      <div class="meta" style="margin-top:6px">二代黑话学习：AI 可用 <code>qq_slang_submit</code> 提交陌生词，也可由桥接自动提取；管理员在「黑话词库」页面筛选确认后，词条会自动写入黑话提示词并注入 <code>qq_get_prompt</code> 与后续唤醒。</div>
+
+      </div>
+<div class="row" style="margin-top:10px"><button class="small v2-save primary" data-page="v2-t" style="font-weight:bold;padding:8px 16px" data-save-action>保存全局工具开关</button><span class="meta v2-save-msg"></span></div>
+</section>
