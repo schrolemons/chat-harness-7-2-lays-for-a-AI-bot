@@ -104,22 +104,6 @@
     return { toolsAdded: [...after.keys()].filter((name) => !before.has(name)), toolsRemoved: [...before.keys()].filter((name) => !after.has(name)), toolsChanged: [...after.keys()].filter((name) => before.has(name) && before.get(name) !== after.get(name)), modulesChanged: (current.modules || []).filter((m) => !prior.has(m.id) || moduleValue(prior.get(m.id)) !== moduleValue(m)).map((m) => ({ id: m.id, name: m.name || m.id })), messageCharsDelta: (current.messageChars || 0) - (older.messageChars || 0), toolCharsDelta: (current.toolChars || 0) - (older.toolChars || 0) };
   }
 
-  // console/layers/O/context-request.js
-  function requestCards(request, catalog = []) {
-    const messages = request.messages || [], nonce = request.nonce;
-    const current = (kind) => {
-      const candidates = messages.filter((m) => m.source === kind);
-      const exact = candidates.filter((m) => m.contextNonce && m.contextNonce === nonce);
-      return { rows: exact.length ? exact : candidates.slice(-1), verified: exact.length > 0 };
-    };
-    const background = current("qq-context-current"), task = current("qq-context-dialogue"), system = messages.filter((m) => ["system", "developer"].includes(m.role));
-    const selected2 = /* @__PURE__ */ new Set([...system, ...background.rows, ...task.rows]);
-    const numbers = new Map(catalog.map((m, index) => [m.id, index + 1]));
-    const references = (group) => (request.modules || []).filter((m) => m.included !== false && (group === "system" ? m.id === "role-card" : group === "task" ? ["wake-action", "message-snapshot"].includes(m.id) : !["role-card", "wake-action"].includes(m.id))).map((m) => (numbers.get(m.id) || "?") + (m.id === "message-snapshot" ? group === "task" ? ".2 新增聊天原文" : ".1 收件状态" : " " + (m.name || m.id)));
-    const card2 = (id, name, rows, refs, verified = true) => ({ id, name, source: "DSH 实际请求记录", text: rows.map((m) => m.text).filter(Boolean).join("\n\n"), chars: rows.reduce((n, m) => n + (m.chars || m.text?.length || 0), 0), references: refs, attributionVerified: verified, protected: true, included: rows.length > 0, inRequest: rows.length > 0 });
-    return { cards: [card2("actual-system", "系统设定与角色要求", system, [...references("system"), "DSH 自身系统规则"]), card2("actual-background", "用户消息与附加资料：本轮背景", background.rows, references("background"), background.verified), card2("actual-task", "用户消息与附加资料：本轮任务和新消息", task.rows, references("task"), task.verified)], history: messages.filter((m) => !selected2.has(m)) };
-  }
-
   // console/layers/O/context-knowledge.js
   var label = (entry) => entry.term || entry.alias || entry.content || entry.id;
   var value = (entry) => entry.summary || entry.meaning || (entry.qq ? "QQ " + entry.qq : "");
@@ -141,6 +125,258 @@
     return { core: core.map((row, index) => ({ ...row, index })), extra: rows.filter((row) => !ids.has(row.id)) };
   }
 
+  // console/layers/O/context-attribution.js
+  function attributeText(text = "", modules = [], catalog = []) {
+    const numbers = new Map(catalog.map((row, index) => [row.id, index + 1])), names2 = new Map(catalog.map((row) => [row.id, row.name])), patterns = /* @__PURE__ */ new Map();
+    for (const row of modules) {
+      if (row.notCaptured) continue;
+      for (const part of row.parts?.length ? row.parts : [{ text: row.text }]) {
+        const value2 = String(part.text || "").trim();
+        if (!value2) continue;
+        const id = row.id === "role-card" && part.id === "ctx-context-dynamics:expression" ? "ctx-context-dynamics" : row.id;
+        const catalogName = names2.get(id);
+        const owner = { id, name: catalogName && catalogName !== id ? catalogName : id !== row.id ? "心情与表情策略" : row.name || id, number: numbers.get(id), part: part.name, ...id !== row.id ? { evidence: "来源为心情组件；此段放入系统提示" } : {} };
+        if (!patterns.has(value2)) patterns.set(value2, []);
+        patterns.get(value2).push(owner);
+      }
+    }
+    const candidates = [];
+    for (const [value2, owners] of patterns) {
+      let start = text.indexOf(value2);
+      while (start !== -1) {
+        candidates.push({ start, end: start + value2.length, owners });
+        start = text.indexOf(value2, start + value2.length);
+      }
+    }
+    candidates.sort((a, b) => b.end - b.start - (a.end - a.start) || a.start - b.start);
+    const ranges = [];
+    for (const row of candidates) if (!ranges.some((r) => row.start < r.end && row.end > r.start)) ranges.push(row);
+    ranges.sort((a, b) => a.start - b.start);
+    const segments = [];
+    let cursor = 0;
+    for (const row of ranges) {
+      if (row.start > cursor) segments.push({ text: text.slice(cursor, row.start), owners: [] });
+      segments.push({ text: text.slice(row.start, row.end), owners: row.owners });
+      cursor = row.end;
+    }
+    if (cursor < text.length) segments.push({ text: text.slice(cursor), owners: [] });
+    return segments;
+  }
+  function messageLabel(row) {
+    if (row.role === "tool" || row.toolResults?.length) return "工具返回数据";
+    if (row.toolCalls?.length) return "bot 发起的工具调用";
+    if (row.role === "assistant") return "bot 生成的文字（QQ 投递未核验）";
+    if (row.source === "compact-checkpoint") return "会话压缩摘要";
+    if (row.source === "runtime-context") return "运行环境说明";
+    if (row.source === "qq-context-dialogue") return "先前回合任务与 QQ 来信";
+    if (row.source === "qq-context-current") return "先前回合背景快照";
+    if (row.source === "qq-context-stable") return "稳定会话资料（user 前缀）";
+    if (row.source === "qq-context-update") return "心情、日程与资料的状态更新";
+    return { system: "系统设定与角色要求", developer: "系统补充说明", user: "会话输入记录" }[row.role] || row.name || row.id;
+  }
+  function partLabel(part) {
+    if (part.id === "receipt-state" || part.name === "收件状态") return "收件处理进度（放入背景资料）";
+    if (part.id === "new-messages" || part.name === "新增聊天原文") return "新增聊天原文（随本轮任务提供）";
+    return (part.name || "组件内容") + (part.destination === "background" ? "（放入背景资料）" : part.destination === "task" ? "（随本轮任务提供）" : "");
+  }
+  function unmatchedLabel(message2 = {}) {
+    if (message2.source === "qq-context-stable") return { tag: "稳定资料", title: "稳定会话资料与状态解释规则", description: "保存会话背景、会话协议及稳定规则；若此消息还包含早期聊天，聊天原文保留在资料之后。" };
+    if (message2.source === "qq-context-update") return { tag: "动态更新", title: "组件状态更新与撤回说明", description: "组件有变化时才追加；同组件最后一条更新生效，早先状态仍保留在历史中。" };
+    if (message2.role === "system") return { tag: "系统记录", title: "DSH 系统提示与框架规则", description: "提供运行身份、权限边界和系统约定；此段没有与组件采集原文完整匹配。" };
+    if (message2.role === "tool" || message2.toolResults?.length) return { tag: "工具记录", title: "工具返回数据", description: "记录工具执行结果、查询数据或错误，供模型继续处理。" };
+    if (message2.toolCalls?.length) return { tag: "工具记录", title: "bot 的工具调用与附带文字", description: "记录模型选择的工具、参数及同次生成的说明；调用 ID 用于配对返回结果。" };
+    if (message2.role === "assistant") return { tag: "生成记录", title: "bot 生成文字", description: "保留模型的回复或内部处理文字；是否发送到 QQ 需要结合发送工具结果判断。" };
+    if (message2.source === "compact-checkpoint") return { tag: "会话记录", title: "DSH 会话压缩摘要", description: "在压缩较早对话时生成，保留后续处理所需的聊天经过和任务线索。" };
+    if (message2.source === "runtime-context") return { tag: "环境记录", title: "DSH 运行环境更新", description: "由运行时按需补充当前环境信息；具体状态以这条记录正文为准。" };
+    if (message2.source === "tool-registry") return { tag: "工具记录", title: "DSH 工具注册变更", description: "在可用工具发生变化时补充注册信息；非文本内容的完整载荷未被本次预览采集。" };
+    if (message2.source === "qq-context-dialogue") return { tag: "回合记录", title: "桥接回合说明与任务衔接", description: "说明本次唤醒原因、任务要求或回合衔接信息；能够验证的 QQ 来信会单独标为 C36。" };
+    if (message2.source === "qq-context-current") return { tag: "背景记录", title: "桥接补充背景资料", description: "由桥接随本轮背景提供；此段与保存的组件原文未完整匹配，保留供核对。" };
+    if (message2.role === "user" && message2.source === "user") return { tag: "会话记录", title: "会话输入记录（来源组件未记录）", description: "这是以 user 角色进入模型请求的文字；旧采集未说明它是聊天原文还是管理补充。" };
+    return { tag: "上下文记录", title: "其他上下文记录（来源组件未记录）", description: "按实际请求原样保留；当前只知道消息角色与来源字段，无法确认具体触发机制。" };
+  }
+  function jsonEnd(text, start) {
+    if (!["[", "{"].includes(text[start])) return -1;
+    const stack = [];
+    let quoted = false, escaped = false;
+    for (let i = start; i < text.length; i++) {
+      const c = text[i];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (c === "\\") escaped = true;
+        else if (c === '"') quoted = false;
+        continue;
+      }
+      if (c === '"') {
+        quoted = true;
+        continue;
+      }
+      if (c === "[" || c === "{") stack.push(c);
+      else if (c === "]" || c === "}") {
+        if (stack.pop() !== (c === "]" ? "[" : "{")) return -1;
+        if (!stack.length) return i + 1;
+      }
+    }
+    return -1;
+  }
+  var record = (value2) => value2 && typeof value2 === "object" && !Array.isArray(value2);
+  var qqTime = (value2) => Number.isFinite(value2) || typeof value2 === "string" && /^(?:(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]) )?(?:[01]\d|2[0-3]):[0-5]\d$/.test(value2);
+  var qqRows = (value2) => Array.isArray(value2) && value2.every((row) => record(row) && (Number.isSafeInteger(row.seq) || (row.messageId !== void 0 || row.id !== void 0) && (row.userId !== void 0 || row.senderId !== void 0) || typeof row.sender === "string" && typeof row.text === "string" && qqTime(row.at)));
+  function attributeMessage(message2 = {}, modules = [], catalog = []) {
+    const text = String(message2.text || "");
+    if (message2.role === "user" && message2.source === "qq-context-update" && message2.contextSegments?.length) {
+      const out2 = [];
+      let cursor2 = 0;
+      for (const segment of message2.contextSegments) {
+        if (!message2.contextUpdates?.some((update) => update.id === segment.id) || !segment.text) continue;
+        const start = text.indexOf(segment.text, cursor2);
+        if (start < 0) continue;
+        out2.push(...attributeText(text.slice(cursor2, start), modules, catalog));
+        const index = catalog.findIndex((slot) => slot.id === segment.id);
+        const slotName = catalog[index]?.name, ownerName = slotName && slotName !== segment.id ? slotName : modules.find((row) => row.id === segment.id)?.name || segment.id;
+        out2.push({ text: segment.text, owners: [{ id: segment.id, number: index < 0 ? void 0 : index + 1, name: ownerName, evidence: message2.effectiveComponents?.includes(segment.id) ? "本次请求的当前状态" : "历史状态更新" }] });
+        cursor2 = start + segment.text.length;
+      }
+      out2.push(...attributeText(text.slice(cursor2), modules, catalog));
+      return out2;
+    }
+    if (message2.source === "qq-context-stable" && message2.wrappedSource === "qq-context-dialogue") message2 = { ...message2, source: "qq-context-dialogue" };
+    if (message2.role !== "user" || !["qq-context-dialogue", "qq-context-current"].includes(message2.source)) return attributeText(text, modules, catalog);
+    const header = /(^|\n)(【(?:新增 QQ 消息数据|历史 QQ 消息数据|历史 QQ 消息数据；当轮规则已由当前 context 取代|QQ 收件状态)】)[ \t]*\r?\n/g;
+    const ranges = [];
+    let match;
+    while (match = header.exec(text)) {
+      const receipt = match[2] === "【QQ 收件状态】";
+      if (receipt !== (message2.source === "qq-context-current")) continue;
+      let start = header.lastIndex;
+      while (/\s/.test(text[start] || "") && start < text.length) start++;
+      const end = jsonEnd(text, start);
+      if (end < 0) continue;
+      let value2;
+      try {
+        value2 = JSON.parse(text.slice(start, end));
+      } catch {
+        continue;
+      }
+      const legacy = match[2].includes("当轮规则");
+      if (receipt ? !(record(value2) && Array.isArray(value2.receipts) && Number.isFinite(value2.unreadCount)) : legacy ? !(record(value2) && qqRows(value2.messages)) : !qqRows(value2)) continue;
+      const index = catalog.findIndex((row) => row.id === "message-snapshot"), slot = catalog[index];
+      const part = receipt ? "收件状态" : legacy ? "历史来信与收件处理进度" : match[2] === "【历史 QQ 消息数据】" ? "历史聊天原文（保留对话经过）" : "聊天原文（随该回合任务提供）";
+      ranges.push({ start: match.index + match[1].length, end, owner: { id: "message-snapshot", number: index < 0 ? 36 : index + 1, name: slot?.name || "本轮 QQ 消息与收件状态", part, evidence: "桥接来源标记与 JSON 结构已核对" } });
+      header.lastIndex = end;
+    }
+    const out = [];
+    let cursor = 0;
+    for (const range of ranges) {
+      out.push(...attributeText(text.slice(cursor, range.start), modules, catalog));
+      out.push({ text: text.slice(range.start, range.end), owners: [range.owner] });
+      cursor = range.end;
+    }
+    out.push(...attributeText(text.slice(cursor), modules, catalog));
+    return out;
+  }
+
+  // console/layers/O/context-inspector.js
+  var KIND_LABELS = { system: "系统提示", context: "补充资料", user: "用户输入", assistant: "bot 文字", call: "工具调用", result: "工具返回", definition: "工具定义", component: "组件来源" };
+  var REGION_LABELS = { system: "系统规则", stable: "稳定资料", history: "聊天与工具记录", dynamic: "动态资料更新" };
+  function requestEntries(request) {
+    const callNames = new Map((request.messages || []).flatMap((row) => (row.toolCalls || []).map((call) => [call.id, call.name])));
+    const latest = /* @__PURE__ */ new Map();
+    for (const [index, row] of (request.messages || []).entries()) for (const update of row.contextUpdates || []) latest.set(update.id, index);
+    return (request.messages || []).map((row, index) => {
+      const kind = row.toolCalls?.length ? "call" : row.role === "tool" || row.toolResults?.length ? "result" : row.role === "system" ? "system" : row.role === "assistant" ? "assistant" : row.role === "developer" || !["user", void 0, "DSH 会话历史"].includes(row.source) ? "context" : "user";
+      const current = !!request.nonce && request.nonce === row.contextNonce;
+      const toolNames = kind === "call" ? (row.toolCalls || []).map((c) => c.name) : kind === "result" ? (row.toolResults || []).map((c) => c.name || callNames.get(c.toolCallId) || c.toolCallId) : [];
+      const name = toolNames.length ? toolNames.filter(Boolean).join("、") : current && row.source === "qq-context-current" ? "本轮背景快照" : current && row.source === "qq-context-dialogue" ? "本轮任务与新增 QQ 来信" : messageLabel(row);
+      const region = row.role === "system" ? "system" : row.source === "qq-context-stable" ? "stable" : row.source === "qq-context-update" ? "dynamic" : "history";
+      const effectiveComponents = (row.contextUpdates || []).filter((u) => latest.get(u.id) === index).map((u) => u.id);
+      const withdrawnComponents = (row.contextUpdates || []).filter((u) => latest.get(u.id) === index && u.hash === null).map((u) => u.id);
+      const stateLabel = region === "dynamic" ? effectiveComponents.length ? "当前有效 " + effectiveComponents.length + " 项" + (withdrawnComponents.length ? " · 含撤回" : "") : "历史状态，已有后续更新" : "";
+      return { ...row, key: "message:" + index, position: index + 1, kind, name: region === "dynamic" ? "动态资料更新（" + (effectiveComponents.length ? "当前有效" : "历史") + "）" : name, region, effectiveComponents, withdrawnComponents, stateLabel };
+    });
+  }
+  function filterEntries(rows, { query = "", kind = "", region = "" } = {}) {
+    const needle = query.trim().toLocaleLowerCase();
+    return rows.filter((row) => (!region || row.region === region) && (!kind || row.kind === kind) && (!needle || [row.name, row.id, row.text, row.source, row.componentNumber ? "C" + String(row.componentNumber).padStart(2, "0") : "", JSON.stringify(row.toolCalls || []), JSON.stringify(row.toolResults || [])].join(" ").toLocaleLowerCase().includes(needle))).map((row, index) => ({ ...row, listNumber: index + 1 }));
+  }
+  function componentAvailability(row) {
+    if (row.relatedStyleText) return "当前心情、形态与风格已放入系统提示";
+    if (row.notCaptured) return "本次未采集该组件";
+    if (row.included === false || !row.text?.trim()) return "本次未提供正文";
+    if (row.inRequest === true) return "本次请求已携带";
+    if (row.inRequest === false) return "正文未在请求中完整确认";
+    return "有采集正文，实发证据未记录";
+  }
+  var dynamicSources = [["ctx-context-dynamics", "05 · 心情"], ["ctx-memory-context", "12 · 记忆与临时画像"], ["life-schedule-reminder", "25 · 日程"]];
+  var badge = (kind) => '<span class="context-kind context-kind-' + kind + '">' + esc(KIND_LABELS[kind] || kind) + "</span>";
+  var listName = (row) => ["call", "result", "definition"].includes(row.kind) ? String(row.name || row.id).split("、").map((name) => name.startsWith("mcp__") ? name.split("__").at(-1) : name).join("、") : row.name || row.id;
+  function inspectorHtml(request, catalog, state, { renderText, renderComponent }) {
+    const messages = requestEntries(request), tools = (request.tools || []).map((row, index) => ({ ...row, key: "tool:" + index, position: index + 1, kind: "definition", name: row.name || "未命名工具", text: JSON.stringify(row, null, 2) }));
+    const modules = new Map((request.modules || []).map((row) => [row.id, row]));
+    const moodStyle = modules.get("role-card")?.parts?.find((part) => part.id === "ctx-context-dynamics:expression");
+    const confirmedStyle = moodStyle?.text?.trim() && (request.messages || []).some((m) => m.text?.includes(moodStyle.text.trim())) ? moodStyle.text : "";
+    const components = catalog.map((slot, index) => ({ ...slot, ...modules.get(slot.id), ...slot.id === "ctx-context-dynamics" && confirmedStyle ? { relatedStyleText: confirmedStyle } : {}, notCaptured: !modules.has(slot.id) || modules.get(slot.id)?.notCaptured === true, key: "component:" + slot.id, position: index + 1, componentNumber: index + 1, kind: "component", name: slot.name && slot.name !== slot.id ? slot.name : modules.get(slot.id)?.name || slot.id }));
+    const extras = (request.modules || []).filter((row) => !catalog.some((slot) => slot.id === row.id)).map((row, index) => ({ ...row, key: "extra:" + row.id, position: catalog.length + index + 1, kind: "component" }));
+    const all = state.view === "tools" ? tools : state.view === "components" ? [...components, ...extras] : messages;
+    const rows = filterEntries(all, { query: state.query, kind: state.view === "messages" ? state.kind : "", region: state.view === "messages" ? state.region : "" });
+    const selected2 = rows.find((row) => row.key === state.selected) || rows.find((row) => row.source === "qq-context-current" && row.contextNonce === request.nonce) || rows[0];
+    const nav = [["messages", "消息序列", messages.length], ["tools", "工具列表", tools.length], ["components", "组件来源", components.length + (extras.length ? " + " + extras.length : "")]];
+    const navHtml = '<div class="context-inspector-nav" role="group" aria-label="请求查看内容">' + nav.map(([id, name, count]) => '<button type="button" data-inspector-view="' + id + '" aria-pressed="' + (state.view === id) + '">' + name + " <span>" + count + "</span></button>").join("") + "</div>";
+    const shortcuts = '<div class="context-source-shortcuts"><span>动态资料定位</span>' + dynamicSources.filter(([id]) => catalog.some((row) => row.id === id)).map(([id, label2]) => '<button type="button" data-inspector-component="' + id + '">' + label2 + "</button>").join("") + "</div>";
+    const mapping = state.view === "components" ? '<label class="context-component-lookup">按组件名称定位到固定编号<select id="contextComponentLookup"><option value="">选择组件…</option>' + components.map((row) => '<option value="' + esc(row.id) + '"' + (selected2?.id === row.id ? " selected" : "") + ">" + String(row.componentNumber).padStart(2, "0") + " ｜ " + esc(row.name) + "</option>").join("") + "</select></label>" : "";
+    const controls = '<div class="context-inspector-controls"><label class="context-search"><span>搜索' + (state.view === "messages" ? "本次请求" : state.view === "tools" ? "工具" : "组件") + '</span><input id="contextInspectorSearch" type="search" value="' + esc(state.query) + '" placeholder="名称、正文或调用 ID"></label>' + (state.view === "messages" ? '<label><span>类型</span><select id="contextInspectorKind"><option value="">全部类型</option>' + Object.entries(KIND_LABELS).filter(([kind]) => !["definition", "component"].includes(kind)).map(([kind, label2]) => '<option value="' + kind + '"' + (state.kind === kind ? " selected" : "") + ">" + label2 + "</option>").join("") + "</select></label>" : "") + "</div>";
+    const list = '<div class="context-sequence" role="group" aria-label="' + (state.view === "messages" ? "按请求顺序排列的消息" : state.view === "tools" ? "本次请求的工具定义" : "39 个组件及附加规则") + '"><div class="context-sequence-caption">' + (state.view === "messages" ? "按模型收到的顺序" : state.view === "tools" ? "实际 tools 字段" : "固定组件目录") + " <span>" + rows.length + " 项</span></div>" + rows.map((row) => '<button type="button" class="context-sequence-row" data-inspector-select="' + esc(row.key) + '" data-request-position="' + row.position + '" aria-pressed="' + (row.key === selected2?.key) + '"><span class="context-sequence-number">' + String(row.listNumber).padStart(3, "0") + '</span><span class="context-sequence-main">' + badge(row.kind) + (row.componentNumber ? '<span class="context-component-code">组件 ' + String(row.componentNumber).padStart(2, "0") + "</span>" : row.role ? '<span class="context-protocol-role">' + esc(row.role) + "</span>" : "") + '<strong title="' + esc(row.name || row.id) + '">' + esc(listName(row)) + '</strong><span class="context-sequence-preview">' + esc((row.text || "本轮无采集正文").replace(/\s+/g, " ").slice(0, 100)) + '</span></span><span class="context-sequence-size">' + (row.text?.length || 0).toLocaleString() + "</span></button>").join("") + (rows.length ? "" : '<p class="context-empty">没有匹配项，试试其他关键词或类型。</p>') + "</div>";
+    let detail = '<p class="context-empty">没有可查看的记录。</p>';
+    if (selected2) {
+      const calls = [...(selected2.toolCalls || []).map((c) => "<div><dt>调用工具</dt><dd>" + esc(c.name) + " · " + esc(c.id) + "</dd></div>"), ...(selected2.toolResults || []).map((c) => "<div><dt>对应调用</dt><dd>" + esc(c.name || "") + " · " + esc(c.toolCallId) + "</dd></div>")].join("");
+      detail = '<header class="context-detail-heading">' + badge(selected2.kind) + "<h3>" + esc(selected2.name || selected2.id) + "</h3><p>" + (selected2.kind === "component" ? selected2.componentNumber ? "组件 C" + String(selected2.componentNumber).padStart(2, "0") : "附加规则" : selected2.kind === "definition" ? "本次请求的工具定义" : "请求位置 " + selected2.position + " / " + messages.length) + " · " + (selected2.text?.length || 0).toLocaleString() + " 个文本字符</p></header>";
+      if (selected2.kind === "component") {
+        const locations = messages.filter((message2) => message2.effectiveComponents.includes(selected2.id));
+        if (locations.length) detail += '<p class="context-detail-note">当前状态位置：' + locations.map((message2) => '<button type="button" data-inspector-message="' + esc(message2.key) + '">消息 ' + message2.position + (message2.withdrawnComponents.includes(selected2.id) ? " · 已撤回" : " · 当前有效") + "</button>").join(" ") + "</p>";
+        const related = selected2.id === "ctx-context-dynamics" ? modules.get("role-card")?.parts?.find((p) => p.id === "ctx-context-dynamics:expression") : null;
+        detail += '<p class="context-detail-note">' + esc(componentAvailability(selected2)) + "。" + (!selected2.relatedStyleText && selected2.included === false && selected2.reason ? "记录原因：" + esc(selected2.reason) + "。" : "") + "这是所选请求当时的快照。</p>";
+        if (related?.text && selected2.relatedStyleText) detail += '<div class="context-text-frame context-tone-4"><div class="context-frame-label"><strong>05 · 系统提示中的当前心情、形态与风格</strong></div><pre>' + esc(selected2.relatedStyleText) + '</pre></div><p class="context-detail-note"><button type="button" data-inspector-component="role-card">定位到 01 · 系统提示中的放置位置</button></p>';
+        if (!selected2.text?.trim() && ["memoryWrite", "selfReview", "selfOptimize", "userFeedbackReview", "slangLearn"].includes(request.scene) && ["ctx-context-dynamics", "life-schedule-reminder"].includes(selected2.id)) detail += '<p class="context-detail-note">这次是后台整理任务，心情和日程组件按场景跳过。</p>';
+        if (!selected2.relatedStyleText || selected2.text?.trim()) detail += renderComponent(selected2);
+      } else detail += '<dl class="context-detail-fields"><div><dt>消息角色</dt><dd>' + esc(selected2.role || "未记录") + "</dd></div><div><dt>来源</dt><dd>" + esc(selected2.source || (selected2.kind === "definition" ? "tools 字段" : "未记录")) + "</dd></div>" + calls + "</dl>" + (selected2.kind === "definition" ? '<pre class="context-tool-schema">' + esc(selected2.text) + "</pre>" : '<div class="context-detail-text">' + renderText(selected2.text || "", request.modules || [], catalog, selected2) + "</div>");
+      if (selected2.source === "qq-context-current") detail += '<p class="context-detail-note">这是旧版按桥接批次提供的背景快照；不会按新版规则改写这份历史证据。</p>';
+      if (selected2.region === "stable") detail += '<p class="context-detail-note">稳定资料以 user 角色提供，独立于系统硬规则；首次放入消息前部，内容变化时才更新。</p>';
+      if (selected2.region === "dynamic") detail += '<p class="context-detail-note">' + esc(selected2.stateLabel) + "。" + (selected2.effectiveComponents.length ? "本条仍有效的组件：" + selected2.effectiveComponents.map(esc).join("、") + "。" : "") + "同组件以最后一次更新为准；旧状态保留在历史原位置，不代表现在仍是这个值。</p>";
+      if (selected2.kind === "assistant") detail += '<p class="context-detail-note">这是模型生成记录，不能据此认定已发送到 QQ。</p>';
+      if (selected2.kind !== "component" && selected2.kind !== "definition") detail += '<p class="context-detail-note">C 编号对应 39 个组件。其他内容在原位置说明记录类型与用途；历史来信仅在桥接来源和数据结构均可核对时标为 C36。</p>';
+    }
+    const toolsNote = state.view === "tools" ? '<p class="context-tools-note">工具定义来自所选请求独立的 tools 字段，与系统提示、messages 消息列表并列。这里的分区位置不表示模型内部的编码顺序。</p>' : "";
+    const regions = '<div class="context-layout-map" role="group" aria-label="请求结构筛选"><button type="button" data-inspector-region="" aria-pressed="' + (!state.region && state.view === "messages") + '"><strong>完整顺序</strong><span>' + messages.length + " 条消息</span></button>" + Object.entries(REGION_LABELS).map(([id, label2]) => '<button type="button" data-inspector-region="' + id + '" aria-pressed="' + (state.region === id && state.view === "messages") + '"><strong>' + label2 + "</strong><span>" + messages.filter((row) => row.region === id).length + " 条</span></button>").join("") + '<button type="button" data-inspector-region="tools"><strong>工具定义</strong><span>' + tools.length + " 个 · 独立字段</span></button></div>";
+    const refresh3 = request.layoutVersion === 2 ? '<p class="context-refresh-note">逐请求刷新：' + esc(request.contextRefresh?.status === "fresh" ? "已读取最新组件资料" : request.contextRefresh?.status === "stale" ? "刷新未成功，沿用上次可靠资料" : "尚无刷新证据") + "。状态改变才追加更新，原始记录与工具配对保留。</p>" : '<p class="context-refresh-note">旧版请求记录：按当时实际内容展示，不能据此判断新版装填已生效。</p>';
+    return regions + refresh3 + navHtml + shortcuts + mapping + toolsNote + controls + '<div class="context-inspector-split">' + list + '<section class="context-detail" aria-label="选中项详情" data-inspector-detail="' + esc(selected2?.key || "") + '">' + detail + "</section></div>";
+  }
+
+  // console/layers/O/context-request-stages.js
+  function identity(row) {
+    if (row.requestId) return "id:" + row.requestId;
+    return "legacy:" + JSON.stringify([row.sessionId, row.nonce, row.at, row.turn, row.step, row.requestInRound, row.messages, row.tools, row.modules]);
+  }
+  var ordinal = (row) => Number.isSafeInteger(row.requestInRound) && row.requestInRound > 0 ? "第 " + row.requestInRound + " 次模型调用" : "模型调用序号未记录";
+  function requestStageOptions(stages = []) {
+    const groups = /* @__PURE__ */ new Map();
+    for (const stage of stages) {
+      if (!stage.request) continue;
+      const key2 = identity(stage.request);
+      if (!groups.has(key2)) groups.set(key2, { request: stage.request, aliases: [] });
+      groups.get(key2).aliases.push(stage.kind);
+    }
+    return [...groups.values()].map((group) => {
+      const { request, aliases } = group, latest = aliases.includes("current"), first = aliases.includes("initial"), previous = aliases.includes("previous");
+      const kind = latest ? "current" : first ? "initial" : "previous";
+      const title = latest ? first ? "最新记录（也是首次）" : "最新记录" : first ? previous ? "首次记录（也是上一次）" : "首次记录" : "上一次记录";
+      const time3 = Number.isFinite(request.at) ? new Date(request.at).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "时间未记录";
+      return { ...group, kind, title, label: ordinal(request) + " · " + title + " · " + time3 };
+    });
+  }
+  function requestStageSummary(row) {
+    if (!row) return "尚未采集到模型调用记录。";
+    return (row.processingId ? "本次持续处理" : "旧采集批次") + "：" + ordinal(row) + " · 携带 " + (row.messages?.length || 0) + " 条消息记录（含历史） · " + (row.toolCount ?? row.tools?.length ?? 0) + " 个可用工具";
+  }
+
   // console/shared/page-loaders.js
   var loaders = /* @__PURE__ */ new Map();
   function registerPageLoader(page, loader) {
@@ -154,11 +390,13 @@
   var saved;
   var draft;
   var data;
-  var actual = false;
+  var actual = true;
   var dragged = "";
   var revision = 0;
   var loading = false;
   var selectedRequestId = "";
+  var inspectedRequest;
+  var inspectorState = { view: "messages", selected: "", query: "", kind: "", region: "" };
   var $ = (id) => document.getElementById(id);
   var copy = (x) => JSON.parse(JSON.stringify(x));
   var notice = (text) => {
@@ -169,40 +407,54 @@
   var sceneName = (value2) => sceneNames[String(value2 || "").split(/[:@]/)[0]] || value2 || "未记录原因";
   var reasonText = (value2) => ({ "O 层屏蔽": "已在本页关闭，本轮不发送", "本轮未产出": "组件本轮没有提供内容", "本场景无需演练": "本轮未触发演练，不发送这部分" })[value2] || value2;
   var sourceText = (value2) => ({ "qq-context-current": "本轮整理后的背景信息", "qq-context-dialogue": "聊天内容与本轮任务", "runtime-context": "DSH 运行环境说明", "system-prompt": "系统设定与角色要求" })[value2] || value2;
-  var actualName = (row) => ({ system: "系统设定与角色要求", developer: "系统补充说明", user: "用户消息与附加资料", assistant: "AI 的历史消息", tool: "工具返回结果" })[row.role || row.name?.split(" ")[0]] || row.name || row.id;
+  var metric = (label2, value2) => '<div class="context-stat"><span>' + esc(label2) + "</span><strong>" + esc(value2) + "</strong></div>";
+  function framedText(text, modules, catalog, message2 = {}) {
+    const fallback = unmatchedLabel(message2);
+    return attributeMessage({ ...message2, text }, modules, catalog).map((segment) => {
+      if (!segment.text.trim()) return '<pre class="context-text-gap" aria-hidden="true">' + esc(segment.text) + "</pre>";
+      const owner = segment.owners[0], tone = owner?.number ? (owner.number - 1) % 5 : 0;
+      const labels2 = owner ? segment.owners.map((o) => '<span class="context-pill">' + esc(o.number ? "组件 C" + String(o.number).padStart(2, "0") : "附加规则") + "</span><strong>" + esc(o.name) + (o.part ? " · " + esc(partLabel({ name: o.part })) : "") + "</strong>" + (o.evidence ? '<span class="context-frame-evidence">' + esc(o.evidence) + "</span>" : "")).join("<span> / </span>") : '<span class="context-pill">' + esc(fallback.tag) + "</span><strong>" + esc(fallback.title) + "</strong>";
+      return '<div class="context-text-frame' + (owner ? " context-tone-" + tone : " is-unattributed") + '"' + (owner ? ' data-context-owner="' + esc(owner.id) + '"' : "") + '><div class="context-frame-label">' + labels2 + "</div>" + (!owner ? '<p class="context-knowledge-note">' + esc(fallback.description) + "</p>" : "") + "<pre>" + esc(segment.text) + "</pre></div>";
+    }).join("");
+  }
   function render() {
     if (!data) return;
     $("contextSave").disabled = !draft || !changed();
     $("contextReset").disabled = !draft || !changed();
+    $("contextSave").hidden = actual;
+    $("contextReset").hidden = actual;
+    $("contextConsole").querySelector(".context-options").hidden = actual;
+    $("contextConsole").querySelector(".context-help").hidden = actual;
+    $("contextConsole").querySelector(".context-scope-badge").textContent = actual ? "真实请求 · 只读查看" : "全局设置 · 按会话预览";
     $("contextCompactHistory").checked = draft?.compactHistory !== false;
     $("contextDraftTab").setAttribute("aria-pressed", String(!actual));
     $("contextActualTab").setAttribute("aria-pressed", String(actual));
     const stages = data.requestStages || data.request?.requestStages || [{ kind: "initial", label: "本轮初始请求", request: null }, { kind: "previous", label: "上一次请求", request: null }, { kind: "current", label: "当前请求（旧记录）", request: data.request }];
-    if (!stages.some((stage) => stage.kind === selectedRequestId && stage.request)) selectedRequestId = "current";
-    const selected2 = stages.find((stage) => stage.kind === selectedRequestId) || stages.at(-1), request = selected2?.request, preview = data.preview;
+    const options = requestStageOptions(stages), selected2 = options.find((option) => option.aliases.includes(selectedRequestId)) || options.find((option) => option.kind === "current") || options.at(-1);
+    selectedRequestId = selected2?.kind || "";
+    const request = selected2?.request, preview = data.preview;
     $("contextRequestPicker").hidden = !actual;
     $("contextRequestDiff").hidden = !actual;
-    $("contextRequestSelect").replaceChildren(...stages.map((stage) => {
-      const row = stage.request, option = new Option(stage.label + (row ? " · " + new Date(row.at).toLocaleString() + " · " + (row.turn !== void 0 ? "第" + row.turn + "回合" : "回合" + String(row.nonce || "未知").slice(0, 8)) + " / 第" + (row.requestInRound || "?") + "次调用 · " + (row.toolCount || 0) + "个工具" : " · 尚未采集"), stage.kind);
-      option.disabled = !row;
-      return option;
-    }));
+    $("contextRequestSelect").replaceChildren(...options.length ? options.map((option) => new Option(option.label, option.kind)) : [new Option("尚无模型调用记录", "")]);
     $("contextRequestSelect").value = selectedRequestId;
-    const older = stages.find((stage) => stage.kind === (selectedRequestId === "current" ? "previous" : "initial"))?.request, delta = selectedRequestId === "initial" ? null : compareRequests(older, request), join = (items2) => items2.length ? items2.map((item) => esc(item.name || item)).join("、") : "无";
-    $("contextRequestDiff").innerHTML = delta ? "<strong>" + (selectedRequestId === "current" ? "当前请求与上一次请求比较" : "上一次请求与本轮初始请求比较") + "</strong><p>工具新增：" + join(delta.toolsAdded) + "；移除：" + join(delta.toolsRemoved) + "；用途或参数说明变化：" + join(delta.toolsChanged) + "</p><p>模块变化：" + join(delta.modulesChanged) + "；消息字符变化 " + (delta.messageCharsDelta >= 0 ? "+" : "") + delta.messageCharsDelta + "；工具说明字符变化 " + (delta.toolCharsDelta >= 0 ? "+" : "") + delta.toolCharsDelta + "</p>" : selectedRequestId === "initial" ? "这是本轮首次请求，保留作比较基线。" : "尚无本轮上一次请求可比较；初始与当前可能是同一次调用，不会为填充记录调用AI。";
-    if (actual && data.capture?.nonce && request?.nonce && data.capture.nonce !== request.nonce) notice("这份实发记录与当前采集不是同一轮。下方按这份实际请求自己的模块记录展示，不与当前预览混算。");
+    $("contextRequestSelect").disabled = !options.length;
+    $("contextRequestSummary").textContent = requestStageSummary(request);
+    const olderKind = selectedRequestId === "current" ? "previous" : "initial", older = selected2?.aliases.includes(olderKind) ? void 0 : stages.find((stage) => stage.kind === olderKind)?.request;
+    const delta = selected2?.aliases.includes("initial") ? null : compareRequests(older, request), join = (items2) => items2.length ? items2.map((item) => esc(item.name || item)).join("、") : "无";
+    $("contextRequestDiff").innerHTML = delta ? "<strong>" + (selectedRequestId === "current" ? "最新调用与上一次调用比较" : "上一次调用与首次调用比较") + "</strong><p>工具新增：" + join(delta.toolsAdded) + "；移除：" + join(delta.toolsRemoved) + "；用途或参数说明变化：" + join(delta.toolsChanged) + "</p><p>模块变化：" + join(delta.modulesChanged) + "；消息字符变化 " + (delta.messageCharsDelta >= 0 ? "+" : "") + delta.messageCharsDelta + "；工具说明字符变化 " + (delta.toolCharsDelta >= 0 ? "+" : "") + delta.toolCharsDelta + "</p>" : selected2?.aliases.includes("initial") ? "这是本次处理的首次模型调用，保留作比较基线；相同请求已合并展示。" : "上一次调用尚未采集，无法比较；缺失记录不补造。";
+    if (request && Number.isSafeInteger(request.turn)) $("contextRequestDiff").innerHTML += '<p class="meta">日志定位：DSH 内部回合 ' + esc(request.turn) + (Number.isSafeInteger(request.step) ? " / 步骤 " + esc(request.step) : "") + "。这是内部处理编号，与消息条数、工具调用次数分别计数。</p>";
+    $("contextRequestDiff").innerHTML = "<summary>查看本次请求的变化</summary><div>" + $("contextRequestDiff").innerHTML + "</div>";
+    if (actual && data.capture?.nonce && request?.nonce && data.capture.nonce !== request.nonce) notice("这份请求使用的是另一批背景快照。下方按该次实际请求自己的组件记录展示。");
     if (actual) {
       if (!request) {
         $("contextMetrics").textContent = "还没有记录到这个会话实际发给 AI 的内容。等下一次正常聊天或定时冒泡后再刷新；查看这里不会调用 AI。";
         $("contextModules").replaceChildren();
         return;
       }
-      $("contextMetrics").innerHTML = "<span>发送记录时间 <strong>" + esc(new Date(request.at).toLocaleString()) + "</strong></span><span>消息数据（含历史）<strong>" + esc(request.messageChars) + " 字符</strong></span><span>工具说明 <strong>" + esc(request.toolCount) + " 个 / " + esc(request.toolChars) + " 字符</strong></span>";
-      const catalog = data.catalog || data.capture?.modules || [], view = requestCards(request, catalog), groups2 = visualGroups(request.modules || [], catalog);
-      const toolRecord = (m) => m.role === "tool" || m.toolCalls?.length || m.toolResults?.length;
-      const renderRows = (rows) => rows.map((m) => card({ ...m, name: actualName(m), index: void 0, protected: true, included: true }, false)).join("");
-      const toolsSection = section("tools", "这次请求中，AI 可用的工具及说明（" + esc(request.toolCount) + "个）", '<p class="meta"><strong>这就是所选请求的工具清单，与聊天消息并列。</strong>第一次实际调用AI时就会提供；后续调用仍按当时权限提供。它说明工具用途和参数，具体调用及返回数据见下方消息历史。</p>' + card({ id: "actual-tools", name: "工具清单：用途与参数", source: "本次冻结请求的tools字段", text: JSON.stringify(request.tools, null, 2), chars: request.toolChars, protected: true, included: true, inRequest: true }, false), true);
-      $("contextModules").innerHTML = toolsSection + section("delivery", "所选请求实际发送的组合", '<p class="meta"><strong>本轮背景是桥接最近送入的快照，并非每次请求前重新读取。</strong>例：心情快照为60，工具随后改为65，后续请求可同时保留快照60与工具结果65；桥接送入新一批上下文时才替换背景。系统设定通常沿用，对话和工具记录继续追加。</p>' + view.cards.map((m) => card(m, false)).join("")) + section("history-dialogue", "对话消息与 AI 历史文字", '<p class="meta">保留进入会话的历史消息。有些AI文字是内部处理记录，未必已发给QQ用户；本轮任务和新消息在上方单独展示。</p>' + renderRows(view.history.filter((m) => !toolRecord(m))), true) + section("history-tools", "工具调用与返回记录", '<p class="meta">这两者也属于消息历史，按请求中的先后顺序展示。AI的历史消息可包含具体调用；工具返回结果是数据或错误，调用ID用于配对。例：先调用日程查询，再返回今天14:00开会。</p>' + renderRows(view.history.filter(toolRecord)), true) + section("modules", "来源模块（" + groups2.core.length + "个；空模块保留编号）", groups2.core.map((m) => card({ ...m, protected: true }, false)).join(""), true) + (groups2.extra.length ? section("rules", "其他附加规则", groups2.extra.map((m) => card({ ...m, index: void 0, protected: true }, false)).join(""), true) : "");
+      $("contextMetrics").innerHTML = metric("实际请求记录时间", new Date(request.at).toLocaleString()) + metric("消息数据 · 含历史", request.messageChars + " 字符") + metric("工具清单", request.toolCount + " 个 / " + request.toolChars + " 字符");
+      inspectedRequest = request;
+      $("contextModules").innerHTML = '<p class="context-section-note">下方是本次请求携带的完整消息记录（含历史）。消息角色按 system / user / assistant / tool 标注，彩色标签说明内容用途。</p><div id="contextInspector" class="context-inspector"></div>';
+      renderInspector();
       return;
     }
     if (!preview) {
@@ -210,17 +462,36 @@
       $("contextModules").replaceChildren();
       return;
     }
-    $("contextMetrics").innerHTML = "<span>这份记录来自 <strong>" + esc(sceneName(data.capture.scene)) + " · " + esc(new Date(data.capture.at).toLocaleString()) + "</strong></span><span>全部模块原文 <strong>" + esc(preview.beforeChars) + " 字符</strong></span><span>按当前设置保留 <strong>" + esc(preview.afterChars) + " 字符 / 约 " + esc(Math.ceil(preview.afterChars / 2)) + " token</strong></span><span>资料统计是当前策略；正文为采集时内容</span>";
+    $("contextMetrics").innerHTML = metric("采集场景", sceneName(data.capture.scene)) + metric("全部组件原文", preview.beforeChars + " 字符") + metric("当前设置保留", preview.afterChars + " 字符 / 约 " + Math.ceil(preview.afterChars / 2) + " token") + '<p class="context-metrics-note">采集于 ' + esc(new Date(data.capture.at).toLocaleString()) + " · 资料统计按当前策略，正文保留采集时内容。</p>";
     const groups = visualGroups(preview.modules, data.catalog || preview.modules);
     $("contextModules").innerHTML = section("modules", "模块（" + groups.core.length + "个，空模块保留位置）", groups.core.map((m) => card(m, true)).join("")) + (groups.extra.length ? section("rules", "其他附加规则", groups.extra.map((m) => card({ ...m, index: void 0 }, true)).join("")) : "");
+  }
+  function renderInspector({ keepPosition = false, keepSearch = false } = {}) {
+    const host = $("contextInspector");
+    if (!host || !inspectedRequest) return;
+    const scroll = keepPosition ? host.querySelector(".context-sequence")?.scrollTop : void 0;
+    const cursor = keepSearch ? $("contextInspectorSearch")?.selectionStart : null;
+    host.innerHTML = inspectorHtml(inspectedRequest, data.catalog || [], inspectorState, { renderText: framedText, renderComponent: (row) => card({ ...row, index: void 0, protected: true }, false) });
+    const list = host.querySelector(".context-sequence"), active = list?.querySelector('[aria-pressed="true"]');
+    if (scroll !== void 0) list.scrollTop = scroll;
+    else if (active) list.scrollTop = Math.max(0, active.offsetTop - list.offsetTop - list.clientHeight / 3);
+    if (keepSearch) {
+      const input = $("contextInspectorSearch");
+      input.focus();
+      if (input.type !== "search" && cursor !== null) input.setSelectionRange(cursor, cursor);
+    }
   }
   function section(id, title, body, folded = false) {
     return folded ? '<details class="context-section" data-context-group="' + id + '"><summary>' + esc(title) + "</summary>" + body + "</details>" : '<section class="context-section" data-context-group="' + id + '"><h3 class="context-section-title">' + esc(title) + "</h3>" + body + "</section>";
   }
   function card(m, editable) {
     const delivery = !editable ? m.notCaptured && typeof m.inRequest !== "boolean" ? "未采集，不能判定实发" : m.included === false ? "未注入：" + reasonText(m.reason) : m.inRequest === true ? "已在实际请求正文中确认" : m.inRequest === false ? "实际请求未完整包含此模块" : "旧记录没有逐模块实发证据" : m.truncated ? "内容超过组件上限，已截断" : "";
-    const locked = m.protected || !editable, title = data.knowledge?.[m.id]?.name || m.name || m.id, tag = m.placement === "fixed" ? "系统设定与角色要求" : m.id === "wake-action" ? "用户附加资料：本轮任务" : m.id === "message-snapshot" ? "用户附加资料：收件状态 + 新消息" : "用户附加资料：本轮背景", placeholder = !m.text?.trim();
-    return '<article class="context-module' + (placeholder ? " is-placeholder" : m.included === false ? " is-excluded" : "") + '" data-context-id="' + esc(m.id) + '"><div class="context-module-head">' + (editable ? '<button type="button" class="context-drag" draggable="true" data-context-move="drag" aria-label="拖动 ' + esc(title) + '">⠿</button>' : "") + "<h3>" + (Number.isInteger(m.index) ? esc(m.index + 1) + ". " : "") + esc(title) + "</h3>" + (editable ? '<label title="' + (locked ? "身份、权限和任务等必要内容不能在这里关闭" : "勾选表示允许把这部分内容发给 AI；保存后适用于所有会话") + '"><input type="checkbox" data-context-toggle="' + esc(m.id) + '" ' + (!draft.disabled.includes(m.id) || locked ? "checked " : "") + (locked ? "disabled " : "") + ">" + (locked ? "必要内容，不能关闭" : "允许发给 AI") + '</label><button type="button" data-context-move="up" aria-label="上移 ' + esc(title) + '">↑</button><button type="button" data-context-move="down" aria-label="下移 ' + esc(title) + '">↓</button>' : "") + '</div><p class="context-source">内容来自：' + esc(sourceText(m.source) || m.layer || "系统") + " · " + (editable ? tag + " · " : "") + esc(m.chars ?? m.text?.length ?? 0) + " 字符" + (delivery ? " · " + esc(delivery) : "") + (!placeholder && m.reason ? " · " + esc(reasonText(m.reason)) : "") + "</p>" + (m.toolCalls?.length || m.toolResults?.length ? '<p class="context-knowledge-note">' + (m.toolCalls || []).map((c) => "具体调用：" + esc(c.name) + " · 调用ID " + esc(c.id)).join("；") + (m.toolResults || []).map((c) => "返回对应调用ID：" + esc(c.toolCallId)).join("；") + "</p>" : "") + (m.references ? '<p class="context-knowledge-note">来源：' + esc(m.references.join(" · ")) + (m.attributionVerified === false ? "；旧记录缺少同轮标记，分类尚不能完全核验" : "") + "</p>" : "") + knowledgePanel(m, data.knowledge?.[m.id], { actual: !editable, allowed: editable ? !(draft?.enabled !== false && draft.disabled.includes(m.id)) : m.included !== false }) + (m.id === "message-snapshot" && m.parts?.length ? '<p class="context-knowledge-note">两部分关联启停，共用本模块开关；实际新增消息会按已发送序号去重。</p>' + m.parts.map((part) => "<details><summary>" + esc(part.name) + " → " + (part.destination === "background" ? "用户消息与附加资料：本轮背景" : "用户消息与附加资料：本轮任务和新消息") + "</summary><pre>" + esc(part.text || "本轮无新增正文") + "</pre></details>").join("") : placeholder ? '<p class="context-placeholder">本轮暂无内容，位置保留。</p>' : "<details><summary>" + (editable ? "查看这部分提供的文字" : "查看这次请求发送的文字") + "</summary><pre>" + esc(m.text || "（这部分没有文字内容）") + "</pre></details>") + "</article>";
+    const locked = m.protected || !editable, title = (editable ? data.knowledge?.[m.id]?.name : null) || m.name || m.id, tag = m.placement === "fixed" ? "系统设定与角色要求" : m.placement === "stable" ? "稳定会话资料（user 前缀）" : m.id === "wake-action" ? "任务说明（随本轮任务提供）" : m.id === "message-snapshot" ? "收件处理进度与聊天原文" : "动态资料（变化时更新）", placeholder = !m.text?.trim();
+    const request = data.requestStages?.find((s) => s.kind === selectedRequestId)?.request || data.request;
+    const annotated = !editable && (String(m.id).startsWith("actual-") && m.id !== "actual-tools" || m.requestIndex !== void 0);
+    const content = annotated ? '<div class="context-framed-content">' + framedText(m.text || "", request?.modules || [], data.catalog || []) + "</div>" : "<pre>" + esc(m.text || "（这部分没有文字内容）") + "</pre>";
+    const tone = Number.isInteger(m.index) ? " context-tone-" + m.index % 5 : "";
+    return '<article class="context-module' + tone + (placeholder ? " is-placeholder" : m.included === false ? " is-excluded" : "") + '" data-context-id="' + esc(m.id) + '"><div class="context-module-head">' + (editable ? '<button type="button" class="context-drag" draggable="true" data-context-move="drag" aria-label="拖动 ' + esc(title) + '">⠿</button>' : "") + "<h3>" + (Number.isInteger(m.index) ? '<span class="context-number">' + esc(m.index + 1) + ".</span> " : m.requestIndex ? '<span class="context-number">#' + esc(m.requestIndex) + "</span> " : "") + esc(title) + "</h3>" + (editable ? '<label title="' + (locked ? "身份、权限和任务等必要内容不能在这里关闭" : "勾选表示允许把这部分内容发给 AI；保存后适用于所有会话") + '"><input type="checkbox" data-context-toggle="' + esc(m.id) + '" ' + (!draft.disabled.includes(m.id) || locked ? "checked " : "") + (locked ? "disabled " : "") + ">" + (locked ? "必要内容，不能关闭" : "允许发给 AI") + '</label><button type="button" data-context-move="up" aria-label="上移 ' + esc(title) + '">↑</button><button type="button" data-context-move="down" aria-label="下移 ' + esc(title) + '">↓</button>' : "") + '</div><div class="context-source"><span class="context-pill">' + esc(sourceText(m.source) || m.layer || "系统") + "</span>" + (editable ? '<span class="context-pill">' + esc(tag) + "</span>" : "") + "<span>" + esc(m.chars ?? m.text?.length ?? 0) + " 字符</span>" + (delivery ? '<span class="context-delivery">' + esc(delivery) + "</span>" : "") + (!placeholder && m.reason ? "<span>" + esc(reasonText(m.reason)) + "</span>" : "") + "</div>" + (m.toolCalls?.length || m.toolResults?.length ? '<p class="context-knowledge-note">' + (m.toolCalls || []).map((c) => "具体调用：" + esc(c.name) + " · 调用ID " + esc(c.id)).join("；") + (m.toolResults || []).map((c) => "返回对应调用ID：" + esc(c.toolCallId)).join("；") + "</p>" : "") + (m.references ? '<details class="context-references"><summary>查看组件来源清单' + (m.attributionVerified === false ? " · 缺少同轮标记" : "") + "</summary><ul>" + m.references.map((ref) => "<li>" + esc(ref) + "</li>").join("") + "</ul></details>" : "") + knowledgePanel(m, data.knowledge?.[m.id], { actual: !editable, allowed: editable ? !(draft?.enabled !== false && draft.disabled.includes(m.id)) : m.included !== false }) + (m.id === "message-snapshot" && m.parts?.length ? '<p class="context-knowledge-note">两部分共用开关；新增来信按消息序号去重。</p>' + m.parts.map((part) => "<details><summary>" + esc(partLabel(part)) + "</summary><pre>" + esc(part.text || "本轮无新增正文") + "</pre></details>").join("") : placeholder ? '<p class="context-placeholder">本轮暂无内容，位置保留。</p>' : '<details class="context-content"' + (annotated && m.requestIndex === void 0 ? " open" : "") + "><summary>" + (editable ? "查看组件原文" : annotated ? "查看按组件标注的原文" : "查看原文") + "</summary>" + content + "</details>") + "</article>";
   }
   async function refresh(keepDraft = false) {
     const ticket = ++revision;
@@ -244,7 +515,7 @@
         await refresh(true);
         return;
       }
-      notice(changed() ? "有未保存的修改；保存后将用于所有私聊和群聊。" : !response.capture ? "还没有可查看的记录。" : response.capture.active ? "这条记录使用了新版上下文整理流程；点“本轮请求对比”核对发出的内容。" : "采集这条记录时，新版整理功能尚未启用，bot 当时仍按原方式发送。");
+      notice(changed() ? "有未保存的修改；保存后将用于所有私聊和群聊。" : !response.capture ? "还没有可查看的记录。" : response.capture.active ? "已采集上下文。实际请求只读查看，组件设置需单独保存。" : "采集这条记录时，新版整理功能尚未启用，bot 当时仍按原方式发送。");
       if (keepDraft && changed()) {
         loading = false;
         await project();
@@ -275,7 +546,7 @@
     const rows = [...data.preview.modules], from = rows.findIndex((x) => x.id === id), to = rows.findIndex((x) => x.id === target);
     if (from < 0 || to < 0 || from === to) return;
     if (rows[from].placement !== rows[to].placement) {
-      notice("角色设定的系统位置固定；其余模块请在用户附加资料内调序，例如把心情移到黑话前面。");
+      notice("请在同一装填层内调序：系统规则、稳定资料、动态资料各有固定位置。");
       return;
     }
     const [item] = rows.splice(from, 1);
@@ -296,6 +567,7 @@
     });
     $("contextRequestSelect").addEventListener("change", (event) => {
       selectedRequestId = event.target.value;
+      inspectorState.selected = "";
       render();
     });
     $("contextReset").addEventListener("click", () => {
@@ -313,11 +585,67 @@
       if (!event.target.checked) draft.disabled.push(id);
       void project();
     });
+    $("contextModules").addEventListener("input", (event) => {
+      if (event.target.id !== "contextInspectorSearch") return;
+      inspectorState.query = event.target.value;
+      renderInspector({ keepSearch: true });
+    });
+    $("contextModules").addEventListener("change", (event) => {
+      if (event.target.id !== "contextInspectorKind") return;
+      inspectorState.kind = event.target.value;
+      renderInspector();
+    });
+    const locateComponent = (id) => {
+      inspectorState.view = "components";
+      inspectorState.selected = "component:" + id;
+      inspectorState.query = "";
+      renderInspector();
+    };
+    $("contextModules").addEventListener("change", (event) => {
+      if (event.target.id === "contextComponentLookup" && event.target.value) locateComponent(event.target.value);
+    });
+    $("contextModules").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-inspector-component]");
+      if (button) locateComponent(button.dataset.inspectorComponent);
+    });
+    $("contextModules").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-inspector-message]");
+      if (button) {
+        inspectorState.view = "messages";
+        inspectorState.region = "";
+        inspectorState.query = "";
+        inspectorState.kind = "";
+        inspectorState.selected = button.dataset.inspectorMessage;
+        renderInspector();
+      }
+    });
+    $("contextModules").addEventListener("click", (event) => {
+      const region = event.target.closest("[data-inspector-region]"), view = event.target.closest("[data-inspector-view]"), row = event.target.closest("[data-inspector-select]");
+      if (region) {
+        inspectorState.view = region.dataset.inspectorRegion === "tools" ? "tools" : "messages";
+        inspectorState.region = region.dataset.inspectorRegion === "tools" ? "" : region.dataset.inspectorRegion;
+        inspectorState.kind = "";
+        inspectorState.query = "";
+        inspectorState.selected = "";
+        renderInspector();
+      } else if (view) {
+        inspectorState.view = view.dataset.inspectorView;
+        inspectorState.region = "";
+        inspectorState.query = "";
+        inspectorState.selected = "";
+        renderInspector();
+      } else if (row) {
+        inspectorState.selected = row.dataset.inspectorSelect;
+        renderInspector({ keepPosition: true });
+      }
+    });
     $("contextModules").addEventListener("click", (event) => {
       const btn = event.target.closest("[data-context-move]"), row = btn?.closest("[data-context-id]");
       if (!row || !["up", "down"].includes(btn.dataset.contextMove)) return;
-      const rows = data.preview.modules, i = rows.findIndex((x) => x.id === row.dataset.contextId), target = rows[i + (btn.dataset.contextMove === "up" ? -1 : 1)];
-      if (target) move(row.dataset.contextId, target.id);
+      const rows = data.preview.modules, i = rows.findIndex((x) => x.id === row.dataset.contextId), direction = btn.dataset.contextMove === "up" ? -1 : 1;
+      let j = i + direction;
+      while (rows[j] && rows[j].placement !== rows[i].placement) j += direction;
+      if (rows[j]) move(row.dataset.contextId, rows[j].id);
     });
     $("contextModules").addEventListener("dragstart", (event) => {
       const handle = event.target.closest("[draggable]");
@@ -367,7 +695,7 @@
         const p = row.proactive;
         if (!p) return '<div class="runtime-preview"><b>' + esc(row.key) + "</b><p>主动组件未启用或判定不可用</p></div>";
         const interval = p.effectiveInterval;
-        return '<div class="runtime-preview"><b>' + esc(row.key) + '</b><dl class="runtime-facts">' + (p.lastIncomingDecision ? "<dt>最近来信判定</dt><dd>" + esc("p=" + Math.round(p.lastIncomingDecision.baseProbability * 100) + "% + q=" + Math.round(p.lastIncomingDecision.extraProbability * 100) + "% → " + Math.round(p.lastIncomingDecision.probability * 100) + "% · " + (p.lastIncomingDecision.accepted ? "通过" : "未通过")) + "</dd>" : "") + "<dt>静默阶段</dt><dd>" + esc(p.stage ?? "—") + "</dd><dt>当前基础概率 p</dt><dd>" + esc(p.effectiveProbability == null ? "—" : (p.effectiveProbability * 100).toFixed(1) + "%") + "</dd><dt>聊天意愿（用户忙闲）</dt><dd>" + esc(p.willingness ?? "—") + " / 100 · " + esc(sources[p.source] || p.source || "未知来源") + "</dd><dt>上次 AI 评估</dt><dd>" + esc(p.lastAI ? p.lastAI.value + " · " + p.lastAI.reason + " · " + time(p.lastAI.at) : "尚无 AI 评估") + "</dd><dt>实际检验区间</dt><dd>" + esc(interval ? interval.minMinutes + "–" + interval.maxMinutes + " 分钟" : "—") + "</dd><dt>下次判定</dt><dd>" + esc(time(p.nextAt)) + "</dd><dt>阻断 / 暂停</dt><dd>" + esc(p.blockedReason || (row.paused ? "已暂停" : "无")) + "</dd><dt>当前状态</dt><dd>" + esc([p.phase, p.intent, p.lastFinishedReason].filter(Boolean).join(" · ") || "—") + "</dd></dl></div>";
+        return '<div class="runtime-preview"><b>' + esc(row.key) + '</b><dl class="runtime-facts"><dt>当前会话</dt><dd>' + esc(p.conversationAwake === true ? "已唤醒：接收、回复与等待中" : p.conversationAwake === false ? "未开启：使用主动概率与唤醒加成" : "运行进程尚未提供会话状态") + "</dd>" + (p.lastIncomingDecision ? "<dt>最近群聊来信</dt><dd>" + esc((p.lastIncomingDecision.phase === "conversation" ? "会话中：不抽签，继续接收" : "开启会话：p=" + Math.round(p.lastIncomingDecision.baseProbability * 100) + "% + q=" + Math.round(p.lastIncomingDecision.extraProbability * 100) + "% → " + Math.round(p.lastIncomingDecision.probability * 100) + "% · " + (p.lastIncomingDecision.accepted ? "通过" : "未通过")) + " · " + time(p.lastIncomingDecision.at)) + "</dd>" : "") + "<dt>静默主动阶段</dt><dd>" + esc(p.stage ?? "—") + "</dd><dt>无人来信时的主动概率</dt><dd>" + esc(p.effectiveProbability == null ? "—" : (p.effectiveProbability * 100).toFixed(1) + "%") + "</dd><dt>聊天意愿（用户忙闲）</dt><dd>" + esc(p.willingness ?? "—") + " / 100 · " + esc(sources[p.source] || p.source || "未知来源") + "</dd><dt>上次 AI 评估</dt><dd>" + esc(p.lastAI ? p.lastAI.value + " · " + p.lastAI.reason + " · " + time(p.lastAI.at) : "尚无 AI 评估") + "</dd><dt>实际检验区间</dt><dd>" + esc(interval ? interval.minMinutes + "–" + interval.maxMinutes + " 分钟" : "—") + "</dd><dt>下次判定</dt><dd>" + esc(time(p.nextAt)) + "</dd><dt>阻断 / 暂停</dt><dd>" + esc(p.blockedReason || (row.paused ? "已暂停" : "无")) + "</dd><dt>当前状态</dt><dd>" + esc([p.phase, p.intent, p.lastFinishedReason].filter(Boolean).join(" · ") || "—") + "</dd></dl></div>";
       }).join("") || '<p class="meta">暂无会话</p>';
     } catch (error) {
       root.textContent = "读取失败：" + error.message;
@@ -1183,24 +1511,24 @@
         title.textContent = role.name;
         head.appendChild(title);
         if (role.name === r.current) {
-          const badge = document.createElement("span");
-          badge.className = "persona-badge";
-          badge.textContent = "启用中";
-          head.appendChild(badge);
+          const badge2 = document.createElement("span");
+          badge2.className = "persona-badge";
+          badge2.textContent = "启用中";
+          head.appendChild(badge2);
         }
         if (role.truncated) {
-          const badge = document.createElement("span");
-          badge.className = "persona-badge warn";
-          badge.textContent = `超出上限`;
-          badge.title = `按模式筛选后仍有超出：二代 ${role.charsV2} 字符 / 一代 ${role.charsV1} 字符，上限 ${roleInjectMax}`;
-          head.appendChild(badge);
+          const badge2 = document.createElement("span");
+          badge2.className = "persona-badge warn";
+          badge2.textContent = `超出上限`;
+          badge2.title = `按模式筛选后仍有超出：二代 ${role.charsV2} 字符 / 一代 ${role.charsV1} 字符，上限 ${roleInjectMax}`;
+          head.appendChild(badge2);
         }
         if (role.hasModeTags) {
-          const badge = document.createElement("span");
-          badge.className = "persona-badge";
-          badge.textContent = "分代内容";
-          badge.title = "该人格含 〔一代〕/〔二代〕 专属小节，只在对应仿真模式下注入";
-          head.appendChild(badge);
+          const badge2 = document.createElement("span");
+          badge2.className = "persona-badge";
+          badge2.textContent = "分代内容";
+          badge2.title = "该人格含 〔一代〕/〔二代〕 专属小节，只在对应仿真模式下注入";
+          head.appendChild(badge2);
         }
         const meta = document.createElement("small");
         const split = Number.isFinite(role.charsV1) && role.charsV1 !== role.charsV2;
@@ -2106,14 +2434,14 @@
     for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
     return node;
   }
-  function usageBucketValue(b, metric) {
-    return metric === "tokens" ? Number(b.tokens) || 0 : Number(b.cost) || 0;
+  function usageBucketValue(b, metric2) {
+    return metric2 === "tokens" ? Number(b.tokens) || 0 : Number(b.cost) || 0;
   }
-  function usageMetricLabel(metric) {
-    return metric === "tokens" ? "token" : "花费";
+  function usageMetricLabel(metric2) {
+    return metric2 === "tokens" ? "token" : "花费";
   }
-  function usageAxisValue(v, metric, sym) {
-    if (metric === "tokens") return usageNum(v);
+  function usageAxisValue(v, metric2, sym) {
+    if (metric2 === "tokens") return usageNum(v);
     if (v === 0) return sym + "0";
     return v < 0.01 ? sym + v.toFixed(4) : sym + v.toFixed(2);
   }
@@ -2139,8 +2467,8 @@
       noteEl.textContent = "";
       return;
     }
-    const metric = usageChartMetric;
-    const values = buckets.map((b) => usageBucketValue(b, metric));
+    const metric2 = usageChartMetric;
+    const values = buckets.map((b) => usageBucketValue(b, metric2));
     const max = Math.max(...values, 0);
     const scaleMax = max > 0 ? max : 1;
     const W = 960;
@@ -2153,12 +2481,12 @@
     const plotH = H - padT - padB;
     const step = plotW / buckets.length;
     const barW = Math.max(2, step * 0.72);
-    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${usageMetricLabel(metric)}随时间的走势图` });
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${usageMetricLabel(metric2)}随时间的走势图` });
     for (let i = 0; i <= 2; i += 1) {
       const y = padT + plotH - plotH * i / 2;
       svg.appendChild(svgEl("line", { class: "usage-grid", x1: padL, y1: y, x2: W - padR, y2: y }));
       const label2 = svgEl("text", { class: "usage-axis", x: padL - 8, y: y + 3, "text-anchor": "end" });
-      label2.textContent = usageAxisValue(max > 0 ? scaleMax * i / 2 : 0, metric, sym);
+      label2.textContent = usageAxisValue(max > 0 ? scaleMax * i / 2 : 0, metric2, sym);
       svg.appendChild(label2);
     }
     for (let i = 0; i < buckets.length; i += 1) {
@@ -2168,7 +2496,7 @@
       const h = v > 0 ? Math.max(1.5, v / scaleMax * plotH) : 0;
       const tooltip = svgEl("title");
       tooltip.textContent = `${usageBucketClock(b.t, series.bucketMs)}
-${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
+${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
 未命中输入：${usageNum(b.cacheMiss)} ｜ 命中输入：${usageNum(b.cacheHit)} ｜ 输出：${usageNum(b.output)}
 步数：${usageNum(b.steps)} ｜ 轮次：${usageNum(b.turns)}
 时段：${b.tier === "peak" ? "高峰（单价 ×2）" : b.tier === "mixed" ? "跨时段" : "空闲"}` + (b.keys?.length ? `
@@ -2190,10 +2518,10 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     }
     box.innerHTML = "";
     box.appendChild(svg);
-    const windowTotal = buckets.reduce((sum, b) => sum + usageBucketValue(b, metric), 0);
-    totalEl.textContent = metric === "tokens" ? `${usageNum(windowTotal)} token` : usageMoney(windowTotal, sym);
+    const windowTotal = buckets.reduce((sum, b) => sum + usageBucketValue(b, metric2), 0);
+    totalEl.textContent = metric2 === "tokens" ? `${usageNum(windowTotal)} token` : usageMoney(windowTotal, sym);
     const busiest = series.busiest;
-    hintEl.textContent = `窗口内合计 ｜ 每格 ${Math.round(series.bucketMs / 6e4)} 分钟` + (busiest && metric === "cost" ? ` ｜ 最贵一格：${usageBucketClock(busiest.t, series.bucketMs)} ${usageMoney(busiest.cost, sym)}` : "") + (series.estimated ? " ｜ ⚠️ 含按兜底价估算的模型" : "");
+    hintEl.textContent = `窗口内合计 ｜ 每格 ${Math.round(series.bucketMs / 6e4)} 分钟` + (busiest && metric2 === "cost" ? ` ｜ 最贵一格：${usageBucketClock(busiest.t, series.bucketMs)} ${usageMoney(busiest.cost, sym)}` : "") + (series.estimated ? " ｜ ⚠️ 含按兜底价估算的模型" : "");
     const notes = [];
     if (Number(series.offChartCost) > 1e-4) {
       notes.push(`另有 ${usageMoney(series.offChartCost, sym)}（约 ${usageNum(series.offChartTokens)} token）属于更早的历史，只有累计值、没有逐时明细，因此不在上图里；所以本图合计会小于「总花费」。`);
@@ -2732,7 +3060,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       "setting-l-1": ["发送与等待", "发送与等待", "设置开口时机、发送间隔与分条回复限制。"],
       "setting-l-2": ["主动行为", "主动行为", "设置定时冒泡、话题跟进、日程提醒与起床问候。"],
       "setting-o-0": ["质量与工具日志", "质量与工具日志", "查看调用记录、反馈与失败原因。"],
-      "setting-o-1": ["日记与反馈", "日记与反馈", "查看日记、发送记录与用户反馈。"],
+      "setting-o-1": ["日记、日报与反馈", "日记、日报与反馈", "分别管理会话日记、运维日报与用户反馈。"],
       "setting-o-2": ["自我更新与摘要", "自我更新与摘要", "设置自查频率、摘要与改进记录。"],
       overview: ["运行总览", "让每一次连接，都自然发生。", "掌握桥接状态，轻松管理你的 QQ 智能伙伴。"],
       sessions: ["会话与审批", "让每一段对话，都有迹可循。", "查看 QQ 与 DSH 的会话映射，以及等待你回复的审批和提问。"],
@@ -2758,7 +3086,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       "video": ["视频", "视频", "预留栏目；尚未接入视频生成或处理服务。"],
       "layer-v": ["失败回归", "失败回归", "将失败记录整理为可复查的用例。"],
       "human": ["human", "HUMAN IN THE LOOP", "我也是一个组件。"],
-      "layer-s": ["资料参考", "资料参考", "AI 按需读取 SCHNIE 原文资料。"],
+      "layer-s": ["私人资料库", "私人资料库", "挂载个人思想与知识资料包，按目录选择、按需读取原文。"],
       reference: ["工具参考", "每一种能力，都清晰可见。", "查看桥接提供给 DSH 的 MCP 工具与用途。"],
       registry: ["扩展组件", "扩展组件", "查看接入的扩展项目。"]
     };
@@ -4850,6 +5178,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
   function initialize44() {
     NAV_ICON_PATHS = {
+      "context-visual": '<path d="m12 2 10 5-10 5L2 7Zm-10 10 10 5 10-5M2 17l10 5 10-5"/><path d="M12 12v10"/>',
+      "setting-o-2": '<path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9M8 7h5M8 11h3M8 15h2"/><path d="M17 10a5 5 0 1 1-4 8m0-4v4h4m3-11v3h-3"/>',
       "terms": '<path d="m12 3-10 5 10 5 10-5ZM6 11v5c3 3 9 3 12 0v-5M22 8v8"/>',
       "persona": '<circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',
       "slang": '<path d="M4 5a2 2 0 0 1 2-2h14v18H6a2 2 0 0 1 0-4h14M4 5v14M8 7h8M8 11h6"/>',
@@ -5160,11 +5490,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   };
 
   // console/layers/S/ownership.js
-  var ownership_default8 = {
-    "schnie-core": {
-      "page": "layer-s"
-    }
-  };
+  var ownership_default8 = { "personal-core": { page: "layer-s" } };
 
   // console/layers/T/ownership.js
   var ownership_default9 = {
@@ -5202,6 +5528,47 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     if (COMPONENT_OWNERS[plugin.id]?.presentation === "internal") return true;
     const keys = plugin.configKeys ?? Object.keys(plugin.config || {});
     return Array.isArray(plugin.hooks) && plugin.hooks.includes("beforePrompt") && !(plugin.tools || []).length && keys.every((key2) => key2 === "disabledBlocks");
+  }
+
+  // console/layers/S/library-manager.js
+  function markup(plugin) {
+    const info = plugin.state?.mountInspection || {}, disabled = plugin.enabled === false, when = info.validatedAt ? new Date(info.validatedAt).toLocaleString("zh-CN", { hour12: false }) : "暂无记录";
+    const title = disabled ? "组件已停用" : !plugin.config?.libraryDir ? "尚未挂载资料包" : info.ok ? "当前挂载：" + info.title : "资料包未就绪";
+    return '<div class="core-mount-heading"><b>' + esc(title) + '</b><button class="small" type="button" data-core-recheck' + (disabled ? " disabled" : "") + ">重新校验当前目录</button></div>" + (info.ok ? '<dl class="core-mount-facts"><div><dt>作者</dt><dd>' + esc(info.author) + "</dd></div><div><dt>版本</dt><dd>" + esc(info.version) + "</dd></div><div><dt>主题</dt><dd>" + esc(info.topicCount) + "</dd></div><div><dt>原稿</dt><dd>" + esc(info.sourceCount) + "</dd></div></dl>" : '<p class="meta">' + esc(info.error || "填写目录并保存后开始使用。") + "</p>") + '<p class="meta core-mount-path">已保存目录：<code>' + esc(plugin.config?.libraryDir || "未设置") + '</code></p><p class="meta">最近校验：' + esc(when) + '。未保存的输入不替换当前挂载；文件变化后可重新校验。</p><p class="core-mount-message meta" role="status"></p>';
+  }
+  function mountPersonalCore({ id, body, p }) {
+    const panel = document.createElement("section");
+    panel.className = "core-mount-status";
+    panel.setAttribute("aria-label", "当前资料包挂载状态");
+    const fields = body.querySelector(".component-fields");
+    fields.before(panel);
+    if (p.enabled === false) {
+      const save2 = body.querySelector(".comp-save");
+      if (save2) save2.disabled = true;
+      panel.insertAdjacentHTML("afterend", '<p class="meta">请先启用此组件，再保存并校验挂载目录。</p>');
+    }
+    const render2 = (plugin) => {
+      panel.innerHTML = markup(plugin);
+      panel.querySelector("[data-core-recheck]").addEventListener("click", async (event) => {
+        const button = event.currentTarget, msg = panel.querySelector("[role=status]");
+        button.disabled = true;
+        msg.textContent = "正在校验已保存的目录…";
+        try {
+          const out = await api("/api/plugins/config", "POST", { id, config: {} });
+          if (out.ok !== true) throw Error(out.error || "校验失败");
+          const latest = await api("/api/plugins/detail?id=" + encodeURIComponent(id));
+          render2(latest.plugin || latest);
+          panel.querySelector("[role=status]").textContent = "已重新校验；未更改表单中尚未保存的输入。";
+        } catch (error) {
+          panel.querySelector(".core-mount-heading b").textContent = "当前校验失败；以下为最近一次挂载记录";
+          msg.textContent = error.message;
+          msg.classList.add("err");
+        } finally {
+          button.disabled = false;
+        }
+      });
+    };
+    render2(p);
   }
 
   // console/layers/E/editors/image-generation.js
@@ -5554,9 +5921,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/O/editors/worklog.js
   async function mountWorklog({ id, body, p, el: el3, form }) {
-    body.insertAdjacentHTML("beforeend", '<section class="worklog-console" aria-label="运维日报与日报归档"><div class="worklog-console-head"><div><h3>运维日报</h3><p class="meta">日报归档每天保留当天最新版本；手动生成会立即发送摘要。</p><div class="worklog-send-setting"></div></div><div class="row"><button class="small worklog-generate-send" type="button">立即生成与发送</button><button class="small worklog-refresh" type="button">刷新列表</button></div></div><section class="worklog-sources" aria-label="日报扫描文件"><div class="worklog-sources-title">日报扫描来源</div><ul class="worklog-sources-list"><li class="worklog-source"><code>state/memory/tasks-*.md</code><span>提取当天的中期任务进度记录。</span></li><li class="worklog-source"><code>state/tasks.json</code><span>汇总当天创建或更新的独立任务及状态。</span></li><li class="worklog-source"><code>state/tool-calls.jsonl</code><span>统计当天的工具调用次数与失败次数。</span></li><li class="worklog-source"><code>state/tool-calls.jsonl.1</code><span>读取轮转的工具调用历史，补齐当天统计。</span></li><li class="worklog-source"><code>state/token-usage.jsonl</code><span>统计当天模型调用步数与输入、输出 token。</span></li><li class="worklog-source"><code>state/token-usage.jsonl.1</code><span>读取轮转的 token 历史，补齐当天统计。</span></li><li class="worklog-source"><code>state/plugins/obs-self-review.json</code><span>统计反馈队列当天的状态变更；不复制反馈正文。</span></li><li class="worklog-source"><code>state/memory/_optimization.md</code><span>提取当天的自我更新发现与统一修复摘要。</span></li></ul></section><div class="worklog-status" aria-live="polite"></div><div class="meta worklog-action-message" aria-live="polite"></div><div class="worklog-layout"><nav class="worklog-list" aria-label="日报日期列表"><div class="worklog-empty">读取日报列表中…</div></nav><article class="worklog-preview"><div class="worklog-preview-head"><b>内容预览</b><span class="meta worklog-preview-meta">选择一份日报</span></div><pre class="worklog-preview-text">日报内容会显示在这里。</pre></article></div></section>');
+    body.insertAdjacentHTML("beforeend", '<section class="worklog-console" aria-label="运维日报与日报归档"><div class="worklog-console-head"><div><h3>日报归档与预览</h3><p class="meta">每天保留最新版；手动生成会立即私聊管理员。</p><div class="worklog-send-setting"></div></div><div class="row"><button class="small worklog-generate-send" type="button">立即生成与发送</button><button class="small worklog-refresh" type="button">刷新列表</button></div></div><details class="worklog-sources"><summary class="worklog-sources-title">日报扫描来源</summary><ul class="worklog-sources-list"><li class="worklog-source"><code>state/memory/tasks-*.md</code><span>提取当天的中期任务进度记录。</span></li><li class="worklog-source"><code>state/tasks.json</code><span>汇总当天创建或更新的独立任务及状态。</span></li><li class="worklog-source"><code>state/tool-calls.jsonl</code><span>统计当天的工具调用次数与失败次数。</span></li><li class="worklog-source"><code>state/tool-calls.jsonl.1</code><span>读取轮转的工具调用历史，补齐当天统计。</span></li><li class="worklog-source"><code>state/token-usage.jsonl</code><span>统计当天模型调用步数与输入、输出 token。</span></li><li class="worklog-source"><code>state/token-usage.jsonl.1</code><span>读取轮转的 token 历史，补齐当天统计。</span></li><li class="worklog-source"><code>state/plugins/obs-self-review.json</code><span>统计反馈队列当天的状态变更；不复制反馈正文。</span></li><li class="worklog-source"><code>state/memory/_optimization.md</code><span>提取当天的自我更新发现与统一修复摘要。</span></li></ul></details><div class="worklog-status" aria-live="polite"></div><div class="meta worklog-action-message" aria-live="polite"></div><div class="worklog-layout"><nav class="worklog-list" aria-label="日报日期列表"><div class="worklog-empty">读取日报列表中…</div></nav><article class="worklog-preview"><div class="worklog-preview-head"><b>内容预览</b><span class="meta worklog-preview-meta">选择一份日报</span></div><pre class="worklog-preview-text">日报内容会显示在这里。</pre></article></div></section>');
     const panel = body.querySelector(".worklog-console");
-    const sendOption = [...body.querySelectorAll(".comp-field")].at(-1);
+    const sendOption = body.querySelector('[data-config-key="sendToOwner"]');
     if (sendOption) panel.querySelector(".worklog-send-setting").append(sendOption);
     const list = panel.querySelector(".worklog-list");
     const preview = panel.querySelector(".worklog-preview-text");
@@ -5816,17 +6183,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   };
 
   // console/layers/S/parameter-examples.js
-  var parameter_examples_default6 = {
-    "schnie-core": {
-      "coreSessionKeys": "填private:10001：将该会话登记为CORE相关范围，不自动向其他群共享私人材料。",
-      "maxPromptChars": "设为7500：SCHNIE给当前回合组织的提示材料不超过该字符预算。",
-      "maxAutoCards": "设为2：自动选择时最多提供2张相关知识卡，不要求把全部原稿读进上下文。",
-      "candidateLimit": "设为6：检索候选先限定为6项，再按实际相关性选择。",
-      "worldviewPatterns": "添加“什么是自由”：匹配世界观议题时可进入对应资料处理方式。",
-      "coreCarePatterns": "添加“撑不住”：在CORE困扰语境中优先采用关心方式，不据此诊断疾病。",
-      "formalReplyMaxChars": "设为450：正式表达按450字符预算约束，不改变原始资料文件。"
-    }
-  };
+  var parameter_examples_default6 = {};
 
   // console/layers/V/parameter-examples.js
   var parameter_examples_default7 = {
@@ -6166,51 +6523,43 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       { key: "hour", label: "生成时间（时）", type: "number", min: 0, max: 23 },
       { key: "minute", label: "生成时间（分）", type: "number", min: 0, max: 59 },
       { key: "maxChars", label: "日报最大字数", type: "number", min: 1e3, max: 2e4 },
-      { key: "sendToOwner", label: "生成后私聊发送摘要", type: "boolean", help: "启用后，定时生成的日报摘要会私聊管理员；完整内容仍保存在日报文件中。" }
+      { key: "sendToOwner", label: "生成后私聊发送摘要", type: "boolean" }
     ]
   };
 
-  // console/layers/S/components/schnie-core.js
-  var schnie_core_default = {
-    saveLabel: "保存资料检索规则",
-    "title": "资料目录与按需阅读",
+  // console/layers/S/components/personal-core.js
+  var personal_core_default = {
+    "title": "目录挂载与按需阅读",
+    "saveLabel": "保存并校验资料包挂载",
     "fields": [
       {
-        "key": "coreSessionKeys",
-        "label": "CORE 适用会话（每行一个）",
+        "key": "libraryDir",
+        "label": "资料包目录（本机路径）",
+        "type": "text",
+        "maxLength": 4096,
+        "group": "目录挂载",
+        "help": "支持项目相对路径或本机绝对路径。填写标准资料包的根目录；保存时校验并挂载。留空表示卸载。"
+      },
+      {
+        "key": "referenceSessionKeys",
+        "label": "自动导读适用会话（留空为全部）",
         "type": "lines",
-        "group": "适用范围"
+        "group": "会话适用范围"
       },
       {
-        "key": "maxAutoCards",
-        "label": "每轮自动提供的知识卡上限",
-        "type": "number",
-        "group": "按需读取预算"
-      },
-      {
-        "key": "candidateLimit",
-        "label": "检索候选上限",
-        "type": "number"
-      },
-      {
-        "key": "maxPromptChars",
-        "label": "注入材料预算（字符）",
-        "type": "number"
-      },
-      {
-        "key": "worldviewPatterns",
-        "label": "世界观议题匹配规则（每行一条）",
-        "type": "lines",
-        "group": "触发与表达"
-      },
-      {
-        "key": "coreCarePatterns",
-        "label": "困扰与关心匹配规则（每行一条）",
+        "key": "careSessionKeys",
+        "label": "优先关怀会话（可选）",
         "type": "lines"
       },
       {
-        "key": "formalReplyMaxChars",
-        "label": "正式回复目标上限（字符）",
+        "key": "catalogPageSize",
+        "label": "目录默认分页条数",
+        "type": "number",
+        "group": "按需阅读预算"
+      },
+      {
+        "key": "maxReadChars",
+        "label": "单次正文读取上限（字符）",
         "type": "number"
       }
     ]
@@ -6269,7 +6618,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     "tool-injection-lab": tool_injection_lab_default,
     "life-wake-reasons": life_wake_reasons_default,
     "life-daily-worklog": life_daily_worklog_default,
-    "schnie-core": schnie_core_default
+    "personal-core": personal_core_default
   };
   COMPONENT_FORMS["ctx-user-mood"] = ctx_user_mood_default;
   COMPONENT_FORMS["life-conversation-wait"] = life_conversation_wait_default;
@@ -6509,13 +6858,13 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         body.dataset.loaded = "1";
         return;
       }
-      const form = renderComponentForm(p, el3.dataset.inlineFields ? el3.dataset.inlineFields.split(",") : null, !!el3.dataset.inlineFields && id !== "life-daily-worklog" && !el3.closest(".env-comp-root"), !!el3.closest(".environment-page"));
+      const form = renderComponentForm(p, el3.dataset.inlineFields ? el3.dataset.inlineFields.split(",") : null, el3.dataset.hideTitle !== "1" && !!el3.dataset.inlineFields && id !== "life-daily-worklog" && !el3.closest(".env-comp-root"), !!el3.closest(".environment-page"));
       const toggleLabel = id === "tool-user-checking" ? "启用自查与桌面便签" : el3.dataset.toggleLabel || "启用此功能";
       const enabled = el3.dataset.hideToggle === "1" || id === "exec-image-generation" || form?.ownsEnabled ? "" : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? " checked" : "") + "> <span>" + esc(toggleLabel) + '</span></label><span class="meta comp-toggle-msg"></span>';
       if (form) {
         const saveLabel = el3.dataset.saveLabel || (id === "life-campus-watch" ? el3.closest("#envCompScript") ? "保存脚本协同参数" : "保存网页监控参数" : form.saveLabel || "保存" + p.name);
         const scope = componentScope(id, saveLabel);
-        body.innerHTML = (form.empty ? "" : '<p class="parameter-scope" data-config-scope="' + esc(scope.label) + '"><b>' + esc(scope.label) + "</b> · " + esc(scope.description) + "</p>") + enabled + form.html + (form.empty || el3.dataset.deferSave === "1" ? "" : '<div class="row" style="gap:8px;margin-top:8px"><button class="small primary comp-save" data-save-action>' + esc(scope.saveLabel) + '</button><span class="meta comp-msg"></span></div>');
+        body.innerHTML = (form.empty || el3.dataset.hideScope === "1" ? "" : '<p class="parameter-scope" data-config-scope="' + esc(scope.label) + '"><b>' + esc(scope.label) + "</b> · " + esc(scope.description) + "</p>") + enabled + form.html + (form.empty || el3.dataset.deferSave === "1" ? "" : '<div class="row" style="gap:8px;margin-top:8px"><button class="small primary comp-save" data-save-action>' + esc(scope.saveLabel) + '</button><span class="meta comp-msg"></span></div>');
         if (id === "life-proactive-time-bubble") {
           const capacityInput = body.querySelector(".comp-form-num");
           if (capacityInput) {
@@ -6527,6 +6876,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         if (id === "ctx-knowledge-quota") await mountKnowledgeQuota({ id, body, p, el: el3, form });
         if (id === "ctx-memory-profile-store") await mountPersonProfile({ id, body, p, el: el3, form });
         if (id === "life-daily-worklog") await mountWorklog({ id, body, p, el: el3, form });
+        if (id === "personal-core") mountPersonalCore({ id, body, p });
         wireItems(body);
         body.dataset.loaded = "1";
         body.querySelector(".comp-enabled")?.addEventListener("change", async (event) => {
@@ -6537,6 +6887,10 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
             const out = await api("/api/plugins/toggle", "POST", { id, enabled: event.target.checked });
             if (out.ok !== true) throw Error(out.error || "更新失败");
             msg.textContent = event.target.checked ? "已启用" : "已停用";
+            if (id === "personal-core") {
+              body.dataset.loaded = "";
+              await loadComponentDetail(id, el3);
+            }
           } catch (error) {
             event.target.checked = previous;
             msg.textContent = "更新失败：" + error.message;
@@ -6988,7 +7342,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         { id: "O", name: "可观测与运维" },
         { id: "V", name: "验证与评估" },
         { id: "G", name: "治理与安全" },
-        { id: "S", name: "SCHNIE 参考" },
+        { id: "S", name: "个人思想与知识" },
         { id: "", name: "组件注册中心" }
       ];
       let compCache = [];
@@ -7048,9 +7402,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
           ["ctx-media-sticker-pick", "v2StickerEnabled"],
           ["ctx-memory-profile-facts", "v2PmEnabled"],
           ["ctx-memory-context", "v2ContextRecentLimit", "maxChars"],
-          ["ctx-chat-topic-drive", "v2FollowupGlobalAnchor", "privateFollowupEnabled,minIntervalMinutes,dailyLimit,followUpCooldownMinutes,newTopicCooldownMinutes,newTopicMaxPerHour,followupWeight,newTopicWeight"],
-          ["life-daily-worklog", "v2DdEnabled"],
-          ["ctx-memory-store", "v2DdEnabled", "diaryArchive"]
+          ["ctx-chat-topic-drive", "v2FollowupGlobalAnchor", "privateFollowupEnabled,minIntervalMinutes,dailyLimit,followUpCooldownMinutes,newTopicCooldownMinutes,newTopicMaxPerHour,followupWeight,newTopicWeight"]
         ];
         const mergedIds = /* @__PURE__ */ new Set();
         for (const [id, anchorId, fields] of inlineSettings) {

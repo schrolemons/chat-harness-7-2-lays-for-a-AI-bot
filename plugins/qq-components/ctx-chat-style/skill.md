@@ -23,9 +23,9 @@
 插拔、配置和验收参见 docs/guides/PLUGIN_RUNTIME_CONTRACT.md。运行 npm run test:plugin-audit，测试使用隔离文件和模拟端点。
 
 
-## SCHNIE 正式模式协调（2026-10-26）
+## S 层资料讨论与关怀协调
 
-通过 schnie-core/turn-policy.mjs 共用当前逐轮路由。phi/care/现实支持模式抑制与认真回应冲突的玩梗、多条碎句、表情或另起话题要求；普通闲聊保留既有行为。仅协调提示词，不记录心理判断、不自动发送消息。S层停用后恢复普通规则。
+通过 personal-core/turn-policy.mjs 共用当前逐轮路由。discussion/care/现实支持模式抑制与认真回应冲突的玩梗、多条碎句、表情或另起话题要求；普通闲聊保留既有行为。仅协调提示词，不记录心理判断、不自动发送消息。S层停用后恢复普通规则。
 
 2026-10-29：moodState.mode=critical 且心情启用时，抑制 warmVoice 和身份内心块中的强制软萌要求；保留成年身份、尊重/自愿边界、事实准确与学术先规范再通俗的优先级。形态名称与风格来自心情拥有源，条数仅由 replyPlan 给出；先前通用 warmVoice 说明适用于非critical分支。
 

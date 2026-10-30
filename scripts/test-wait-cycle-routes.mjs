@@ -30,6 +30,7 @@ for (const key of ['private:123', 'group:456']) {
       const result = await request('wait', { purpose: 'messages', timeoutMs: 100 });
       assert.equal(result.data.endRound, true);
       assert.equal(result.data.probabilityPercent, 100);
+      assert.equal(h.taskCaps.getProactiveFacts(key).conversationAwake,false,'wait verdict closes admission before cancellation event arrives');
       await new Promise(resolve => setImmediate(resolve));
       assert.ok(h.calls.cancelled.some(c => c.method === 'session/cancel' && c.params.sessionId === sid));
       assert.deepEqual(h.calls.archived, []);

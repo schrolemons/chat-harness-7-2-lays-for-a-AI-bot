@@ -27,7 +27,7 @@ import form22 from '../../layers/G/components/gov-policy.js';
 import form23 from '../../layers/T/components/tool-injection-lab.js';
 import form24 from '../../layers/L/components/life-wake-reasons.js';
 import form25 from '../../layers/L/components/life-daily-worklog.js';
-import form26 from '../../layers/S/components/schnie-core.js';
+import form26 from '../../layers/S/components/personal-core.js';
 export const COMPONENT_FORMS = {
   "ctx-memory-store": extraForm2,
   "life-scheduler": extraForm1,
@@ -58,7 +58,7 @@ export const COMPONENT_FORMS = {
   'tool-injection-lab': form23,
   'life-wake-reasons': form24,
   'life-daily-worklog': form25,
-  'schnie-core': form26
+  'personal-core': form26
 };
 
 import moodForm from '../../layers/C/components/ctx-user-mood.js';

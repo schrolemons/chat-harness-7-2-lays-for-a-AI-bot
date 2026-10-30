@@ -62,9 +62,9 @@
 
 ## 群聊来信单次判定
 
-proactive.incoming 在 observe 重置静默前读取当前阶段 p，以 min(1,p+max(q)) 判断一次。q 分为 @（含引用bot）、管理员名字、定向提问、拍bot；多命中只取最大值，q=0不加成。名字仅来自 groupNames，短英文用词边界。私聊不抽签，独立限额与发送门槛仍生效。首次消息和首次拍一拍也不得绕过。事件结果按会话持久化并保留最近128条，重复传递同一事件不会重新抽签。
+proactive.incoming 只在尚未开启群聊会话时，以当前静默主动阶段概率p，加上命中条件的最大q，按min(1,p+q)判定一次。@（含引用bot）、管理员名字、定向提问、拍bot多命中取最大加成，q=0不加成。桥接只提供conversationAwake事实；已醒着则不抽签，按共用回复、频率和等待机制接收后续消息。等待endRound=true即视为会话关闭，不等待DSH取消确认才恢复主动模型。私聊来信100%进入唤醒与回复，不抽签。事件结果持久化，重复事件不重抽。
 
 L0只编辑 groupAtBonus/groupNameBonus/groupQuestionBonus/groupPokeBonus/groupNames；L1编辑静默主动配置。两处按字段合并新鲜配置，不覆盖彼此。旧 recommended*、per-session triggers 与 active 不再作为运行标准；一次性迁移备份原配置，保留显式定时等待。
 
 ## 聊天意愿与心情的共同缩放
-聊天意愿W表示用户客观可用的时间和精力；心情M表示bot主观上是否喜欢与对方交流，只有M决定语言风格。共享ctx-chat-reply-shape/engagement.mjs：F=(0.2+0.8M/100)×(0.2+0.8W/100)。心情组件停用时心情因子为1。随机主动的阶段概率为min(Pmax,P0+nΔP)×F；群聊来信仍按其独立规则加max(q)，最大静默兜底仍不绕公共闸门。条数采用max(1,ceil(基础上限×F))再收紧至心情/正式模式上限。深度在F≥0.75、≥0.45、≥0.2、其余分别为expanded、balanced、concise、brief；内容完整性优先。
+聊天意愿W表示用户客观可用的时间和精力；心情M表示bot主观上是否喜欢与对方交流，只有M决定语言风格。共享ctx-chat-reply-shape/engagement.mjs：F=(0.2+0.8M/100)×(0.2+0.8W/100)。心情组件停用时心情因子为1。随机主动的阶段概率为min(Pmax,P0+nΔP)×F；未唤醒的群聊来信可在此阶段概率上叠加最大触发加成，已经醒着时不再抽签，最大静默兜底仍不绕公共闸门。条数采用max(1,ceil(基础上限×F))再收紧至心情/正式模式上限。深度在F≥0.75、≥0.45、≥0.2、其余分别为expanded、balanced、concise、brief；内容完整性优先。

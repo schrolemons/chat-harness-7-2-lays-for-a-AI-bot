@@ -26,11 +26,11 @@ fs.writeFileSync(packageFile,JSON.stringify(pkg,null,2)+'\n');
 const file=path.join(profile,'cordis.patch.yml'),original=fs.readFileSync(file,'utf8');
 const entries=[{id:'qq-launcher',name:'qq-launcher',config:{bridgeDir:root,nodePath:process.execPath,qqExe:get('--qq-exe')||'',servicePort:3199}},
  {id:'mcp-bridge-health',name:'@deepseek-ai/dsh-mcp-client',config:{serverName:'bridge-health',transport:'stdio',command:process.execPath,args:[path.join(root,'src','mcp-bridge-health.mjs')]}},
- {id:'mcp-schnie-private-phi',name:'@deepseek-ai/dsh-mcp-client',config:{serverName:'schnie-private-phi',transport:'stdio',command:process.execPath,args:[path.join(root,'plugins','qq-components','schnie-core','mcp.mjs')]}}];
+ {id:'mcp-personal-core',name:'@deepseek-ai/dsh-mcp-client',config:{serverName:'personal-core',transport:'stdio',command:process.execPath,args:[path.join(root,'plugins','qq-components','personal-core','mcp.mjs')]}}];
 const begin='# === CHAT HARNESS INTEGRATIONS BEGIN ===',end='# === CHAT HARNESS INTEGRATIONS END ===';
 let base=original;
 if(base.includes(begin)){const start=base.indexOf(begin),finish=base.indexOf(end,start);if(finish<0)throw Error('Incomplete managed integration block');base=base.slice(0,start)+base.slice(finish+end.length);}
-const ownedIds=new Set(entries.map(e=>e.id));
+const ownedIds=new Set([...entries.map(e=>e.id),'mcp-schnie-private-phi']);
 const kept=(yaml.load(base)||[]).flatMap(operation=>{
  if(!Array.isArray(operation.insert))return [operation];
  const insert=operation.insert.filter(entry=>!ownedIds.has(entry.id));

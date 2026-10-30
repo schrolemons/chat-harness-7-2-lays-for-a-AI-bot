@@ -8,15 +8,20 @@
 // 表情候选排序仍由 ctx-media-sticker-pick 组件负责（这里只给策略与列表）。
 
 import { buildStickerContext, buildStickerStrategyHint, findSticker } from '../../../src/sticker-lib.js';
+import {splitPromptUnicode} from '../../../src/prompt-unicode.js';
+
+function buildMoodExpression(moodState) {
+  if(!moodState||moodState.enabled===false||!Number.isFinite(moodState.score))return '';
+  return '【当前形态】'+moodState.modeName+'（'+moodState.score+'/100）。'+moodState.styleInstruction
+    +'\n【聊天风格优先】这是本轮所有对用户可见文字的核心表达方式，完整示范用于校准语感，不照抄台词。形态风格优先于角色卡中的惯常语气；身份事实与安全边界保持，严肃任务先完成内容。';
+}
 
 function buildMoodBlock(moodState) {
   if(!moodState||moodState.enabled===false||!Number.isFinite(moodState.score))return '';
   const rules=[...(moodState.policy?.positiveRules||[]),...(moodState.policy?.negativeRules||[])];
   const history=(moodState.history||[]).slice(0,5);
-  return '【当前形态】'+moodState.modeName+'（'+moodState.score+'/100）。'+moodState.styleInstruction
-    +'\n形态风格优先于角色卡中的惯常语气；身份事实与安全边界保持，严肃任务先完成内容。'
-    +(rules.length?'\n【行为规则】'+rules.map(r=>r.id+': '+r.label+'（'+r.delta+'）'+r.description).join('；')+'。仅在实际语境支持时使用 qq_mood，不按关键词自动变分。':'')
-    +(history.length?'\n【最近真实变化】'+history.map(h=>h.source+' '+h.before+'→'+h.after+' '+h.reason).join('；'):'');
+  return [(rules.length?'【行为规则】'+rules.map(r=>r.id+': '+r.label+'（'+r.delta+'）'+r.description).join('；')+'。仅在实际语境支持时使用 qq_mood，不按关键词自动变分。':''),
+    (history.length?'【最近真实变化】'+history.map(h=>h.source+' '+h.before+'→'+h.after+' '+h.reason).join('；'):'')].filter(Boolean).join('\n');
 }
 
 function buildStickerBlock(payload) {
@@ -61,22 +66,30 @@ function buildStickerBlock(payload) {
   return [strategy, turnLine, context].filter(Boolean).join('\n');
 }
 
-import { createTurnPolicy } from '../schnie-core/turn-policy.mjs';
+import { createTurnPolicy } from '../personal-core/turn-policy.mjs';
 
 export function createPlugin(ctx) {
-  const phi = createTurnPolicy(ctx);
+  const referencePolicy = createTurnPolicy(ctx);
   const cfg = ctx.config || {};
   const disabled = new Set(Array.isArray(cfg.disabledBlocks) ? cfg.disabledBlocks.map(String) : []);
+  const expressions=new Map();
   return {
+    services:{chatExpression:{current({key}={}){const value=expressions.get(key);return value?{...value}:null;}}},
     hooks: {
       beforePrompt(payload = {}) {
-        if (phi(payload).mode !== 'off') return '';
+        expressions.delete(payload.key);
         if (/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview|slangLearn)$/.test(String(payload?.reason||''))) return '';
         if (!disabled.has('mood')) {
+          const expression=buildMoodExpression(payload.moodState);
+          if(expression){
+            ctx.addPromptBlock(expression);
+            if(/^(private|group):\d+$/.test(String(payload.key||''))){expressions.set(payload.key,{kind:'selected-admin-style',text:splitPromptUnicode(expression).join('\n\n')});if(expressions.size>256)expressions.delete(expressions.keys().next().value);}
+          }
+          if(referencePolicy(payload).mode !== 'off')return '';
           const mood = buildMoodBlock(payload.moodState);
           if (mood) ctx.addPromptBlock(mood);
         }
-        if (phi(payload).mode === 'off' && !disabled.has('sticker')) {
+        if (referencePolicy(payload).mode === 'off' && !disabled.has('sticker')) {
           const sticker = buildStickerBlock(payload);
           if (sticker) ctx.addPromptBlock(sticker);
         }

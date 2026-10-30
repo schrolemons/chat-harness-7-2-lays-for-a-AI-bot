@@ -16,3 +16,7 @@
 @import './layers/T/tools.css';
 @import './layers/E/environments.css';
 @import './layers/L/task-capacity.css';
+
+@import './layers/O/diary-reports.css';
+
+@import './layers/S/disclosures.css';

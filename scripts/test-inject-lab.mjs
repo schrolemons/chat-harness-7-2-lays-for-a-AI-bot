@@ -139,7 +139,7 @@ check('无演练触发时仍不常驻弹药', !noSparBlock.includes('现成弹�
 // 「管理员点了单要真的发、对面顶回来要换招」这两个最容易掉链子的地方。
 {
   const t0 = Date.now();
-  const selfId = '2799274749';
+  const selfId = '21001';
   const gkey = 'group:20016';
   const okMsg = (o) => ({ isSelf: false, isOwner: false, userId: null, ...o });
   const groupSt = {

@@ -19,15 +19,15 @@ export function validateReplyPolicy(raw={}) {
   return {ok:errors.length===0,errors};
 }
 const SERIOUS=/(报错|异常|崩溃|bug|修复|代码|部署|配置|token|密钥|密码|隐私|权限|日志|数据库|接口|服务器|作业|论文|考试|课程|讲座|面试|合同|医院|生病|发烧|法律|借钱|退款|赔偿|难受|难过|好累|烦死|想哭|压力好大|不想活|失眠|焦虑|心情不好)/i;
-export function planReplyShape({key,turnId='',incomingText='',mood={},willingness=100,config={},now=Date.now(),phiMode='off',agent=true}={}) {
+export function planReplyShape({key,turnId='',incomingText='',mood={},willingness=100,config={},now=Date.now(),referenceMode='off',agent=true}={}) {
   const p=replyPolicy(config),t=String(incomingText).trim();
-  const serious=phiMode!=='off'||SERIOUS.test(t)||t.length>p.longIncomingChars;
+  const serious=referenceMode!=='off'||SERIOUS.test(t)||t.length>p.longIncomingChars;
   const casual=!serious&&(mood?.welcomeBurstActive===true||t.length<=6||/(哈哈|嘿嘿|笑死|贴贴|好耶)/.test(t));
   const kind=serious?'serious':casual?'casual':'normal';
   let maxMessages=p['maxMessages'+kind[0].toUpperCase()+kind.slice(1)];
   const engagement=engagementFactors(mood,willingness);
   maxMessages=Math.max(1,Math.ceil(maxMessages*engagement.factor));
-  if(phiMode!=='off')maxMessages=1;
+  if(referenceMode!=='off')maxMessages=1;
   if(mood?.enabled!==false&&Number.isFinite(mood?.replyCeiling)&&!mood.welcomeBurstActive)maxMessages=Math.min(maxMessages,mood.replyCeiling);
   const detailLevel=engagement.detailLevel;
   const styleInstruction=mood?.enabled===false?'':String(mood?.styleInstruction||'');

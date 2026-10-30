@@ -1,6 +1,6 @@
 import {parse} from 'acorn';
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';import yaml from 'js-yaml';
-import {configure} from './configure.mjs';import {createPluginHost} from '../src/plugin-host.js';import {createRuntime} from '../plugins/qq-components/schnie-core/runtime.mjs';
+import {configure} from './configure.mjs';import {createPluginHost} from '../src/plugin-host.js';import {createRuntime} from '../plugins/qq-components/personal-core/runtime.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 test('long and accumulated monitor notifications fit transport limits and retain stable retry ids',async()=>{
  const {notificationBatches}=await import('./web-notification-items.mjs');const changes=Array.from({length:21},(_,i)=>({deliveryId:`site-${i}`,msg:'资料'.repeat(1500),sourceAt:123}));
@@ -20,15 +20,17 @@ test('every static local module import resolves inside the complete distribution
  assert.deepEqual(missing,[]);
 });
 test('all packaged components load, including general reference and Codex Peer support',async()=>{
- const host=createPluginHost({root,capabilities:{}});try{const summary=await host.loadAll();assert.ok(summary.count>=40);assert.deepEqual(summary.warnings,[]);assert.ok(host.hasService('schnie','status'));assert.ok(host.hasService('admin-dev','line'));}finally{await host.dispose();}
+ const host=createPluginHost({root,capabilities:{}});try{const summary=await host.loadAll();assert.ok(summary.count>=40);assert.deepEqual(summary.warnings,[]);assert.ok(host.hasService('personal-core','status'));assert.ok(!host.hasService('schnie','status'));assert.ok(host.hasService('admin-dev','line'));}finally{await host.dispose();}
 });
-test('public reference data is valid and contains exactly the newly authored example',()=>{
- const dir=path.join(root,'plugins/qq-components/schnie-core'),config=JSON.parse(fs.readFileSync(path.join(dir,'plugin.json'))).config;
- const runtime=createRuntime({dir,config});assert.equal(runtime.status().topicCount,1);assert.deepEqual(config.coreSessionKeys,[]);assert.equal(runtime.read({id:'EXAMPLE-0001'}).ok,true);
+test('public S ships unmounted and only the separate fictional example is readable',()=>{
+ const dir=path.join(root,'plugins/qq-components/personal-core'),config=JSON.parse(fs.readFileSync(path.join(dir,'plugin.json'))).config;
+ assert.equal(config.libraryDir,'');assert.deepEqual(config.careSessionKeys,[]);assert.deepEqual(config.referenceSessionKeys,[]);
+ assert.equal(createRuntime({root,config}).status().ok,false);
+ const runtime=createRuntime({root,config:{...config,libraryDir:'examples/personal-core/minimal'}});assert.equal(runtime.status().topicCount,2);assert.equal(runtime.read({id:'example:boundaries'}).ok,true);assert.equal(fs.existsSync(path.join(root,'private-libraries')),false);
 });
 test('all DSH bundle patch resources and every MCP entrypoint ship with the repository',()=>{
  for(const name of ['qq-mode-console','qq-agent-presets']){const dir=path.join(root,'plugins',name),pkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json')));const patches=[pkg.dsh.bundle.patch].flat();for(const rel of patches)assert.ok(fs.existsSync(path.resolve(dir,rel)),name+' missing '+rel);}
- for(const rel of ['plugins/wake-contracts.json','plugins/qq-agent-presets/presets/campus-summary.patch.yml','src/mcp-snowluma-safe.js','src/mcp-host-server.js','src/mcp-web-search-safe.js','src/mcp-bridge-health.mjs','plugins/qq-components/tool-codex-chat/src/mcp-server.mjs','plugins/qq-components/schnie-core/mcp.mjs'])assert.ok(fs.existsSync(path.join(root,rel)),rel);
+ for(const rel of ['plugins/wake-contracts.json','plugins/qq-agent-presets/presets/campus-summary.patch.yml','src/mcp-snowluma-safe.js','src/mcp-host-server.js','src/mcp-web-search-safe.js','src/mcp-bridge-health.mjs','plugins/qq-components/tool-codex-chat/src/mcp-server.mjs','plugins/qq-components/personal-core/mcp.mjs'])assert.ok(fs.existsSync(path.join(root,rel)),rel);
 });
 test('empty local configuration and two installations preserve a separate DSH profile without duplicate integrations',()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'chat-harness-install-'));
@@ -39,7 +41,7 @@ test('empty local configuration and two installations preserve a separate DSH pr
   fs.mkdirSync(profile,{recursive:true});fs.writeFileSync(path.join(profile,'package.json'),JSON.stringify({name:'test-profile',private:true,dsh:{profile:{bundles:[]}}}));fs.writeFileSync(path.join(profile,'cordis.patch.yml'),'- insert:\n    - id: keep-existing\n      name: example-existing\n');
   for(let i=0;i<2;i++){const result=spawnSync(process.execPath,['scripts/install.mjs','--profile','desktop'],{cwd:root,encoding:'utf8',windowsHide:true,env:{...process.env,DSH_HOME:home}});assert.equal(result.status,0,result.stderr||result.stdout);}
   const doc=yaml.load(fs.readFileSync(path.join(profile,'cordis.patch.yml'),'utf8')),entries=doc.flatMap(row=>row.insert||[]),ids=entries.map(e=>e.id);
-  assert.ok(ids.includes('keep-existing'));for(const id of ['qq-launcher','mcp-snowluma','mcp-snowluma-host','mcp-web-search-safe','mcp-playwright','mcp-bridge-health','mcp-schnie-private-phi','preset-campus-summary'])assert.equal(ids.filter(value=>value===id).length,1,id);
+  assert.ok(ids.includes('keep-existing'));for(const id of ['qq-launcher','mcp-snowluma','mcp-snowluma-host','mcp-web-search-safe','mcp-playwright','mcp-bridge-health','mcp-personal-core','preset-campus-summary'])assert.equal(ids.filter(value=>value===id).length,1,id);assert(!ids.includes('mcp-schnie-private-phi'));
   for(const e of entries){for(const arg of e.config?.args||[])if(path.isAbsolute(arg)&&/\.(?:mjs|js)$/.test(arg))assert.ok(fs.existsSync(arg),e.id+' missing entry');}
   for(const name of ['qq-agent-presets','qq-mode-console','qq-launcher'])assert.ok(fs.realpathSync(path.join(profile,'node_modules',name)).startsWith(root));
   const pkg=JSON.parse(fs.readFileSync(path.join(profile,'package.json')));assert.equal(new Set(pkg.dsh.profile.bundles).size,pkg.dsh.profile.bundles.length);

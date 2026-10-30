@@ -238,9 +238,9 @@ const SAFE_EXACT = new Set([
   'mcp__snowluma__qq_import_image',
   'mcp__snowluma__qq_send_image',
   'mcp__snowluma__qq_relay_image',
-  'mcp__schnie-private-phi__schnie_status',
-  'mcp__schnie-private-phi__schnie_topics',
-  'mcp__schnie-private-phi__schnie_read',
+  'mcp__personal-core__core_status',
+  'mcp__personal-core__core_topics',
+  'mcp__personal-core__core_read',
   'ask_user_question',
   'todo_write',
 ])

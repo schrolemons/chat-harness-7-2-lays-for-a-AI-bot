@@ -109,8 +109,9 @@ export function createProactive(ctx) {
       if(!/^group:[1-9]\d*$/.test(String(key||''))||!eventId)return {accepted:false,reason:'invalid_event'};
       if(blockedReason||!valid.ok)return {accepted:false,reason:blockedReason||'invalid_policy'};
       const state=get(key),cached=Object.hasOwn(state.incomingDecisions||{},eventId)?state.incomingDecisions[eventId]:null;if(cached)return {...cached,duplicate:true};
-      const base=effectiveProactiveStage(p,state.stage,state.willingness,factsFor(key)?.mood);
-      const result={...evaluateGroupIncoming({key,p:base.effectiveProbability,policy:p,event,random}),eventId,at,stage:state.stage||0};
+      const facts=factsFor(key),awake=facts?.conversationAwake===true;
+      const base=awake?null:effectiveProactiveStage(p,state.stage,state.willingness,facts?.mood);
+      const result={...evaluateGroupIncoming({key,p:base?.effectiveProbability||0,awake,policy:p,event,random}),eventId,at,...(!awake?{stage:state.stage||0}:{})};
       const decisions={...(state.incomingDecisions||{}),[eventId]:result};const ids=Object.keys(decisions).sort((a,b)=>(decisions[a].at||0)-(decisions[b].at||0));for(const id of ids.slice(0,Math.max(0,ids.length-128)))delete decisions[id];
       put(key,{...state,incomingDecisions:decisions,lastIncomingDecision:result});return result;
     },
@@ -129,7 +130,7 @@ export function createProactive(ctx) {
     },
     preview({ key, now = Date.now() } = {}) {
       const s = get(key), facts = factsFor(key);
-      return { stage: s.stage, willingness: s.willingness, source: s.source, lastAI: s.lastAI || null,
+      return { conversationAwake:typeof facts?.conversationAwake==='boolean'?facts.conversationAwake:null,stage: s.stage, willingness: s.willingness, source: s.source, lastAI: s.lastAI || null,
         ...effectiveProactiveStage(p, s.stage, s.willingness, facts?.mood), nextAt: s.nextAt ?? null,
         blockedReason: blocked(facts, now) || s.blockedReason || '', intent: s.intent || 'proactiveCheck', phase: s.phase, lastFinishedReason: s.lastFinishedReason || '', lastIncomingDecision:s.lastIncomingDecision||null };
     }

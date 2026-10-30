@@ -1,3 +1,4 @@
+import { mountPersonalCore } from '../../layers/S/library-manager.js';
 import { mountImageGeneration } from '../../layers/E/editors/image-generation.js';
 import { mountKnowledgeQuota } from '../../layers/C/editors/knowledge-quota.js';
 import { mountPersonProfile } from '../../layers/C/editors/person-profile.js';
@@ -21,14 +22,14 @@ export async function loadComponentDetail(id, el) {
         body.dataset.loaded = '1';
         return;
       }
-      const form = renderComponentForm(p, el.dataset.inlineFields ? el.dataset.inlineFields.split(',') : null, !!el.dataset.inlineFields && id !== 'life-daily-worklog' && !el.closest('.env-comp-root'), !!el.closest('.environment-page'));
+      const form = renderComponentForm(p, el.dataset.inlineFields ? el.dataset.inlineFields.split(',') : null, el.dataset.hideTitle !== '1' && !!el.dataset.inlineFields && id !== 'life-daily-worklog' && !el.closest('.env-comp-root'), !!el.closest('.environment-page'));
       const toggleLabel = id === 'tool-user-checking' ? '启用自查与桌面便签' : (el.dataset.toggleLabel || '启用此功能');
       const enabled = el.dataset.hideToggle === '1' || id === 'exec-image-generation' || form?.ownsEnabled ? '' : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? ' checked' : '') + '> <span>' + esc(toggleLabel) + '</span></label><span class="meta comp-toggle-msg"></span>';
       if (form) {
         const saveLabel=el.dataset.saveLabel || (id==='life-campus-watch' ? (el.closest('#envCompScript')?'保存脚本协同参数':'保存网页监控参数') : (form.saveLabel||'保存'+p.name));
         const scope = componentScope(id, saveLabel);
 
-        body.innerHTML = (form.empty ? '' : '<p class="parameter-scope" data-config-scope="'+esc(scope.label)+'"><b>'+esc(scope.label)+'</b> · '+esc(scope.description)+'</p>') + enabled + form.html + (form.empty || el.dataset.deferSave === '1' ? '' : '<div class="row" style="gap:8px;margin-top:8px"><button class="small primary comp-save" data-save-action>' + esc(scope.saveLabel) + '</button><span class="meta comp-msg"></span></div>');
+        body.innerHTML = (form.empty || el.dataset.hideScope === '1' ? '' : '<p class="parameter-scope" data-config-scope="'+esc(scope.label)+'"><b>'+esc(scope.label)+'</b> · '+esc(scope.description)+'</p>') + enabled + form.html + (form.empty || el.dataset.deferSave === '1' ? '' : '<div class="row" style="gap:8px;margin-top:8px"><button class="small primary comp-save" data-save-action>' + esc(scope.saveLabel) + '</button><span class="meta comp-msg"></span></div>');
         if (id === 'life-proactive-time-bubble') {
           const capacityInput = body.querySelector('.comp-form-num');
           if (capacityInput) {
@@ -40,6 +41,7 @@ export async function loadComponentDetail(id, el) {
         if (id === 'ctx-knowledge-quota') await mountKnowledgeQuota({id,body,p,el,form});
         if (id === 'ctx-memory-profile-store') await mountPersonProfile({id,body,p,el,form});
         if (id === 'life-daily-worklog') await mountWorklog({id,body,p,el,form});
+        if (id === 'personal-core') mountPersonalCore({id,body,p});
         wireItems(body);
         body.dataset.loaded = '1';
         body.querySelector('.comp-enabled')?.addEventListener('change', async (event) => {
@@ -50,6 +52,7 @@ export async function loadComponentDetail(id, el) {
             const out = await api('/api/plugins/toggle', 'POST', { id, enabled: event.target.checked });
             if (out.ok !== true) throw Error(out.error || '更新失败');
             msg.textContent = event.target.checked ? '已启用' : '已停用';
+            if(id==='personal-core'){body.dataset.loaded='';await loadComponentDetail(id,el);}
           } catch (error) { event.target.checked = previous; msg.textContent = '更新失败：' + error.message; }
         });
         el.__saveComponent = async () => {

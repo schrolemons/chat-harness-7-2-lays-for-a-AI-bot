@@ -4,13 +4,13 @@ import zlib from 'node:zlib';
 
 test('tool inventory displays short names in alphabetical order and retains complete call IDs on hover', async () => {
   const {toolRows}=await import('../console/layers/T/tool-inventory.js');
-  const tools=[{name:'schnie_status',qualifiedName:'mcp__schnie-private-phi__schnie_status',server:'schnie-private-phi',description:'状态'},
+  const tools=[{name:'core_status',qualifiedName:'mcp__personal-core__core_status',server:'personal-core',description:'状态'},
     {name:'alpha',qualifiedName:'mcp__snowluma__alpha',server:'snowluma',description:'首项'}];
   const html=toolRows(tools);
-  assert.ok(html.indexOf('>alpha</code>')<html.indexOf('>schnie_status</code>'));
-  assert.ok(html.includes('title="mcp__schnie-private-phi__schnie_status"'));
+  assert.ok(html.indexOf('>alpha</code>')<html.indexOf('>core_status</code>'));
+  assert.ok(html.includes('title="mcp__personal-core__core_status"'));
   assert.ok(!html.includes('>mcp__'));
-  assert.equal(tools[0].name,'schnie_status');
+  assert.equal(tools[0].name,'core_status');
 });
 test('removed registrations remain visible when an existing request still carries their schemas', async () => {
   const { mergeToolEvidence } = await import('../src/tools/catalog.js');

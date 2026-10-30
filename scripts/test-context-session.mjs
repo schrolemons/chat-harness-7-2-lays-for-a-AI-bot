@@ -30,14 +30,14 @@ const payload = {
   st,
   roleName: '大肥鱼',
   selfName: 'DeepSeek大肥鱼',
-  selfId: '2799274749',
+  selfId: '21001',
   agentToken: 'token-abc',
   initialPromptText: '【本群氛围】大家都是朋友'
 };
 const text = build(payload);
 
 check('角色名', text.includes('【当前角色】大肥鱼'));
-check('身份（昵称+QQ）', text.includes('DeepSeek大肥鱼') && text.includes('2799274749') && text.includes('不要当成别人'));
+check('身份（昵称+QQ）', text.includes('DeepSeek大肥鱼') && text.includes('21001') && text.includes('不要当成别人'));
 check('会话令牌', text.includes('【会话令牌】token-abc'));
 check('状态：未读', text.includes('未读 2 条'));
 check('状态：最近来信', text.includes('十二') && !text.includes('问你个事'));

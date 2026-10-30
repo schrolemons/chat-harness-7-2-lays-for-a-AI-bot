@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import {fileURLToPath} from 'node:url';
+import {fixture} from './fixtures/personal-core.mjs';
+import {createPluginHost} from '../src/plugin-host.js';
+
+test('real host shares generic S routing with C style and refreshes it on mount changes',async t=>{
+ const source=fileURLToPath(new URL('../',import.meta.url)),root=fs.mkdtempSync(path.join(os.tmpdir(),'core-host-')),f=fixture(t);
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(root,'package.json'),'{"type":"module"}');
+ for(const id of ['personal-core','ctx-chat-style'])fs.cpSync(path.join(source,'plugins/qq-components',id),path.join(root,'plugins/qq-components',id),{recursive:true});
+ fs.mkdirSync(path.join(root,'state/plugins/config'),{recursive:true});
+ fs.writeFileSync(path.join(root,'state/plugins/config/personal-core.json'),JSON.stringify({libraryDir:f.root,careSessionKeys:['private:8']}));
+ const warnings=[],host=createPluginHost({root,logger:line=>warnings.push(line)});t.after(()=>host.dispose());await host.loadAll();
+ assert.equal(host.callService('personal-core','route',{incomingText:'归属'}).mode,'discussion',warnings.join('\n'));
+ const text=()=>host.collectPromptBlocks({key:'private:8',incomingText:'归属',hasUnreadNow:true,isPrivate:true}).join('\n');
+ assert.match(text(),/本轮认真回应/);assert.match(text(),/core_topics/);
+ assert.ok(!text().includes(f.text.trim()),'Source body must never be automatically injected');
+ const before=host.get('personal-core').config;
+ assert.equal(host.setConfig('personal-core',{libraryDir:f.root+'-missing'}).ok,false);
+ assert.deepEqual(host.get('personal-core').config,before);
+ assert.equal(host.setConfig('personal-core',{libraryDir:''}).ok,true);await host.reload('personal-core');
+ assert.equal(host.callService('personal-core','route',{incomingText:'归属'}).mode,'off');
+ assert.doesNotMatch(text(),/本轮认真回应|私人资料目录/);
+ assert.equal((await host.callTool('core_status',{})).result.code,'UNMOUNTED');
+ assert.equal((await host.callTool('schnie_status',{})).ok,false);
+});

@@ -6,7 +6,7 @@
 |---|---|
 | `src/` | 桥接内核、DSH 客户端、OneBot 连接、权限与发送机制 |
 | `src/bridge-core/` | 模式设置、媒体消息段与双戳缓冲操作的独立模块 |
-| `plugins/qq-components/` | 七层组件、S · SCHNIE 思维模式-介入层及横切注册中心 |
+| `plugins/qq-components/` | 七层组件、S · 私人资料介入层及横切注册中心 |
 | `dsh/agent-presets/` | QQ 聊天、管理员、任务与独立学习预设的源定义 |
 | `plugins/qq-agent-presets/` | 生成的 preset patch、QQ/任务/摘要工具守卫 |
 | `plugins/qq-mode-console/` | DSH 与桥接共享的模式设置 |
@@ -16,7 +16,8 @@
 | `src/mcp-web-search-safe.js` | 通用搜索/网页工具 |
 | `src/mcp-bridge-health.mjs` | 当前连接健康检查 |
 | `plugins/qq-components/tool-codex-chat/` | 完整 Codex Peer MCP、控制器和 viewer |
-| `plugins/qq-components/schnie-core/` | 通用本地目录读取机制，只有一个公开示例 |
+| `plugins/qq-components/personal-core/` | 通用本地资料包接口，默认未挂载；提供 `core_status`、`core_topics`、`core_read` |
+| `docs/personal-core/`、`examples/personal-core/minimal/` | 资料包整理规范、机器可读格式和虚构示例，不含任何私人原文 |
 | `scripts/` | 配置、安装、启动、诊断、通用网页监控及必要测试 |
 | `public/` | 统一管理控制台 |
 | `scripts/source-workspace.mjs` | 只读源码快照、基线核验和跨目录哈希比较 |

@@ -7,6 +7,7 @@ test('L0 q and L1 p are separate partial forms; each save preserves fresh fields
  try{const page=await browser.newPage({viewport:{width:1280,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(fixture.url+'/#setting-l-0');
  const incoming=page.locator('#section-setting-l-0 [data-component-slot="life-wake-reasons"]'),proactive=page.locator('#section-setting-l-1 [data-component-slot="life-wake-reasons"]');
  await incoming.locator('[data-config-key="groupAtBonus"] input').waitFor({state:'attached'});await page.locator('#section-setting-l-0 details').evaluateAll(els=>els.forEach(e=>e.open=true));
+ const guidance=await page.locator('#section-setting-l-0').innerText();assert.ok(guidance.includes('私聊来信100%'));assert.ok(guidance.includes('最终70%'));assert.ok(guidance.includes('不再抽签'));
  assert.deepEqual((await incoming.locator('[data-config-key]').evaluateAll(els=>els.map(e=>e.dataset.configKey))).sort(),['groupAtBonus','groupNameBonus','groupQuestionBonus','groupPokeBonus','groupNames'].sort());assert.equal(await incoming.locator('.comp-enabled').count(),0);
  assert.equal(await page.locator('#v2RecProb,#v2RecAt,#v2WakeDefaultMode').count(),0);
  await incoming.locator('[data-config-key="groupAtBonus"] input').fill('0');await incoming.locator('[data-config-key="groupNames"] input').fill('鲸鱼, DS');

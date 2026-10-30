@@ -12,8 +12,9 @@ async function refreshProactivePreview() {
       if(!p)return '<div class="runtime-preview"><b>'+esc(row.key)+'</b><p>主动组件未启用或判定不可用</p></div>';
       const interval=p.effectiveInterval;
       return '<div class="runtime-preview"><b>'+esc(row.key)+'</b><dl class="runtime-facts">'
-        + (p.lastIncomingDecision?'<dt>最近来信判定</dt><dd>'+esc('p='+Math.round(p.lastIncomingDecision.baseProbability*100)+'% + q='+Math.round(p.lastIncomingDecision.extraProbability*100)+'% → '+Math.round(p.lastIncomingDecision.probability*100)+'% · '+(p.lastIncomingDecision.accepted?'通过':'未通过'))+'</dd>':'')
-        + '<dt>静默阶段</dt><dd>'+esc(p.stage??'—')+'</dd><dt>当前基础概率 p</dt><dd>'+esc(p.effectiveProbability==null?'—':(p.effectiveProbability*100).toFixed(1)+'%')+'</dd>'
+        + '<dt>当前会话</dt><dd>'+esc(p.conversationAwake===true?'已唤醒：接收、回复与等待中':p.conversationAwake===false?'未开启：使用主动概率与唤醒加成':'运行进程尚未提供会话状态')+'</dd>'
+        + (p.lastIncomingDecision?'<dt>最近群聊来信</dt><dd>'+esc((p.lastIncomingDecision.phase==='conversation'?'会话中：不抽签，继续接收':'开启会话：p='+Math.round(p.lastIncomingDecision.baseProbability*100)+'% + q='+Math.round(p.lastIncomingDecision.extraProbability*100)+'% → '+Math.round(p.lastIncomingDecision.probability*100)+'% · '+(p.lastIncomingDecision.accepted?'通过':'未通过'))+' · '+time(p.lastIncomingDecision.at))+'</dd>':'')
+        + '<dt>静默主动阶段</dt><dd>'+esc(p.stage??'—')+'</dd><dt>无人来信时的主动概率</dt><dd>'+esc(p.effectiveProbability==null?'—':(p.effectiveProbability*100).toFixed(1)+'%')+'</dd>'
         + '<dt>聊天意愿（用户忙闲）</dt><dd>'+esc(p.willingness??'—')+' / 100 · '+esc(sources[p.source]||p.source||'未知来源')+'</dd>'
         + '<dt>上次 AI 评估</dt><dd>'+esc(p.lastAI ? p.lastAI.value+' · '+p.lastAI.reason+' · '+time(p.lastAI.at) : '尚无 AI 评估')+'</dd>'
         + '<dt>实际检验区间</dt><dd>'+esc(interval ? interval.minMinutes+'–'+interval.maxMinutes+' 分钟' : '—')+'</dd>'

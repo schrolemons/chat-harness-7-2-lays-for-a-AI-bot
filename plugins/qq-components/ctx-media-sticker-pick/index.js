@@ -3,17 +3,17 @@
 
 import { pickStickers } from '../../../src/sticker-picker.js';
 import { planReplyShape } from '../../../src/reply-shape.js';
-import { createTurnPolicy } from '../schnie-core/turn-policy.mjs';
+import { createTurnPolicy } from '../personal-core/turn-policy.mjs';
 
 const NON_CHAT_REASONS = /^(selfReview|selfOptimize|userFeedbackReview|memoryWrite|timeBubble|startupGreeting|reminder|newFriend|newsShare|careCheck|idleRescue|proactiveCheck|replyCheck)/;
 
 export function createPlugin(ctx) {
-  const phi = createTurnPolicy(ctx);
+  const referencePolicy = createTurnPolicy(ctx);
   const cfg = ctx.config || {};
   return {
     hooks: {
       beforePrompt(payload) {
-        if (phi(payload).mode !== 'off') return '';
+        if (referencePolicy(payload).mode !== 'off') return '';
         if (payload?.reason && NON_CHAT_REASONS.test(String(payload.reason))) return '';
         if (payload?.stickerAllowed === false) return '';
         const entries = Array.isArray(payload?.stickerEntries) ? payload.stickerEntries : [];

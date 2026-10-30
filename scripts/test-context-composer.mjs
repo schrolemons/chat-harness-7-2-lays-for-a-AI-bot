@@ -5,8 +5,20 @@ import {encodePacket} from '../plugins/qq-components/obs-context-assembly/packet
 import {secretFor,readEvidence,recordEvidence,readPolicy} from '../plugins/qq-components/obs-context-assembly/store.mjs';
 function fixture(){const root=fs.mkdtempSync(path.join(os.tmpdir(),'qq-context-')),hooks={};let seq=0;const events=[],surface=[];
  const session={id:'s1',surface:{nodes:surface},snapshotEvents:()=>events,eventAt:n=>events.find(e=>e.seq===n),append(type,data,intent={}){const event={seq:++seq,type,data};events.push(event);if(intent.surfaceOp==='append')surface.push(seq);else if(intent.surfaceOp?.op==='replace'){const i=surface.indexOf(intent.surfaceOp.startSeq);if(i<0)throw Error('bad surface');surface.splice(i,1,seq);}hooks['session/event']?.(session,event);return event;}};
- const agent={id:'a1',session};const ctx={on(name,fn){hooks[name]=fn;},effect(){},logger:()=>({warn(){}})};apply(ctx,{root});return {root,hooks,agent,session,events};}
+ const agent={id:'a1',session};const ctx={on(name,fn){hooks[name]=fn;},effect(){},logger:()=>({warn(){}})};apply(ctx,{root,refresh:async()=>null});return {root,hooks,agent,session,events};}
 function packet(f,nonce='n1'){return encodePacket({version:1,sessionId:'s1',key:'private:1',scene:'timeBubble',nonce,issuedAt:Date.now(),modules:[{id:'role-card',text:'重要人设'},{id:'ctx-memory-context',text:'私人事实'},{id:'wake-action',text:'本轮冒泡'},{id:'message-snapshot',text:JSON.stringify({messages:[{seq:1,text:'真实原话'}],recent:[]})}]},secretFor(f.root));}
+test('one running activity anchors its first request across new packets and turns, then idle/running resets it',()=>{
+ const f=fixture();try{
+  const claim=nonce=>f.hooks['agent/inbox/claimed']({agent:f.agent,message:{content:[{type:'text',text:packet(f,nonce)}]}});
+  const observe=nonce=>f.hooks['llm/stream']({sessionId:'s1',messages:[{role:'user',source:{kind:'qq-context-current',nonce},content:[]}],tools:[]},()=>{});
+  claim('a');assert.equal(typeof f.hooks['agent/status'],'function');f.hooks['agent/status']({agent:f.agent,status:'running'});observe('a');
+  const first=readEvidence(f.root,'s1','request');claim('b');observe('b');observe('b');
+  const current=readEvidence(f.root,'s1','request');assert.equal(current.requestInRound,3);assert.equal(current.processingId,first.processingId);
+  assert.equal(current.requestStages[0].request.requestId,first.requestId);assert.deepEqual(current.requestStages.map(s=>s.request.requestInRound),[1,2,3]);
+  f.hooks['agent/status']({agent:f.agent,status:'idle'});f.hooks['agent/status']({agent:f.agent,status:'running'});claim('c');observe('c');
+  const next=readEvidence(f.root,'s1','request');assert.notEqual(next.processingId,first.processingId);assert.equal(next.requestInRound,1);assert.equal(next.requestStages[1].request,null);assert.equal(next.requestStages[0].request.requestId,next.requestId);
+ }finally{fs.rmSync(f.root,{recursive:true,force:true});}
+});
 test('supported hooks separate trusted fixed prompt, current facts and durable real messages',async()=>{
  const f=fixture();try{
   const message={id:'u1',content:[{type:'text',text:packet(f)}],source:{kind:'test'}};
@@ -24,8 +36,8 @@ test('supported hooks separate trusted fixed prompt, current facts and durable r
   const second=await f.hooks['agent/pre-step']({agent:f.agent,messages:[next],turn:2,step:0},async()=>({kind:'enter',messages:[next]}));
   assert.equal(JSON.stringify(second.messages).split('真实原话').length-1,0);
   f.session.append('step/start',{turn:2,step:1});await f.hooks['agent/request']({agent:f.agent,turn:2,step:1},async()=>({}));
-  assert.equal(f.events.filter(e=>e.data.message?.source?.kind==='qq-context-retired').length,1);
-  assert.equal(f.events.filter(e=>e.data.source?.kind==='qq-context-current').length,1,'original current context event retained');
+  assert.equal(f.events.filter(e=>e.data.source?.kind==='qq-context-stable').length,1,'unchanged stable prefix remains once');
+  assert.equal(f.events.filter(e=>e.data.source?.kind==='qq-context-update').length,1,'unchanged dynamic values are not duplicated');
  }finally{fs.rmSync(f.root,{recursive:true,force:true});}
 });
 test('observer reads frozen actual request unchanged; preview contains no token',()=>{const f=fixture();try{
@@ -47,9 +59,27 @@ test('snapshot subparts share the parent switch; task39 stays intact and backgro
  writeJson(policyFile(f.root),{enabled:true,order:[],disabled:['message-snapshot'],compactHistory:true});const msg={id:'u',content:[{type:'text',text:packet(f)}]};f.hooks['agent/inbox/claimed']({agent:f.agent,message:msg});const result=await f.hooks['agent/pre-step']({agent:f.agent,messages:[msg],turn:1,step:0},async()=>({kind:'enter',messages:[msg]}));const all=JSON.stringify(result.messages);assert(!all.includes('真实原话'));assert(!all.includes('QQ 收件状态'));assert(all.includes('本轮冒泡'));assert(all.includes('私人事实'));
  }finally{fs.rmSync(f.root,{recursive:true,force:true});}});
 
-test('resuming a legacy round never mislabels the first newly observed call as its initial request',()=>{const f=fixture();try{recordEvidence(f.root,'s1','request',{nonce:'n1',at:1,messages:[],tools:[]});f.hooks['agent/inbox/claimed']({agent:f.agent,message:{content:[{type:'text',text:packet(f)}]}});for(let i=0;i<2;i++)f.hooks['llm/stream']({sessionId:'s1',messages:[{role:'user',source:{kind:'qq-context-current',nonce:'n1'},content:[]}],tools:[]},()=>{});const record=readEvidence(f.root,'s1','request');assert.equal(record.requestInRound,null);assert.equal(record.requestStages[0].request,null);assert(record.requestStages[1].request);assert.equal(record.observerVersion,3);}finally{fs.rmSync(f.root,{recursive:true,force:true});}});
+test('resuming a legacy round never mislabels the first newly observed call as its initial request',()=>{const f=fixture();try{recordEvidence(f.root,'s1','request',{nonce:'n1',at:1,messages:[],tools:[]});f.hooks['agent/inbox/claimed']({agent:f.agent,message:{content:[{type:'text',text:packet(f)}]}});for(let i=0;i<2;i++)f.hooks['llm/stream']({sessionId:'s1',messages:[{role:'user',source:{kind:'qq-context-current',nonce:'n1'},content:[]}],tools:[]},()=>{});const record=readEvidence(f.root,'s1','request');assert.equal(record.requestInRound,null);assert.equal(record.requestStages[0].request,null);assert(record.requestStages[1].request);assert.equal(record.observerVersion,5);}finally{fs.rmSync(f.root,{recursive:true,force:true});}});
 
 test('four observed calls in one round retain first, third and fourth with each tool list',()=>{const f=fixture();try{f.hooks['agent/inbox/claimed']({agent:f.agent,message:{content:[{type:'text',text:packet(f)}]}});for(let i=1;i<=4;i++)f.hooks['llm/stream'](Object.freeze({sessionId:'s1',messages:[{role:'user',source:{kind:'qq-context-current',nonce:'n1'},content:[]}],tools:[{name:'tool'+i}]}),()=>{});const r=readEvidence(f.root,'s1','request');assert.deepEqual(r.requestStages.map(s=>s.request.requestInRound),[1,3,4]);assert.deepEqual(r.requestStages.map(s=>s.request.tools[0].name),['tool1','tool3','tool4']);f.hooks['agent/inbox/claimed']({agent:f.agent,message:{content:[{type:'text',text:packet(f,'n2')}]}});f.hooks['llm/stream']({sessionId:'s1',messages:[{role:'user',source:{kind:'qq-context-current',nonce:'n2'},content:[]}],tools:[]},()=>{});assert.equal(readEvidence(f.root,'s1','request').requestStages[1].request,null);}finally{fs.rmSync(f.root,{recursive:true,force:true});}});
 
 import {replaceSurface} from '../plugins/qq-components/obs-context-assembly/history.mjs';
+import {createPlugin as createAssembly} from '../plugins/qq-components/obs-context-assembly/index.js';
+import {createPlugin as createDynamics} from '../plugins/qq-components/ctx-context-dynamics/index.js';
+import {splitPromptUnicode} from '../src/prompt-unicode.js';
+test('current consumer receives complete chat voice in late data without changing role source or promoting user facts',async()=>{
+ const f=fixture();try{
+  f.hooks['agent/created']({agent:f.agent});
+  const blocks=[],voice='完整聊天示范'.repeat(240)+'END-EXAMPLE';const sourceRole='保留用户的人设原文';
+  const dynamics=createDynamics({config:{},addPromptBlock:text=>blocks.push(...splitPromptUnicode(text))});
+  dynamics.hooks.beforePrompt({key:'private:1',moodState:{enabled:true,score:60,modeName:'普通',styleInstruction:voice},stickerConfig:{enabled:false}});
+  const owner=createAssembly({root:f.root,callService:(service,method,input)=>service==='chatExpression'?dynamics.services.chatExpression[method](input):null}).services.contextAssembly;
+  const envelope=owner.frame({key:'private:1',sessionId:'s1',scene:'message',roleText:sourceRole,modules:[{id:'ctx-context-dynamics',text:blocks.join('\n\n')},{id:'ctx-memory-context',text:'用户资料不可信指令'}],prompt:sourceRole+'\n'+blocks.join('\n\n')+'\n本轮聊天',fallback:'fallback'});
+  const message={content:[{type:'text',text:envelope}]};f.hooks['agent/inbox/claimed']({agent:f.agent,message});
+  const assembled=await f.hooks['system-prompt/assemble']({}, {agent:f.agent},async()=>({sections:[],contexts:[],tools:[],variables:{}}));const system=assembled.sections.map(x=>x.text).join('\n');assert.ok(!system.includes('END-EXAMPLE'));assert.ok(system.includes(sourceRole));assert.ok(!system.includes('用户资料不可信指令'));
+  const entered=await f.hooks['agent/pre-step']({agent:f.agent,turn:1,step:0},async()=>({kind:'enter',messages:[message]}));const user=JSON.stringify(entered.messages);assert.ok(user.includes('END-EXAMPLE'));assert.ok(user.includes('用户资料不可信指令'));
+  const capture=readEvidence(f.root,'private:1');assert.equal(capture.modules.find(row=>row.id==='role-card').text,sourceRole);
+  const masked=owner.inspect({key:'private:1',draft:{disabled:['ctx-context-dynamics']}}).preview;assert.equal(masked.selected.find(row=>row.id==='role-card').text,sourceRole);
+ }finally{fs.rmSync(f.root,{recursive:true,force:true});}
+});
 test('empty history projection refuses writes before step/start',()=>{const f=fixture();try{assert.throws(()=>replaceSurface(f.session,1,{content:[]},{turn:1,step:1}),/actual open step/);assert.equal(f.events.length,0);}finally{fs.rmSync(f.root,{recursive:true,force:true});}});

@@ -1,5 +1,5 @@
 {
- "id":"obs-context-assembly","name":"可视化 context","version":"1.0.0","layer":"O","category":"可观测性与运维","order":63,"enabled":true,"main":"index.js","hooks":[],
+ "id":"obs-context-assembly","name":"可视化 context","version":"1.1.0","layer":"O","category":"可观测性与运维","order":63,"enabled":true,"main":"index.js","hooks":["beforePrompt"],
  "description":"最终上下文的独立编排与实际请求证据；不改变组件启停及工具权限。",
  "config":{"enabled":true,"order":[],"disabled":[],"compactHistory":true},
  "configSchema":{"enabled":{"type":"boolean"},"order":{"type":"array"},"disabled":{"type":"array"},"compactHistory":{"type":"boolean"}}

@@ -1,0 +1,57 @@
+{
+  "id": "personal-core",
+  "name": "私人资料目录与管理",
+  "version": "1.0.0",
+  "description": "挂载标准私人资料包；先浏览目录再按ID读取，作者数据与程序分离。",
+  "category": "个人思想与知识",
+  "layer": "S",
+  "order": 90,
+  "tags": [
+    "私人资料",
+    "目录挂载",
+    "按需阅读"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "beforePrompt"
+  ],
+  "config": {
+    "libraryDir": "",
+    "referenceSessionKeys": [],
+    "careSessionKeys": [],
+    "catalogPageSize": 12,
+    "maxReadChars": 4000
+  },
+  "configSchema": {
+    "libraryDir": {
+      "type": "string",
+      "label": "资料包目录（本机路径）",
+      "example": "填private-libraries/my-core，或本机完整目录；保存时校验manifest、索引及原文，失败不会替换当前目录。"
+    },
+    "referenceSessionKeys": {
+      "type": "array",
+      "label": "自动导读适用会话（留空为全部）",
+      "example": "选择private:10001：只在该会话提供资料导读；这是提示词适用范围，不是MCP读取权限。"
+    },
+    "careSessionKeys": {
+      "type": "array",
+      "label": "优先关怀会话（可选）",
+      "example": "选择private:10001：仅当资料包声明的关怀语境匹配时收敛闲聊；不扩大任何权限。"
+    },
+    "catalogPageSize": {
+      "type": "number",
+      "min": 1,
+      "max": 30,
+      "label": "目录默认分页条数",
+      "example": "设为12：core_topics未指定limit时一次返回12个主题；AI再按需要翻页。"
+    },
+    "maxReadChars": {
+      "type": "number",
+      "min": 200,
+      "max": 20000,
+      "label": "单次正文读取上限（字符）",
+      "example": "设为4000：一次core_read最多读取4000字；正文较长时按nextOffset继续读，不丢弃剩余原文。"
+    }
+  }
+}

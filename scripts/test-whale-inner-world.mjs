@@ -101,7 +101,7 @@ test('component generation reload refreshes its identity helper rather than reus
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'whale-style-import-'));
   try {
     const style = path.join(root, 'ctx-chat-style');
-    const core = path.join(root, 'schnie-core');
+    const core = path.join(root, 'personal-core');
     fs.mkdirSync(style); fs.mkdirSync(core);
     fs.writeFileSync(path.join(root, 'package.json'), '{"type":"module"}');
     fs.copyFileSync(new URL('../plugins/qq-components/ctx-chat-style/index.js', import.meta.url), path.join(style, 'index.js'));

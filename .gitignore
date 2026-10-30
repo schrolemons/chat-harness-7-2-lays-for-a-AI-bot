@@ -3,6 +3,8 @@ state/
 audio/
 user-scripts/
 private/
+private-libraries/
+private-data/
 config.json
 campus-watch.json
 browser-sites.json

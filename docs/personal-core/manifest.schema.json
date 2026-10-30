@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Personal Core manifest v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "author",
+    "version",
+    "catalog",
+    "sources"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string"
+    },
+    "catalog": {
+      "type": "string",
+      "minLength": 1,
+      "description": "包内相对路径，禁止绝对路径、反斜杠、..、符号链接越界；运行时核对真实路径。"
+    },
+    "guide": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "包内相对路径，禁止绝对路径、反斜杠、..、符号链接越界；运行时核对真实路径。"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "title",
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "包内相对路径，禁止绝对路径、反斜杠、..、符号链接越界；运行时核对真实路径。"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "converted_path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "包内相对路径，禁止绝对路径、反斜杠、..、符号链接越界；运行时核对真实路径。"
+          },
+          "converted_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "dependentRequired": {
+          "converted_path": [
+            "converted_sha256"
+          ],
+          "converted_sha256": [
+            "converted_path"
+          ]
+        },
+        "additionalProperties": false
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "properties": {
+        "discussion_commands": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^/[a-zA-Z][a-zA-Z0-9-]{0,24}$"
+          }
+        },
+        "discussion_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "care_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "exit_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

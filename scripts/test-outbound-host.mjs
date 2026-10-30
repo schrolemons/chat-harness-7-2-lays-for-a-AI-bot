@@ -11,7 +11,7 @@ async function fixture(t) {
   fs.writeFileSync(path.join(root,'package.json'),'{"type":"module"}');
   for(const id of ['ctx-user-mood','ctx-chat-reply-shape'])fs.cpSync(new URL('../plugins/qq-components/'+id+'/',import.meta.url),path.join(root,'plugins/qq-components',id),{recursive:true});
   fs.mkdirSync(path.join(root,'src'));fs.copyFileSync(new URL('../src/reply-shape.js',import.meta.url),path.join(root,'src/reply-shape.js'));
-  fs.mkdirSync(path.join(root,'plugins/qq-components/schnie-core'));fs.writeFileSync(path.join(root,'plugins/qq-components/schnie-core/turn-policy.mjs'),"export const createTurnPolicy=()=>()=>({mode:'off'});");
+  fs.mkdirSync(path.join(root,'plugins/qq-components/personal-core'));fs.writeFileSync(path.join(root,'plugins/qq-components/personal-core/turn-policy.mjs'),"export const createTurnPolicy=()=>()=>({mode:'off'});");
   const host=createPluginHost({root,startTimers:false});await host.loadAll();
   t.after(async()=>{await host.dispose();fs.rmSync(root,{recursive:true,force:true});});
   return {host,root};

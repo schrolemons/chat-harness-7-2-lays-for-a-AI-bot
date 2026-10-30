@@ -2,7 +2,7 @@
 // 插件只负责「这一轮要不要追问/起话题」，判定逻辑仍是仓库里的 conversation-drive 模块，
 // 决定语义，真实发送后才消费组件自己的冷却；静默时机由 life-wake-reasons 统一授予。
 
-import { createTurnPolicy } from '../schnie-core/turn-policy.mjs';
+import { createTurnPolicy } from '../personal-core/turn-policy.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PRIVATE_FOLLOWUP_POLICY } from '../../../src/qq-reply-policy.js';
@@ -14,7 +14,7 @@ const [{ planConversationDrive }, { effectiveFollowupLimits, isFollowupAllowed }
 const NON_CHAT_REASONS = /^(selfReview|selfOptimize|memoryWrite|timeBubble|startupGreeting|reminder|newFriend|newsShare|careCheck|idleRescue|replyCheck)/;
 
 export function createPlugin(ctx) {
-  const phi = createTurnPolicy(ctx);
+  const referencePolicy = createTurnPolicy(ctx);
   const cfg = ctx.config || {};
   const state = ctx.state;
   const topicActions = createTopicActions(ctx, cfg);
@@ -64,10 +64,10 @@ export function createPlugin(ctx) {
   });
   return {
     validateConfig: topicActions.validateConfig,
-    services: { conversationDrive: { ...conversationDrive, afterWait: payload => phi(payload).mode !== 'off' ? {action:'wait'} : topicActions.afterWait(payload) } },
+    services: { conversationDrive: { ...conversationDrive, afterWait: payload => referencePolicy(payload).mode !== 'off' ? {action:'wait'} : topicActions.afterWait(payload) } },
     hooks: {
       beforePrompt(payload) {
-        if (phi(payload).mode !== 'off') return '';
+        if (referencePolicy(payload).mode !== 'off') return '';
         if (payload?.reason && NON_CHAT_REASONS.test(String(payload.reason))) return '';
         const st = payload?.st;
         if (!st) return '';

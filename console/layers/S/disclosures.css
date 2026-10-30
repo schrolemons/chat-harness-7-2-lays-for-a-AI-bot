@@ -1,0 +1,26 @@
+/* Use the same framed disclosure geometry as the C/L settings pages. */
+#section-layer-s :is(.comp-card,.parameter-group){margin:14px 0;padding:0;border:1px solid var(--card-border);border-radius:11px;background:var(--surface);overflow:hidden}
+#section-layer-s details>summary{position:relative;display:list-item;box-sizing:border-box;margin:0;padding:16px 42px 16px 18px;border:0;border-radius:0;background:var(--surface);color:var(--text-strong);font-size:14px;font-weight:650;line-height:1.6;cursor:pointer;transition:background .18s ease,color .18s ease}
+#section-layer-s .comp-card>summary{font-size:16px;font-weight:750}
+#section-layer-s details>summary::after{content:'';position:absolute;right:20px;top:50%;width:7px;height:7px;margin-top:-5px;border-right:1.6px solid var(--muted-soft);border-bottom:1.6px solid var(--muted-soft);transform:rotate(45deg);transition:transform .22s ease}
+#section-layer-s details[open]>summary{border-bottom:1px solid var(--card-border);background:var(--surface-open);border-radius:11px 11px 0 0}
+#section-layer-s details[open]>summary::after{transform:rotate(-135deg)}
+#section-layer-s details>summary:hover{background:var(--surface-hover)}
+#section-layer-s details>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+#section-layer-s .comp-card>summary .meta{display:inline-block;margin-left:10px;font-size:11px;font-weight:400}
+#section-layer-s .comp-card>.meta{padding:14px 18px 0}
+#section-layer-s .comp-card>.comp-body{padding:0 18px 18px}
+#section-layer-s .parameter-group>.component-fields{padding:8px 18px 16px;margin:0;box-sizing:border-box}
+@media(max-width:640px){#section-layer-s details>summary{padding:14px 42px 14px 14px}#section-layer-s .comp-card>.meta{padding:12px 14px 0}#section-layer-s .comp-card>.comp-body{padding-inline:14px}#section-layer-s .parameter-group>.component-fields{padding-inline:14px}}
+
+#section-layer-s .core-mount-status{padding:14px 16px;margin:16px 0;border:1px solid var(--card-border);border-radius:10px;background:var(--surface-subtle)}
+#section-layer-s .core-mount-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#section-layer-s .core-mount-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}
+#section-layer-s .core-mount-facts dt{font-size:11px;color:var(--text-muted)}
+#section-layer-s .core-mount-facts dd{margin:4px 0 0;font-size:13px;font-weight:600;overflow-wrap:anywhere}
+#section-layer-s .core-mount-path{overflow-wrap:anywhere}
+#section-layer-s .core-mount-message:empty{display:none}
+#section-layer-s [data-config-key=libraryDir] input{width:min(520px,100%)!important}
+#section-layer-s .core-preparation-guide ol{padding-left:20px;font-size:13px;line-height:1.8}
+#section-layer-s .core-preparation-guide pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+@media(max-width:640px){#section-layer-s .core-mount-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -15,7 +15,21 @@ export function createContextPreviewFixture(root){
  {id:'wake-action',name:'本轮唤醒任务',source:'L · 定时冒泡',text:'根据会话背景询问近况，不重复追问。',protected:true}];
  recordEvidence(root,'fixture-session','consumer',{sessionId:'fixture-session',pid:process.pid,at:Date.now()});
  service.compose({key:'private:20012',sessionId:'fixture-session',scene:'timeBubble',modules,fallback:'演示上下文'});
- recordEvidence(root,'fixture-session','request',{requestId:'fixture-initial',requestInRound:1,sessionId:'fixture-session',key:'private:20012',at:Date.now(),scene:'timeBubble',moduleEvidenceVersion:1,nonce:service.inspect({key:'private:20012'}).capture.nonce,modules:service.inspect({key:'private:20012'}).capture.modules.map(row=>({...row,inRequest:row.included})),messages:[{id:'actual-system',role:'system',name:'system 1',source:'DSH 框架与固定设定',text:'演示权限边界与重要角色设定。',chars:20},{id:'actual-user',role:'user',contextNonce:service.inspect({key:'private:20012'}).capture.nonce,name:'user 2',source:'qq-context-current',text:'演示当前上下文 <literal-data>，非可执行 HTML。',chars:40}],messageChars:60,toolCount:2,toolChars:360,tools:[{name:'qq_send_message',chars:200},{name:'qq_mark_read',chars:160}]});
+ const capture=service.inspect({key:'private:20012'}).capture;
+ const background=capture.modules.filter(row=>row.included&&!['role-card','wake-action'].includes(row.id)).map(row=>row.parts?.find(p=>p.destination==='background')?.text??row.text).join('\n\n');
+ const task=capture.modules.find(row=>row.id==='wake-action').text;
+ const messages=[
+  {id:'actual-system',role:'system',source:'system-prompt',text:'演示框架要求。\n'+modules[0].text},
+  {id:'history-summary',role:'user',source:'compact-checkpoint',text:'演示会话摘要，不推断来源组件。'},
+  {id:'history-runtime',role:'user',source:'runtime-context',text:'演示运行环境。'},
+  {id:'history-user',role:'user',source:'qq-context-dialogue',contextNonce:'previous',text:'先前任务：'+task},
+  {id:'history-bot',role:'assistant',source:'model',text:'演示 bot 生成的文字，不能据此认定已发送。'},
+  {id:'history-call',role:'assistant',source:'model',text:'调用日程工具。',toolCalls:[{id:'call-demo',name:'qq_schedule'}]},
+  {id:'history-result',role:'tool',source:'tool',text:'演示日程查询结果。',toolResults:[{toolCallId:'call-demo',name:'qq_schedule'}]},
+  {id:'actual-user',role:'user',contextNonce:capture.nonce,source:'qq-context-current',text:background+'\n<literal-data>，非可执行 HTML。'},
+  {id:'actual-task-row',role:'user',contextNonce:capture.nonce,source:'qq-context-dialogue',text:'【QQ 回合】\n'+task+'\n本轮无新增 QQ 消息。'}
+ ].map(row=>({...row,chars:row.text.length}));
+ recordEvidence(root,'fixture-session','request',{requestId:'fixture-initial',requestInRound:1,sessionId:'fixture-session',key:'private:20012',at:Date.now(),scene:'timeBubble',moduleEvidenceVersion:1,nonce:capture.nonce,modules:capture.modules.map(row=>({...row,inRequest:row.included})),messages,messageChars:messages.reduce((n,row)=>n+row.chars,0),toolCount:2,toolChars:360,tools:[{name:'qq_send_message',chars:200},{name:'qq_mark_read',chars:160}]});
  const {recentRequests:_history,requestStages:_stages,initialRequest:_initial,...first}=readEvidence(root,'fixture-session','request');
  for(let i=2;i<=3;i++)recordEvidence(root,'fixture-session','request',{...first,requestId:'fixture-'+i,requestInRound:i,at:first.at+i,tools:[{name:'qq_schedule',description:i===2?'query':'query by date',chars:200},{name:'qq_mark_read',chars:160}]});
  return {callService(_service,method,input){return service[method](input);},setConfig(id,policy){writeJson(policyFile(root),normalizePolicy(policy));return {ok:true,id,config:policy};},async reload(){}};

@@ -25,7 +25,7 @@ test('one frozen welcome plan serves prompt and all multipart entrances',()=>{
 test('serious and phi caps survive welcome; mood ceiling and exact zero timing apply',()=>{
   const {svc}=fixture({intervalMinMs:0,intervalMaxMs:0});assert.ok(svc);
   assert.equal(svc.resolve({key,turnId:'a',incomingText:'修复代码',mood,now}).maxMessages,1);
-  assert.equal(svc.resolve({key,turnId:'b',incomingText:'你好',mood,phiMode:'knowledge',now}).maxMessages,1);
+  assert.equal(svc.resolve({key,turnId:'b',incomingText:'你好',mood,referenceMode:'knowledge',now}).maxMessages,1);
   const plan=svc.resolve({key,turnId:'c',incomingText:'你好',mood:{...mood,welcomeBurstActive:false,replyCeiling:1},now});
   assert.equal(plan.maxMessages,1);assert.equal(plan.minIntervalMs,0);
 });

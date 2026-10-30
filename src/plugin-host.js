@@ -27,7 +27,7 @@ const HARNESS_LAYERS = [
   { id: 'O', name: '可观测性与运维', desc: '日志、trace、成本、自愈' },
   { id: 'V', name: '验证与评估', desc: '基准、评分、回归' },
   { id: 'G', name: '治理与安全', desc: '权限、策略、审计、内容闸门' },
-  { id: 'S', name: 'SCHNIE 参考', desc: 'SCHNIE 参考：哲学思考资料与逻辑方式驱动的参考核心' }
+  { id: 'S', name: '个人思想与知识', desc: '标准私人资料包、目录挂载、按需阅读与原文引用' }
 ];
 
 const HOOK_NAMES = ['onIncoming', 'beforePrompt', 'afterSend', 'onTick', 'relayIncoming', 'wakeTail'];
@@ -443,9 +443,11 @@ export function createPluginHost(opts = {}) {
       }
       return slicePromptUnicode(parts.join('\n\n'), 8000);
     },
-    collectPromptModules(payload) {
+    collectPromptModules(payload,options={}) {
       const blocks = [];
+      const only=options.only===undefined?null:new Set(options.only);
       for (const p of orderedPlugins()) {
+        if(only&&!only.has(p.id))continue;
         if (p.disabled || typeof p.hooks.beforePrompt !== 'function') continue;
         try {
           p.ctx.acceptBlocks=true;

@@ -28,7 +28,7 @@ export function initialize() {
   const COMP_LAYERS = [
     { id: 'C', name: '上下文与记忆' }, { id: 'T', name: '工具接口与协议' }, { id: 'E', name: '环境与执行' },
     { id: 'L', name: '生命周期与编排' }, { id: 'O', name: '可观测与运维' }, { id: 'V', name: '验证与评估' },
-    { id: 'G', name: '治理与安全' }, { id: 'S', name: 'SCHNIE 参考' }, { id: '', name: '组件注册中心' }
+    { id: 'G', name: '治理与安全' }, { id: 'S', name: '个人思想与知识' }, { id: '', name: '组件注册中心' }
   ];
   let compCache = [];
 
@@ -99,8 +99,7 @@ export function initialize() {
       ['ctx-memory-profile-facts', 'v2PmEnabled'],
       ['ctx-memory-context', 'v2ContextRecentLimit', 'maxChars'],
       ['ctx-chat-topic-drive', 'v2FollowupGlobalAnchor', 'privateFollowupEnabled,minIntervalMinutes,dailyLimit,followUpCooldownMinutes,newTopicCooldownMinutes,newTopicMaxPerHour,followupWeight,newTopicWeight'],
-      ['life-daily-worklog', 'v2DdEnabled'],
-      ['ctx-memory-store', 'v2DdEnabled', 'diaryArchive']
+
     ];
     const mergedIds = new Set();
     for (const [id, anchorId, fields] of inlineSettings) {

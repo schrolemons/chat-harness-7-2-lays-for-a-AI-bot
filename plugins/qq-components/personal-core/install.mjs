@@ -4,41 +4,42 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import yaml from 'js-yaml';
+import {WHALE_MCP_SERVERS} from '../../../src/tools/servers.js';
 
-const BEGIN = '# === SCHNIE PRIVATE PHI BEGIN ===';
-const END = '# === SCHNIE PRIVATE PHI END ===';
+const BEGIN = '# === PERSONAL CORE BEGIN ===';
+const END = '# === PERSONAL CORE END ===';
 const SCHEMA = yaml.DEFAULT_SCHEMA.extend(new yaml.Type('tag:yaml.org,2002:js', { kind: 'scalar', construct: value => ({ __jsExpr: value }) }));
 const parse = value => yaml.load(value, { schema: SCHEMA });
 const dir = fileURLToPath(new URL('./', import.meta.url));
 
+export function createMcpEntry(root){const server=WHALE_MCP_SERVERS.find(s=>s.id==='mcp-personal-core');if(!server)throw Error('Missing personal-core server definition');return{id:server.id,name:'@deepseek-ai/dsh-mcp-client',config:{serverName:server.name,transport:'stdio',command:process.execPath,args:[path.join(root,server.script)]}};}
+
 /** Append only the reviewed server entry; reject ambiguous or duplicate ownership. */
 export function patchProfile(text, entry) {
   const start = text.indexOf(BEGIN), end = text.indexOf(END);
-  if ((start < 0) !== (end < 0) || (start >= 0 && end < start) || text.indexOf(BEGIN, start + BEGIN.length) >= 0 || text.indexOf(END, end + END.length) >= 0) throw Error('Invalid SCHNIE patch markers');
+  if ((start < 0) !== (end < 0) || (start >= 0 && end < start) || text.indexOf(BEGIN, start + BEGIN.length) >= 0 || text.indexOf(END, end + END.length) >= 0) throw Error('Invalid Personal Core patch markers');
   const owned = start < 0 ? '' : text.slice(start + BEGIN.length, end);
   if (owned && isDeepStrictEqual(parse(owned), [{ insert: [entry] }])) return text;
   const outside = start < 0 ? text : text.slice(0, start) + text.slice(end + END.length);
   const before = parse(outside);
   if (!Array.isArray(before)) throw Error('Profile patch must be an array');
   const hasId = rows => rows.some(row => row?.id === entry.id || (Array.isArray(row?.insert) && hasId(row.insert)));
-  if (hasId(before)) throw Error('SCHNIE server entry already exists outside the managed block');
-  const prefix = outside.trim() === '[]' ? '' : outside;
+  if (hasId(before)) throw Error('Personal Core server entry already exists outside the managed block');
+  const prefix = before.length === 0 ? outside.replace(/^[ \t]*\[[ \t]*\][ \t]*(?:\r?\n|$)/m, '') : outside;
   const next = prefix + (prefix.endsWith('\n') ? '\n' : '\n\n') + BEGIN + '\n' + yaml.dump([{ insert: [entry] }], { lineWidth: -1, noRefs: true }) + END + '\n';
   if (!Array.isArray(parse(next))) throw Error('Invalid merged profile');
   return next;
 }
 
 /** Persist an idempotent desktop-profile patch, retaining the exact previous file. */
-export function install({ profile = path.join(os.homedir(), '.dsh/profiles/desktop'), dryRun = false } = {}) {
+export function install({ profile = path.join(os.homedir(), '.dsh/profiles/desktop'), root = path.resolve(dir,'../../..'), dryRun = false } = {}) {
   const file = path.join(profile, 'cordis.patch.yml');
   const original = fs.readFileSync(file, 'utf8');
-  const entry = { id: 'mcp-schnie-private-phi', name: '@deepseek-ai/dsh-mcp-client', config: {
-    serverName: 'schnie-private-phi', transport: 'stdio', command: process.execPath, args: [path.join(dir, 'mcp.mjs')]
-  } };
+  const entry = createMcpEntry(root);
   const next = patchProfile(original, entry);
   const result = { profile, changed: next !== original, dryRun, server: entry.config.serverName, backup: null };
   if (!dryRun && result.changed) {
-    result.backup = file + '.bak-schnie-phi-' + new Date().toISOString().replace(/[:.]/g, '-');
+    result.backup = file + '.bak-personal-core-' + new Date().toISOString().replace(/[:.]/g, '-');
     fs.copyFileSync(file, result.backup, fs.constants.COPYFILE_EXCL);
     fs.writeFileSync(file, next, 'utf8');
   }

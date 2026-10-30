@@ -3347,6 +3347,15 @@ async function main() {
         sendJson({ ok: false, error: `Host 头不被允许（${hostHeader || '缺失'}）：控制台只接受本机回环访问` }, 403);
         return;
       }
+      // Read-only preset refresh has its own signed, session-bound capability.
+      // Do not expose this exception to any other management endpoint.
+      if (url.pathname === '/api/context/refresh' && req.method === 'POST') {
+        if (req.headers.origin || !String(req.headers['content-type'] || '').includes('application/json')) {
+          sendJson({ok:false,error:'仅允许本机 preset 的 JSON 请求'},403); return;
+        }
+        const result=pluginHost.callService('contextAssembly','refresh',await readBody());
+        sendJson(result||{ok:false,error:'context 组件未加载'},result?.ok?200:403); return;
+      }
       // 控制台鉴权：所有请求需带 x-console-token 或 ?token=
       // 定长比较：`!==` 会在第一个不同的字符处短路，理论上可被本机进程用响应时延逐字节试探。
       // 令牌是 192 bit 随机值且只监听回环，所以这是纵深防御而非在野漏洞。
@@ -9950,6 +9959,23 @@ async function main() {
   };
   // 业务收据由 memory-store 的独立 receipts 源保存，不混入模型事务记忆。
   taskCaps.readAffairsContext = (key, maxChars) => pluginHost.callService('affairs', 'context', { key, maxChars });
+  // Facts and the existing component hooks only; no wake, scheduling or send.
+  taskCaps.refreshContextModules = ({key,sessionId,scene,seed={},moduleIds=[]}) => {
+    if(state.sessions[key]!==sessionId||!isSessionAllowedInCurrentMode(key))return null;
+    const st=modelFacingStateV2(key),mood=pluginHost.callService('mood','read',{key});
+    const modules=pluginHost.collectPromptModules({...seed,key,reason:scene,st,state:st,
+      incomingText:lastIncomingTextV2(st),mood,persistentMemory:readPersistMemoryV2(key),
+      memoryWindow:Math.max(1,Number(cfg.socialV2?.context?.contextWindow)||20),
+      roleName:readRoleState().role||'',selfName:selfDisplayName,selfId:selfUserId,
+      replyPlan:activeTurnEnvelopes.get(sessionId)?.replyPlan||seed.replyPlan,
+      agentToken:getSocialV2State(key).agentToken,
+      affairsContext:pluginHost.callService('affairs','context',{key,maxChars:4000}),
+      moodState:mood?{...mood,policy:pluginHost.callService('mood','policy'),history:pluginHost.callService('mood','history',{key,limit:5})?.items||[]}:null,
+      stickerEntries,stickerConfig:cfg.socialV2?.sticker||{},hasUnreadNow:st.unread.length>0,
+      isPrivate:key.startsWith('private:'),isOwnerKey:isAdminDevKey(key),
+    },{only:moduleIds});
+    return {modules,expression:pluginHost.callService('chatExpression','current',{key})};
+  };
 
   const forcedOwners={"reminderTimer":"life-wake-reasons","careTimer":"life-wake-reasons","newsTimer":"life-wake-reasons","idleRescueTimer":"life-wake-reasons","selfReviewTimer":"obs-self-review","userFeedbackTimer":"obs-self-review","timeBubbleTimer":"life-proactive-time-bubble","startupGreetTimer":"life-proactive-startup-greeting","rateLimitRetryTimer":null,"replyCheckTimer":"life-wake-reasons","pendingWakeTimer":null,"sleepTimer":null,"proactiveTimer":"life-wake-reasons"};
   function scheduleForcedTask(key,field,run,delay) {
@@ -9962,7 +9988,9 @@ async function main() {
   }
   taskCaps.getProactiveFacts=key=>{
     const st=socialV2.conversations.get(key),sid=state.sessions[key];
+    const active=activeTurnEnvelopes.get(sid);
     return {allowed:outboundServicesInitialized&&pluginHost.hasService('replyPlan','reserve')&&currentMode==='reserved2'&&cfg.socialV2?.enabled!==false&&isSessionAllowedInCurrentMode(key),
+      conversationAwake:!!st?.pendingWakeTimer||!!pendingTurnEnvelopes.get(sid)?.some(e=>!e.cancelled&&!e.waitRoundClosed)||!!(active&&!active.cancelled&&!active.waitRoundClosed),
       paused:socialV2.paused,busy:!!activeTurnEnvelopes.get(sid)||!!pendingTurnEnvelopes.get(sid)?.some(e=>!e.cancelled)||isConversationBusyV2(key,st)||!!queued.get(key)?.length,
       pendingPurpose:!!st?.pendingReminderItems?.length||!!st?.pendingTimeBubble||!!st?.pendingWakeReasons?.some(x=>!['replyCheck','timeout','proactiveCheck'].includes(x.reason)),
       quiet:!!st?.mutedUntilReengaged||pluginHost.callService('availability','isQuiet',{key})===true,

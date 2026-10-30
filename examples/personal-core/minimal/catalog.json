@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "topics": [
+    {
+      "id": "example:reversible",
+      "title": "可逆与难以撤回的选择",
+      "group": "选择",
+      "core_meaning": "先区分可逆性",
+      "when_to_use": "面对复杂决定时",
+      "how_to_use": "先核对当下条件，不能替人做决定",
+      "do_not_use_for": "科学定论或临床判断",
+      "epistemic_status": "fictional_author_opinion",
+      "flags": [],
+      "keywords": [
+        "选择",
+        "可逆"
+      ],
+      "related": [
+        "example:boundaries"
+      ],
+      "source": "虚构示例原稿",
+      "source_snapshot": "sources/original.md",
+      "source_lines": [
+        1,
+        1
+      ],
+      "source_sha256": "a906f868c778a3b3e4a4e745506e5a6a0a4d478061b26f96807939dd20b0e13c",
+      "path": "topics/reversible.md",
+      "sha256": "23c84d499f354d4c46714704bd46bf120464a004dfb1c3bd251d3c986e8203dc"
+    },
+    {
+      "id": "example:boundaries",
+      "title": "表达需要与尊重边界",
+      "group": "关系",
+      "core_meaning": "表达需要也尊重拒绝",
+      "when_to_use": "讨论相互尊重时",
+      "how_to_use": "允许对方拒绝，不作诊断",
+      "do_not_use_for": "科学定论或临床判断",
+      "epistemic_status": "fictional_author_opinion",
+      "flags": [],
+      "keywords": [
+        "边界",
+        "拒绝"
+      ],
+      "related": [
+        "example:reversible"
+      ],
+      "source": "虚构示例原稿",
+      "source_snapshot": "sources/original.md",
+      "source_lines": [
+        2,
+        2
+      ],
+      "source_sha256": "a906f868c778a3b3e4a4e745506e5a6a0a4d478061b26f96807939dd20b0e13c",
+      "path": "topics/boundaries.md",
+      "sha256": "33fd2704cded854e40f02cd47059186feb27ed71630cd20b91a3fa951a9710ca"
+    }
+  ]
+}

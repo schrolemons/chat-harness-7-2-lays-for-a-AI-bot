@@ -15,7 +15,7 @@ function fixture(t) {
   write('plugins/qq-components/ctx-chat-reply-shape/engagement.mjs', fs.readFileSync(path.join(sourceRoot, 'plugins/qq-components/ctx-chat-reply-shape/engagement.mjs'), 'utf8'));
   write('src/conversation-drive.js', fs.readFileSync(path.join(sourceRoot, 'src/conversation-drive.js'), 'utf8'));
   // Foreign SCHNIE/receipt prompt behavior is outside this source-freshness test.
-  write('plugins/qq-components/schnie-core/turn-policy.mjs', 'export const createTurnPolicy = () => () => ({mode:"off"});');
+  write('plugins/qq-components/personal-core/turn-policy.mjs', 'export const createTurnPolicy = () => () => ({mode:"off"});');
   write('src/qq-reply-policy.js', 'export const PRIVATE_FOLLOWUP_POLICY = "本轮私聊追问";');
   write('state/person-profiles.json', JSON.stringify({ people: { '5': { keys: ['group:10', 'private:5'] } } }));
   const replace = (relative, from, to) => { const file = path.join(root, relative), old = fs.readFileSync(file, 'utf8'); assert.ok(old.includes(from), 'source mutation target exists'); fs.writeFileSync(file, old.replace(from, to)); };

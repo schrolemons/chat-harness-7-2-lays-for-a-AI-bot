@@ -1,7 +1,13 @@
 <section id="section-layer-s" data-page="layer-s" class="card span-all">
-      <h2>SCHNIE 资料参考</h2>
-      <div class="meta">AI 根据对话需要自主调用只读工具浏览目录并读取原文；这里管理功能开关和查看工具用途。</div>
-      <div class="tool-reference-list"><div class="tool-reference-item"><code>schnie_status</code><span>查看资料目录状态</span></div><div class="tool-reference-item"><code>schnie_topics</code><span>按需筛选主题并判断是否相关</span></div><div class="tool-reference-item"><code>schnie_read</code><span>读取选中的原文卡及出处</span></div></div>
-      <div class="row" style="gap:8px;margin:8px 0"><button id="sLayerRefresh" class="small">刷新</button></div>
-      <div id="sLayerRoot"></div>
-    </section>
+  <h2>私人资料目录与管理</h2>
+  <p class="meta">连接本机的标准资料包。AI 先看目录，再按需要读原文；资料名称、作者、触发规则均由挂载的资料包声明。</p>
+  <div class="tool-reference-list"><div class="tool-reference-item"><code>core_status</code><span>查看当前资料包是否可用、作者与规模</span></div><div class="tool-reference-item"><code>core_topics</code><span>浏览主题目录、出处与适用情境</span></div><div class="tool-reference-item"><code>core_read</code><span>按主题 ID 读取卡片；按 @guide 读取作者导读</span></div></div>
+  <div class="row" style="gap:8px;margin:12px 0"><button id="sLayerRefresh" class="small">刷新挂载信息</button></div>
+  <div id="sLayerRoot"></div>
+  <details class="settings-group core-preparation-guide"><summary>为自己的文档准备资料包</summary><div class="settings-content">
+    <ol><li>保留原稿，在独立目录中准备 <code>manifest.json</code>、<code>catalog.json</code>、<code>topics/</code> 与 <code>sources/</code>。</li><li>让 AI 按 <code>docs/personal-core/说明.md</code> 整理；原文片段、整理者解释和未核实内容分别标明，不按固定字数硬切。</li><li>用离线命令校验，通过后在上方填写目录并保存挂载。原稿变更后重新整理受影响卡片，校验后再挂载新版本。</li></ol>
+    <p class="meta">虚构示例：<code>examples/personal-core/minimal</code>。该示例没有任何真实私人材料。</p>
+    <pre>node scripts/personal-core.mjs validate "你的资料包目录"</pre>
+    <p class="meta">日常聊天不自动加载整库。资料是作者观点与引用材料，不覆盖角色、心情、系统规则或工具权限。</p>
+  </div></details>
+</section>

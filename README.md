@@ -8,7 +8,7 @@
 
 ## 7+2 模型
 
-“7”是聊天 agent 的七个工程维度；“+2”是 S · SCHNIE 思维模式-介入层与横切集成面。它们共同形成管理视图，**不是九个必须依次执行的流水线步骤**。现有运行时的层字段是七层加 S，注册中心没有另占一个执行层。
+“7”是聊天 agent 的七个工程维度；“+2”是 S · 私人资料介入层与横切集成面。它们共同形成管理视图，**不是九个必须依次执行的流水线步骤**。现有运行时的层字段是七层加 S，注册中心没有另占一个执行层。
 
 | 维度 | 负责什么 | 仓库中的实现例子 |
 |---|---|---|
@@ -19,7 +19,7 @@
 | O · Observability | 连接状态、日志、成本、诊断和恢复 | `obs-bridge-health`、`obs-cost-policy` |
 | V · Verification | 单元测试、协议检查、回归 | `eval-regression`、`scripts/test-*.mjs` |
 | G · Governance | QQ 白名单、会话令牌、工具守卫、出站检查 | `gov-policy`、受限 QQ 预设和发送闸门 |
-| + S · SCHNIE 思维模式-介入层 | 在适配的对话中提供 SCHNIE 思维引导，并按需介入本地资料 | `schnie-core`；仓库只含机制与公开示例，私人资料由使用者本地配置 |
+| + S · 私人资料介入层 | 按需读取使用者挂载的本地资料包 | `personal-core`；默认不挂载资料，仓库只含通用接口、格式规范与虚构示例 |
 | + Integration · 横切注册 | 把使用者另装的组件映射到各层，统一配置与启停 | `integration-registry`，不是第九个执行层 |
 
 分层是一种本项目采用的工程组织方法，不把它宣称为学术界统一标准。人格行为属于 C 层；权限检查和真实动作不会只依赖人设文字。
@@ -38,7 +38,7 @@
 | **O · 观测与运维** | `obs-*`、`life-token-budget`、`tool-deepseek-balance`、`life-daily-worklog` | 桥接/组件健康诊断、模型成本策略、额度保护、管理员专用余额只读查询、自我复盘和可选运维日报。 |
 | **G · 治理** | `gov-policy`、`plugins/qq-agent-presets/` 中的预设守卫与出站检查 | 会话白名单、工具权限、令牌校验、外部内容隔离、受限 QQ 预设与发送前检查。管理员本机能力和普通群聊工具面分开。 |
 | **V · 验证** | `eval-regression`、`scripts/test-*.mjs`、`human` | 将对话缺陷整理成回归用例，检查协议、权限和组件行为，并为关键操作保留人工确认边界。 |
-| **S · SCHNIE** | `schnie-core` | 可选的思维引导和本地资料读取机制；仓库仅含通用实现与公开示例，私人资料由使用者本地维护。 |
+| **S · 私人资料** | `personal-core` | 可选的本地资料包读取机制；原文、目录和卡片由使用者本地维护，通过 `core_status`、`core_topics`、`core_read` 按需访问。 |
 | **横切集成** | `integration-registry`、`env-bridge` | 注册、配置和启停跨层组件；桥接负责 QQ/DSH 连接、会话状态、调度入口、鉴权和控制台，不承载各组件的业务提示词。 |
 
 这些组件组合后可支持群聊与私聊、按消息引用回复、角色和记忆上下文、定时提醒、网页监控、媒体处理、管理员工具及运行诊断。具体能力受 DSH、SnowLuma/OneBot、模型服务和本机配置影响；安装包不会替使用者登录外部服务或携带个人数据。
@@ -112,7 +112,9 @@ npm run doctor
 
 Web profile 使用 `--profile web`。非默认 DSH 根目录使用环境变量 `DSH_HOME`。安装器备份现有配置、保留其他插件与会话；重复运行不会重复添加本仓库条目。不要删除 `~/.dsh`、`state/` 或手工复制别人的目录来“修预设”。
 
-安装后会有四个 QQ 预设（`qq-chat`、`qq-chat-v2`、`qq-chat-dev`、`qq-task-worker`），以及后台网页整理用的 `campus-summary`。本地 QQ MCP、只读状态 MCP、搜索 MCP、浏览器 MCP、SCHNIE 思维模式-介入 MCP 与标题栏启动器均有对应源文件。详情见[文件与工具清单](docs/COMPONENTS.md)。
+安装后会有四个 QQ 预设（`qq-chat`、`qq-chat-v2`、`qq-chat-dev`、`qq-task-worker`），以及后台网页整理用的 `campus-summary`。本地 QQ MCP、只读状态 MCP、搜索 MCP、浏览器 MCP、私人资料包 MCP 与标题栏启动器均有对应源文件。详情见[文件与工具清单](docs/COMPONENTS.md)。
+
+S 层资料包的整理、校验与挂载方法见[资料接口说明](docs/personal-core/说明.md)。可先运行 `node scripts/personal-core.mjs validate examples/personal-core/minimal` 校验虚构示例，再在 Console 的 S 层选择自己的资料目录。公开版本默认不挂载资料；`private-libraries/` 与 `private-data/` 已加入 Git 忽略规则。资料作为读取内容提供，不赋予其系统指令权限。
 
 如果 DSH 页面没有立即出现按钮或工具，先刷新页面；必要时保存工作后重开 DSH。DSH 窗口“编辑”右侧的小鲸鱼按钮：红灯可启动，黄灯表示启动中，绿灯表示检查就绪；绿灯时点击打开控制台。
 

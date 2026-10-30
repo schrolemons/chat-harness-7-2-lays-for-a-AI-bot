@@ -9,6 +9,8 @@ function renderNavIcon(view) {
 
 export function initialize() {
 NAV_ICON_PATHS = {
+  "context-visual": "<path d=\"m12 2 10 5-10 5L2 7Zm-10 10 10 5 10-5M2 17l10 5 10-5\"/><path d=\"M12 12v10\"/>",
+  "setting-o-2": "<path d=\"M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9M8 7h5M8 11h3M8 15h2\"/><path d=\"M17 10a5 5 0 1 1-4 8m0-4v4h4m3-11v3h-3\"/>",
   "terms": "<path d=\"m12 3-10 5 10 5 10-5ZM6 11v5c3 3 9 3 12 0v-5M22 8v8\"/>",
   "persona": "<circle cx=\"12\" cy=\"8\" r=\"3.5\"/><path d=\"M5 21v-2a7 7 0 0 1 14 0v2\"/>",
   "slang": "<path d=\"M4 5a2 2 0 0 1 2-2h14v18H6a2 2 0 0 1 0-4h14M4 5v14M8 7h8M8 11h6\"/>",

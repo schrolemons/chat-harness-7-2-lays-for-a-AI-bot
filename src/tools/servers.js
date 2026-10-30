@@ -4,7 +4,7 @@ export const WHALE_MCP_SERVERS = [
   { id:'mcp-snowluma-host', name:'snowluma-host', script:'src/mcp-host-server.js', layer:'T', audience:'qq' },
   { id:'mcp-web-search-safe', name:'web-search-safe', script:'src/mcp-web-search-safe.js', layer:'T', audience:'qq' },
   { id:'mcp-games', name:'games', script:'src/mcp-games.mjs', layer:'T', audience:'qq' },
-  { id:'mcp-schnie-private-phi', name:'schnie-private-phi', script:'plugins/qq-components/schnie-core/mcp.mjs', layer:'S', audience:'qq' },
+  { id:'mcp-personal-core', name:'personal-core', script:'plugins/qq-components/personal-core/mcp.mjs', layer:'S', audience:'qq' },
   { id:'mcp-bridge-health', name:'bridge-health', script:'src/mcp-bridge-health.mjs', layer:'O', audience:'admin' },
   { id:'mcp-codex-peer', name:'codex-peer', script:'plugins/qq-components/tool-codex-chat/src/mcp-server.mjs', layer:'T', audience:'admin', toolCallTimeoutMs:30000 },
 ];

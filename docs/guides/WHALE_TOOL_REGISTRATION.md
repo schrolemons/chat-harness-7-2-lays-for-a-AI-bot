@@ -17,3 +17,7 @@
 ### 等待工具拆分（2026-10-30）
 
 `qq_wait_for_messages` 与 `qq_wait_for_quiet` 共用 `waitMessages` 开关，均作用于私聊和群聊。前者收到新消息立即返回，真正无人回复超时由 life-conversation-wait 执行 p/q 递增终止；后者只确认最后来信后的静默，不计无人回复次数。旧 purpose=reply 仍兼容转入静默路径。新工具注册需要桥接及 DSH MCP 进程加载最新代码后核验实际工具面，单独热加载插件不能完成部署。
+
+### S 层标准私人资料包
+
+唯一注册源为 `mcp-personal-core`（serverName `personal-core`），只提供 `core_status`、`core_topics`、`core_read`。组件服务同名；工具不接受任意目录或文件路径，管理员仅从控制台配置挂载目录。资料包协议、AI整理说明与虚构示例见 [说明.md](../personal-core/说明.md)。机主SCHNIE包属于私人数据，框架不内置其作者、章节或话题；旧工具名称只在一次性迁移中处理，不保留运行别名。

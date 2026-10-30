@@ -13,6 +13,7 @@ import { TOOL_CONFIG_FLAGS } from '../src/tools/flags.js';
 import {createPlugin as createAliasLearning} from '../plugins/qq-components/ctx-member-alias/index.js';
 import {createPlugin as createTermLearning} from '../plugins/qq-components/ctx-interest-terms/index.js';
 import {createPlugin as createKnowledgeQuota} from '../plugins/qq-components/ctx-knowledge-quota/index.js';
+import {createPlugin as createPersonalCore} from '../plugins/qq-components/personal-core/index.js';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -386,6 +387,10 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
   const quotaContext = { config: componentFixtures.get('ctx-knowledge-quota').config,
     state: { get: () => structuredClone(componentFixtures.get('ctx-knowledge-quota').state),
       set: patch => Object.assign(componentFixtures.get('ctx-knowledge-quota').state, structuredClone(patch)) }, registerTool() {}, capabilities: {} };
+  // Execute the real S-layer validator against explicitly mounted test packages.
+  const coreFixture=componentFixtures.get('personal-core');
+  const refreshCore=()=>createPersonalCore({root:projectRoot,config:coreFixture.config,dir:resolve(projectRoot,'plugins/qq-components/personal-core'),state:{set:patch=>Object.assign(coreFixture.state,patch)},registerTool(){}});
+  refreshCore();
   const quotaService = createKnowledgeQuota(quotaContext).services.knowledgeQuota;
   componentFixtures.get('life-user-availability').state = { plans: { 'private:20012': {kind:'quiet',start:Date.now(),end:Date.now()+3600000} } };
   const scriptsFixture=componentFixtures.get('life-campus-watch');
@@ -445,6 +450,11 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
       }
       if(path==='/api/plugins/toggle' && method==='POST'&&componentFixtures.has(body.id)){componentFixtures.get(body.id).enabled=body.enabled!==false;return json({ok:true});}
       if(path==='/api/plugins/config' && method==='POST'){
+        if(body.id==='personal-core'){
+          const next={...coreFixture.config,...body.config},checked=refreshCore().validateConfig(next);
+          if(!checked.ok)return json({ok:false,error:checked.errors.join('；')},400);
+          coreFixture.config=next;refreshCore();return json({ok:true});
+        }
         const kind=body.id==='ctx-member-alias'?'alias':body.id==='ctx-interest-terms'?'terms':null;
         if(kind){Object.assign(learningContexts[kind].config,body.config);return json({ok:true});}
         if(componentFixtures.has(body.id)){Object.assign(componentFixtures.get(body.id).config,structuredClone(body.config));return json({ok:true});}

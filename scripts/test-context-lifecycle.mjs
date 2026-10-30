@@ -22,7 +22,7 @@ const normal = build({ st, preSleepMs: 300000, replyTiming: { quietMs: 8000, rem
 const proactive = build({ st, preSleepMs: 300000, replyTiming: { quietMs: 8000, remainingQuietMs: 8000 }, autonomousNow: true, hasUnreadNow: false });
 const extras = build({ st, preSleepMs: 180000, replyTiming: { quietMs: 10000, remainingQuietMs: 0 }, mutedJustClearedNow: true, pendingRemindersNow: [{ text: '日程｜2026-10-26 09:00｜开会' }] });
 
-check('唤醒状态', normal.includes('【当前唤醒】不另设到时检查') && normal.includes('私聊不抽签'));
+check('唤醒状态', normal.includes('【当前唤醒】不另设到时检查') && /私聊[^。]*(?:不抽签|100%)/.test(normal));
 check('主动开口标记', proactive.includes('【这是你主动开口】') && !proactive.includes('【当前唤醒】'));
 check('首回复节奏', normal.includes('【首回复节奏】') && normal.includes('quietMs=8000') && normal.includes('还差约 3 秒'));
 check('主动开口节奏', proactive.includes('【主动开口·不是回复】'));
@@ -39,9 +39,9 @@ check('插件宿主加载（至少 27 个）', summary.count >= 27, 'count=' + s
 check('宿主加载无警告', summary.warnings.length === 0, JSON.stringify(summary.warnings));
 const hostText = host.collectPromptBlocks({ st, preSleepMs: 300000, replyTiming: { quietMs: 8000, remainingQuietMs: 0 }, autonomousNow: false, hasUnreadNow: true }).join('\n');
 check('宿主注入唤醒/节奏', hostText.includes('【当前唤醒】') && hostText.includes('【首回复节奏】'));
-const reminder = host.callService('lifecycle', 'wakeReminder', { roleName: '大肥鱼', selfName: 'DeepSeek大肥鱼', selfId: '2799274749', agentToken: 'tok', preSleepMs: 300000 });
+const reminder = host.callService('lifecycle', 'wakeReminder', { roleName: '大肥鱼', selfName: 'DeepSeek大肥鱼', selfId: '21001', agentToken: 'tok', preSleepMs: 300000 });
 check('收尾提醒服务', typeof reminder === 'string' && reminder.includes('还没有完成回合收尾') && reminder.includes('endRound') && !reminder.includes('timeoutMs=300000'));
-check('收尾提醒含身份/令牌', reminder.includes('2799274749') && reminder.includes('tok'));
+check('收尾提醒含身份/令牌', reminder.includes('21001') && reminder.includes('tok'));
 
 const bridge = fs.readFileSync('src/bridge.js', 'utf8');
 const fn = bridge.indexOf('function buildWakePromptV2');

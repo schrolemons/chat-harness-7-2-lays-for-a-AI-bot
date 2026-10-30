@@ -11,7 +11,7 @@
 | `layers/O` | 状态、花费、日记、反馈、自查与日志 |
 | `layers/V` | 失败回归与 human |
 | `layers/G` | 访问、安全策略与控制台令牌 |
-| `layers/S` | SCHNIE 资料参考 |
+| `layers/S` | 私人资料包挂载与按需阅读 |
 | `layers/R` | 扩展注册管理 |
 | `shared` | API、路由、主题、基础样式、通用组件表单基础 |
 

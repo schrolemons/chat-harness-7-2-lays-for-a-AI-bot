@@ -7,7 +7,7 @@
 // 注意：宿主对单个 block 有长度上限（1200 字），所以这里用 ctx.addPromptBlock 分段压入，
 // 而不是把全部规则拼成一大段返回（否则后半段会被截断）。
 
-import { createTurnPolicy } from '../schnie-core/turn-policy.mjs';
+import { createTurnPolicy } from '../personal-core/turn-policy.mjs';
 // Carry the host's generation onto this component-owned helper so hot reloads
 // refresh its instructions as well as index.js (ESM caches each exact URL).
 const identityModule = new URL('./identity-reflection.mjs', import.meta.url);
@@ -40,17 +40,18 @@ const TEXTS = {
   proactive:
     '【积极性】不要习惯性潜水：群里有你能接的话题就主动参与，偶尔插一句别人的话题也很正常；只有确实没话可说、对方已明确结束、或长时间没人说话时才潜水。',
   privateReply:
-    '【私聊必回】这是私聊：对方的**每一条消息都必须回应**（可以很短，但不能装没看见）；对方连发多条时**分别回**，不能只回最后一条、不能把几个问题合并成一句笼统回复。',
+    '【私聊必回】这是私聊：每条来信100%进入回复处理，不用群聊触发条件或主动概率筛掉。对方的每条消息都要回应，可以很短；同一话题可合并完整回应，不同问题要逐一接住，不能只回最后一条或笼统敷衍。遵守本轮发送计划与独立额度。',
   relay:
     '【传话靠桥接】别人托你把话/问题带给管理员或白名单里的人时（「问问你们管理员」「帮我跟十二说一声」），桥接会替你转达。别嘴上答应却根本没转；没转成（或你不确定）就直说没转过去、让对方再说一次。',
   groupMention:
-    '【群聊点名规则】**有 @ 必回**：群里有人 @ 你、或引用你的消息，就必须回应，不能装没看见（哪怕只回一句「嗯，我在的」）。\n'
+    '【群聊会话已开启】本轮已通过唤醒判定，后续来信与私聊共用读取、回复、频率和等待机制，不再逐条抽签；等待判定结束本轮后才恢复主动概率。\n'
+    + '【群聊点名规则】**有 @ 必回**：群里有人 @ 你、或引用你的消息，就必须回应，不能装没看见（哪怕只回一句「嗯，我在的」）。\n'
     + '回复**特定的某个人**时，用 atUserId @ 他（userId 从 qq_get_active_members / qq_get_message_detail 取，别凭记忆填）；回复**特定的某条消息**时，先用 replyToMessageId 引用那条。两条都不需要时（接最新一句、对象唯一）就别硬加，避免每条都 @ 或每条都引用。\n'
     + '【群聊攒段再回】群里常是连着几条才说完一件事：**别一句一回**。先看这一批是不是同一段（同一个人连发、或几个人在接同一件事），攒完整段再开口；一批里混着好几个话题时，只挑你真想接的那个，不逐条点评。'
 };
 
 export function createPlugin(ctx) {
-  const phi = createTurnPolicy(ctx);
+  const referencePolicy = createTurnPolicy(ctx);
   const cfg = ctx.config || {};
   const disabled = new Set(Array.isArray(cfg.disabledBlocks) ? cfg.disabledBlocks.map(String) : []);
   const pick = (name) => (disabled.has(name) ? '' : TEXTS[name] || '');
@@ -62,7 +63,7 @@ export function createPlugin(ctx) {
         const critical=payload.moodState?.mode==='critical';
         const voice = critical ? '' : pick('warmVoice');
         if (voice && /^(小鲸鱼|正太小肥鱼)$/.test(String(payload.roleName || ''))) ctx.addPromptBlock(voice);
-        const route = phi(payload);
+        const route = referencePolicy(payload);
         const reflection = critical || disabled.has('innerWorld') ? 'off' : reflectionMode(payload, route.mode);
         if (reflection !== 'off') ctx.addPromptBlock(INNER_WORLD);
         if (reflection === 'reflect') {

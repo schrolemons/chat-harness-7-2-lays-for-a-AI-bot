@@ -1,4 +1,4 @@
-import { pickText } from '../schnie-core/routing.mjs';
+import { pickText } from '../personal-core/routing.mjs';
 
 const AUTONOMOUS = /^(memoryWrite|selfReview|selfOptimize|slangLearn|replyCheck|proactiveCheck|probability|idleRescue|startupGreeting|timeBubble|reminder|careCheck|newFriend|newsShare|taskDone|taskQuestion)/;
 const DISTRESS_OR_URGENT = /(?:我|自己).{0,10}(?:不想活|想死|自杀|自残|吞药|发烧|疼得|难受|生病|崩溃|很难过)|(?:赶时间|截止|先帮我|先处理|明天要交)/;

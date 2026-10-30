@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "fictional-example",
+  "title": "虚构个人思想示例",
+  "author": "示例作者（虚构）",
+  "version": "1.0.0",
+  "description": "只展示资料整理与目录挂载格式，不含任何真实私人材料。",
+  "catalog": "catalog.json",
+  "guide": {
+    "path": "GUIDE.md",
+    "sha256": "91d9df33e64416629112bc834df1f0ea4669d9dcf69d9429b068060f72ac22a5"
+  },
+  "sources": [
+    {
+      "title": "虚构示例原稿",
+      "path": "sources/original.md",
+      "sha256": "a906f868c778a3b3e4a4e745506e5a6a0a4d478061b26f96807939dd20b0e13c"
+    }
+  ],
+  "behavior": {
+    "discussion_commands": [
+      "/core"
+    ],
+    "discussion_patterns": [
+      "如何做选择",
+      "如何尊重边界"
+    ],
+    "care_patterns": []
+  }
+}

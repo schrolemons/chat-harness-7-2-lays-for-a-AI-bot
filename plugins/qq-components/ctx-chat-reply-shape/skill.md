@@ -2,7 +2,7 @@
 
 本组件属于 L 层，拥有全部实际出站的分钟/小时账本、间隔和对话回合条数。桥接在真实模型投递前调用 `replyPlan.resolve`，冻结结果并随 pending/active/completed envelope 携带；beforePrompt 只展示该计划，表情选择也消费同一个计划。
 
-`resolve({key,turnId,incomingText,mood,reason,phiMode?,agent=true,now?})` 返回不可变 kind/maxMessages/hourlyLimit/minIntervalMs/detailLevel/maxMessageChars/delayPlan/line。心情 replyCeiling 可收紧条数；有效欢迎可采用 casual 上限，仍服从 serious 和 phi（最多1条）。没有另一套低心情阈值或最近连发判断。
+`resolve({key,turnId,incomingText,mood,reason,referenceMode?,agent=true,now?})` 返回不可变 kind/maxMessages/hourlyLimit/minIntervalMs/detailLevel/maxMessageChars/delayPlan/line。心情 replyCeiling 可收紧条数；有效欢迎可采用 casual 上限，仍服从 serious 和资料讨论（最多1条）。没有另一套低心情阈值或最近连发判断。
 
 配置唯一来源为 plugin.json：maxMessagesNormal/Casual/Serious、longIncomingChars、intervalMinMs/MaxMs、longGapProbability、longGapMinMs/MaxMs、maxSendPerMinute/Hour、maxMessageChars。0频次上限表示不限制该时间窗口，0间隔表示无需等待；条数必须1–20。普通/长间隔必须合法有序，请求 fixed 延迟也受同计划边界约束。`src/reply-shape.js` 导出纯 `validateReplyPolicy` 供宿主与迁移共用。
 

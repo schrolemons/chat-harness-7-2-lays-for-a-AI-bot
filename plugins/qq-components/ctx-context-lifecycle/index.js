@@ -16,7 +16,7 @@ function buildWakeLine(st, autonomousNow, hasUnreadNow) {
   if (autonomousNow && !hasUnreadNow) return '【这是你主动开口】不是被谁叫醒、也不是在回谁。';
   const wc = st?.wakeConfig || {};
   const time = wc.infinite ? '不另设到时检查' : (wc.sleepUntil && Number.isFinite(Date.parse(wc.sleepUntil)) ? '明确到时唤醒：' + new Date(wc.sleepUntil).toLocaleString() : '未设时间');
-  return '【当前唤醒】'+time+'；群聊来信按全局 p+max(q) 单次判定，私聊不抽签。';
+  return '【当前唤醒】'+time+'；群聊开启会话使用递增主动概率+最大唤醒加成。已经唤醒后不再逐条抽签，等待判定结束会话才恢复主动概率。私聊来信100%进入唤醒与回复。';
 }
 
 function buildReplyLine(payload) {

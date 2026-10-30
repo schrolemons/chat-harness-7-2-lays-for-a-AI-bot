@@ -1,0 +1,14 @@
+/* O1 owns diary/report layout; component values and save handlers stay shared. */
+#section-setting-o-1 .diary-archive-setting {
+  flex: 0 1 320px; min-width: 0; max-width: 100%;
+  border: 0; margin: 0; padding: 0;
+}
+#diaryArchiveSettings .comp-body { margin-top: 0; }
+#diaryArchiveSettings .component-fields { display: block; margin: 0; }
+#diaryArchiveSettings .component-fields > .comp-field { padding: 0; border: 0; }
+#diaryArchiveSettings .comp-field > label { font-weight: 600; }
+#worklogSettings > .settings-content > .inline-component-settings { border: 0; margin: 0; padding: 0; }
+#worklogSettings .worklog-sources > summary { cursor: pointer; }
+@media (max-width:640px) {
+  #section-setting-o-1 .diary-archive-setting { flex-basis: auto; width: 100%; }
+}
