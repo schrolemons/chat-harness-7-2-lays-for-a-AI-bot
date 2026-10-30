@@ -30,7 +30,6 @@
       </div>
       <div class="grid">
         <!-- include:layers/O/pages/mode.html -->
-        <!-- include:layers/O/pages/dsh.html -->
         <!-- include:layers/O/pages/silent.html -->
         <!-- include:layers/O/pages/activity.html -->
         <!-- include:layers/C/pages/persona.html -->
@@ -45,7 +44,13 @@
         <!-- include:layers/T/pages/games.html -->
         <!-- include:layers/T/pages/codex-peer.html -->
         <!-- include:layers/T/pages/injection-lab.html -->
-        <!-- include:layers/E/pages/environments.html -->
+        <!-- include:layers/E/pages/environment-chat.html -->
+        <!-- include:layers/E/pages/environment-admin.html -->
+        <!-- include:layers/E/pages/environment-web.html -->
+        <!-- include:layers/E/pages/environment-watch.html -->
+        <!-- include:layers/E/pages/environment-scripts.html -->
+        <!-- include:layers/E/pages/images.html -->
+        <!-- include:layers/E/pages/video.html -->
         <!-- include:layers/E/pages/sessions.html -->
         <!-- include:layers/E/pages/pending.html -->
         <!-- include:layers/E/pages/v2-e.html -->
@@ -54,6 +59,7 @@
         <!-- include:layers/L/pages/setting-l-1.html -->
         <!-- include:layers/L/pages/setting-l-2.html -->
         <!-- include:layers/O/pages/usage.html -->
+        <!-- include:layers/O/pages/context-visual.html -->
         <!-- include:layers/O/pages/setting-o-0.html -->
         <!-- include:layers/O/pages/setting-o-1.html -->
         <!-- include:layers/O/pages/setting-o-2.html -->
@@ -84,7 +90,8 @@
         <input type="text" id="slangModalExample" placeholder="自然短句示例">
         <label>风险/慎用说明（可选）</label>
         <input type="text" id="slangModalRisk" placeholder="敏感 / 慎用风险">
-        <label>参考来源（可选，每行一个 URL）</label>
+        <div class="setting-field"><label for="slangSourceKeys">适用来源（可选多个群聊或私聊）</label><textarea id="slangSourceKeys" rows="2" placeholder="group:10001
+private:10002"></textarea><small class="parameter-example">例：分别选择群聊和私聊：已确认资料在这些会话优先注入；留空仅供查询。</small></div><label>参考来源（可选，每行一个 URL）</label>
         <textarea id="slangModalSources" rows="3" placeholder="https://..."></textarea>
         <div class="row">
           <button id="slangModalDirectConfirm" class="small">直接确认（转正）</button>
