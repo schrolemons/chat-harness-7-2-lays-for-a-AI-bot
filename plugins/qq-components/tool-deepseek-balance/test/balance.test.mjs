@@ -4,7 +4,7 @@ import { createPlugin } from '../index.js';
 
 function setup() {
   let tool;
-  createPlugin({ registerTool(name, spec) { tool = { name, ...spec }; } });
+  createPlugin({ registerTool(name, spec) { tool = { name, ...spec }; } }, {readUserEnvironment:()=>''});
   return tool;
 }
 
@@ -20,7 +20,10 @@ test('deepseek_balance queries the official endpoint using DEEP_SEEK_KEY and ret
   try {
     const tool = setup();
     assert.equal(tool.name, 'deepseek_balance');
-    assert.deepEqual(await tool.handler({}), {
+    const result=await tool.handler({});
+    const {wallet,...account}=result;
+    assert.equal(wallet.state,'funded');
+    assert.deepEqual(account, {
       ok: true,
       is_available: true,
       balance_infos: [{ currency: 'CNY', total_balance: '12.00', granted_balance: '2.00', topped_up_balance: '10.00' }]

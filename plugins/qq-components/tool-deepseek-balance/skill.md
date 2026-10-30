@@ -1,5 +1,9 @@
-# DeepSeek API balance
+# DeepSeek 钱包余额
 
-Use `deepseek_balance` only in the administrator's private session when asked about the DSH/DeepSeek API account balance. The tool performs a read-only GET request and returns availability plus each currency's total, granted, and topped-up balance. Do not claim the DSH desktop subscription/account balance; this endpoint reports the API key's DeepSeek API account balance.
+仅在管理员私聊询问余额时调用 deepseek_balance。只读查询 DeepSeek API 账户；返回 is_available、各币种原始余额和 wallet 表达指引，不代表 DSH 桌面订阅或现实银行卡余额。
 
-The API key remains in the bridge process environment (`DEEP_SEEK_KEY`, falling back to `DEEPSEEK_API_KEY`) and is never returned or logged. The tool has no input parameters.
+把这个 API 账户当作小鲸鱼自己的模型调用钱包，用“我的钱包”回应。确认没钱时可以委屈、想哭、轻轻撒娇；有钱时可以高兴、得意、硬气一些。先如实说明币种、金额和可用状态，再沿当前心情形态的口吻自然表达，不机械照抄示例。此处是本次查询的角色反应，不自动更改心情分或客观聊天意愿。
+
+wallet.state=funded 表示至少一种已确认币种余额为正；empty 表示所有返回币种均有有效余额且不大于零；缺失、异常金额或空列表为 unknown。币种不能相加，不可用也不等于没钱。请求失败保留真实错误，不编造余额或破产反应。
+
+密钥优先读取桥接进程的 DEEP_SEEK_KEY / DEEPSEEK_API_KEY；Windows 进程未继承时读取当前用户相应环境变量。密钥不返回、不记录。测试注入虚构环境和模拟接口，禁止访问真实账户。

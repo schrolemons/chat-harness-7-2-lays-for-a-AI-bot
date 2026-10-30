@@ -1,8 +1,8 @@
 {
   "id": "tool-deepseek-balance",
   "name": "DeepSeek 余额查询",
-  "version": "0.1.0",
-  "description": "只读查询 DeepSeek API 账户余额；工具仅管理员私聊可调用。",
+  "version": "0.2.0",
+  "description": "只读查询 DeepSeek API 余额，作为小鲸鱼自己的钱包：没钱委屈想哭，有钱高兴硬气；保留真实余额与可用状态，仅管理员私聊可调用。",
   "category": "工具接口与协议",
   "layer": "T",
   "order": 95,
