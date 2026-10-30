@@ -361,7 +361,7 @@ export function createPlugin(ctx) {
               return handled(payload, { action: 'await-content', target });
             }
             if (!claim()) return duplicate();
-            void sendText(key, '还是没对上人。给我 QQ 号或群号（例：60000），或者先说「给 60000 带句话」。');
+            void sendText(key, '还是没对上人。给我 QQ 号或群号（例：20009），或者先说「给 20009 带句话」。');
             return handled(payload, { action: 'await-target-retry' });
           }
         }

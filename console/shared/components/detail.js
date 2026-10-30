@@ -21,11 +21,11 @@ export async function loadComponentDetail(id, el) {
         body.dataset.loaded = '1';
         return;
       }
-      const form = renderComponentForm(p, el.dataset.inlineFields ? el.dataset.inlineFields.split(',') : null, !!el.dataset.inlineFields && id !== 'life-daily-worklog');
+      const form = renderComponentForm(p, el.dataset.inlineFields ? el.dataset.inlineFields.split(',') : null, !!el.dataset.inlineFields && id !== 'life-daily-worklog' && !el.closest('.env-comp-root'), !!el.closest('.environment-page'));
       const toggleLabel = id === 'tool-user-checking' ? '启用自查与桌面便签' : (el.dataset.toggleLabel || '启用此功能');
-      const enabled = el.dataset.hideToggle === '1' || id === 'exec-image-generation' ? '' : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? ' checked' : '') + '> <span>' + esc(toggleLabel) + '</span></label><span class="meta comp-toggle-msg"></span>';
+      const enabled = el.dataset.hideToggle === '1' || id === 'exec-image-generation' || form?.ownsEnabled ? '' : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? ' checked' : '') + '> <span>' + esc(toggleLabel) + '</span></label><span class="meta comp-toggle-msg"></span>';
       if (form) {
-        const saveLabel=id==='life-campus-watch' ? (el.closest('#envCompScript')?'保存脚本协同参数':'保存网页监控参数') : (form.saveLabel||'保存'+p.name);
+        const saveLabel=el.dataset.saveLabel || (id==='life-campus-watch' ? (el.closest('#envCompScript')?'保存脚本协同参数':'保存网页监控参数') : (form.saveLabel||'保存'+p.name));
         const scope = componentScope(id, saveLabel);
 
         body.innerHTML = (form.empty ? '' : '<p class="parameter-scope" data-config-scope="'+esc(scope.label)+'"><b>'+esc(scope.label)+'</b> · '+esc(scope.description)+'</p>') + enabled + form.html + (form.empty || el.dataset.deferSave === '1' ? '' : '<div class="row" style="gap:8px;margin-top:8px"><button class="small primary comp-save" data-save-action>' + esc(scope.saveLabel) + '</button><span class="meta comp-msg"></span></div>');
@@ -72,15 +72,20 @@ export async function loadComponentDetail(id, el) {
           }
           if (id === 'life-campus-watch' && el.closest('#envCompScript')) {
             const activeScripts = (next.scriptPaths || []).filter((e) => (typeof e === 'string' ? true : e.enabled !== false));
-            if (next.scriptCollabEnabled && !activeScripts.length) throw Error('请先勾选并填写至少一个脚本路径');
+            next.scriptCollabEnabled=activeScripts.length>0;
           }
           const out = await api('/api/plugins/config', 'POST', { id, config: next });
           if (out.ok === false) throw Error(out.error || '保存失败');
+          if(form.ownsEnabled&&next.enabled===true){
+            try{const active=await api('/api/plugins/toggle','POST',{id,enabled:true});if(active.ok!==true)throw Error(active.error||'启用失败');}
+            catch(error){const control=body.querySelector('[data-config-key="enabled"] input');if(control)control.checked=false;throw Error('参数已保存，但组件启用失败：'+error.message);}
+          }
           if (msg) msg.textContent = '已保存并重载';
           body.dataset.loaded = '';
           await loadComponentDetail(id, el);
           const readbackMsg = body.querySelector('.comp-msg');
           if (readbackMsg) readbackMsg.textContent = '已保存并重载，已重新读取';
+          el.dispatchEvent(new CustomEvent('component-config-saved', {bubbles:true, detail:{id}}));
         };
         body.querySelector('.comp-save')?.addEventListener('click', async event => {
           const button=event.currentTarget;button.disabled=true;button.setAttribute('aria-busy','true');

@@ -1,6 +1,5 @@
 
 import { api } from '../../shared/api.js';
-import { viewV2State, showSessionStates } from './session-state.js';
 // layers/L/activity: explicit imports; initialize is called in the application startup order.
 
 
@@ -29,21 +28,6 @@ document.getElementById('v2ResetBtn').addEventListener('click', async () => {
   msg.textContent = r.ok ? '✅ 已重置二代状态' : ('❌ ' + (r.error || '失败'));
   msg.className = r.ok ? 'meta ok' : 'meta err';
   refreshV2Activity();
-  document.getElementById('v2StateSummary').textContent = '暂无会话状态。';
-  document.getElementById('v2StateOutput').textContent = '（空）';
-});
-document.getElementById('v2StateView').addEventListener('click', viewV2State);
-document.getElementById('v2ForceWake').addEventListener('click', async () => {
-  const key = document.getElementById('v2StateKey').value.trim();
-  if (!key) { alert('请输入会话 key'); return; }
-  const r = await api('/api/socialV2/wake', 'POST', { key, reason: 'admin' });
-  const msg = document.getElementById('lifecycleActionMessage');
-  msg.textContent = r.ok ? '✅ 已发送唤醒' : ('❌ ' + (r.error || '失败'));
-  msg.className = r.ok ? 'meta ok' : 'meta err';
-});
-document.getElementById('v2StatesList').addEventListener('click', async () => {
-  const r = await api('/api/socialV2/states');
-  showSessionStates(r);
 });
 }
 export { refreshV2Activity };

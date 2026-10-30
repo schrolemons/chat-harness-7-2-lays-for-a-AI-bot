@@ -63,3 +63,6 @@ export const COMPONENT_FORMS = {
 
 import moodForm from '../../layers/C/components/ctx-user-mood.js';
 COMPONENT_FORMS['ctx-user-mood'] = moodForm;
+
+import waitCycleForm from '../../layers/L/components/life-conversation-wait.js';
+COMPONENT_FORMS['life-conversation-wait'] = waitCycleForm;

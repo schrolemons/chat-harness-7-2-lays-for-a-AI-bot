@@ -76,7 +76,7 @@ export function createPlugin(ctx) {
           const mood = buildMoodBlock(payload.moodState);
           if (mood) ctx.addPromptBlock(mood);
         }
-        if (!disabled.has('sticker')) {
+        if (phi(payload).mode === 'off' && !disabled.has('sticker')) {
           const sticker = buildStickerBlock(payload);
           if (sticker) ctx.addPromptBlock(sticker);
         }

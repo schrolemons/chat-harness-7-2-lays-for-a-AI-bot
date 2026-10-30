@@ -11,9 +11,11 @@ export function createPlugin(ctx) {
     hooks: {
       beforePrompt(payload) {
         if (String(payload?.reason || '') !== 'memoryWrite') return '';
+        const normalize=text=>String(text||'').replace(/\s+/g,'').trim();
+        const prior=(payload?.priorPromptModules||[]).some(row=>row.id==='ctx-memory-profile-facts'&&normalize(row.text).includes(normalize(PROFILE_EXTRACTION_POLICY)));
         return [
           '【记忆更新｜补充人物档案并整理会话记忆，不发 QQ】',
-          PROFILE_EXTRACTION_POLICY,
+          prior?'':PROFILE_EXTRACTION_POLICY,
           '先逐栏核对本会话重要事实、今日用户画像和可核实的入站原文；在当前权限内自动补充遗漏的人际关系与其他稳定信息，不必等用户再次要求整理。先完成 profile_get / profile_update 并确认成功，再输出完整会话记忆；权限不足或来源不明的只记待核实候选，不能跨会话猜测补写。',
           '现在整理本会话记忆。输出完整的标签块：重要事实只提交新增证据或有来源和日期的更正，不改写/复述已有事实；存储服务会合并保留旧事实。用户画像与日记提交完整最新内容，严格保留下面的标签：',
           '分工：QQ人物档案保存跨会话稳定资料，更新最慢、最权威；轻量记忆只保存当前话题、bot待说想法和短窗口行为印象，更新最快；有持续价值才提炼进入本会话重要事实，不整段复制、不跨会话搬运隐私。',
@@ -30,7 +32,7 @@ export function createPlugin(ctx) {
           '（用第一人称写日记日期对应的时间窗：XX 日日记只记录前一日 22:00 至 XX 日当晚 22:00 发生的事；按消息时间归属，不能把午夜当作日界，也不要混入时间窗前的旧事。用 1~5 句口语化写经历、感受和后续想法；不要把自己的感受写成他人的客观性格）',
           '</MEMORY>',
           `要求：简洁准确、不编造；总长不超过 ${maxChars} 字；**不要发任何 QQ 消息、不要调用发送工具**；输出这段后直接收尾。`
-        ].join('\n');
+        ].filter(Boolean).join('\n');
       }
     }
   };

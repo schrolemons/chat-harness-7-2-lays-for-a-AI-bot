@@ -1,5 +1,5 @@
 <section id="section-slang" data-page="slang" class="card span-all">
-      <h2>群聊黑话 / 网络用语库</h2>
+      <h2>黑话</h2>
       <div class="meta">DSH 会从群聊中自动提取疑似黑话候选；二代仿真模式下 AI 也可用 <code>qq_slang_submit</code> 主动提交陌生词。候选可批量送 DSH 深度联网研究，研究结果回到控制台由你删改修正后转正；确认后的词条会写入“黑话提示词”，注入一代/二代 AI 的聊天上下文，成为 AI 可查询和使用的记忆。</div>
 
       <div class="slang-tabs">
@@ -81,15 +81,16 @@
         <input type="text" id="slangUsage" placeholder="用法（可选）" style="flex:1">
         <input type="text" id="slangExample" placeholder="示例（可选）" style="flex:1">
       </div>
+      <div class="setting-field"><label for="slangManualSourceKeys">适用来源（可多选会话）</label><textarea id="slangManualSourceKeys" rows="2" placeholder="group:10001&#10;private:10002"></textarea><small class="parameter-example">例：选择群聊与私聊后，确认黑话在这些会话按上限默认注入；留空仅供查询。</small></div>
       <div class="row" style="margin-top:8px">
         <button id="slangAdd" class="small">添加入库（确认）</button>
       </div>
       <details style="margin-top:10px">
-        <summary class="meta">黑话系统参数（可调）</summary>
+        <summary class="meta">黑话学习与注入设置</summary>
         <div class="row">
           <div class="setting-field"><label style="flex:1" for="slangEnabled">AI 自动提取黑话候选</label><input type="checkbox" id="slangEnabled" style="width:auto"><small class="parameter-example" data-example-for="slangEnabled">例：开启后按消息门槛自动提取黑话候选，确认前不当作可靠释义注入。</small></div>
         </div>
-        <div class="meta">关闭后停止自动提取和自动研究；手动填写并确认的词条仍会注入对话。</div>
+        <div class="meta">关闭后停止自动提取和自动研究；已确认条目按适用来源与注入上限使用，仍可主动查询。</div>
         <div class="row">
           <div class="setting-field"><label style="flex:1" for="slangExtractMin">触发提取最少消息数</label><input type="number" id="slangExtractMin" min="1" style="width:90px"><small class="parameter-example" data-example-for="slangExtractMin">例：设为12：累计足够的12条消息后才开始一批提取。</small></div>
         </div>
@@ -100,7 +101,7 @@
           <div class="setting-field"><label style="flex:1" for="slangThresholds">研究触发阈值（逗号分隔）</label><input type="text" id="slangThresholds" placeholder="2,4,8" style="width:120px"><small class="parameter-example" data-example-for="slangThresholds">例：填2,4,8：候选出现次数达到这些阶段时，才尝试进一步研究。</small></div>
         </div>
         <div class="row">
-          <div class="setting-field"><label style="flex:1" for="slangInjectMax">注入最大条数</label><input type="number" id="slangInjectMax" min="1" max="30" style="width:90px"><small class="parameter-example" data-example-for="slangInjectMax">例：设为5：最多注入5条相关黑话，不把整个词库塞进提示词。</small></div>
+          <div class="setting-field"><label style="flex:1" for="slangInjectMax">默认注入黑话条数（0=仅查询）</label><input type="number" id="slangInjectMax" min="0" max="40" style="width:90px"><small class="parameter-example" data-example-for="slangInjectMax">例：设为5：最多注入适用来源内的5条已确认黑话，不把整个词库塞进提示词。</small></div>
         </div>
         <div class="row">
           <div class="setting-field"><label style="flex:1" for="slangLearnerPreset">学习会话 preset</label><input type="text" id="slangLearnerPreset" placeholder="qq-chat" style="width:120px"><small class="parameter-example" data-example-for="slangLearnerPreset">例：填专用学习预设ID：后台学习使用该预设，不改变普通会话的人格选择。</small></div>
@@ -112,7 +113,7 @@
           <div class="setting-field"><label style="flex:1" for="slangAutoResearch">自动联网研究</label><input type="checkbox" id="slangAutoResearch" style="width:auto"><small class="parameter-example" data-example-for="slangAutoResearch">例：关闭后不自动联网补充研究，候选仍可人工编辑确认。</small></div>
         </div>
         <div class="row" style="margin-top:8px">
-          <button id="slangConfigSave" class="small primary" data-save-action>保存全局黑话学习规则</button>
+          <button id="slangConfigSave" class="small primary" data-save-action>保存全局黑话设置</button>
           <span class="meta" id="slangConfigMsg"></span>
         </div>
       </details>

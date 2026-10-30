@@ -75,9 +75,9 @@ const oversized=await adminTools.get('slang_research_batch')({ids:['a','b','c','
 check('管理端研究单批至多五条',oversized?.ok===false&&/5/.test(oversized.error),JSON.stringify(oversized));
 
 // 注入：contextBlock 包含时间行；确认后才进黑话表
-plugin.services.slang.contextBlock(); // 触发 buildSlangContext（候选不注入）
+plugin.services.slang.contextBlock({key:'group:1'}); // 触发 buildSlangContext（候选不注入）
 store[0].status = 'confirmed';
-const block = plugin.services.slang.contextBlock();
+const block = plugin.services.slang.contextBlock({key:'group:1'});
 check('注入：contextBlock 带当前时间', block.includes('【当前时间】'), block.slice(0, 40));
 check('注入：确认的黑话进入表', block.includes('典') && block.includes('很典型'), block.slice(0, 160));
 
@@ -101,7 +101,7 @@ const bridge = fs.readFileSync('src/bridge.js', 'utf8');
 for (const marker of ['slangWindows', 'slangExtractionCooldowns', 'slangResearchingIds', 'queueSlangTask', 'feedSlangWindow', 'maybeQueueSlangExtraction', 'runSlangExtraction', 'runSlangResearch']) {
   check('bridge 已移除 ' + marker, !bridge.includes(marker));
 }
-check('bridge 通过服务注入黑话表', bridge.includes("callService('slang', 'contextBlock')"));
+check('bridge 通过服务注入黑话表', bridge.includes("callService('slang','contextBlock',payload)"));
 check('bridge 暴露 slangList/slangSave 能力', bridge.includes('taskCaps.slangList') && bridge.includes('taskCaps.slangSave'));
 check('bridge 保留学习会话往返能力', bridge.includes('taskCaps.slangLearnerPrompt'));
 

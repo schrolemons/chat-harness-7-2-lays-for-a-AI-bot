@@ -119,12 +119,15 @@ function renderUsageConversations(r) {
   }));
 }
 
+let budgetRefreshRevision=0;
 async function refreshUsageBudgets() {
+  const ticket=++budgetRefreshRevision;
   const box = document.getElementById('usageBudgets');
   const msg = document.getElementById('usageBudgetMsg');
-  if (box.contains(document.activeElement)) return;
+  if (box.contains(document.activeElement)||box.querySelector('[data-budget-dirty]')) return;
   try {
     const result = await api('/api/tokens/budgets');
+    if(ticket!==budgetRefreshRevision||box.contains(document.activeElement)||box.querySelector('[data-budget-dirty]'))return;
     const rows = result.rows || [];
     const ownerEnabled = result.owner?.budgetEnabled !== false;
     const ownerInput = document.getElementById('usageOwnerBudgetEnabled');
@@ -336,6 +339,7 @@ document.getElementById('usageOwnerBudgetSave').addEventListener('click', async 
   } catch (error) { msg.textContent = '保存失败：' + error.message; msg.className = 'meta err'; }
   finally { button.disabled = false; }
 });
+document.getElementById('usageBudgets').addEventListener('input',event=>{const row=event.target.closest('[data-budget-key]');if(row){row.dataset.budgetDirty='1';budgetRefreshRevision++;}});
 document.getElementById('usageBudgets').addEventListener('click', async (event) => {
   const button = event.target.closest('[data-budget-save]');
   if (!button) return;
@@ -345,7 +349,9 @@ document.getElementById('usageBudgets').addEventListener('click', async (event) 
   button.disabled = true;
   try {
     await api('/api/tokens/budgets', 'POST', { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], weakMinIntervalMin: values[2] });
-    msg.textContent = '已保存'; msg.className = 'meta ok';
+    const unchanged=[...row.querySelectorAll('input')].every((input,index)=>Number(input.value)===values[index]);
+    if(unchanged)delete row.dataset.budgetDirty;
+    msg.textContent=unchanged?'已保存':'已保存提交值；之后的修改尚未保存';msg.className='meta ok';
     button.blur();
     await refreshUsageBudgets();
   } catch (error) { msg.textContent = '保存失败：' + error.message; msg.className = 'meta err'; }

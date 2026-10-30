@@ -1,0 +1,14 @@
+<section id="section-environment-watch" data-page="environment-watch" class="card span-all environment-page">
+  <h2>网页监督</h2>
+  <p class="meta">设置监控网址、检查间隔及监控时的浏览器运行方式。</p>
+      <div class="comp-card env-card">
+        <div class="env-card-heading"><h3>网页监控</h3><span class="meta">一行一个网址，变化时发送 diff</span></div>
+        <div class="env-card-body">
+        <div class="meta">填入具体网址后开始监控。绿灯表示最近一次读取正常，红灯表示无法读取或需要协助登录。</div>
+        <details class="parameter-block" open><summary>调整监控参数</summary><div class="env-comp-root" id="envCompBrowserWatch" data-ids="life-campus-watch" data-fields="webWatchEnabled,watchUrls,fastCheckMinutes,fullCheckMinutes"></div></details>
+        <details class="parameter-block" open><summary>浏览器运行方式与监控规则</summary><div class="env-comp-root" id="envCompBrowserWatchPolicy" data-ids="exec-browser-manager" data-fields="headlessFor,visibleFor,rules" data-hide-toggle="1" data-save-label="保存监控浏览器规则"></div></details>
+        <div class="watch-status-heading"><h3>监控状态</h3><button id="envMonitorRefresh" type="button" class="small">刷新监控状态</button></div>
+        <div id="envMonitorStatus" class="watch-site-list" aria-live="polite"><div class="meta">监控状态读取中…</div></div>
+        </div>
+      </div>
+</section>

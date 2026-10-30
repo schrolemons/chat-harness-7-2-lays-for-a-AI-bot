@@ -1,4 +1,5 @@
-import { buildWakeGuidance } from '../life-wake-reasons/guidance.js';
+const guidanceURL=new URL('../life-wake-reasons/guidance.js',import.meta.url);guidanceURL.search=new URL(import.meta.url).search;
+const {buildWakeGuidance}=await import(guidanceURL.href);
 // ctx-context-lifecycle（C/L 层｜唤醒/节奏/收尾提示）
 //
 // 从 buildWakePromptV2 搬走：
@@ -14,19 +15,8 @@ import { buildWakeGuidance } from '../life-wake-reasons/guidance.js';
 function buildWakeLine(st, autonomousNow, hasUnreadNow) {
   if (autonomousNow && !hasUnreadNow) return '【这是你主动开口】不是被谁叫醒、也不是在回谁。';
   const wc = st?.wakeConfig || {};
-  const tr = wc.triggers || {};
-  const mode = wc.mode === 'active' ? '活跃' : '潜水';
-  const time = wc.infinite ? '无限' : (wc.sleepUntil && Number.isFinite(Date.parse(wc.sleepUntil)) ? '有限至 ' + new Date(wc.sleepUntil).toLocaleString() : '未设时间');
-  const triggers = [];
-  if (tr.atMention) triggers.push('@');
-  if (tr.nameMention) triggers.push('名字');
-  if (Array.isArray(tr.keywords) && tr.keywords.length) triggers.push('关键词');
-  if (tr.question) triggers.push('提问');
-  if (tr.poke) triggers.push('拍一拍');
-  if (Array.isArray(tr.speakerIds) && tr.speakerIds.length) triggers.push(`指定成员(${tr.speakerIds.length}:${tr.speakerIds.join(',')})`);
-  if (tr.anyMessage) triggers.push('任意消息');
-  if (Number(tr.probability) > 0) triggers.push(`概率${tr.probability}`);
-  return `【当前唤醒】${mode}，${time}${triggers.length ? `；触发：${triggers.join('/')}` : ''}`;
+  const time = wc.infinite ? '不另设到时检查' : (wc.sleepUntil && Number.isFinite(Date.parse(wc.sleepUntil)) ? '明确到时唤醒：' + new Date(wc.sleepUntil).toLocaleString() : '未设时间');
+  return '【当前唤醒】'+time+'；群聊来信按全局 p+max(q) 单次判定，私聊不抽签。';
 }
 
 function buildReplyLine(payload) {
@@ -34,14 +24,13 @@ function buildReplyLine(payload) {
   const quietMs = Number(timing.quietMs) || 8000;
   const remaining = Math.max(0, Number(timing.remainingQuietMs) || 0);
   if (payload.autonomousNow && !payload.hasUnreadNow) {
-    return '【主动开口·不是回复】这一轮是你自己到点/想说话，**不是回复任何人**：不要用“你按/你戳/你说/你刚才/你问我/你发的”这类接话口吻，不要假装对方刚发过消息，也不要复述旧话题。直接说你此刻想说的那 1 句（可配 1 张贴语境表情）；说完继续潜水，不需要等对方回复。';
+    return '【主动开口·不是回复】这一轮是你自己到点/想说话，**不是回复任何人**：不要用“你按/你戳/你说/你刚才/你问我/你发的”这类接话口吻，不要假装对方刚发过消息，也不要复述旧话题。直接说你此刻想说的那 1 句（可配 1 张贴语境表情）；说完并提交回执后，调用 qq_wait_for_messages 等新互动，按后台 endRound 判断继续或结束。';
   }
-  return `【首回复节奏】先处理已有消息，完整的问题及时回答。需要确认对方是否继续补充时，用 qq_wait_for_messages(purpose="reply", quietMs=${quietMs})；从最后来信计时，合批和读提示词的耗时也算，目前还差约 ${Math.ceil(remaining / 1000)} 秒静默。已安静够久可直接回，工具也会立即返回并补上思考期间的新消息。只有明确没说完、你确实要等下文时，才用普通 messages 长等待。`;
+  return `【首回复节奏】先处理已有消息，完整的问题及时回答。需要确认对方是否继续补充时，用 qq_wait_for_quiet(quietMs=${quietMs})；从最后来信计时，合批和读提示词的耗时也算，目前还差约 ${Math.ceil(remaining / 1000)} 秒静默。已安静够久可直接回，工具也会立即返回并补上思考期间的新消息。只有明确没说完、你确实要等下文时，才用普通 messages 长等待。`;
 }
 
-function buildPreSleepLine(preSleepMs) {
-  const ms = Math.max(0, Number(preSleepMs) || 300000);
-  return `【沉睡前强制等待】这是决定潜水收尾时的步骤，不是首回复的前置条件。除非对方明确说“不聊了/晚安/下了/拜拜”等结束语，否则每次设置潜水/下一次唤醒前，必须先调用 qq_wait_for_messages(timeoutMs=${ms}) 完成一次沉睡前观察；回复前 purpose="reply" 的短静默不能代替这次完整观察。若 ${Math.round(ms / 60000)} 分钟内没人说话，返回 preSleepWaitSatisfied=true，可以设置下一次唤醒并沉睡；若期间有人发新消息，先查看返回的 newMessages——判断不需要你参与就可以直接沉睡，若你选择参与回复，则下次想睡时需要重新等待观察窗口。【不要靠猜】：等待返回里的 canSleepNow/hint 就是闸门的判断结果——canSleepNow=true 立刻收尾（mark_read 或 set_wake_config）；false 时按 hint 给出的 timeoutMs 一次等满，别用更短的 timeoutMs 去凑（更短的等待不算观察，只会白等一轮）。`;
+function buildPreSleepLine() {
+  return '【每波回复后的等待｜私聊与群聊共用】完成一波实际回复并逐条提交回执后，调用 qq_wait_for_messages，自选受后台上下限约束的等待时长。收到新消息就继续读取处理，确需确认用户是否还会补充时调用 qq_wait_for_quiet；不同问题或对象分别引用回复，意思相同或接近的内容合并成一波。无人回复且超时，由后台按 p、q 递增概率判定；endRound=true 时后台结束当前轮，不得追发或继续等待；false 时再调用一次等新消息工具。不要自行抽签；不要用静默工具绕过结束计数。旧的固定沉睡前观察已退役。';
 }
 
 function buildReminderLine(items, key = '') {
@@ -70,8 +59,7 @@ export function createPlugin(ctx) {
     const roleLine = roleName ? `【当前角色】${roleName}（完整角色卡请调用 qq_get_prompt 查看）\n\n` : '';
     const token = String(payload.agentToken || '');
     const tokenLine = token ? `【会话令牌】${token}（调用二代状态工具时请在参数中带上此令牌）\n\n` : '';
-    const preSleepMs = Math.max(0, Number(payload.preSleepMs) || 300000);
-    return `${roleLine}${identity}${tokenLine}【提醒】你还没有完成回合收尾。请调用 qq_set_wake_config 设置下一次唤醒条件（例如继续潜水多久、@/名字/关键词/提问/概率/指定成员等），或者调用 qq_mark_read 表示你看过且决定不接。这是为了防止你忘记收尾后进入“永眠”。注意：设置潜水前先用 qq_wait_for_messages(timeoutMs=${preSleepMs}) 完成沉睡前观察；等待期间有人说话时查看 newMessages，判断不需要你参与即可收尾。`;
+    return `${roleLine}${identity}${tokenLine}【提醒】你还没有完成回合收尾。先处理本轮已见消息并提交逐条回执；需要等新消息时调用 qq_wait_for_messages，并遵守工具返回的 endRound。普通潜水无需另设固定到期检查；只有明确约定时间的唤醒才使用 qq_set_wake_config 的 sleepMs/sleepUntil。群聊来信概率由全局规则统一决定，不再设置 triggers 或 active 模式。`;
   }
 
   return {
@@ -84,7 +72,7 @@ export function createPlugin(ctx) {
     hooks: {
       beforePrompt(payload = {}) {
         if (/^(memoryWrite|selfReview|selfOptimize|slangLearn)$/.test(String(payload?.reason||''))) return '';
-        ctx.addPromptBlock(buildWakeGuidance(payload.wakeConfig || {}, payload.proactivePolicy || null));
+        if(on('wake'))ctx.addPromptBlock(buildWakeGuidance(payload.wakeConfig || {}, payload.proactivePolicy || null));
         if (on('muted') && payload.mutedJustClearedNow) {
           ctx.addPromptBlock('【刚解除静音】对方之前说过忙/别吵/等会再聊，现在他主动找你。可以正常回，但简短一点，别提“你刚才说忙”，也别借机多聊；对方没叫你时不要再主动搭话。');
         }
@@ -92,7 +80,7 @@ export function createPlugin(ctx) {
           const line = buildReminderLine(payload.pendingRemindersNow, payload.key);
           if (line) ctx.addPromptBlock(line);
         }
-        if (on('reply')) ctx.addPromptBlock(buildReplyLine(payload));
+        if (on('reply')) {ctx.addPromptBlock(buildReplyLine(payload));ctx.addPromptBlock('【评分分工】chatWillingness是用户客观上有没有时间与精力聊天，不是你是否喜欢对方；只根据明确忙闲/精力证据，用qq_set_wake_config的chatWillingness和reason更新，无依据保持原值。心情分表示你的主观交流感受并单独决定风格。两者共同影响主动概率、条数和深度；无人回复不自动等于忙，你自己发言也不是用户忙闲证据。');}
         if (on('wake')) ctx.addPromptBlock(buildWakeLine(payload.st, payload.autonomousNow, payload.hasUnreadNow));
         if (on('preSleep')) ctx.addPromptBlock(buildPreSleepLine(payload.preSleepMs));
         return '';

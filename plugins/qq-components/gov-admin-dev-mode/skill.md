@@ -11,7 +11,7 @@ owner 私聊（qq-chat-dev）会多出一大段「管理员开发模式」说明
 ## 输入
 | 字段 | 含义 |
 | --- | --- |
-| `aliasEntries` | 昵称对照（`十二=private:60003、…`） |
+| `aliasEntries` | 昵称对照（`十二=private:20002、…`） |
 | `rootEscaped` | 桥接仓库根路径（已做反斜杠转义，直接嵌进提示词） |
 
 ## 边界

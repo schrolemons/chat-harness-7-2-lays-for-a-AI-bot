@@ -1,3 +1,5 @@
+const scopesUrl=new URL('../learning-scopes.mjs',import.meta.url);scopesUrl.search=new URL(import.meta.url).search;
+const {migrateScope,sourceKeys,injectLimit,injectionReport,defaultEntries,queryEntries,changeCurrentSource,lookupHints,queryEnabled,sourceGuidance,semanticEntry}=await import(scopesUrl.href);
 // ctx-chat-slang（C 层｜黑话学习与注入）
 //
 // 以前黑话学习整条链路在 bridge.js：收消息攒窗口、冷却、抽词、研究、写 state/slang.json、
@@ -37,6 +39,7 @@ export function createPlugin(ctx) {
   const save = (entries) => {
     try { return typeof cap.slangSave === 'function' ? cap.slangSave(entries) === true : false; } catch { return false; }
   };
+  const migrated=list().map(migrateScope);if(JSON.stringify(migrated)!==JSON.stringify(list())&&!save(migrated))throw Error('黑话来源迁移写入失败');
   const learnerPrompt = async (text,keys=['*']) => {
     try { return typeof cap.slangLearnerPrompt === 'function' ? await cap.slangLearnerPrompt(String(text || ''),{signal:ctx.signal,keys}) : null; } catch (error) { ctx.warn('黑话学习会话调用失败：' + (error?.message ?? error)); return null; }
   };
@@ -192,15 +195,23 @@ export function createPlugin(ctx) {
     services: {
       slang: {
         // 每轮提示词注入：当前时间 + 已确认黑话表（桥接 prepend 到 prompt）
-        contextBlock() {
+        contextBlock(payload={}) {
           const cfg = getCfg();
           const now = new Date();
           const timeLine = '【当前时间】' + now.toLocaleString('zh-CN', { hour12: false }) + '（' + Intl.DateTimeFormat().resolvedOptions().timeZone + '）';
           const parts = [timeLine];
-          const block = buildSlangContext(list(), cfg.injectMax ?? 8);
+          const selected=defaultEntries(list(),'slang',payload.key,injectLimit(cfg.injectMax,8));
+          const block = buildSlangContext(selected,selected.length);
+          parts.push(sourceGuidance('slang',cap));
+          const hints=queryEnabled(cap,'slang')?lookupHints(list(),'slang',{...payload,injected:selected}):'';if(hints)parts.push(hints);
           if (block) parts.push(block);
           return parts.join('\n\n');
         },
+        injectionPreview:({key}={})=>injectionReport(list(),'slang',key,injectLimit(getCfg().injectMax,8)),
+        query:input=>queryEntries(list(),'slang',input),
+        defaultEntries:({key}={})=>defaultEntries(list(),'slang',key,injectLimit(getCfg().injectMax,8)).map(e=>semanticEntry(e,'slang',key)),
+        updateSources:input=>{const rows=list(),out=changeCurrentSource(rows,input);if(out.ok&&out.changed&&!save(rows))return {ok:false,error:'黑话写入失败'};return out;},
+        validateSourceKeys:({sourceKeys:keys}={})=>{try{return {ok:true,sourceKeys:sourceKeys(keys)};}catch(error){return {ok:false,error:error.message};}},
         reset() { windows.clear(); cooldowns.clear(); researching.clear(); },
         forget({ key } = {}) { if (key) { windows.delete(key); cooldowns.delete(key); } },
         clearWindows() { windows.clear(); cooldowns.clear(); },

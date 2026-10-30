@@ -1,0 +1,4 @@
+.setting-field:has(> textarea[id$="SourceKeys"]) { display:grid; gap:6px; width:100%; max-width:520px; margin-top:12px; }
+.setting-field:has(> textarea[id$="SourceKeys"]) > :is(label,small,select,textarea) { margin:0; min-width:0; max-width:100%; }
+.setting-field > textarea[id$="SourceKeys"] { width:100%; min-height:76px; }
+.learning-source-key { display:inline-block; max-width:100%; overflow-wrap:anywhere; margin:2px 4px 2px 0; }

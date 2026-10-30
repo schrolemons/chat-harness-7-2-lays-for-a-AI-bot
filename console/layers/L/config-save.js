@@ -3,26 +3,9 @@
 export function collectLConfig() { return {
 autoReplyCheckMs: Math.round(Number(document.getElementById('v2AutoReplyCheckSec').value) || 30) * 1000,
 wake: {
-      defaultMode: document.getElementById('v2WakeDefaultMode').value,
-      recommendedDefaultInfinite: document.getElementById('v2RecDefaultInfinite').checked,
-      preSleepWaitEnabled: document.getElementById('v2PreSleepWaitEnabled').checked,
-      preSleepWaitMs: (Number.isFinite(Number(document.getElementById('v2PreSleepWaitMin').value)) && Number(document.getElementById('v2PreSleepWaitMin').value) >= 0 ? Math.round(Number(document.getElementById('v2PreSleepWaitMin').value)) : 5) * 60000,
-      recommendedSleepMinMs: (Math.round(Number(document.getElementById('v2RecSleepMin').value) || 5)) * 60000,
-      recommendedSleepMaxMs: (Math.round(Number(document.getElementById('v2RecSleepMax').value) || 120)) * 60000,
-      recommendedProbability: Number(document.getElementById('v2RecProb').value) || 0,
-      recommendedKeywords: document.getElementById('v2RecKeywords').value.split(/[,，]/).map(s => s.trim()).filter(Boolean),
-      recommendedAtMention: document.getElementById('v2RecAt').checked,
-      recommendedNameMention: document.getElementById('v2RecName').checked,
-      recommendedQuestion: document.getElementById('v2RecQuestion').checked,
-      recommendedPoke: document.getElementById('v2RecPoke').checked,
       recommendedHint: document.getElementById('v2WakeHint').value,
-      sleepMinMs: (Math.round(Number(document.getElementById('v2SleepMinMs').value) || 0)) * 1000,
-      sleepMaxMs: (Math.round(Number(document.getElementById('v2SleepMaxMs').value) || 0)) * 1000,
       maxWakePerMinute: Math.round(Number(document.getElementById('v2MaxWakeMin').value) || 0),
-      maxWakePerHour: Math.round(Number(document.getElementById('v2MaxWakeHour').value) || 0),
-      batchWindowMs: Math.round(Number(document.getElementById('v2BatchWindowMs').value) || 8000),
-      noActionLimit: Math.round(Number(document.getElementById('v2NoActionLimit').value) || 3),
-      maxWakeConfigReminders: Math.round(Number(document.getElementById('v2MaxWakeConfigReminders').value) || 2)
+      maxWakePerHour: Math.round(Number(document.getElementById('v2MaxWakeHour').value) || 0)
     },
 wait: {
       defaultMs: Math.round(Number(document.getElementById('v2WaitDefaultMs').value) || 5000),

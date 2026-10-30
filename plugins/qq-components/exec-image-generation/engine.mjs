@@ -13,10 +13,10 @@ const readJson=(file,fallback)=>{try{return JSON.parse(fs.readFileSync(file,'utf
 const writeJson=(file,value)=>{const tmp=file+'.tmp';fs.writeFileSync(tmp,JSON.stringify(value),{mode:0o600});fs.renameSync(tmp,file);};
 function cleanJob(job){if(!job)return {ok:false,error:'JOB_NOT_FOUND'};return {ok:true,jobId:job.id,status:job.status,imageId:job.status==='ready'?job.id:undefined,error:job.error||undefined,createdAt:job.createdAt};}
 export function createImageEngine({root,config={},fetchImpl=fetch,readReferences=async()=>[],now=Date.now,signal}={}){
- const provider=config.provider==='ark'?'ark':'openai';
- const model=provider==='ark'?config.arkModel:config.model;
- const size=provider==='ark'?(config.arkSize||'2K'):(config.size||'1024x1024');
- const baseUrl=provider==='ark'?config.arkApiBase:config.apiBase;
+ const provider='openai';
+ const model=config.model;
+ const size=config.size||'1024x1024';
+ const baseUrl=config.apiBase;
  let providerDispatcher;
  const dispatcher=()=>{
   if(providerDispatcher)return providerDispatcher;
@@ -37,13 +37,12 @@ export function createImageEngine({root,config={},fetchImpl=fetch,readReferences
  writeJson(file,state);
  const save=()=>writeJson(file,state);
  const limit=()=>({global:bounded(config.dailyGlobalLimit,20,10000),session:bounded(config.dailySessionLimit,5,10000),mode:['global','session','both'].includes(config.quotaMode)?config.quotaMode:'both'});
- const apiUrl=endpoint=>{const base=new URL(String(baseUrl||''));if(!['https:','http:'].includes(base.protocol)||base.username||base.password)throw Error('API_BASE_INVALID');if(provider==='ark'&&(base.protocol!=='https:'||base.hostname!=='ark.cn-beijing.volces.com'))throw Error('API_BASE_INVALID');return new URL(base.href.replace(/\/+$/,'')+'/'+endpoint).href;};
- const secretField=provider==='ark'?'arkApiKey':'apiKey';
+ const apiUrl=endpoint=>{const base=new URL(String(baseUrl||''));if(!['https:','http:'].includes(base.protocol)||base.username||base.password)throw Error('API_BASE_INVALID');return new URL(base.href.replace(/\/+$/,'')+'/'+endpoint).href;};
  const secret=({op,apiKey}={})=>{
   const saved=readJson(secretFile,{});
-  if(op==='set'){const key=String(apiKey||'').trim();if(!key||key.length>1000)return {ok:false,error:'API_KEY_INVALID'};writeJson(secretFile,{...saved,[secretField]:key});return {ok:true,provider,configured:true};}
-  if(op==='clear'){delete saved[secretField];if(Object.keys(saved).length)writeJson(secretFile,saved);else try{fs.unlinkSync(secretFile);}catch{}return {ok:true,provider,configured:false};}
-  return {ok:true,provider,configured:!!saved[secretField]};
+  if(op==='set'){const key=String(apiKey||'').trim();if(!key||key.length>1000)return {ok:false,error:'API_KEY_INVALID'};writeJson(secretFile,{...saved,apiKey:key});return {ok:true,provider,configured:true};}
+  if(op==='clear'){delete saved.apiKey;if(Object.keys(saved).length)writeJson(secretFile,saved);else try{fs.unlinkSync(secretFile);}catch{}return {ok:true,provider,configured:false};}
+  return {ok:true,provider,configured:!!saved.apiKey};
  };
  const status=({key}={})=>{const today=dayAt(now()),todayJobs=state.jobs.filter(j=>j.day===today),counts=limit();return {ok:true,provider,configured:secret({op:'status'}).configured&&!!model&&!!baseUrl,day:today,globalUsed:todayJobs.length,globalLimit:counts.global,sessionUsed:key?todayJobs.filter(j=>j.key===key).length:undefined,sessionLimit:counts.session,quotaMode:counts.mode};};
  async function outputImage(data){
@@ -54,17 +53,13 @@ export function createImageEngine({root,config={},fetchImpl=fetch,readReferences
  async function run(job){
   try{
    if(signal?.aborted)throw Error('JOB_INTERRUPTED');
-   const apiKey=readJson(secretFile,{})[secretField];if(!apiKey)throw Error('API_NOT_CONFIGURED');
+   const apiKey=readJson(secretFile,{}).apiKey;if(!apiKey)throw Error('API_NOT_CONFIGURED');
    const maxRef=bounded(config.maxReferenceImages,1,5),maxRefBytes=bounded(config.maxReferenceBytes,10485760,30000000);
    const refs=job.referenceMessageId?await readReferences({key:job.key,messageId:job.referenceMessageId,maxImages:maxRef,maxBytes:maxRefBytes}):[];
    if(job.referenceMessageId&&(!Array.isArray(refs)||!refs.length))throw Error('REFERENCE_NOT_FOUND');
    if(refs.length>maxRef)throw Error('TOO_MANY_REFERENCES');
    let body,headers={authorization:`Bearer ${apiKey}`},endpoint='images/generations';
-   if(provider==='ark'){
-    const images=refs.map(ref=>{const bytes=Buffer.from(String(ref.data||''),'base64'),mime=imageType(bytes);if(!mime||bytes.length>maxRefBytes)throw Error('REFERENCE_INVALID');return `data:${mime};base64,${bytes.toString('base64')}`;});
-    headers['content-type']='application/json';
-    body=JSON.stringify({model,prompt:job.prompt,size,response_format:'b64_json',...(images.length?{image:images.length===1?images[0]:images}:{})});
-   }else if(refs.length){endpoint='images/edits';body=new FormData();body.set('model',String(model));body.set('prompt',job.prompt);body.set('size',String(size));body.set('quality',String(config.quality||'auto'));for(let i=0;i<refs.length;i++){const bytes=Buffer.from(String(refs[i].data||''),'base64'),mime=imageType(bytes);if(!mime||bytes.length>maxRefBytes)throw Error('REFERENCE_INVALID');body.append(refs.length===1?'image':'image[]',new Blob([bytes],{type:mime}),`reference-${i}.${mime.split('/')[1]}`);}}
+   if(refs.length){endpoint='images/edits';body=new FormData();body.set('model',String(model));body.set('prompt',job.prompt);body.set('size',String(size));body.set('quality',String(config.quality||'auto'));for(let i=0;i<refs.length;i++){const bytes=Buffer.from(String(refs[i].data||''),'base64'),mime=imageType(bytes);if(!mime||bytes.length>maxRefBytes)throw Error('REFERENCE_INVALID');body.append(refs.length===1?'image':'image[]',new Blob([bytes],{type:mime}),`reference-${i}.${mime.split('/')[1]}`);}}
    else{headers['content-type']='application/json';body=JSON.stringify({model,prompt:job.prompt,size,quality:config.quality||'auto',n:1});}
    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),bounded(config.timeoutSeconds,120,600)*1000);
    let response,parsed;

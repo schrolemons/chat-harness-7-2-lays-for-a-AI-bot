@@ -7,15 +7,8 @@ test('catalog contains the extracted spark game and two lightweight interactions
   assert.deepEqual(runtime.catalog().games.map(game => game.id), ['spark', 'dice', 'riddle']);
 });
 
-test('spark requires participant consent and only returns fictional toy-play text', () => {
-  const runtime = createGamesRuntime();
-  const refused = runtime.start({ gameId: 'spark' });
-  assert.equal(refused.ok, false);
-  assert.equal(refused.code, 'CONSENT_REQUIRED');
-  const started = runtime.start({ gameId: 'spark', consentConfirmed: true });
-  assert.equal(started.ok, true);
-  assert.match(started.message, /虚构|玩具/);
-  assert.doesNotMatch(started.message, /真实触电|伤口|疼痛/);
+test('current wordplay starts without consent and remains a text-only effect',()=>{
+ const runtime=createGamesRuntime(),started=runtime.start({gameId:'spark'});assert.equal(started.ok,true);assert.match(started.message,/轻微电流/);const result=runtime.action({sessionId:started.sessionId,action:'spark'});assert.equal(result.fictionalEffect.bodyPart,'手腕');assert.equal(result.fictionalEffect.waveform,'pulse');assert.doesNotMatch(result.message,/疼痛|伤口|玩具小火花/);
 });
 
 test('dice actions stay in range and are isolated to their own session', () => {

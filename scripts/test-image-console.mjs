@@ -18,7 +18,7 @@ test('image generation has a dedicated E page form with all public configuration
   assert.ok(form, 'image generation form must be declared');
   const keys = [...form.matchAll(/key:\s*'([^']+)'/g)].map((match) => match[1]);
   assert.deepEqual(keys, [
-    'provider', 'apiBase', 'proxyUrl', 'model', 'size', 'quality', 'arkApiBase', 'arkModel', 'arkSize', 'quotaMode', 'dailyGlobalLimit',
+    'apiBase', 'proxyUrl', 'model', 'size', 'quality', 'quotaMode', 'dailyGlobalLimit',
     'dailySessionLimit', 'maxPromptChars', 'maxReferenceImages', 'maxReferenceBytes',
     'maxOutputBytes', 'timeoutSeconds', 'cooldownSeconds', 'allowAutomatic',
     'allowedSessions', 'assetRetentionDays'

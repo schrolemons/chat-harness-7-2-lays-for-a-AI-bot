@@ -1,19 +1,21 @@
-
-// Current component-to-page ownership. No hidden legacy mount targets.
+// Canonical E-layer pages; declarations stay internal.
 export default {
   "env-bridge": {
-    "page": "environments"
+    "page": "environment-chat",
+    "presentation": "internal"
   },
   "exec-browser-manager": {
-    "page": "environments"
+    "page": "environment-web"
   },
   "exec-image-generation": {
-    "page": "environments"
+    "page": "images"
   },
   "exec-sandbox": {
-    "page": "environments"
+    "page": "environment-admin",
+    "presentation": "internal"
   },
   "gov-admin-dev-mode": {
-    "page": "environments"
+    "page": "environment-admin",
+    "presentation": "internal"
   }
 };

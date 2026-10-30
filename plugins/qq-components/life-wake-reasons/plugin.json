@@ -1,8 +1,8 @@
 {
   "id": "life-wake-reasons",
-  "name": "唤醒原因尾巴",
-  "version": "1.1.0",
-  "description": "拥有统一静默阶段主动调度与意愿状态，按唤醒原因产出行动指令；保留双戳回执窗口。",
+  "name": "来信与静默主动",
+  "version": "1.2.0",
+  "description": "统一私聊/群聊静默主动调度；群聊来信复用当前p并取四类命中的最大q，单次判定min(1,p+q)。",
   "layer": "L",
   "category": "生命周期与编排",
   "order": 34,
@@ -34,11 +34,14 @@
     "minActiveGapMinutes": 30,
     "maxSilenceMinutes": 180,
     "initialWillingness": 60,
-    "activityWillingnessDelta": 10,
-    "purposeWillingnessDelta": -10,
     "curfewEnabled": true,
     "curfewStartHour": 23,
-    "curfewEndHour": 8
+    "curfewEndHour": 8,
+    "groupAtBonus": 0.6,
+    "groupNameBonus": 0.4,
+    "groupQuestionBonus": 0.3,
+    "groupPokeBonus": 0.6,
+    "groupNames": ""
   },
   "configSchema": {
     "disabledReasons": {
@@ -125,22 +128,8 @@
       "type": "number",
       "min": 0,
       "max": 100,
-      "label": "未评估时默认聊天意愿",
-      "example": "设为60：AI尚未评估过该会话意愿时，先按60/100参与概率和间隔计算。"
-    },
-    "activityWillingnessDelta": {
-      "type": "number",
-      "min": -100,
-      "max": 100,
-      "label": "人类回来时意愿变化",
-      "example": "设为+10：有效人类活动结束静默时，意愿在原值上增加10，最高100。"
-    },
-    "purposeWillingnessDelta": {
-      "type": "number",
-      "min": -100,
-      "max": 100,
-      "label": "主动或目的发送后意愿变化",
-      "example": "设为−10：符合条件的目的发送后，意愿降低10，并重新开始静默阶段。"
+      "label": "默认聊天意愿（用户忙闲）",
+      "example": "尚无客观忙闲或精力依据时使用；AI评估必须说明依据，不因未回复或bot发言自动加减。"
     },
     "curfewEnabled": {
       "type": "boolean",
@@ -160,6 +149,43 @@
       "max": 23,
       "label": "宵禁结束（上海时）",
       "example": "开始23、结束8：08:00退出宵禁；开始和结束相同表示不限制整日。"
+    },
+    "groupAtBonus": {
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "label": "群聊被 @ 的额外概率 q",
+      "example": "p=20%、q=60%：本次按80%判定。引用bot也使用这一项。 设为0表示不加成。"
+    },
+    "groupNameBonus": {
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "label": "群聊叫名字的额外概率 q",
+      "example": "p=20%、q=40%：本次按60%判定；名字来自下方管理员字段。 设为0表示不加成。"
+    },
+    "groupQuestionBonus": {
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "label": "群聊向bot提问的额外概率 q",
+      "example": "只有面向bot的提问才加成，不把所有问号都视为提问bot。 设为0表示不加成。"
+    },
+    "groupPokeBonus": {
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "label": "群聊拍bot的额外概率 q",
+      "example": "只在拍一拍的目标是bot时加成，拍其他成员不增加q。 设为0表示不加成。"
+    },
+    "groupNames": {
+      "type": "text",
+      "label": "群聊名字与别称（逗号分隔）",
+      "example": "填“小鲸鱼,DS”：消息出现这些名字时使用名字加成。不会从QQ昵称另外生成一套匹配词。"
     }
   }
 }

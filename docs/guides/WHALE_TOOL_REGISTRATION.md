@@ -10,3 +10,10 @@
 6. **刷新要求**：保存配置不等于 MCP schema 已刷新。组件重载、MCP 客户端刷新、preset 更新和 DSH 重载分别验证；不重建既有聊天或删除历史。所需中断先取得用户授权。
 
 应分别证明：注册成功、preset 可见、请求实际携带 schema、调用成功、出站实际送达。这五个状态不能互相代替。
+
+学习资料工具：`qq_term_query`、`qq_slang_query`、`qq_alias_query` 与 `qq_knowledge_sources` 的来源/查询/修改合同见 [LEARNING_SOURCES.md](LEARNING_SOURCES.md)。新增 schema 及独立开关必须以真实 stdio 握手、tools/list 和调用转发验证；不代表既有 DSH 客户端已刷新。
+
+
+### 等待工具拆分（2026-10-30）
+
+`qq_wait_for_messages` 与 `qq_wait_for_quiet` 共用 `waitMessages` 开关，均作用于私聊和群聊。前者收到新消息立即返回，真正无人回复超时由 life-conversation-wait 执行 p/q 递增终止；后者只确认最后来信后的静默，不计无人回复次数。旧 purpose=reply 仍兼容转入静默路径。新工具注册需要桥接及 DSH MCP 进程加载最新代码后核验实际工具面，单独热加载插件不能完成部署。

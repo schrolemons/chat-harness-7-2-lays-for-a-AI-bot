@@ -64,11 +64,11 @@ test('disabled, missing capabilities and curfew fail closed without busy retry',
   assert.equal(g.service.isCurfew({ now: Date.parse('2026-10-30T08:00:00+08:00') }), false);
   const h = fixture(); delete h.ctx.capabilities.getProactiveFacts; h.service.refresh({ key: 'private:1', now: noon }); assert.equal(h.jobs.size, 0);
 });
-test('actual activity dedups events, multipart deltas once, and returns old reengagement', () => {
+test('actual activity dedups events, multipart activity once without changing availability, and returns old reengagement', () => {
   const f = fixture(); const key = 'private:1'; f.service.plan({ key, now: noon, facts: { allowed: true, budgetAllowed: true } });
   const p = { key, at: noon + 60 * minute, kind: 'incoming', hasImage: true, eventId: 'a' };
-  assert.equal(f.service.observe(p).reengaged, true); assert.equal(f.service.preview({ key }).willingness, 70);
-  f.service.observe(p); assert.equal(f.service.preview({ key }).willingness, 70);
+  assert.equal(f.service.observe(p).reengaged, true); assert.equal(f.service.preview({ key }).willingness, 60);
+  f.service.observe(p); assert.equal(f.service.preview({ key }).willingness, 60);
   f.service.observe({ key, kind: 'sent', reason: 'reminder', hasText: true, at: p.at + minute, episodeId: 'purpose', eventId: 'p1' });
   f.service.observe({ key, kind: 'sent', reason: 'reminder', hasText: true, at: p.at + 2 * minute, episodeId: 'purpose', eventId: 'p2' });
   assert.equal(f.service.preview({ key }).willingness, 60); assert.equal(f.state().proactiveByKey[key].lastActivityAt, p.at + 2 * minute);
@@ -134,7 +134,7 @@ test('late activity cannot reset a newer episode or spend willingness twice acro
   f.service.observe({ key, kind: 'incoming', at: noon - minute, hasText: true, eventId: 'late' });
   assert.equal(f.service.preview({ key }).nextAt, due);
   const reloaded = fixture({}, f.state()); reloaded.service.observe({ key, kind: 'incoming', at: noon, hasText: true, eventId: 'new' });
-  assert.equal(reloaded.service.preview({ key }).willingness, 70);
+  assert.equal(reloaded.service.preview({ key }).willingness, 60);
 });
 test('proactive tail uses current private/group and configured persona with no unsolicited search', () => {
   const plugin = createWakePlugin({ config: {}, state: { get: () => ({}) }, capabilities: {} });
@@ -170,18 +170,18 @@ test('plugin exposes synchronous cross-field validation for host save rejection'
   assert.equal(typeof plugin.validateConfig, 'function');
   assert.equal(plugin.validateConfig({ checkMinMinutes: 50, checkMaxMinutes: 20 }).ok, false);
 });
-test('activity-adjusted willingness keeps last AI evidence separate from current source', () => {
+test('activity preserves objective availability and its AI evidence', () => {
   const f = fixture(), key = 'private:8';
   f.service.setWillingness({ key, value: 45, reason: '先等一等', now: noon });
   f.service.observe({ key, kind: 'incoming', at: noon + minute, hasText: true, eventId: 'back' });
-  const preview = f.service.preview({ key }); assert.equal(preview.willingness, 55); assert.equal(preview.source, 'activity'); assert.equal(preview.lastAI.value, 45);
+  const preview = f.service.preview({ key }); assert.equal(preview.willingness, 45); assert.equal(preview.source, 'ai'); assert.equal(preview.lastAI.value, 45);
 });
 
 
 test('transport extensions count actual non-text deliveries, cancel only own job and enforce reason gates',()=>{
  const f=fixture({curfewEnabled:true,curfewStartHour:23,curfewEndHour:8}),key='group:1';
  for(const [i,kind]of ['voice','poke','file'].entries())assert.equal(f.service.observe({key,kind:'sent',eventId:kind,at:noon+i,success:true,reason:'proactiveCheck',episodeId:'one'}).ok,true);
- assert.equal(f.service.preview({key,now:noon}).willingness,50);
+ assert.equal(f.service.preview({key,now:noon}).willingness,60);
  f.service.refresh({key,now:noon});assert.ok(f.jobs.size);f.service.cancel({key});assert.equal(f.jobs.size,0);
  assert.equal(f.service.allowsReason({reason:'timeout',now:noon}).allowed,false);
  assert.equal(f.service.allowsReason({reason:'replyCheck',now:noon,hasPendingHuman:true}).allowed,true);

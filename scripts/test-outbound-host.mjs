@@ -32,7 +32,7 @@ test('mood nested helper graph and reply solver refresh actual source through ho
   host.callService('mood','initialize',{conversations:[{key:'private:1',score:1}],now:1});
   fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('export const DAILY_FLOOR = 60','export const DAILY_FLOOR = 61'));
   await host.reload('ctx-user-mood');
-  host.callService('mood','incoming',{key:'private:1',messageId:'human1',at:1000,userId:'1',hasText:true,hasImage:false,isSelf:false,directedAtBot:true});
+  host.callService('mood','settle',{now:86400000});
   assert.equal(host.callService('mood','read',{key:'private:1'}).score,61,'ledger and history load the new policy generation');
   const solver=path.join(root,'src/reply-shape.js');
   fs.writeFileSync(solver,fs.readFileSync(solver,'utf8').replace('自然回应当前话题','重新加载后的话题'));

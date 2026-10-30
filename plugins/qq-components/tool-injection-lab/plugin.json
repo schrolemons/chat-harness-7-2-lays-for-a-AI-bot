@@ -20,10 +20,14 @@
     "beforePrompt"
   ],
   "config": {
-    "injectPrompt": true,
-    "spar": true,
     "detect": true,
     "alertWindowMs": 600000,
     "sparPerHour": 2
+  },
+  "configSchema": {
+    "alertWindowMs": {
+      "min": 60000,
+      "description": "最近一次注入命中在后续上下文中的警报保留时长；再次命中重新计时。最低 60000 毫秒，默认 600000 毫秒。"
+    }
   }
 }

@@ -1,13 +1,17 @@
+const groupWakeUrl=new URL('./group-wake.mjs',import.meta.url);groupWakeUrl.search=new URL(import.meta.url).search;
+const {evaluateGroupIncoming}=await import(groupWakeUrl.href);
 const policyUrl = new URL('./proactive-policy.mjs', import.meta.url);
 policyUrl.search = new URL(import.meta.url).search;
 const { normalizeProactivePolicy, validateProactivePolicy, effectiveProactiveStage, isProactiveCurfew } = await import(policyUrl.href);
 const MINUTE = 60000;
-const conversational = new Set(['message', 'reply', 'private', 'question', 'atMention', 'poke']);
 const mechanical = /^(thinking|thinkingAck|ack|messageAck|replyCheck)$/;
-const clamp = n => Math.max(0, Math.min(100, n));
 export function createProactive(ctx) {
   const p = normalizeProactivePolicy(ctx.config), valid = validateProactivePolicy(p);
   const recoveredAccepted = new Set(Object.entries(ctx.state?.get?.().proactiveByKey || {}).filter(([, s]) => s.phase === 'accepted').map(([key]) => key));
+  const previous = ctx.state.get().proactiveByKey || {};
+  const migrated = Object.fromEntries(Object.entries(previous).map(([key,s])=>[key,s.availabilityVersion===1?s:{...s,availabilityVersion:1,
+    ...(['purpose','activity'].includes(s.source)?{legacyWillingness:{value:s.willingness,source:s.source},willingness:s.lastAI?.value??p.initialWillingness,source:s.lastAI?'ai':'default'}:{})}]));
+  if(Object.values(previous).some(s=>s.availabilityVersion!==1))ctx.state.set({proactiveByKey:migrated});
   const jobId = key => `proactive:${key}`;
   const get = key => ctx.state.get().proactiveByKey?.[key] || { stage: 0, willingness: p.initialWillingness, source: 'default', phase: 'idle' };
   const put = (key, value) => ctx.state.set({ proactiveByKey: { ...(ctx.state.get().proactiveByKey || {}), [key]: value } });
@@ -73,9 +77,9 @@ export function createProactive(ctx) {
     } });
     return result;
   }
-  function observe({ key, at = Date.now(), kind, reason = '', eventId, episodeId, hasText, hasImage, isSelf, success } = {}) {
+  function observe({ key, at = Date.now(), kind, hasInteraction=false, isProactive=false, reason = '', eventId, episodeId, hasText, hasImage, isSelf, success } = {}) {
     if (!/^(private|group):\d+$/.test(String(key || '')) || !Number.isFinite(at)) return { ok: false, reengaged: false };
-    if ((kind === 'incoming' && ((!hasText && !hasImage) || isSelf)) || (kind === 'sent' && (success === false || mechanical.test(reason))) || !['incoming', 'sent'].includes(kind)) return { ok: false, reengaged: false };
+    if ((kind === 'incoming' && ((!hasText && !hasImage && !hasInteraction) || isSelf)) || (kind === 'sent' && (success === false || mechanical.test(reason))) || !['incoming', 'sent'].includes(kind)) return { ok: false, reengaged: false };
     const s = get(key), events = s.events || {}, episodes = s.episodes || {};
     if (eventId && Object.hasOwn(events, eventId)) return { ok: true, duplicate: true, reengaged: false };
     if (Number.isFinite(s.lastActivityAt) && at < s.lastActivityAt) {
@@ -85,12 +89,9 @@ export function createProactive(ctx) {
     const oldActivity = Number.isFinite(s.lastActivityAt) ? s.lastActivityAt : s.startAt;
     const reengaged = kind === 'incoming' && Number.isFinite(oldActivity) && at - oldActivity >= p.silenceMinutes * MINUTE;
     const deltaKey = `${kind}:${episodeId || eventId || at}`;
-    let willingness = s.willingness, source = s.source;
-    const delta = kind === 'incoming' ? p.activityWillingnessDelta : conversational.has(reason) ? 0 : p.purposeWillingnessDelta;
-    if (!episodes[deltaKey] && delta !== 0) { willingness = clamp(willingness + delta); source = kind === 'incoming' ? 'activity' : 'purpose'; }
     const lastActivityAt = Math.max(Number(s.lastActivityAt) || 0, at);
     put(key, { ...s, stage: 0, checkedAt: null, noSendAt: null, nextAt: null, phase: 'idle', startAt: lastActivityAt, lastActivityAt,
-      willingness, source, ...(kind === 'sent' && reason === 'proactiveCheck' ? { lastProactiveAt: lastActivityAt } : {}),
+      ...(kind === 'sent' && (isProactive || ['proactiveCheck','privateFollowup'].includes(reason)) ? { lastProactiveAt:lastActivityAt,activeConversationCount:(s.activeConversationCount||0)+(episodes[deltaKey]?0:1) } : {}),
       events: eventId ? { ...events, [eventId]: at } : events, episodes: { ...episodes, [deltaKey]: at }, blockedReason: '' });
     cancel(key); return { ok: true, reengaged };
   }
@@ -102,6 +103,17 @@ export function createProactive(ctx) {
     return { ok: true, released: true };
   }
   return { policy: () => ({ ...p }), plan, refresh, observe, finished,
+    availability({key}={}) { const s=get(key);return {willingness:s.willingness,source:s.source,lastAI:s.lastAI||null}; },
+    incoming({key,eventId,at=Date.now(),event={},blockedReason='',random=Math.random}={}){
+      if(/^private:[1-9]\d*$/.test(String(key||'')))return evaluateGroupIncoming({key});
+      if(!/^group:[1-9]\d*$/.test(String(key||''))||!eventId)return {accepted:false,reason:'invalid_event'};
+      if(blockedReason||!valid.ok)return {accepted:false,reason:blockedReason||'invalid_policy'};
+      const state=get(key),cached=Object.hasOwn(state.incomingDecisions||{},eventId)?state.incomingDecisions[eventId]:null;if(cached)return {...cached,duplicate:true};
+      const base=effectiveProactiveStage(p,state.stage,state.willingness,factsFor(key)?.mood);
+      const result={...evaluateGroupIncoming({key,p:base.effectiveProbability,policy:p,event,random}),eventId,at,stage:state.stage||0};
+      const decisions={...(state.incomingDecisions||{}),[eventId]:result};const ids=Object.keys(decisions).sort((a,b)=>(decisions[a].at||0)-(decisions[b].at||0));for(const id of ids.slice(0,Math.max(0,ids.length-128)))delete decisions[id];
+      put(key,{...state,incomingDecisions:decisions,lastIncomingDecision:result});return result;
+    },
     cancel({key}={}) { cancel(key); return {ok:true}; },
     allowsReason({reason,now=Date.now(),hasPendingHuman=false}={}) {
       const r=String(reason||'').split(':')[0];
@@ -112,14 +124,14 @@ export function createProactive(ctx) {
     isCurfew: ({ now = Date.now() } = {}) => isProactiveCurfew(p, now),
     setWillingness({ key, value, reason = '', now = Date.now() } = {}) {
       if (!/^(private|group):\d+$/.test(String(key || '')) || typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100 || !String(reason).trim()) return { ok: false, reason: 'invalid_willingness' };
-      put(key, { ...get(key), willingness: value, source: 'ai', lastAI: { value, reason: String(reason).slice(0, 300), at: now } });
+      put(key, { ...get(key), willingness: value, availabilityVersion:1, source: 'ai', lastAI: { value, reason: String(reason).slice(0, 300), at: now } });
       return { ok: true, value };
     },
     preview({ key, now = Date.now() } = {}) {
       const s = get(key), facts = factsFor(key);
       return { stage: s.stage, willingness: s.willingness, source: s.source, lastAI: s.lastAI || null,
         ...effectiveProactiveStage(p, s.stage, s.willingness, facts?.mood), nextAt: s.nextAt ?? null,
-        blockedReason: blocked(facts, now) || s.blockedReason || '', intent: s.intent || 'proactiveCheck', phase: s.phase, lastFinishedReason: s.lastFinishedReason || '' };
+        blockedReason: blocked(facts, now) || s.blockedReason || '', intent: s.intent || 'proactiveCheck', phase: s.phase, lastFinishedReason: s.lastFinishedReason || '', lastIncomingDecision:s.lastIncomingDecision||null };
     }
   };
 }

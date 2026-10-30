@@ -1,3 +1,4 @@
+import {migrateScope} from '../plugins/qq-components/learning-scopes.mjs';
 // 群聊黑话/网络用语学习与迭代模块。
 //
 // 职责：
@@ -59,7 +60,9 @@ export function normalizeSlangEntry(raw) {
     // （写进 slang.json / 提示词后一律渲染成 �）。
     return truncateText(s, max);
   };
+  const scope=migrateScope(entry);
   return {
+    originKey:scope.originKey,sourceKeys:scope.sourceKeys,sourceChanges:entry.sourceChanges||[],
     id: String(entry.id || createId()),
     content: clip(entry.content, SLANG_CONTENT_MAX),
     meaning: clip(entry.meaning, SLANG_FIELD_MAX),
@@ -156,9 +159,9 @@ export function saveSlang(file, entries, { max = SLANG_MAX_ENTRIES } = {}) {
   return { entries: capped, dropped };
 }
 
-export function createSlangEntry({ content, meaning = '', usage = '', example = '', risk = '', sources = [], status = SLANG_STATUS.CANDIDATE, source = 'ai', evidence = [] } = {}) {
+export function createSlangEntry({ content, meaning = '', usage = '', example = '', risk = '', sources = [], status = SLANG_STATUS.CANDIDATE, source = 'ai', evidence = [],sourceKeys,originKey } = {}) {
   return normalizeSlangEntry({
-    content,
+    content,sourceKeys,originKey,
     meaning,
     usage,
     example,
@@ -194,6 +197,7 @@ export function upsertSlangEntry(entries, content, patch = {}) {
     ...createSlangEntry({ content: normalizedContent, source: 'ai' }),
     ...patch,
     evidence: patch.evidence ?? [],
+    sourceKeys:patch.sourceKeys||[...new Set((patch.evidence||[]).map(e=>e.key).filter(k=>/^(group|private):[1-9]\d*$/.test(k)))],
   });
   entries.push(entry);
   return { entries, entry, created: true };
@@ -216,7 +220,7 @@ export function buildSlangContext(entries, max = 8) {
   const confirmed = (entries || [])
     .filter((e) => e.status === SLANG_STATUS.CONFIRMED && e.content && e.meaning)
     .sort((a, b) => (b.count || 0) - (a.count || 0))
-    .slice(0, Math.max(1, Math.min(30, Number(max) || 8)));
+    .slice(0, Math.max(0, Math.min(40, Math.floor(Number(max) || 0))));
   if (!confirmed.length) return '';
   const lines = confirmed.map((e) => {
     const clean = (s) => escapeLearnerText(String(s ?? '').replace(/\[CQ:/gi, '[CQ：'));

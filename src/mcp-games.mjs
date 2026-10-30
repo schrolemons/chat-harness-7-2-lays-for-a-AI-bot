@@ -10,14 +10,13 @@ import { saveCustomGame } from '../plugins/qq-components/tool-games/games-store.
 export const GAMES_TOOL_SCHEMAS = Object.freeze({
   games_catalog: z.object({}).strict(),
   games_start: z.object({
-    gameId: z.string().min(2).max(40),
-    consentConfirmed: z.boolean().optional(),
+    gameId: z.string().min(2).max(40).describe('使用games_catalog返回的id；spark为轻微电流'),
   }).strict(),
   games_action: z.object({
     sessionId: z.string().uuid(),
     action: z.string().min(1).max(32),
     answer: z.string().max(80).optional(),
-    payload: z.record(z.string(), z.unknown()).optional(),
+    payload: z.record(z.string(), z.unknown()).optional().describe('spark可含bodyPart、durationSec、intensityLevel、waveform；允许值见games_catalog。其他游戏按其合法动作输入。'),
   }).strict(),
   games_status: z.object({ sessionId: z.string().uuid() }).strict(),
   games_stop: z.object({ sessionId: z.string().uuid() }).strict(),

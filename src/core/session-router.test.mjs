@@ -23,7 +23,7 @@ test('conversation keys remove leading zeros and surrounding whitespace', () => 
 
 test('invalid, zero, and unsafe integer keys never become conversations', () => {
   for (const key of ['private:0', 'group:-1', 'group:1.5', 'Group:1',
-    'private:60005', 'private:1:2', null]) {
+    'private:20021', 'private:1:2', null]) {
     assert.equal(canonicalConversationKey(key), null, String(key));
   }
 });
@@ -61,7 +61,7 @@ test('owner may explicitly disable closed-agent at first run', () => {
 });
 
 test('invalid ownerQQ is rejected rather than silently trusted', () => {
-  for (const invalid of [0, -1, 'abc', '60005']) {
+  for (const invalid of [0, -1, 'abc', '20021']) {
     assert.throws(() => new SessionRouter({ ownerQQ: invalid }), /ownerQQ/);
   }
 });
@@ -156,7 +156,7 @@ test('simulation permissions deny local tools and admin commands', () => {
 test('invalid caller key is rejected instead of receiving default privileges', () => {
   const router = new SessionRouter({ ownerQQ });
   assert.throws(() => router.modeFor('group:0'), /Invalid conversation key/);
-  assert.throws(() => router.permissionsFor('private:60005'), /Invalid conversation key/);
+  assert.throws(() => router.permissionsFor('private:20021'), /Invalid conversation key/);
 });
 
 test('a policy change reports only its canonical conversation key', () => {

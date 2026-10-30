@@ -1,8 +1,8 @@
 {
   "id": "ctx-knowledge-quota",
   "name": "专业问答配额",
-  "version": "0.2.0",
-  "description": "C 层专业问答配额：领域关键词与明确请求规则识别，按日和会话/群成员计数；模型派发前通过预检机械带过超额请求，同一消息重试不重复扣额或发送。",
+  "version": "0.3.0",
+  "description": "C 层专业问答配额：AI语义判断专业求助，失败时规则兜底；按日和会话/群成员计数，模型回答前机械拦截超额，同一消息复用判定。",
   "category": "上下文与记忆",
   "order": 26,
   "tags": [
@@ -17,6 +17,8 @@
   ],
   "config": {
     "enabled": true,
+    "semanticEnabled": true,
+    "classificationTimeoutSeconds": 12,
     "dailyLimit": 3,
     "resetHour": 0,
     "exemptOwner": true,
@@ -32,6 +34,7 @@
   },
   "layer": "C",
   "configSchema": {
+    "classificationTimeoutSeconds": { "min": 1, "max": 30 },
     "dailyLimit": { "min": 0, "max": 1000 },
     "resetHour": { "min": 0, "max": 23 },
     "countBy": { "enum": ["session", "user"] },

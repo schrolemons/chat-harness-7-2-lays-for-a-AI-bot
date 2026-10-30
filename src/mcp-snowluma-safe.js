@@ -600,7 +600,7 @@ server.tool(
 
 server.tool(
   'qq_mark_read',
-  '将指定会话已查看的未读消息标记为已读。双戳回查启用时，此工具只确认 seenAt，不能代替逐条 JSON 回复回执；完成回复后必须调用 qq_report_message_receipts 报 replied，消息才会闭合。throughSeq 使用最近读取结果的 readThroughSeq，避免清除读取后才到达的新消息；双戳关闭时保留旧版收尾语义。注意：每次设置潜水/下一次唤醒前，桥接要求先用 qq_wait_for_messages(timeoutMs=300000) 完成一次沉睡前观察：5 分钟内没人说话可 mark_read 收尾沉睡；期间有人发新消息则先查看 newMessages，判断不需要你参与也可直接 mark_read 收尾；若你参与了回复，则下次想睡需重新等待观察窗口。',
+  '将指定会话已查看的未读消息标记为已读。双戳回查启用时，此工具只确认 seenAt，不能代替逐条 JSON 回复回执；完成回复后必须调用 qq_report_message_receipts 报 replied，消息才会闭合。throughSeq 使用最近读取结果的 readThroughSeq，避免清除读取后才到达的新消息；双戳关闭时保留旧版收尾语义。每次完成一波实际回复和回执后，用 qq_wait_for_messages 等新互动；无人回复时后台按递增概率结束当前回合，不能以 mark_read 代替等待或绕过已结束状态。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -654,29 +654,17 @@ server.tool(
 
 server.tool(
   'qq_set_wake_config',
-  '设置指定会话的二代唤醒配置：mode/无限期或有限时间/提前唤醒条件（@、名字、关键词、提问、拍一拍、概率、anyMessage、指定成员）。triggers.speakerIds 是可选的“指定群友发言唤醒”：填一个或多个群友 QQ 号后，只要其中任意一位在群里发言就会唤醒你；不设置则不启用。适合在等某个人回复、或某人反应慢怕错过时使用。triggers.poke 开启后，群里有人拍一拍（包括拍你或拍别人）会唤醒你。双戳回查启用时，throughSeq 只确认已读；已回复必须调用 qq_report_message_receipts 逐条提交 JSON。注意：每次设置潜水/下一次唤醒前需先用 qq_wait_for_messages(timeoutMs=300000) 完成一次沉睡前观察：5 分钟内没人说话可设置并沉睡；期间有人发新消息则先查看 newMessages，判断不需要你参与可直接设置并沉睡；若你参与了回复，则下次想睡需重新等待观察窗口。',
+  '设置当前会话收尾和明确约定的到时唤醒，或评估0–100聊天意愿。群聊来信统一使用 min(1,p+max(q))，p受静默阶段、心情与意愿影响，q由管理员配置；私聊不抽签，独立限制允许时每条进入回复。此工具不能改群聊触发条件或开启每条群消息必回。等待新消息超时的收尾规则由等待工具返回；按实际返回状态处理。throughSeq只确认已读，已回复须用qq_report_message_receipts逐条报告。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
     throughSeq: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional().describe('可同时确认已读：使用已查看结果中的 readThroughSeq，省去额外 qq_mark_read；不传则只设置唤醒配置。双戳启用时不能借此设置 repliedAt；若 markRead 工具被关闭，该水位会被忽略'),
-    chatWillingness: z.number().min(0).max(100).optional().describe('收尾前评估此会话下一次闲聊意愿；只传此字段不会标已读或改变唤醒/静音'),
-    reason: z.string().max(300).optional().describe('本次意愿评估依据'),
+    chatWillingness: z.number().min(0).max(100).optional().describe('客观聊天可用度0–100：根据用户是否工作、开会、疲劳或有空评估，必须附reason依据；无依据保持原分。不代表bot喜好，不因没回复自动降分；不改变聊天风格'),
+    reason: z.string().max(300).optional().describe('用户当前忙闲、时间或精力状况的证据；不是bot的喜好'),
     config: z.object({
-      mode: z.enum(['diving', 'active']).optional().describe('diving=潜水，active=活跃（anyMessage 开启）'),
-      infinite: z.boolean().optional().describe('true=无限期，只有条件命中才唤醒；false=有限时间'),
-      sleepMs: z.number().optional().describe('有限潜水毫秒数（从当前时间起算）'),
-      sleepUntil: z.string().optional().describe('有限潜水截止时间 ISO 字符串，优先级高于 sleepMs'),
-      triggers: z.object({
-        atMention: z.boolean().optional().describe('被 @ 或引用自己时唤醒'),
-        nameMention: z.boolean().optional().describe('被叫名字/昵称时唤醒'),
-        speakerIds: z.array(z.union([z.number(), z.string()])).max(20).optional().describe('指定群友 QQ 号数组：这些群友中任意一位发言时唤醒（可选，最多 20 个，不设置则不启用；私聊不适用，设置会被桥接清除；可从 qq_get_active_members / qq_get_group_members / qq_get_message_detail 的 userId/user_id 获取）'),
-        keywords: z.array(z.string()).optional().describe('出现任意关键词时唤醒'),
-        question: z.boolean().optional().describe('被直接提问/点名挑战时唤醒'),
-        poke: z.boolean().optional().describe('有人拍一拍时唤醒（群聊包括拍你和拍别人，私聊为对方拍你）'),
-        anyMessage: z.boolean().optional().describe('任意新消息都唤醒（活跃模式）'),
-        probability: z.number().optional().describe('普通消息按该概率随机唤醒（0~1）')
-      }).optional(),
-      batchWindowMs: z.number().optional().describe('多条消息合并唤醒窗口（毫秒，>=1000）')
+      infinite: z.boolean().optional().describe('true=不设置到时检查；false=必须同时指定 sleepMs 或 sleepUntil；来信与独立排程仍可提前触发'),
+      sleepMs: z.number().nonnegative().optional().describe('明确约定的到时唤醒，距现在毫秒数；普通潜水不设置此项'),
+      sleepUntil: z.string().optional().describe('明确约定的到时唤醒 ISO 时间，优先于 sleepMs'),
     }).optional().describe('要设置的唤醒配置，缺省字段保留原值')
   },
   async ({ key, token, config, throughSeq, chatWillingness, reason }) => {
@@ -908,32 +896,30 @@ if (cfg.socialV2?.tools?.sendPoke !== false) {
   );
 }
 
-server.tool(
-  'qq_wait_for_messages',
-  '等待用途必须显式指定。存在待处理来信时必须先处理来信：有未回复消息、当前回复尚未成功发送或回执尚未闭合时，不能用 purpose="messages" 等待；需要确认对方是否还会补充时用 purpose="reply"，按最后来信时间补足 quietMs 静默，已安静足够就立即返回，等待期间新到消息也会返回。timeoutMs 是最长预算，不要求等满；预算到但 quiet=false 不代表对方已说完。purpose="messages" 只有回复已完成且没有待处理来信时才用于等待用户后续交互；睡前观察也使用此用途且必须传 timeoutMs=300000。messages 会先等新消息，收到后才按 quietMs 等静默；没有新消息会等到 timeoutMs，单传 quietMs 不会缩短总等待。静默下限由后台配置，默认至少 10000ms。**返回里的 canSleepNow / countsAsObservation / hint 直接告诉你现在能不能收尾、该用多大的 timeoutMs——照它做，不要反复试**：canSleepNow=true 就可以直接 mark_read / set_wake_config；false 时按 hint 给的 timeoutMs 一次等满（更短的等待不算沉睡前观察，满足不了闸门）。直接看 newMessages、unreadCount 和 readThroughSeq，返回消息无需重复查询；仍有未展示未读才补读。全程无人说话返回 preSleepWaitSatisfied=true；观察期间来了新消息返回 preSleepWaitObserved=true，读后不需参与可收尾，参与回复则下次收尾重新观察。',
-  {
-    key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
-    token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    purpose: z.enum(['messages', 'reply']).describe('必填：存在未回复来信或回复尚未发出/回执未闭合时必须先处理消息，不能用 messages 等待；reply 用于回复前短静默；messages 仅用于回复已完成且没有待处理来信后等待用户互动或睡前观察。'),
-    timeoutMs: z.number().optional().describe('等待预算毫秒数，默认 30000、最大 600000；reply 达到静默即返回，不必等满；沉睡前观察用 messages 并传 300000'),
-    minNewMessages: z.number().optional().describe('仅 messages 用途：至少等到多少条新消息才进入静默窗口，默认 1；reply 用途会忽略它'),
-    quietMs: z.number().optional().describe('静默窗口毫秒数，建议 10000~12000；reply 从最后来信开始计时，messages 只在等到新消息后计时；后台默认至少 10000')
-  },
-  async ({ key, token, purpose, timeoutMs, minNewMessages, quietMs }) => {
-    try {
-      // 必须走长轮询通道：全局 fetch（undici）有 300s headersTimeout，
-      // 而沉睡前观察的预算就是 300s（见 agentApiLongPoll 的说明）。
-      const data = await agentApiLongPoll('/api/socialV2/wait', {
-        method: 'POST',
-        body: JSON.stringify({ key, purpose, timeoutMs, minNewMessages, quietMs }),
-        headers: { 'x-agent-token': token },
-        timeoutMs: Math.min(725000, (Number(timeoutMs) || 30000) + Math.max(Number(quietMs) || 0, 10000) + 20000)
-      });
-      return { content: [{ type: 'text', text: serializeModelData(data) }] };
-    } catch (error) {
-      return { content: [{ type: 'text', text: `等待失败：${error?.message ?? error}` }], isError: true };
-    }
-  }
+async function callConversationWait({ key, token, purpose, timeoutMs, quietMs }) {
+  try {
+    const data = await agentApiLongPoll('/api/socialV2/wait', {
+      method: 'POST', body: JSON.stringify({ key, purpose, timeoutMs, quietMs }),
+      headers: { 'x-agent-token': token }, timeoutMs: 725000
+    });
+    return { content: [{ type: 'text', text: serializeModelData(data) }] };
+  } catch (error) { return { content: [{ type: 'text', text: '等待失败：' + (error?.message ?? error) }], isError: true }; }
+}
+server.tool('qq_wait_for_messages',
+  '私聊与群聊共用：每完成一波实际回复并处理回执后，调用本工具等用户新消息，自选 timeoutMs。收到新消息即返回，按需要再调用 qq_wait_for_quiet 等对方说完。没有新消息且超时，由后台按可编辑 p、q 递增概率判定 endRound：true 时后台停止本轮，不能继续等待或追发；false 时再调用一次本工具。新来信重置概率。不能有待处理来信时用本工具拖延回复；旧的固定沉睡前观察已退役。',
+  { key:z.string().describe('private:QQ号 或 group:群号'), token:z.string().describe('当前会话令牌'),
+    timeoutMs:z.number().optional().describe('本次等新消息的时长，受后台上下限限制；未指定用后台默认值'),
+    purpose:z.enum(['messages','reply']).optional().describe('兼容旧调用；等新消息用 messages；需要静默时改用 qq_wait_for_quiet'),
+    quietMs:z.number().optional().describe('仅兼容旧 reply 用途；新调用用 qq_wait_for_quiet'),
+    minNewMessages:z.number().optional().describe('兼容字段；新消息一到就返回，不要求凑够多条') },
+  args=>callConversationWait({...args,purpose:args.purpose||'messages'})
+);
+server.tool('qq_wait_for_quiet',
+  '独立的短静默工具：用户发来消息后，确需判断对方是否还会补充时调用。从最后一条来信计时；阅读思考耗时也算，已安静够久立即返回，新消息重新计时。timeoutMs 是单次上限，quiet=false 不表示对方说完。返回一批消息时，不同问题或对象分别准确引用回复，相同或接近的内容合并成一波；逐条提交回复回执。这个工具不增加或绕过无人回复结束计数，不负责等未来新互动。',
+  { key:z.string().describe('private:QQ号 或 group:群号'),token:z.string().describe('当前会话令牌'),
+    quietMs:z.number().optional().describe('最后一条来信后需连续安静多久（毫秒），后台下限仍生效'),
+    timeoutMs:z.number().optional().describe('本次确认静默的最长等待时间（毫秒）') },
+  args=>callConversationWait({...args,purpose:'reply'})
 );
 
 server.tool(
@@ -1248,11 +1234,11 @@ server.tool(
 
 server.tool(
   'qq_slang_query',
-  '查看当前已确认的群聊黑话/梗/网络表达（只读）。返回已确认词条列表和格式化黑话表；遇到不熟悉的词可先查这里，再决定是否搜索/使用。',
+  '查询已确认黑话的含义与用法。当前适用来源内可检索；其他来源仅完整黑话名称匹配，不返回原始聊天证据。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().min(1).describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    q: z.string().optional().describe('可选搜索词，按词条/含义/用法/示例过滤')
+    q: z.string().optional().describe('完整黑话名称；当前来源内可按含义检索，其他来源仅完整词名匹配')
   },
   async ({ key, token, q }) => {
     try {
@@ -1294,7 +1280,7 @@ server.tool(
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().min(1).describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    q: z.string().optional().describe('可选：绰号或 QQ 号（子串匹配）')
+    q: z.string().optional().describe('绰号或完整 QQ 号；跨会话仅完整匹配，空值只查当前适用名单')
   },
   async ({ key, token, q }) => {
     try {
@@ -1313,7 +1299,7 @@ server.tool(
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().min(1).describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    alias: z.string().describe('绰号（如 十二）'),
+    alias: z.string().describe('绰号（如 管理员）'),
     qq: z.string().optional().describe('有证据的对应 QQ；不确定可省略或留空，不能默认填发言者'),
     note: z.string().optional().describe('疑似称呼的原话语境与被称呼者线索')
   },
@@ -1331,7 +1317,9 @@ server.tool(
   }
 );
 
-server.tool('qq_term_query','查询已确认的共同兴趣知识，如游戏玩法、术语、公开活动与文化；按词条或主题检索。',{key:z.string(),token:z.string().min(1),q:z.string().optional()},async({key,token,q})=>{
+server.tool('qq_knowledge_sources','调整一条已确认词条、黑话或绰号在当前会话的默认注入来源。高频使用且适合当前会话时 include_here；不再适用时 exclude_here。保持其他会话名单与原始证据，不能确认候选。',{key:z.string().regex(/^(group|private):[1-9]\d*$/),token:z.string().min(1),kind:z.enum(['term','slang','alias']),id:z.string().min(1).max(100),action:z.enum(['include_here','exclude_here'])},async input=>{try{const {token,...body}=input;const data=await agentApi('/api/socialV2/knowledge-sources',{method:'POST',headers:{'x-agent-token':token},body:JSON.stringify(body)});return {content:[{type:'text',text:serializeModelData(data)}]};}catch(error){return {isError:true,content:[{type:'text',text:'修改适用来源失败：'+error.message}]};}});
+
+server.tool('qq_term_query','查询当前适用名单内的确认词条；其他会话仅完整词名/别称匹配可查，返回资料不含采集语境。',{key:z.string(),token:z.string().min(1),q:z.string().optional()},async({key,token,q})=>{
   try{const data=await agentApi('/api/socialV2/term/query?key='+encodeURIComponent(key)+'&q='+encodeURIComponent(q||''),{headers:{'x-agent-token':token}});return {content:[{type:'text',text:serializeModelData(data)}]};}
   catch(error){return {isError:true,content:[{type:'text',text:'查询词条失败：'+error.message}]};}
 });

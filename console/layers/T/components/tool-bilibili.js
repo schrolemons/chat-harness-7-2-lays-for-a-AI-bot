@@ -1,5 +1,5 @@
-export default {saveLabel:"保存视频处理参数",
-  "title": "视频处理",
+export default {saveLabel:"保存 bilibili 视频处理设置",
+  "title": "bilibili 视频处理工具",
   "fields": [
     {
       "key": "ffmpegPath",

@@ -1,8 +1,8 @@
 {
   "id": "ctx-member-alias",
-  "name": "成员绰号表（谁是谁）",
-  "version": "1.1.0",
-  "description": "明确与疑似绰号候选学习；支持一人多绰号、未绑定 QQ、证据、管理员编辑和审核。",
+  "name": "绰号",
+  "version": "1.2.0",
+  "description": "按适用来源注入确认绰号；回复具体QQ或匹配绰号时按需查询，候选仍需审核。",
   "category": "上下文与记忆",
   "layer": "C",
   "order": 18,
@@ -25,9 +25,17 @@
     "autoSemantic": true,
     "minMessages": 15,
     "cooldownMs": 1800000,
-    "maxCallsPerHour": 4
+    "maxCallsPerHour": 4,
+    "injectMax": 40
   },
   "schedule": {
     "everyMs": 60000
+  },
+  "configSchema": {
+    "injectMax": {
+      "min": 0,
+      "max": 40,
+      "example": "设为3：每轮最多默认注入当前适用名单内的3条已确认资料；0只保留查询。"
+    }
   }
 }

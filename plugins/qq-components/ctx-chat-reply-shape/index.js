@@ -5,6 +5,6 @@ const {createSendLedger}=await import(moduleURL('./send-ledger.mjs'));
 export function createPlugin(ctx) {
   const phi=createTurnPolicy(ctx),policy=()=>replyPolicy(ctx.config);
   const replyPlan=createSendLedger(ctx,policy);
-  replyPlan.resolve=payload=>planReplyShape({...payload,config:ctx.config,phiMode:payload?.phiMode??phi(payload).mode});
+  replyPlan.resolve=payload=>planReplyShape({...payload,willingness:ctx.callService?.('proactive','availability',{key:payload?.key})?.willingness??100,config:ctx.config,phiMode:payload?.phiMode??phi(payload).mode});
   return {validateConfig:validateReplyPolicy,services:{replyPlan},hooks:{beforePrompt:payload=>payload?.replyPlan?.line||''}};
 }

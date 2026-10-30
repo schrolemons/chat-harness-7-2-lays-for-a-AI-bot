@@ -1,3 +1,4 @@
+import {validateCurrentParameters} from './current-effect.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -116,17 +117,7 @@ function validateEffect(effect, state, inputs) {
 
 function validateParameters(id, parameters = {}) {
   if (!plainObject(parameters)) throw new Error('parameters 必须是 JSON 对象。');
-  if (id === 'spark') {
-    const allowed = ['minSparks', 'maxSparks', 'minGlowLevel', 'maxGlowLevel', 'minCadenceMs', 'maxCadenceMs', 'minDurationSec', 'maxDurationSec'];
-    if (Object.keys(parameters).some(key => !allowed.includes(key))) throw new Error('小火花参数含未知字段。');
-    const p = { ...BUILTINS.defaults.spark.parameters, ...parameters };
-    for (const key of allowed) if (!Number.isInteger(p[key])) throw new Error(`${key} 必须是整数。`);
-    if (p.minSparks < 1 || p.maxSparks > 5 || p.minSparks > p.maxSparks) throw new Error('虚构火花数量只能在 1 至 5 颗内配置。');
-    if (p.minGlowLevel < 1 || p.maxGlowLevel > 3 || p.minGlowLevel > p.maxGlowLevel) throw new Error('虚构特效亮度只能在 1 至 3 级内配置。');
-    if (p.minCadenceMs < 250 || p.maxCadenceMs > 5000 || p.minCadenceMs > p.maxCadenceMs) throw new Error('叙述节奏范围必须在 250 至 5000 毫秒内。');
-    if (p.minDurationSec < 1 || p.maxDurationSec > 5 || p.minDurationSec > p.maxDurationSec) throw new Error('叙述时长只能在 1 至 5 秒内配置。');
-    return p;
-  }
+  if(id==='spark')return validateCurrentParameters(parameters,{defaults:BUILTINS.defaults.spark.parameters,schema:BUILTINS.games.find(game=>game.id==='spark').parameters});
   if (id === 'dice') {
     if (Object.keys(parameters).some(key => key !== 'sides')) throw new Error('骰子参数含未知字段。');
     const sides = Number(parameters.sides ?? BUILTINS.defaults.dice.parameters.sides);
@@ -151,7 +142,7 @@ export function listGames(file = GAMES_STORE_FILE) {
     const summary = game.id === 'dice' ? `掷一颗 ${parameters.sides} 面骰，比比点数，不涉及真实筹码或输赢惩罚。`
       : game.id === 'riddle' ? `猜一个固定谜题；最多 ${parameters.maxAttempts} 次作答，可随时查看提示或结束。`
         : game.summary;
-    return { ...clone(game), summary, rules: BUILTINS.rules[game.id], enabled: saved.enabled !== false, parameters, custom: false };
+    return { ...clone(game), summary, parameterSchema: clone(game.parameters), enabled: saved.enabled !== false, parameters, custom: false };
   });
   const customGames = store.customGames.map(item => {
     const game = validateCustomGame(item);

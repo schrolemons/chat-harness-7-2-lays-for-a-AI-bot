@@ -2,11 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function reportScriptHeartbeat(root, scriptPath, ok = true, hint = '') {
+export function reportScriptHeartbeat(root, scriptPath, ok = true, hint = '', mode = 'script') {
   const file = path.join(root, 'state', 'script-heartbeats.json');
   let current = {};
   try { current = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
-  current[String(scriptPath)] = { at: Date.now(), ok: ok !== false, hint: String(hint).slice(0, 200) };
+  current[String(scriptPath)] = { at: Date.now(), mode, ok: ok !== false, hint: String(hint).slice(0, 200) };
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temp = file + '.tmp-' + process.pid;
   fs.writeFileSync(temp, JSON.stringify(current, null, 2));

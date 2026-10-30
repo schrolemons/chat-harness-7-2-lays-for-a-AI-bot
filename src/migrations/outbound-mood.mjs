@@ -32,7 +32,6 @@ export function planOutboundMigration({ config = {}, overrides = {}, socialState
   const required = {
   "ctx-user-mood": {
     "enabled": "boolean",
-    "initial": "number",
     "noReplyAfterMinutes": "number",
     "modeThreshold": "number",
     "normalName": "string",
@@ -59,8 +58,6 @@ export function planOutboundMigration({ config = {}, overrides = {}, socialState
     "minActiveGapMinutes": "number",
     "maxSilenceMinutes": "number",
     "initialWillingness": "number",
-    "activityWillingnessDelta": "number",
-    "purposeWillingnessDelta": "number",
     "curfewEnabled": "boolean",
     "curfewStartHour": "number",
     "curfewEndHour": "number"
@@ -100,7 +97,7 @@ export function planOutboundMigration({ config = {}, overrides = {}, socialState
   const existing = id => overrides[id] || {};
   const m = defaults('ctx-user-mood');
   values['ctx-user-mood'] = pick(m, {
-    initial: mood.initial, enabled: mood.enabled, burstEnabled: mood.burstEnabled, recoverMinutes: mood.recoverMinutes,
+    enabled: mood.enabled, burstEnabled: mood.burstEnabled, recoverMinutes: mood.recoverMinutes,
     // Explicit newer user requirement supersedes the old lowThreshold=45.
     modeThreshold: 40,
     positiveRules: migratedRules(m.positiveRules, mood), negativeRules: migratedRules(m.negativeRules, mood, true),

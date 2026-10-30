@@ -12,7 +12,7 @@ import { COMPONENT_OWNERS, componentPage } from '../console/shared/components/ow
 
 const args = process.argv.slice(2);
 const artifacts = args.find(x => x.startsWith('--artifacts='))?.slice('--artifacts='.length);
-const views = ['overview','sessions','persona','social-v1','slang','alias','terms','usage','access','operations','reference','games','codex-peer','injection-lab','v2-t','v2-e','setting-c-0','setting-c-1','setting-c-2','setting-l-0','setting-l-1','setting-l-2','setting-o-0','setting-o-1','setting-o-2','environments','layer-v','human','layer-s','registry'];
+const views = ['overview','sessions','persona','social-v1','slang','alias','terms','usage','context-visual','access','operations','reference','games','codex-peer','injection-lab','v2-t','v2-e','setting-c-0','setting-c-1','setting-c-2','setting-l-0','setting-l-1','setting-l-2','setting-o-0','setting-o-1','setting-o-2','environment-chat','environment-admin','environment-web','environment-watch','environment-scripts','images','video','layer-v','human','layer-s','registry'];
 if (args.some(arg=>['--original','--record-baseline'].includes(arg))) throw new Error('Legacy baseline modes have been retired; tests exercise the current modular console.');
 
 async function loadPlaywright() {
@@ -59,7 +59,7 @@ try {
   await page.goto(fixture.url);
   testedBuild=await page.locator('script[src^="/console/app.js"]').getAttribute('src');
   assert.match(testedBuild,/\/console\/app\.js\?v=[a-f0-9]+$/,'Fixture must serve the versioned modular build');
-  await page.waitForFunction(() => document.getElementById('v2ContextRecentLimit')?.value === '100' && document.getElementById('wlGroups')?.value.includes('60000'));
+  await page.waitForFunction(() => document.getElementById('v2ContextRecentLimit')?.value === '100' && document.getElementById('wlGroups')?.value.includes('20009'));
 
   async function navigate(view) {
     if (await page.locator(`[data-page="${view}"]:visible`).count()) return;
@@ -90,7 +90,7 @@ try {
     ]);
     assert.equal(response.status(), 200, `${method} ${path} should succeed`);
     assert.equal((await response.json()).ok, true);
-    return fixture.requests.at(-1)?.body;
+    return response.request().postDataJSON();
   }
 
   await test('Current controls have unique DOM IDs and retired navigation is absent', async () => {
@@ -105,13 +105,14 @@ try {
 
   await test('Tool catalog displays actual injection evidence and separates pending and admin tools', async()=>{
     await navigate('reference');
-    await page.waitForFunction(()=>document.getElementById('toolReferenceRoot')?.textContent.includes('mcp__snowluma__qq_status'));
+    await page.waitForFunction(()=>document.getElementById('toolReferenceRoot')?.textContent.includes('qq_status'));
     assert(fixture.reads.some(read=>read.path==='/api/tools/catalog'));
     const active=await page.locator('#toolReferenceRoot').innerText();
-    assert.match(active,/mcp__snowluma__qq_status/);
+    assert.match(active,/qq_status/);
+    assert.equal(await page.locator('#toolReferenceRoot code[title="mcp__snowluma__qq_status"]').innerText(),'qq_status');
     assert.doesNotMatch(active,/mcp__fixture__(pending|admin)/);
-    assert.match(await page.locator('#toolPendingRoot').textContent(),/mcp__fixture__pending/);
-    assert.match(await page.locator('#toolAdminRoot').textContent(),/mcp__fixture__admin/);
+    assert.match(await page.locator('#toolPendingRoot code').textContent(),/pending/);
+    assert.match(await page.locator('#toolAdminRoot code').textContent(),/admin/);
     assert.match(await page.locator('#toolsCatalogStatus').innerText(),/实际注入记录/);
   });
 
@@ -142,7 +143,7 @@ try {
     for (const tool of ['games_catalog', 'games_start', 'games_action', 'games_status', 'games_stop']) {
       assert(content.includes(tool), `Games page should list ${tool}`);
     }
-    assert.match(content, /参与者本人明确同意/);
+    assert.match(content, /轻微电流可主动接梗/);
   });
 
   await test('All navigation destinations work and preserve unsaved form values across polling', async () => {
@@ -155,7 +156,7 @@ try {
       assert(visiblePages.length > 0, `${view} has no visible content`);
       assert(visiblePages.every(x => x === view), `${view} exposes another page: ${visiblePages.join(', ')}`);
     }
-    const drafts = { wlGroups: '60006, 100002', roleInput: '未保存的角色', v2MemoryKey: 'private:60006', sKeywords: '未保存关键词', slangMeaning: '未保存的含义', tsMsg: '未发送的测试消息' };
+    const drafts = { wlGroups: '20012, 100002', roleInput: '未保存的角色', v2MemoryKey: 'private:20012', sKeywords: '未保存关键词', slangMeaning: '未保存的含义', tsMsg: '未发送的测试消息' };
     for (const [id, value] of Object.entries(drafts)) await fill(id, value);
     await navigate('overview');
     await page.waitForTimeout(3300); // Exercise the real 3-second status polling interval.
@@ -185,7 +186,7 @@ try {
 
   await test('Daily diary catch-up excludes today, shows one send timestamp and disables after delivery', async () => {
     await page.locator('#v2DdRefresh').click();
-    const card = page.locator('.diary-session-card').filter({ hasText: 'private:60006' }).first();
+    const card = page.locator('.diary-session-card').filter({ hasText: 'private:20012' }).first();
     await card.waitFor();
     const detail = await card.locator('.diary-session-detail').innerText();
     assert.match(detail, /最近确认发送：/);
@@ -194,16 +195,16 @@ try {
     assert.equal(await card.locator('[data-dd-action="sendNow"]').isDisabled(), false, 'manual resend should remain available after a prior same-day send');
     const catchUp = card.locator('[data-dd-action="catchUpAll"]');
     assert.equal(await catchUp.isDisabled(), false, 'yesterday archive should be eligible');
-    const otherUserCard = page.locator('.diary-session-card').filter({ hasText: 'private:60007' }).first();
+    const otherUserCard = page.locator('.diary-session-card').filter({ hasText: 'private:20013' }).first();
     assert.equal(await otherUserCard.locator('[data-dd-action="catchUpAll"]').isDisabled(), false, 'another user with backlog has an independent catch-up action');
     await catchUp.click();
     await page.waitForFunction(() => document.getElementById('v2DdMsg')?.textContent.includes('补发完成'));
-    await page.waitForFunction(() => document.querySelector('.diary-session-card [data-dd-key="private%3A60006"][data-dd-action="catchUpAll"]')?.disabled === true);
+    await page.waitForFunction(() => document.querySelector('.diary-session-card [data-dd-key="private%3A20012"][data-dd-action="catchUpAll"]')?.disabled === true);
     assert.equal(await card.locator('[data-dd-action="catchUpAll"]').isDisabled(), true, 'the selected user disables after their backlog is sent');
     assert.equal(await otherUserCard.locator('[data-dd-action="catchUpAll"]').isDisabled(), false, 'another user with backlog remains independently available');
     assert.equal(await page.locator('#v2DdCatchUp').isDisabled(), false, 'global catch-up remains available while another user has backlog');
-    assert.equal(fixture.state.diaryCatchUpSent['private:60006'], true, 'catch-up should reach the offline service for the selected user');
-    assert.equal(fixture.state.diaryCatchUpSent['private:60007'], false, 'the other user must not be changed by the selected user catch-up');
+    assert.equal(fixture.state.diaryCatchUpSent['private:20012'], true, 'catch-up should reach the offline service for the selected user');
+    assert.equal(fixture.state.diaryCatchUpSent['private:20013'], false, 'the other user must not be changed by the selected user catch-up');
     const otherCatchUp = otherUserCard.locator('[data-dd-action="catchUpAll"]');
     await page.locator('#v2DdMsg').evaluate(el => { el.textContent = ''; });
     const [otherResponse] = await Promise.all([
@@ -214,7 +215,7 @@ try {
     await page.waitForFunction(() => document.getElementById('v2DdMsg')?.textContent.includes('补发完成'));
     await page.waitForFunction(() => document.querySelectorAll('.diary-session-card [data-dd-action="catchUpAll"]:disabled').length === 2);
     assert.equal(await page.locator('#v2DdCatchUp').isDisabled(), true, 'global catch-up disables only after every user is caught up');
-    assert.equal(fixture.state.diaryCatchUpSent['private:60007'], true, 'the second user can be caught up independently');
+    assert.equal(fixture.state.diaryCatchUpSent['private:20013'], true, 'the second user can be caught up independently');
   });
 
   await test('Opening daily diary history automatically loads dates and the newest preview', async () => {
@@ -230,7 +231,7 @@ try {
   });
 
   await test('Quiet-time plans load automatically without pressing refresh', async () => {
-    await page.waitForFunction(() => document.getElementById('availabilityRoot')?.textContent.includes('private:60006'));
+    await page.waitForFunction(() => document.getElementById('availabilityRoot')?.textContent.includes('private:20012'));
     assert.match(await page.locator('#availabilityStatus').innerText(), /1 条计划/);
   });
 
@@ -239,8 +240,17 @@ try {
       assert.deepEqual(await clickWrite(`#modeRow [data-mode="${mode}"]`, '/api/mode'), { mode, closedAgentPreset: '' });
     }
     const select = await reveal('#closedPreset');
+    assert.equal(await select.locator('option[value="qq-learning"]').count(),0,'默认收起后台专用预设');
+    assert.match(await select.locator('option[value="qq-chat-dev"]').innerText(),/管理员助手/);
+    const count=fixture.requests.filter(r=>r.path==='/api/mode').length;
+    await page.locator('#showAllPresets').check();
+    assert.equal(await select.locator('optgroup[label="后台专用"] option').count(),3);
+    assert.equal(fixture.requests.filter(r=>r.path==='/api/mode').length,count,'筛选选项不得修改运行配置');
     await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/mode') && r.request().method() === 'POST'), select.selectOption('qq-chat-v2')]);
     assert.deepEqual(fixture.requests.at(-1).body, { mode: 'closed-agent', closedAgentPreset: 'qq-chat-v2' });
+    assert.match(await page.locator('#closedPresetHelp').innerText(),/二代仿真/);
+    await page.locator('#showAllPresets').uncheck();
+    assert.equal(await select.inputValue(),'qq-chat-v2','收起高级选项也不能丢失已选预设');
   });
 
   await test('Role creation, selection, clearing and silent-mode contracts', async () => {
@@ -255,8 +265,8 @@ try {
   });
 
   await test('Whitelist numeric parsing and security contracts', async () => {
-    for (const [id, value] of Object.entries({ wlGroups: '60000，60008', wlPrivate: '60006 100002', dnGroups: '800001,800002', dnPrivate: '900001', ownerQQ: '60006' })) await fill(id, value);
-    assert.deepEqual(await clickWrite('#wlSave', '/api/whitelist'), { allow: { private: [60006, 100002], groups: [60000, 60008] }, deny: { private: [900001], groups: [800001, 800002] }, ownerQQ: '60006' });
+    for (const [id, value] of Object.entries({ wlGroups: '20009，20014', wlPrivate: '20012 100002', dnGroups: '800001,800002', dnPrivate: '900001', ownerQQ: '20012' })) await fill(id, value);
+    assert.deepEqual(await clickWrite('#wlSave', '/api/whitelist'), { allow: { private: [20012, 100002], groups: [20009, 20014] }, deny: { private: [900001], groups: [800001, 800002] }, ownerQQ: '20012' });
     await check('secInterceptNotify', false);
     assert.deepEqual(await clickWrite('#secInterceptNotifySave', '/api/security'), { interceptNotify: false });
     await fill('secInterceptText', '安全拦截提示测试文案');
@@ -290,11 +300,9 @@ try {
 
   await test('Page-scoped saves preserve other drafts, units, zero values and tool switches', async () => {
     assert.equal(await page.locator('#v2DoubleStampWindowCount').inputValue(),'12','Initial count must come from configuration');
-    await fill('v2RecSleepMin', 7);
-    await fill('v2SleepMinMs', 42);
-    await fill('v2PreSleepWaitMin', 0);
-    await fill('v2RecProb', 0);
-    await fill('v2RecKeywords', '鲸鱼，DeepSeek, 测试');
+    await fill('v2WakeHint', '测试来信表达偏好');
+    await fill('v2MaxWakeMin', 2);
+    await fill('v2MaxWakeHour', 30);
     await fill('v2AutoReplyCheckSec', 17);
     await fill('v2WaitDefaultQuietMs', 0);
 
@@ -308,11 +316,12 @@ try {
     const timing=await clickWrite('#section-setting-l-1 .v2-save','/api/socialV2/config');
     assert.deepEqual(Object.keys(timing).sort(),['autoReplyCheckMs','wait']);
     assert.equal(timing.autoReplyCheckMs,17000);assert.equal(timing.wait.defaultQuietMs,0);
-    assert.equal(await page.locator('#v2RecSleepMin').inputValue(),'7','Saving timing must preserve an unsaved wake draft');
+    assert.equal(await page.locator('#v2WakeHint').inputValue(),'测试来信表达偏好','Saving timing must preserve an unsaved wake draft');
     const wake=await clickWrite('#section-setting-l-0 .v2-save','/api/socialV2/config');
     assert.deepEqual(Object.keys(wake).sort(),['doubleStamp','wake']);
-    assert.equal(wake.wake.recommendedSleepMinMs,420000);assert.equal(wake.wake.sleepMinMs,42000);assert.equal(wake.wake.preSleepWaitMs,0);
-    assert.equal(wake.wake.recommendedProbability,0);assert.deepEqual(wake.wake.recommendedKeywords,['鲸鱼','DeepSeek','测试']);
+    assert.equal(wake.wake.recommendedHint,'测试来信表达偏好');assert.equal(wake.wake.maxWakePerMinute,2);assert.equal(wake.wake.maxWakePerHour,30);
+    for(const key of ['recommendedDefaultInfinite','recommendedSleepMinMs','recommendedSleepMaxMs'])assert.equal(Object.hasOwn(wake.wake,key),false);
+    for(const key of ['defaultMode','recommendedProbability','recommendedKeywords','recommendedAtMention','recommendedNameMention','recommendedQuestion','recommendedPoke'])assert.equal(Object.hasOwn(wake.wake,key),false,key);
     assert.deepEqual(wake.doubleStamp,{enabled:false,windowCount:18});
     const tools=await clickWrite('#section-v2-t .v2-save','/api/socialV2/config');assert.deepEqual(Object.keys(tools),['tools']);assert.equal(tools.tools[firstFlag],false);
     const expression=await clickWrite('#section-setting-c-0 .v2-save','/api/socialV2/config');assert.deepEqual(Object.keys(expression),['sticker']);
@@ -329,14 +338,14 @@ try {
     assert.equal(body.triggerProbability, 0.35);
     assert.equal(body.activeCheckMinMs, 12000);
     assert.deepEqual(body.mustReplyKeywords, ['鲸鱼', '测试']);
-    await (await reveal('#sStateKey')).selectOption('group:60000');
-    assert.deepEqual(await clickWrite('#sStateIdle', '/api/social/state'), { key: 'group:60000', phase: 'idle' });
+    await (await reveal('#sStateKey')).selectOption('group:20009');
+    assert.deepEqual(await clickWrite('#sStateIdle', '/api/social/state'), { key: 'group:20009', phase: 'idle' });
     assert.deepEqual(await clickWrite('#socialFlush', '/api/social/flush'), {});
   });
 
   await test('Slang add, search, confirm modal, tab switching and parameter contracts', async () => {
     for (const [id, value] of Object.entries({ slangContent: '测试词条', slangMeaning: '很棒', slangUsage: '赞美', slangExample: '这个效果很棒。' })) await fill(id, value);
-    assert.deepEqual(await clickWrite('#slangAdd', '/api/slang'), { content: '测试词条', meaning: '很棒', usage: '赞美', example: '这个效果很棒。' });
+    assert.deepEqual(await clickWrite('#slangAdd', '/api/slang'), { content: '测试词条', meaning: '很棒', usage: '赞美', example: '这个效果很棒。',sourceKeys:[] });
     await (await reveal('.slang-tab[data-slang-tab="confirmed"]')).click();
     await fill('slangSearchConfirmed', '测试词条');
     assert.equal(await page.locator('#slangConfirmedList tbody tr').count(), 2, 'Filtered table should contain header and one entry');
@@ -347,7 +356,7 @@ try {
     await fill('slangModalExample', '有被治愈到。');
     await fill('slangModalRisk', '无');
     await fill('slangModalSources', 'https://example.invalid/offline-source');
-    assert.deepEqual(await clickWrite('#slangModalDirectConfirm', '/api/slang/demo-candidate/confirm'), { meaning: '感到安慰', usage: '轻松聊天', example: '有被治愈到。', risk: '无', sources: ['https://example.invalid/offline-source'] });
+    assert.deepEqual(await clickWrite('#slangModalDirectConfirm', '/api/slang/demo-candidate/confirm'), { sourceKeys:[],meaning: '感到安慰', usage: '轻松聊天', example: '有被治愈到。', risk: '无', sources: ['https://example.invalid/offline-source'] });
     await fill('slangExtractMin', 14);
     await fill('slangThresholds', '3，6 12');
     const config = await clickWrite('#slangConfigSave', '/api/slang/config');
@@ -357,13 +366,13 @@ try {
 
   await test('Test message and AI notification reach only the mock endpoints', async () => {
     await (await reveal('#tsKind')).selectOption('group');
-    await fill('tsId', '60000');
+    await fill('tsId', '20009');
     await fill('tsMsg', '离线测试，不会发往 QQ。');
-    assert.deepEqual(await clickWrite('#tsSend', '/api/test-send'), { kind: 'group', id: '60000', message: '离线测试，不会发往 QQ。' });
+    assert.deepEqual(await clickWrite('#tsSend', '/api/test-send'), { kind: 'group', id: '20009', message: '离线测试，不会发往 QQ。' });
     await (await reveal('#aiNotifyKind')).selectOption('private');
-    await fill('aiNotifyId', '60006');
+    await fill('aiNotifyId', '20012');
     await fill('aiNotifyMessage', '离线提醒，不会发往 DSH。');
-    assert.deepEqual(await clickWrite('#aiNotifySend', '/api/console/notify-ai'), { key: 'private:60006', message: '离线提醒，不会发往 DSH。' });
+    assert.deepEqual(await clickWrite('#aiNotifySend', '/api/console/notify-ai'), { key: 'private:20012', message: '离线提醒，不会发往 DSH。' });
   });
 
   // Each mutation is asserted at its owning API boundary above; obsolete whole-run baseline removed.
@@ -381,14 +390,14 @@ try {
 
     // 按会话（群 / 私聊 / 内部）明细
     const conversations = await page.textContent('#usageConversations');
-    assert.match(conversations, /group:60000/, '按会话表应列出群会话');
-    assert.match(conversations, /private:60006/, '按会话表应列出私聊会话');
+    assert.match(conversations, /group:20009/, '按会话表应列出群会话');
+    assert.match(conversations, /private:20012/, '按会话表应列出私聊会话');
     assert.match(conversations, /internal:黑话学习/, '按会话表应列出内部（黑话学习）用量');
     assert.match(conversations, /¥/, '按会话表应显示花费列');
     assert.match(conversations, /未命中输入/, '按会话表应拆分缓存命中 / 未命中');
 
     // 下钻逐轮：点会话行 → 加载该会话的逐轮花费
-    await page.click('#usageConversations [data-usage-key="group:60000"]');
+    await page.click('#usageConversations [data-usage-key="group:20009"]');
     await page.waitForFunction(() => /#\d+/.test(document.getElementById('usageTurns')?.textContent || ''));
     const turns = await page.textContent('#usageTurns');
     assert.match(turns, /#42/, '逐轮明细应显示轮次编号');
@@ -397,19 +406,19 @@ try {
     assert.match(turns, /¥/, '逐轮明细应显示每轮花费');
 
     // 会话下拉与逐轮表同步
-    assert.equal(await page.inputValue('#usageKeySelect'), 'group:60000', '下拉框应跟随选中的会话');
+    assert.equal(await page.inputValue('#usageKeySelect'), 'group:20009', '下拉框应跟随选中的会话');
 
     // 实时流水与价目表
-    assert.match(await page.textContent('#usageRecent'), /group:60000|private:60006/, '最近流水应列出采样');
+    assert.match(await page.textContent('#usageRecent'), /group:20009|private:20012/, '最近流水应列出采样');
     assert.match(await page.textContent('#usagePrices'), /deepseek-flash/, '价目表应列出模型单价');
   });
 
   await test('Token budget controls save per-conversation and global caps', async () => {
     await navigate('usage');
-    await page.waitForSelector('#usageBudgets [data-budget-key="group:60000"]');
+    await page.waitForSelector('#usageBudgets [data-budget-key="group:20009"]');
     await page.locator('#usageGlobalLimit').fill('2.5');
     await page.locator('#usageGlobalSave').click();
-    const row = page.locator('#usageBudgets [data-budget-key="group:60000"]');
+    const row = page.locator('#usageBudgets [data-budget-key="group:20009"]');
     await row.locator('input').nth(0).fill('0.5');
     await row.locator('input').nth(1).fill('1.25');
     await row.locator('input').nth(2).fill('45');
@@ -418,7 +427,7 @@ try {
     assert.equal(await page.inputValue('#usageGlobalLimit'), '2.5');
     assert.equal(await row.locator('input').nth(0).inputValue(), '0.5');
     assert(fixture.requests.some((request) => request.path === '/api/tokens/budgets/global' && request.body.globalHardLimitYuan === 2.5));
-    assert(fixture.requests.some((request) => request.path === '/api/tokens/budgets' && request.body.key === 'group:60000' && request.body.hardLimitYuan === 1.25));
+    assert(fixture.requests.some((request) => request.path === '/api/tokens/budgets' && request.body.key === 'group:20009' && request.body.hardLimitYuan === 1.25));
   });
 
   await test('Token usage trend chart renders bars, tiers and range/metric switching', async () => {
@@ -662,25 +671,10 @@ try {
     await page.waitForFunction(() => document.getElementById('roleInjectMaxMsg').textContent.includes('6000'));
   });
 
-  await test('思考强度：档位来自 DSH、默认 max、可切换并明示全局副作用', async () => {
+  await test('模型设置统一由成本策略管理，控制台不再修改 DSH 全局默认', async () => {
     await navigate('overview');
-    await page.waitForFunction(() => document.getElementById('dshEffortSelect').options.length > 0);
-    const options = await page.locator('#dshEffortSelect option').evaluateAll((nodes) => nodes.map((n) => n.value));
-    assert.deepEqual(options, ['low', 'high', 'max'], `档位应来自 DSH 公布的能力，实际 ${options.join(',')}`);
-    assert.equal(await page.locator('#dshEffortSelect').inputValue(), 'max', '默认应为 max');
-    assert.match(await page.locator('#dshEffortSideEffect').textContent(), /全局默认/, '必须说明会连带改 DSH 全局默认');
-    await page.locator('#dshEffortSelect').selectOption('high');
-    const [saved] = await Promise.all([
-      page.waitForResponse(r => new URL(r.url()).pathname === '/api/dsh/effort' && r.request().method() === 'POST'),
-      page.locator('#dshEffortSave').click(),
-    ]);
-    assert.equal(saved.status(), 200);
-    assert.equal((await saved.json()).reasoningEffort, 'high');
-    assert.match(await page.locator('#dshEffortMsg').textContent(), /high/);
-    // 改回默认，避免影响后续断言
-    await page.locator('#dshEffortSelect').selectOption('max');
-    await page.locator('#dshEffortSave').click();
-    await page.waitForFunction(() => document.getElementById('dshEffortSelect').value === 'max');
+    assert.equal(await page.locator('#section-dsh,#dshEffortSelect,#dshEffortSave').count(),0);
+    assert.equal(fixture.requests.some(r=>r.path==='/api/dsh/model'||r.path==='/api/dsh/effort'),false);
   });
 
   if (artifacts) {

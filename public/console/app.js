@@ -52,7 +52,7 @@
           const fill2 = () => {
             const kind = kindId ? document.getElementById(kindId)?.value : null;
             const rows = opaque ? sessions.map((s) => [s.sessionId || s.id, s.key]) : keys.filter((k) => !kind || k.startsWith(kind + ":")).map((k) => [kindId ? k.split(":").slice(1).join(":") : k, k]);
-            list.replaceChildren(...rows.filter((r) => r[0]).map(([v, label]) => new Option(label || v, v)));
+            list.replaceChildren(...rows.filter((r) => r[0]).map(([v, label2]) => new Option(label2 || v, v)));
           };
           fill2();
           if (kindId) document.getElementById(kindId)?.addEventListener("change", fill2);
@@ -67,14 +67,14 @@
         const fill = () => {
           const kind = kindId ? document.getElementById(kindId)?.value : null;
           const rows = opaque ? sessions.map((s) => [s.sessionId || s.id, s.key]) : keys.filter((k) => !kind || k.startsWith(kind + ":")).map((k) => [k, k]);
-          select.replaceChildren(new Option("选择已有会话…", ""), ...rows.filter((r) => r[0]).map(([v, label]) => new Option(label || v, v)));
+          select.replaceChildren(new Option("选择已有会话…", ""), ...rows.filter((r) => r[0]).map(([v, label2]) => new Option(label2 || v, v)));
         };
         fill();
         if (kindId) document.getElementById(kindId)?.addEventListener("change", fill);
         select.addEventListener("change", () => {
           if (!select.value) return;
-          const value = kindId ? select.value.split(":").slice(1).join(":") : select.value;
-          input.value = input.tagName === "TEXTAREA" ? [.../* @__PURE__ */ new Set([...input.value.split("\n").filter(Boolean), value])].join("\n") : value;
+          const value2 = kindId ? select.value.split(":").slice(1).join(":") : select.value;
+          input.value = input.tagName === "TEXTAREA" ? [.../* @__PURE__ */ new Set([...input.value.split("\n").filter(Boolean), value2])].join("\n") : value2;
           input.dispatchEvent(new Event("input", { bubbles: true }));
           input.dispatchEvent(new Event("change", { bubbles: true }));
           select.value = "";
@@ -90,6 +90,57 @@
     });
   }
 
+  // console/layers/O/context-request-diff.js
+  var toolName = (t) => t.name || t.function?.name || "未命名工具";
+  var schema = (t) => {
+    const { chars: _chars, ...definition } = t;
+    return JSON.stringify(definition);
+  };
+  var moduleValue = (m) => JSON.stringify({ text: m.text, parts: m.parts?.map((p) => ({ text: p.text, destination: p.destination })), included: m.included, inRequest: m.inRequest });
+  function compareRequests(older, current) {
+    if (!older || !current) return null;
+    const before = new Map((older.tools || []).map((t) => [toolName(t), schema(t)])), after = new Map((current.tools || []).map((t) => [toolName(t), schema(t)]));
+    const prior = new Map((older.modules || []).map((m) => [m.id, m]));
+    return { toolsAdded: [...after.keys()].filter((name) => !before.has(name)), toolsRemoved: [...before.keys()].filter((name) => !after.has(name)), toolsChanged: [...after.keys()].filter((name) => before.has(name) && before.get(name) !== after.get(name)), modulesChanged: (current.modules || []).filter((m) => !prior.has(m.id) || moduleValue(prior.get(m.id)) !== moduleValue(m)).map((m) => ({ id: m.id, name: m.name || m.id })), messageCharsDelta: (current.messageChars || 0) - (older.messageChars || 0), toolCharsDelta: (current.toolChars || 0) - (older.toolChars || 0) };
+  }
+
+  // console/layers/O/context-request.js
+  function requestCards(request, catalog = []) {
+    const messages = request.messages || [], nonce = request.nonce;
+    const current = (kind) => {
+      const candidates = messages.filter((m) => m.source === kind);
+      const exact = candidates.filter((m) => m.contextNonce && m.contextNonce === nonce);
+      return { rows: exact.length ? exact : candidates.slice(-1), verified: exact.length > 0 };
+    };
+    const background = current("qq-context-current"), task = current("qq-context-dialogue"), system = messages.filter((m) => ["system", "developer"].includes(m.role));
+    const selected2 = /* @__PURE__ */ new Set([...system, ...background.rows, ...task.rows]);
+    const numbers = new Map(catalog.map((m, index) => [m.id, index + 1]));
+    const references = (group) => (request.modules || []).filter((m) => m.included !== false && (group === "system" ? m.id === "role-card" : group === "task" ? ["wake-action", "message-snapshot"].includes(m.id) : !["role-card", "wake-action"].includes(m.id))).map((m) => (numbers.get(m.id) || "?") + (m.id === "message-snapshot" ? group === "task" ? ".2 新增聊天原文" : ".1 收件状态" : " " + (m.name || m.id)));
+    const card2 = (id, name, rows, refs, verified = true) => ({ id, name, source: "DSH 实际请求记录", text: rows.map((m) => m.text).filter(Boolean).join("\n\n"), chars: rows.reduce((n, m) => n + (m.chars || m.text?.length || 0), 0), references: refs, attributionVerified: verified, protected: true, included: rows.length > 0, inRequest: rows.length > 0 });
+    return { cards: [card2("actual-system", "系统设定与角色要求", system, [...references("system"), "DSH 自身系统规则"]), card2("actual-background", "用户消息与附加资料：本轮背景", background.rows, references("background"), background.verified), card2("actual-task", "用户消息与附加资料：本轮任务和新消息", task.rows, references("task"), task.verified)], history: messages.filter((m) => !selected2.has(m)) };
+  }
+
+  // console/layers/O/context-knowledge.js
+  var label = (entry) => entry.term || entry.alias || entry.content || entry.id;
+  var value = (entry) => entry.summary || entry.meaning || (entry.qq ? "QQ " + entry.qq : "");
+  function knowledgePanel(row, current, { actual: actual2 = false, allowed = true } = {}) {
+    if (!current && !row.knowledge) return "";
+    const recorded = row.knowledge, report = actual2 ? recorded : current;
+    let evidence = actual2 ? row.inRequest === true ? "已在实际请求正文中确认" : row.inRequest === false ? "实际请求未包含完整模块正文" : "旧记录未提供逐模块发送证据" : recorded ? "本轮采集时入选 " + recorded.selectedCount + " 条" : "历史记录未保存条数，不能按行数推算";
+    if (actual2 && row.included === false && !(row.notCaptured && typeof row.inRequest !== "boolean")) evidence = "当时未注入：" + (row.reason || "未选用");
+    if (!report?.available) return '<p class="context-knowledge-note">' + esc(evidence) + (actual2 ? "" : "；当前组件未启用或尚未提供统计接口") + "。</p>";
+    const expected = allowed ? report.selectedCount : 0;
+    const pairs = [["库总量", report.total], ["已确认", report.confirmed], ["本会话适用", report.eligible], ["条数上限", report.limit], [actual2 ? "当时入选" : "当前预计", expected]];
+    const reason = !allowed ? "O 层已关闭，本轮不发送本模块。" : report.limit === 0 ? "默认注入上限为0，仅保留按需查询。" : report.eligible === 0 ? "没有适用于此会话的已确认资料，不从其他会话补数。" : report.limited > 0 ? "有" + report.limited + "条适用资料因上限未入选。" : "";
+    return '<div class="context-knowledge-stats">' + pairs.map(([title, count]) => "<span>" + esc(title) + " <strong>" + esc(count ?? "未知") + "</strong></span>").join("") + '</div><p class="context-knowledge-note">' + esc(evidence) + "。" + esc(reason) + '</p><p class="context-knowledge-note">筛除：未确认 ' + esc(report.total - report.confirmed) + " 条 · 确认但内容不完整 " + esc(report.unusable) + " 条 · 不适用当前会话 " + esc(report.outOfScope) + ' 条。<a href="#' + esc(report.page) + '">调整' + esc(report.name) + "来源与上限</a></p>" + (report.selected?.length ? '<details class="context-knowledge-selection"><summary>查看' + (actual2 ? "当时" : "当前策略") + "入选的 " + report.selected.length + " 条资料</summary><ul>" + report.selected.map((entry) => "<li><strong>" + esc(label(entry)) + "</strong><span>" + esc(value(entry)) + "</span></li>").join("") + "</ul></details>" : "");
+  }
+  function visualGroups(rows, catalog = []) {
+    const ids = new Set(catalog.map((row) => row.id)), byId = new Map(rows.map((row) => [row.id, row]));
+    const core = rows.filter((row) => ids.has(row.id));
+    for (const slot of catalog) if (!byId.has(slot.id)) core.push({ ...slot, text: "", notCaptured: true, included: false, reason: "本轮未产出" });
+    return { core: core.map((row, index) => ({ ...row, index })), extra: rows.filter((row) => !ids.has(row.id)) };
+  }
+
   // console/shared/page-loaders.js
   var loaders = /* @__PURE__ */ new Map();
   function registerPageLoader(page, loader) {
@@ -99,9 +150,214 @@
     return loaders.get(page)?.();
   }
 
+  // console/layers/O/context-visual.js
+  var saved;
+  var draft;
+  var data;
+  var actual = false;
+  var dragged = "";
+  var revision = 0;
+  var loading = false;
+  var selectedRequestId = "";
+  var $ = (id) => document.getElementById(id);
+  var copy = (x) => JSON.parse(JSON.stringify(x));
+  var notice = (text) => {
+    $("contextNotice").textContent = text;
+  };
+  var changed = () => JSON.stringify(saved) !== JSON.stringify(draft);
+  var sceneNames = { message: "用户来信", probability: "普通消息按概率触发唤醒", atMention: "有人 @ bot", nameMention: "有人叫 bot 的名字", bootstrap: "会话首次唤醒", timeBubble: "定时冒泡", careCheck: "主动关心", proactiveCheck: "静默后主动开口", idleRescue: "长时间静默后主动开口", reminder: "日程提醒", scheduledContact: "约定时间联系", newsShare: "每日视频推荐", replyCheck: "检查是否需要回复", budgetRecovery: "预算恢复后补发", selfReview: "自查", selfOptimize: "自我优化", slangLearn: "黑话学习", memoryWrite: "整理记忆", memoryUpdate: "更新记忆" };
+  var sceneName = (value2) => sceneNames[String(value2 || "").split(/[:@]/)[0]] || value2 || "未记录原因";
+  var reasonText = (value2) => ({ "O 层屏蔽": "已在本页关闭，本轮不发送", "本轮未产出": "组件本轮没有提供内容", "本场景无需演练": "本轮未触发演练，不发送这部分" })[value2] || value2;
+  var sourceText = (value2) => ({ "qq-context-current": "本轮整理后的背景信息", "qq-context-dialogue": "聊天内容与本轮任务", "runtime-context": "DSH 运行环境说明", "system-prompt": "系统设定与角色要求" })[value2] || value2;
+  var actualName = (row) => ({ system: "系统设定与角色要求", developer: "系统补充说明", user: "用户消息与附加资料", assistant: "AI 的历史消息", tool: "工具返回结果" })[row.role || row.name?.split(" ")[0]] || row.name || row.id;
+  function render() {
+    if (!data) return;
+    $("contextSave").disabled = !draft || !changed();
+    $("contextReset").disabled = !draft || !changed();
+    $("contextCompactHistory").checked = draft?.compactHistory !== false;
+    $("contextDraftTab").setAttribute("aria-pressed", String(!actual));
+    $("contextActualTab").setAttribute("aria-pressed", String(actual));
+    const stages = data.requestStages || data.request?.requestStages || [{ kind: "initial", label: "本轮初始请求", request: null }, { kind: "previous", label: "上一次请求", request: null }, { kind: "current", label: "当前请求（旧记录）", request: data.request }];
+    if (!stages.some((stage) => stage.kind === selectedRequestId && stage.request)) selectedRequestId = "current";
+    const selected2 = stages.find((stage) => stage.kind === selectedRequestId) || stages.at(-1), request = selected2?.request, preview = data.preview;
+    $("contextRequestPicker").hidden = !actual;
+    $("contextRequestDiff").hidden = !actual;
+    $("contextRequestSelect").replaceChildren(...stages.map((stage) => {
+      const row = stage.request, option = new Option(stage.label + (row ? " · " + new Date(row.at).toLocaleString() + " · " + (row.turn !== void 0 ? "第" + row.turn + "回合" : "回合" + String(row.nonce || "未知").slice(0, 8)) + " / 第" + (row.requestInRound || "?") + "次调用 · " + (row.toolCount || 0) + "个工具" : " · 尚未采集"), stage.kind);
+      option.disabled = !row;
+      return option;
+    }));
+    $("contextRequestSelect").value = selectedRequestId;
+    const older = stages.find((stage) => stage.kind === (selectedRequestId === "current" ? "previous" : "initial"))?.request, delta = selectedRequestId === "initial" ? null : compareRequests(older, request), join = (items2) => items2.length ? items2.map((item) => esc(item.name || item)).join("、") : "无";
+    $("contextRequestDiff").innerHTML = delta ? "<strong>" + (selectedRequestId === "current" ? "当前请求与上一次请求比较" : "上一次请求与本轮初始请求比较") + "</strong><p>工具新增：" + join(delta.toolsAdded) + "；移除：" + join(delta.toolsRemoved) + "；用途或参数说明变化：" + join(delta.toolsChanged) + "</p><p>模块变化：" + join(delta.modulesChanged) + "；消息字符变化 " + (delta.messageCharsDelta >= 0 ? "+" : "") + delta.messageCharsDelta + "；工具说明字符变化 " + (delta.toolCharsDelta >= 0 ? "+" : "") + delta.toolCharsDelta + "</p>" : selectedRequestId === "initial" ? "这是本轮首次请求，保留作比较基线。" : "尚无本轮上一次请求可比较；初始与当前可能是同一次调用，不会为填充记录调用AI。";
+    if (actual && data.capture?.nonce && request?.nonce && data.capture.nonce !== request.nonce) notice("这份实发记录与当前采集不是同一轮。下方按这份实际请求自己的模块记录展示，不与当前预览混算。");
+    if (actual) {
+      if (!request) {
+        $("contextMetrics").textContent = "还没有记录到这个会话实际发给 AI 的内容。等下一次正常聊天或定时冒泡后再刷新；查看这里不会调用 AI。";
+        $("contextModules").replaceChildren();
+        return;
+      }
+      $("contextMetrics").innerHTML = "<span>发送记录时间 <strong>" + esc(new Date(request.at).toLocaleString()) + "</strong></span><span>消息数据（含历史）<strong>" + esc(request.messageChars) + " 字符</strong></span><span>工具说明 <strong>" + esc(request.toolCount) + " 个 / " + esc(request.toolChars) + " 字符</strong></span>";
+      const catalog = data.catalog || data.capture?.modules || [], view = requestCards(request, catalog), groups2 = visualGroups(request.modules || [], catalog);
+      const toolRecord = (m) => m.role === "tool" || m.toolCalls?.length || m.toolResults?.length;
+      const renderRows = (rows) => rows.map((m) => card({ ...m, name: actualName(m), index: void 0, protected: true, included: true }, false)).join("");
+      const toolsSection = section("tools", "这次请求中，AI 可用的工具及说明（" + esc(request.toolCount) + "个）", '<p class="meta"><strong>这就是所选请求的工具清单，与聊天消息并列。</strong>第一次实际调用AI时就会提供；后续调用仍按当时权限提供。它说明工具用途和参数，具体调用及返回数据见下方消息历史。</p>' + card({ id: "actual-tools", name: "工具清单：用途与参数", source: "本次冻结请求的tools字段", text: JSON.stringify(request.tools, null, 2), chars: request.toolChars, protected: true, included: true, inRequest: true }, false), true);
+      $("contextModules").innerHTML = toolsSection + section("delivery", "所选请求实际发送的组合", '<p class="meta"><strong>本轮背景是桥接最近送入的快照，并非每次请求前重新读取。</strong>例：心情快照为60，工具随后改为65，后续请求可同时保留快照60与工具结果65；桥接送入新一批上下文时才替换背景。系统设定通常沿用，对话和工具记录继续追加。</p>' + view.cards.map((m) => card(m, false)).join("")) + section("history-dialogue", "对话消息与 AI 历史文字", '<p class="meta">保留进入会话的历史消息。有些AI文字是内部处理记录，未必已发给QQ用户；本轮任务和新消息在上方单独展示。</p>' + renderRows(view.history.filter((m) => !toolRecord(m))), true) + section("history-tools", "工具调用与返回记录", '<p class="meta">这两者也属于消息历史，按请求中的先后顺序展示。AI的历史消息可包含具体调用；工具返回结果是数据或错误，调用ID用于配对。例：先调用日程查询，再返回今天14:00开会。</p>' + renderRows(view.history.filter(toolRecord)), true) + section("modules", "来源模块（" + groups2.core.length + "个；空模块保留编号）", groups2.core.map((m) => card({ ...m, protected: true }, false)).join(""), true) + (groups2.extra.length ? section("rules", "其他附加规则", groups2.extra.map((m) => card({ ...m, index: void 0, protected: true }, false)).join(""), true) : "");
+      return;
+    }
+    if (!preview) {
+      $("contextMetrics").textContent = "这个会话还没有可预览的记录。下一次正常聊天或定时冒泡后会自动记录，再点“刷新已有记录”查看。";
+      $("contextModules").replaceChildren();
+      return;
+    }
+    $("contextMetrics").innerHTML = "<span>这份记录来自 <strong>" + esc(sceneName(data.capture.scene)) + " · " + esc(new Date(data.capture.at).toLocaleString()) + "</strong></span><span>全部模块原文 <strong>" + esc(preview.beforeChars) + " 字符</strong></span><span>按当前设置保留 <strong>" + esc(preview.afterChars) + " 字符 / 约 " + esc(Math.ceil(preview.afterChars / 2)) + " token</strong></span><span>资料统计是当前策略；正文为采集时内容</span>";
+    const groups = visualGroups(preview.modules, data.catalog || preview.modules);
+    $("contextModules").innerHTML = section("modules", "模块（" + groups.core.length + "个，空模块保留位置）", groups.core.map((m) => card(m, true)).join("")) + (groups.extra.length ? section("rules", "其他附加规则", groups.extra.map((m) => card({ ...m, index: void 0 }, true)).join("")) : "");
+  }
+  function section(id, title, body, folded = false) {
+    return folded ? '<details class="context-section" data-context-group="' + id + '"><summary>' + esc(title) + "</summary>" + body + "</details>" : '<section class="context-section" data-context-group="' + id + '"><h3 class="context-section-title">' + esc(title) + "</h3>" + body + "</section>";
+  }
+  function card(m, editable) {
+    const delivery = !editable ? m.notCaptured && typeof m.inRequest !== "boolean" ? "未采集，不能判定实发" : m.included === false ? "未注入：" + reasonText(m.reason) : m.inRequest === true ? "已在实际请求正文中确认" : m.inRequest === false ? "实际请求未完整包含此模块" : "旧记录没有逐模块实发证据" : m.truncated ? "内容超过组件上限，已截断" : "";
+    const locked = m.protected || !editable, title = data.knowledge?.[m.id]?.name || m.name || m.id, tag = m.placement === "fixed" ? "系统设定与角色要求" : m.id === "wake-action" ? "用户附加资料：本轮任务" : m.id === "message-snapshot" ? "用户附加资料：收件状态 + 新消息" : "用户附加资料：本轮背景", placeholder = !m.text?.trim();
+    return '<article class="context-module' + (placeholder ? " is-placeholder" : m.included === false ? " is-excluded" : "") + '" data-context-id="' + esc(m.id) + '"><div class="context-module-head">' + (editable ? '<button type="button" class="context-drag" draggable="true" data-context-move="drag" aria-label="拖动 ' + esc(title) + '">⠿</button>' : "") + "<h3>" + (Number.isInteger(m.index) ? esc(m.index + 1) + ". " : "") + esc(title) + "</h3>" + (editable ? '<label title="' + (locked ? "身份、权限和任务等必要内容不能在这里关闭" : "勾选表示允许把这部分内容发给 AI；保存后适用于所有会话") + '"><input type="checkbox" data-context-toggle="' + esc(m.id) + '" ' + (!draft.disabled.includes(m.id) || locked ? "checked " : "") + (locked ? "disabled " : "") + ">" + (locked ? "必要内容，不能关闭" : "允许发给 AI") + '</label><button type="button" data-context-move="up" aria-label="上移 ' + esc(title) + '">↑</button><button type="button" data-context-move="down" aria-label="下移 ' + esc(title) + '">↓</button>' : "") + '</div><p class="context-source">内容来自：' + esc(sourceText(m.source) || m.layer || "系统") + " · " + (editable ? tag + " · " : "") + esc(m.chars ?? m.text?.length ?? 0) + " 字符" + (delivery ? " · " + esc(delivery) : "") + (!placeholder && m.reason ? " · " + esc(reasonText(m.reason)) : "") + "</p>" + (m.toolCalls?.length || m.toolResults?.length ? '<p class="context-knowledge-note">' + (m.toolCalls || []).map((c) => "具体调用：" + esc(c.name) + " · 调用ID " + esc(c.id)).join("；") + (m.toolResults || []).map((c) => "返回对应调用ID：" + esc(c.toolCallId)).join("；") + "</p>" : "") + (m.references ? '<p class="context-knowledge-note">来源：' + esc(m.references.join(" · ")) + (m.attributionVerified === false ? "；旧记录缺少同轮标记，分类尚不能完全核验" : "") + "</p>" : "") + knowledgePanel(m, data.knowledge?.[m.id], { actual: !editable, allowed: editable ? !(draft?.enabled !== false && draft.disabled.includes(m.id)) : m.included !== false }) + (m.id === "message-snapshot" && m.parts?.length ? '<p class="context-knowledge-note">两部分关联启停，共用本模块开关；实际新增消息会按已发送序号去重。</p>' + m.parts.map((part) => "<details><summary>" + esc(part.name) + " → " + (part.destination === "background" ? "用户消息与附加资料：本轮背景" : "用户消息与附加资料：本轮任务和新消息") + "</summary><pre>" + esc(part.text || "本轮无新增正文") + "</pre></details>").join("") : placeholder ? '<p class="context-placeholder">本轮暂无内容，位置保留。</p>' : "<details><summary>" + (editable ? "查看这部分提供的文字" : "查看这次请求发送的文字") + "</summary><pre>" + esc(m.text || "（这部分没有文字内容）") + "</pre></details>") + "</article>";
+  }
+  async function refresh(keepDraft = false) {
+    const ticket = ++revision;
+    loading = true;
+    try {
+      const key2 = $("contextSession").value;
+      const response = await api("/api/context/preview" + (key2 ? "?key=" + encodeURIComponent(key2) : ""));
+      if (response.ok === false) throw Error(response.error);
+      if (ticket !== revision) return;
+      data = response;
+      if (!keepDraft || !draft) {
+        saved = copy(response.policy);
+        draft = copy(saved);
+      }
+      const selected2 = key2;
+      $("contextSession").replaceChildren(new Option("选择要查看的私聊或群聊…", ""), ...(response.sessions || []).map((s) => new Option(s.key, s.key)));
+      $("contextSession").value = selected2;
+      if (!selected2 && response.sessions?.length) {
+        $("contextSession").value = response.sessions[0].key;
+        loading = false;
+        await refresh(true);
+        return;
+      }
+      notice(changed() ? "有未保存的修改；保存后将用于所有私聊和群聊。" : !response.capture ? "还没有可查看的记录。" : response.capture.active ? "这条记录使用了新版上下文整理流程；点“本轮请求对比”核对发出的内容。" : "采集这条记录时，新版整理功能尚未启用，bot 当时仍按原方式发送。");
+      if (keepDraft && changed()) {
+        loading = false;
+        await project();
+        return;
+      }
+      render();
+    } catch (error) {
+      notice("读取失败：" + error.message);
+    } finally {
+      if (ticket === revision) loading = false;
+    }
+  }
+  async function project() {
+    const ticket = ++revision;
+    try {
+      const response = await api("/api/context/preview", "POST", { key: $("contextSession").value, draft });
+      if (response.ok === false) throw Error(response.error);
+      if (ticket !== revision) return;
+      data = response;
+      notice(changed() ? "预览已更新，但还没有保存；bot 暂时继续使用原设置。" : "当前预览与上次保存的设置一致。");
+      render();
+    } catch (error) {
+      notice("无法更新预览：" + error.message);
+    }
+  }
+  function move(id, target) {
+    if (!data?.preview || actual) return;
+    const rows = [...data.preview.modules], from = rows.findIndex((x) => x.id === id), to = rows.findIndex((x) => x.id === target);
+    if (from < 0 || to < 0 || from === to) return;
+    if (rows[from].placement !== rows[to].placement) {
+      notice("角色设定的系统位置固定；其余模块请在用户附加资料内调序，例如把心情移到黑话前面。");
+      return;
+    }
+    const [item] = rows.splice(from, 1);
+    rows.splice(to, 0, item);
+    draft.order = rows.map((x) => x.id);
+    void project();
+  }
+  function initialize3() {
+    $("contextRefresh").addEventListener("click", () => refresh(true));
+    $("contextSession").addEventListener("change", () => refresh(true));
+    $("contextDraftTab").addEventListener("click", () => {
+      actual = false;
+      render();
+    });
+    $("contextActualTab").addEventListener("click", () => {
+      actual = true;
+      render();
+    });
+    $("contextRequestSelect").addEventListener("change", (event) => {
+      selectedRequestId = event.target.value;
+      render();
+    });
+    $("contextReset").addEventListener("click", () => {
+      draft = copy(saved);
+      void project();
+    });
+    $("contextCompactHistory").addEventListener("change", (event) => {
+      draft.compactHistory = event.target.checked;
+      void project();
+    });
+    $("contextModules").addEventListener("change", (event) => {
+      const id = event.target.dataset.contextToggle;
+      if (!id || !draft) return;
+      draft.disabled = draft.disabled.filter((x) => x !== id);
+      if (!event.target.checked) draft.disabled.push(id);
+      void project();
+    });
+    $("contextModules").addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-context-move]"), row = btn?.closest("[data-context-id]");
+      if (!row || !["up", "down"].includes(btn.dataset.contextMove)) return;
+      const rows = data.preview.modules, i = rows.findIndex((x) => x.id === row.dataset.contextId), target = rows[i + (btn.dataset.contextMove === "up" ? -1 : 1)];
+      if (target) move(row.dataset.contextId, target.id);
+    });
+    $("contextModules").addEventListener("dragstart", (event) => {
+      const handle = event.target.closest("[draggable]");
+      if (!handle) return;
+      dragged = handle.closest("[data-context-id]").dataset.contextId;
+      event.dataTransfer.setData("text/plain", dragged);
+    });
+    $("contextModules").addEventListener("dragover", (event) => {
+      if (dragged) event.preventDefault();
+    });
+    $("contextModules").addEventListener("drop", (event) => {
+      event.preventDefault();
+      const row = event.target.closest("[data-context-id]");
+      if (row && dragged) move(dragged, row.dataset.contextId);
+      dragged = "";
+    });
+    $("contextModules").addEventListener("dragend", () => {
+      dragged = "";
+    });
+    $("contextSave").addEventListener("click", async () => {
+      if (!draft || loading) return;
+      const submitted = copy(draft);
+      $("contextSave").disabled = true;
+      try {
+        const response = await api("/api/context/policy", "POST", { policy: submitted });
+        if (response.ok === false) throw Error(response.error);
+        saved = submitted;
+        render();
+        notice(changed() ? "已保存全局设置；你在保存期间继续修改的部分还没有保存。" : "已保存全局设置：适用于所有私聊和群聊，从各会话的下一次唤醒开始使用。组件功能与工具权限保持原样。");
+      } catch (error) {
+        notice("保存失败：" + error.message);
+        render();
+      }
+    });
+    registerPageLoader("context-visual", () => refresh(true));
+  }
+
   // console/layers/L/proactive-preview.js
-  var time = (value) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
-  var sources = { default: "默认值（尚无 AI 评估）", ai: "AI 评估", activity: "真实活动调整", purpose: "目的发送调整" };
+  var time = (value2) => value2 ? new Date(value2).toLocaleString("zh-CN", { hour12: false }) : "—";
+  var sources = { default: "默认值（尚无 AI 评估）", ai: "AI 评估", activity: "旧活动评分（待重新评估）", purpose: "旧发送评分（待重新评估）" };
   async function refreshProactivePreview() {
     const root = document.getElementById("proactivePreview");
     try {
@@ -111,15 +367,38 @@
         const p = row.proactive;
         if (!p) return '<div class="runtime-preview"><b>' + esc(row.key) + "</b><p>主动组件未启用或判定不可用</p></div>";
         const interval = p.effectiveInterval;
-        return '<div class="runtime-preview"><b>' + esc(row.key) + '</b><dl class="runtime-facts"><dt>静默阶段</dt><dd>' + esc(p.stage ?? "—") + "</dd><dt>有效概率</dt><dd>" + esc(p.effectiveProbability == null ? "—" : (p.effectiveProbability * 100).toFixed(1) + "%") + "</dd><dt>聊天意愿</dt><dd>" + esc(p.willingness ?? "—") + " / 100 · " + esc(sources[p.source] || p.source || "未知来源") + "</dd><dt>上次 AI 评估</dt><dd>" + esc(p.lastAI ? p.lastAI.value + " · " + p.lastAI.reason + " · " + time(p.lastAI.at) : "尚无 AI 评估") + "</dd><dt>实际检验区间</dt><dd>" + esc(interval ? interval.minMinutes + "–" + interval.maxMinutes + " 分钟" : "—") + "</dd><dt>下次判定</dt><dd>" + esc(time(p.nextAt)) + "</dd><dt>阻断 / 暂停</dt><dd>" + esc(p.blockedReason || (row.paused ? "已暂停" : "无")) + "</dd><dt>当前状态</dt><dd>" + esc([p.phase, p.intent, p.lastFinishedReason].filter(Boolean).join(" · ") || "—") + "</dd></dl></div>";
+        return '<div class="runtime-preview"><b>' + esc(row.key) + '</b><dl class="runtime-facts">' + (p.lastIncomingDecision ? "<dt>最近来信判定</dt><dd>" + esc("p=" + Math.round(p.lastIncomingDecision.baseProbability * 100) + "% + q=" + Math.round(p.lastIncomingDecision.extraProbability * 100) + "% → " + Math.round(p.lastIncomingDecision.probability * 100) + "% · " + (p.lastIncomingDecision.accepted ? "通过" : "未通过")) + "</dd>" : "") + "<dt>静默阶段</dt><dd>" + esc(p.stage ?? "—") + "</dd><dt>当前基础概率 p</dt><dd>" + esc(p.effectiveProbability == null ? "—" : (p.effectiveProbability * 100).toFixed(1) + "%") + "</dd><dt>聊天意愿（用户忙闲）</dt><dd>" + esc(p.willingness ?? "—") + " / 100 · " + esc(sources[p.source] || p.source || "未知来源") + "</dd><dt>上次 AI 评估</dt><dd>" + esc(p.lastAI ? p.lastAI.value + " · " + p.lastAI.reason + " · " + time(p.lastAI.at) : "尚无 AI 评估") + "</dd><dt>实际检验区间</dt><dd>" + esc(interval ? interval.minMinutes + "–" + interval.maxMinutes + " 分钟" : "—") + "</dd><dt>下次判定</dt><dd>" + esc(time(p.nextAt)) + "</dd><dt>阻断 / 暂停</dt><dd>" + esc(p.blockedReason || (row.paused ? "已暂停" : "无")) + "</dd><dt>当前状态</dt><dd>" + esc([p.phase, p.intent, p.lastFinishedReason].filter(Boolean).join(" · ") || "—") + "</dd></dl></div>";
       }).join("") || '<p class="meta">暂无会话</p>';
     } catch (error) {
       root.textContent = "读取失败：" + error.message;
     }
   }
-  function initialize3() {
+  function initialize4() {
     document.getElementById("proactivePreviewRefresh").addEventListener("click", refreshProactivePreview);
     registerPageLoader("setting-l-1", refreshProactivePreview);
+  }
+
+  // console/layers/C/source-keys.js
+  function readSourceKeys(id) {
+    const keys = [...new Set(document.getElementById(id).value.split(/[\s,，;；]+/).filter(Boolean))];
+    if (keys.length > 50 || keys.some((key2) => !/^(group|private):[1-9]\d{0,19}$/.test(key2))) throw Error("适用来源请填写 group:群号 或 private:QQ号，每行一个，最多50个。");
+    return keys;
+  }
+  var sourceKeysText = (entry) => (entry.sourceKeys || []).join("\n");
+  function sourceKeysMarkup(entry) {
+    const keys = entry.sourceKeys || [];
+    if (!keys.length) return '<span class="meta">仅供查询</span>';
+    const render2 = (key2) => '<code class="learning-source-key">' + esc(key2) + "</code>";
+    return keys.slice(0, 2).map(render2).join(" ") + (keys.length > 2 ? "<details><summary>另有 " + (keys.length - 2) + " 个来源</summary>" + keys.slice(2).map(render2).join(" ") + "</details>" : "");
+  }
+  async function requireLearningScopes() {
+    let result;
+    try {
+      result = await api("/api/learning/sources");
+    } catch {
+      throw Error("资料多来源后端尚未启用，请先完成桥接整合后再保存。");
+    }
+    if (result.scopeVersion !== 1) throw Error("资料多来源后端尚未启用，请先完成桥接整合后再保存。");
   }
 
   // console/layers/C/learning-common.js
@@ -133,20 +412,20 @@
     return "<details><summary>查看采集语境（" + rows.length + '）</summary><ul class="learning-evidence">' + rows.map((e) => "<li><small>" + esc(e.key || "手动") + " · " + esc(e.time ? new Date(e.time).toLocaleString() : "") + "</small><p>" + esc(e.text || "") + "</p></li>").join("") + "</ul></details>";
   }
   function learningLinks(urls) {
-    return (urls || []).map((value) => {
+    return (urls || []).map((value2) => {
       try {
-        const u = new URL(value);
+        const u = new URL(value2);
         return /^https?:$/.test(u.protocol) ? '<a href="' + esc(u.href) + '" target="_blank" rel="noopener noreferrer">' + esc(u.hostname + u.pathname) + "</a>" : "";
       } catch {
         return "";
       }
     }).filter(Boolean).join(" · ");
   }
-  function initialize4() {
+  function initialize5() {
   }
 
   // console/layers/C/terms.js
-  function initialize5() {
+  function initialize6() {
     (() => {
       let entries = [], config = {}, active = "candidate", selected2 = /* @__PURE__ */ new Set();
       const msg = document.getElementById("termsMsg");
@@ -154,30 +433,30 @@
       function search() {
         return document.getElementById("termsSearch" + (active === "candidate" ? "Cand" : active[0].toUpperCase() + active.slice(1))).value.trim().toLowerCase();
       }
-      function render() {
+      function render2() {
         const suffix = active === "candidate" ? "Candidate" : active[0].toUpperCase() + active.slice(1), box = document.getElementById("terms" + suffix + "List"), q = search(), limit = Number(document.getElementById("termsLimit" + (active === "candidate" ? "Cand" : active[0].toUpperCase() + active.slice(1))).value) || 100;
-        const list = entries.filter((e) => e.status === active), filtered = list.filter((e) => !q || [e.term, e.topic, e.category, e.summary, e.sourceKey, ...e.aliases || [], ...e.sources || [], ...(e.evidence || []).map((x) => x.text)].join(" ").toLowerCase().includes(q)), shown = filtered.slice(0, limit);
+        const list = entries.filter((e) => e.status === active), filtered = list.filter((e) => !q || [e.term, e.topic, e.category, e.summary, (e.sourceKeys || []).join(" "), ...e.aliases || [], ...e.sources || [], ...(e.evidence || []).map((x) => x.text)].join(" ").toLowerCase().includes(q)), shown = filtered.slice(0, limit);
         if (!shown.length) {
           box.innerHTML = '<div class="meta" style="padding:8px">' + (list.length ? "没有符合条件的词条" : active === "candidate" ? "暂无候选；可刷新群消息或手动添加" : "暂无" + statuses[active] + "词条") + "</div>";
           return;
         }
-        let html = '<div class="meta" style="padding:6px 8px">共 ' + filtered.length + " 条，显示 " + shown.length + " 条（可滚动查找）</div><table><tr><th>选择</th><th>词条</th><th>次数</th><th>来源</th><th>摘要 / 主题</th><th>参考来源</th><th>语境证据</th><th>操作</th></tr>";
+        let html = '<div class="meta" style="padding:6px 8px">共 ' + filtered.length + " 条，显示 " + shown.length + " 条（可滚动查找）</div><table><tr><th>选择</th><th>词条</th><th>次数</th><th>适用会话</th><th>摘要 / 主题</th><th>参考来源</th><th>语境证据</th><th>操作</th></tr>";
         for (const e of shown) {
           const actions = active === "candidate" ? '<button class="small" data-term-edit="' + esc(e.id) + '">查看 / 编辑</button><button class="small primary" data-term-confirm="' + esc(e.id) + '" ' + (!e.summary ? 'disabled title="确认前需要摘要"' : "") + '>确认</button><details class="compact-actions"><summary>更多</summary><div class="compact-actions-menu"><button class="small" data-term-research="' + esc(e.id) + '" ' + (e.research?.status === "running" ? "disabled" : "") + '>研究来源</button><button class="small" data-term-reject="' + esc(e.id) + '">拒绝</button></div></details>' : active === "confirmed" ? '<button class="small" data-term-edit="' + esc(e.id) + '">编辑</button><button class="small danger" data-term-reject="' + esc(e.id) + '">撤销确认</button>' : '<button class="small" data-term-restore="' + esc(e.id) + '">恢复候选</button>';
           const unverified = active === "candidate" && !e.sources?.length, sourceStatus = e.research?.status === "failed" ? "研究失败：" + (e.research.error || "未取得摘要") : e.research?.status === "running" ? "正在研究" : e.research?.status === "pending" ? "待研究" : "未附参考来源";
-          html += '<tr data-term-id="' + esc(e.id) + '"><td>' + (active !== "rejected" ? '<input type="checkbox" data-term-select="' + esc(e.id) + '" ' + (selected2.has(e.id) ? "checked" : "") + ">" : "—") + "</td><td><b>" + esc(e.term) + '</b><br><span class="' + (active === "candidate" ? "pill b" : active === "confirmed" ? "pill g" : "pill r") + '">' + statuses[active] + "</span></td><td>" + esc(e.count || 1) + "</td><td>" + esc(!e.sourceKey || e.sourceKey === "*" ? "手动 / 公共" : e.sourceKey) + "</td><td>" + (unverified && e.summary ? '<span class="meta">待核实摘要：</span>' : "") + esc(e.summary || "待补充摘要") + '<br><span class="meta">' + esc(e.topic || "未分类") + " · " + esc(e.category || "兴趣知识") + " · " + esc(researchLabels[e.research?.status] || "未研究") + "</span></td><td>" + (e.sources?.length ? learningLinks(e.sources) : '<span class="meta">' + esc(sourceStatus) + "</span>") + "</td><td>" + learningEvidence(e.evidence) + '</td><td class="row">' + actions + "</td></tr>";
+          html += '<tr data-term-id="' + esc(e.id) + '"><td>' + (active !== "rejected" ? '<input type="checkbox" data-term-select="' + esc(e.id) + '" ' + (selected2.has(e.id) ? "checked" : "") + ">" : "—") + "</td><td><b>" + esc(e.term) + '</b><br><span class="' + (active === "candidate" ? "pill b" : active === "confirmed" ? "pill g" : "pill r") + '">' + statuses[active] + "</span></td><td>" + esc(e.count || 1) + "</td><td>" + sourceKeysMarkup(e) + "</td><td>" + (unverified && e.summary ? '<span class="meta">待核实摘要：</span>' : "") + esc(e.summary || "待补充摘要") + '<br><span class="meta">' + esc(e.topic || "未分类") + " · " + esc(e.category || "兴趣知识") + " · " + esc(researchLabels[e.research?.status] || "未研究") + "</span></td><td>" + (e.sources?.length ? learningLinks(e.sources) : '<span class="meta">' + esc(sourceStatus) + "</span>") + "</td><td>" + learningEvidence(e.evidence) + '</td><td class="row">' + actions + "</td></tr>";
         }
         box.innerHTML = html + "</table>";
         box.querySelectorAll("[data-term-select]").forEach((cb) => cb.addEventListener("change", () => {
           cb.checked ? selected2.add(cb.dataset.termSelect) : selected2.delete(cb.dataset.termSelect);
         }));
         box.querySelectorAll("[data-term-edit]").forEach((b) => b.addEventListener("click", () => edit2(entries.find((e) => e.id === b.dataset.termEdit))));
-        for (const [attr, tool, label] of [["research", "term_research", "研究完成，结果仍待管理员审核"], ["confirm", "term_confirm", "词条已确认"], ["reject", "term_reject", "词条已拒绝"]]) box.querySelectorAll("[data-term-" + attr + "]").forEach((b) => b.addEventListener("click", async () => {
+        for (const [attr, tool, label2] of [["research", "term_research", "研究完成，结果仍待管理员审核"], ["confirm", "term_confirm", "词条已确认"], ["reject", "term_reject", "词条已拒绝"]]) box.querySelectorAll("[data-term-" + attr + "]").forEach((b) => b.addEventListener("click", async () => {
           b.disabled = true;
           msg.textContent = attr === "research" ? "正在核实公开资料；不会自动确认……" : "正在保存……";
           try {
             await learningCall(tool, { id: b.dataset["term" + attr[0].toUpperCase() + attr.slice(1)] });
-            msg.textContent = label;
+            msg.textContent = label2;
             await loadTerms(false);
           } catch (e) {
             msg.textContent = e.message;
@@ -201,7 +480,7 @@
         document.getElementById("termName").value = entry.term || "";
         document.getElementById("termTopic").value = entry.topic || "";
         document.getElementById("termCategory").value = entry.category || "兴趣知识";
-        document.getElementById("termGroup").value = /^group:\d+$/.test(entry.sourceKey || "") ? entry.sourceKey.slice(6) : "";
+        document.getElementById("termSourceKeys").value = sourceKeysText(entry);
         document.getElementById("termAliases").value = (entry.aliases || []).join("，");
         document.getElementById("termSummary").value = entry.summary || "";
         document.getElementById("termSources").value = (entry.sources || []).join("\n");
@@ -211,9 +490,9 @@
       }
       const loadTerms = async (withConfig = true) => {
         try {
-          const data = await learningCall("term_list");
-          entries = data.entries || [];
-          config = data.config || config;
+          const data2 = await learningCall("term_list");
+          entries = data2.entries || [];
+          config = data2.config || config;
           const categoryOptions = document.getElementById("termCategoryOptions"), existing = new Set([...categoryOptions.options].map((x) => x.value));
           for (const entry of entries) if (entry.category && !existing.has(entry.category)) {
             const option = document.createElement("option");
@@ -230,8 +509,8 @@
             document.getElementById("termsInjectMax").value = config.injectMax ?? 3;
           }
           const counts = { candidate: entries.filter((e) => e.status === "candidate").length, confirmed: entries.filter((e) => e.status === "confirmed").length, rejected: entries.filter((e) => e.status === "rejected").length };
-          document.getElementById("termsStats").textContent = "待审核 " + counts.candidate + " · 已确认 " + counts.confirmed + " · 已拒绝 " + counts.rejected + " · 待提取群消息 " + Object.values(data.windows || {}).reduce((a, b) => a + Number(b || 0), 0);
-          render();
+          document.getElementById("termsStats").textContent = "待审核 " + counts.candidate + " · 已确认 " + counts.confirmed + " · 已拒绝 " + counts.rejected + " · 待提取群消息 " + Object.values(data2.windows || {}).reduce((a, b) => a + Number(b || 0), 0);
+          render2();
         } catch (e) {
           document.getElementById("termsCandidateList").innerHTML = '<p class="err">词条读取失败：' + esc(e.message) + "</p>";
         }
@@ -240,20 +519,20 @@
         active = button.dataset.termTab;
         document.querySelectorAll("#termsTabs [data-term-tab]").forEach((x) => x.classList.toggle("active", x === button));
         document.querySelectorAll("#section-terms .terms-panel").forEach((panel) => panel.classList.toggle("active", panel.id === "termsPanel" + active[0].toUpperCase() + active.slice(1)));
-        render();
+        render2();
       }));
       for (const status of ["candidate", "confirmed", "rejected"]) {
         const suffix = status === "candidate" ? "Cand" : status[0].toUpperCase() + status.slice(1);
-        document.getElementById("termsSearch" + suffix).addEventListener("input", render);
-        document.getElementById("termsLimit" + suffix).addEventListener("change", render);
+        document.getElementById("termsSearch" + suffix).addEventListener("input", render2);
+        document.getElementById("termsLimit" + suffix).addEventListener("change", render2);
       }
       for (const status of ["candidate", "confirmed"]) document.getElementById("terms" + status[0].toUpperCase() + status.slice(1) + "SelectAll").addEventListener("change", (event) => {
         const q = status === "candidate" ? search() : "";
-        for (const e of entries.filter((x) => x.status === status && (!q || [x.term, x.topic, x.category, x.summary, x.sourceKey, ...x.aliases || [], ...x.sources || [], ...(x.evidence || []).map((y) => y.text)].join(" ").toLowerCase().includes(q)))) {
+        for (const e of entries.filter((x) => x.status === status && (!q || [x.term, x.topic, x.category, x.summary, ...x.sourceKeys || [], ...x.aliases || [], ...x.sources || [], ...(x.evidence || []).map((y) => y.text)].join(" ").toLowerCase().includes(q)))) {
           if (event.target.checked) selected2.add(e.id);
           else selected2.delete(e.id);
         }
-        render();
+        render2();
       });
       document.getElementById("termsResearchSelected").addEventListener("click", async (event) => {
         const button = event.currentTarget, targets = [...selected2].map((id) => entries.find((e) => e.id === id)).filter((e) => e?.status === "candidate" && e.research?.status !== "running");
@@ -336,8 +615,9 @@
       document.getElementById("termsNew").addEventListener("click", () => edit2());
       async function quickAdd(status) {
         const ids = ["termManualName", "termManualTopic", "termManualSummary", "termManualSource", "termManualCategory"], values = Object.fromEntries(ids.map((id) => [id, document.getElementById(id).value.trim()]));
-        const input = { term: values.termManualName, topic: values.termManualTopic, category: values.termManualCategory, summary: values.termManualSummary, sources: values.termManualSource ? [values.termManualSource] : [], sourceKey: "*", status };
         try {
+          await requireLearningScopes();
+          const input = { term: values.termManualName, topic: values.termManualTopic, category: values.termManualCategory, summary: values.termManualSummary, sources: values.termManualSource ? [values.termManualSource] : [], sourceKeys: readSourceKeys("termManualSourceKeys"), status };
           await learningCall("term_save", input);
           msg.textContent = status === "confirmed" ? "自定义词条已确认入库" : "自定义词条已加入候选";
           for (const id of ids.slice(0, 4)) document.getElementById(id).value = "";
@@ -349,13 +629,17 @@
       document.getElementById("termManualDraft").addEventListener("click", () => quickAdd("candidate"));
       document.getElementById("termManualConfirm").addEventListener("click", () => quickAdd("confirmed"));
       async function save2(status) {
-        const editMsg = document.getElementById("termEditMsg"), group = document.getElementById("termGroup").value.trim();
-        if (group && !/^\d+$/.test(group)) {
-          editMsg.textContent = "群号只能包含数字；留空为公共知识";
+        const editMsg = document.getElementById("termEditMsg");
+        let scope;
+        try {
+          scope = readSourceKeys("termSourceKeys");
+        } catch (error) {
+          editMsg.textContent = error.message;
           return;
         }
-        const input = { id: document.getElementById("termEditId").value || void 0, term: document.getElementById("termName").value, topic: document.getElementById("termTopic").value, category: document.getElementById("termCategory").value, sourceKey: group ? "group:" + group : "*", aliases: document.getElementById("termAliases").value.split(/[,，、]/).map((x) => x.trim()).filter(Boolean), summary: document.getElementById("termSummary").value, sources: document.getElementById("termSources").value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean), status };
+        const input = { id: document.getElementById("termEditId").value || void 0, term: document.getElementById("termName").value, topic: document.getElementById("termTopic").value, category: document.getElementById("termCategory").value, sourceKeys: scope, aliases: document.getElementById("termAliases").value.split(/[,，、]/).map((x) => x.trim()).filter(Boolean), summary: document.getElementById("termSummary").value, sources: document.getElementById("termSources").value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean), status };
         try {
+          await requireLearningScopes();
           const r = await learningCall("term_save", input);
           document.getElementById("termEditId").value = r.entry.id;
           editMsg.textContent = status === "confirmed" ? "已保存并确认" : "草稿已保存";
@@ -371,6 +655,7 @@
         const configMsg = document.getElementById("termsConfigMsg");
         const patch = { autoExtract: document.getElementById("termsAutoExtract").checked, autoResearch: document.getElementById("termsAutoResearch").checked, minMessages: Number(document.getElementById("termsMinMessages").value), cooldownMs: Number(document.getElementById("termsCooldown").value) * 6e4, maxCallsPerHour: Number(document.getElementById("termsMaxCalls").value), injectMax: Number(document.getElementById("termsInjectMax").value) };
         try {
+          await requireLearningScopes();
           const out = await api("/api/plugins/config", "POST", { id: "ctx-interest-terms", config: patch });
           if (out.ok === false) throw Error(out.error);
           configMsg.textContent = "学习设置已保存";
@@ -387,27 +672,91 @@
     })();
   }
 
+  // console/layers/C/affairs-budget.js
+  var componentId = "ctx-memory-context";
+  var el = (id) => document.getElementById(id);
+  var dirty = false;
+  var saving = false;
+  async function readConfig() {
+    const result = await api("/api/plugins/detail?id=" + componentId);
+    if (!result.ok || !result.plugin) throw Error(result.error || "无法读取事务预算");
+    return result.plugin;
+  }
+  async function loadAffairsBudget() {
+    if (dirty || saving) return;
+    try {
+      const plugin = await readConfig();
+      if (dirty || saving) return;
+      const input = el("v2AffairsBudget"), rule = plugin.configSchema.affairsMaxChars;
+      input.min = rule.min;
+      input.max = rule.max;
+      input.value = plugin.config.affairsMaxChars;
+      input.disabled = false;
+      el("v2AffairsBudgetSave").disabled = false;
+      el("v2AffairsBudgetMsg").textContent = "";
+    } catch (error) {
+      el("v2AffairsBudgetMsg").textContent = "读取预算失败：" + error.message;
+    }
+  }
+  function initializeAffairsBudget(refreshPreview) {
+    const input = el("v2AffairsBudget"), button = el("v2AffairsBudgetSave"), message2 = el("v2AffairsBudgetMsg");
+    input.addEventListener("input", () => {
+      dirty = true;
+      message2.textContent = "尚未保存";
+    });
+    button.addEventListener("click", async () => {
+      if (!input.reportValidity()) return;
+      const value2 = input.valueAsNumber;
+      if (!Number.isInteger(value2)) {
+        message2.textContent = "请填写整数预算";
+        return;
+      }
+      saving = true;
+      input.disabled = true;
+      button.disabled = true;
+      message2.textContent = "保存中…";
+      let saved2 = false;
+      try {
+        const result = await api("/api/plugins/config", "POST", { id: componentId, config: { affairsMaxChars: value2 } });
+        if (!result.ok) throw Error(result.error || "保存失败");
+        saved2 = true;
+        const plugin = await readConfig();
+        if (plugin.config.affairsMaxChars !== value2) throw Error("预算读回不一致，请刷新核对");
+        input.value = plugin.config.affairsMaxChars;
+        dirty = false;
+        const refreshed = await refreshPreview();
+        message2.textContent = "已保存并重载" + (refreshed ? "，预览已刷新" : "");
+      } catch (error) {
+        message2.textContent = (saved2 ? "已保存，复核失败：" : "保存失败：") + error.message;
+      } finally {
+        saving = false;
+        input.disabled = false;
+        button.disabled = false;
+      }
+    });
+  }
+
   // console/layers/C/affairs.js
   var labels = { needs_review: "待核实", pending: "待处理", doing: "进行中", waiting: "等待结果", done: "已完成", cancelled: "已取消", superseded: "被替代" };
-  var el = (id) => document.getElementById(id);
+  var el2 = (id) => document.getElementById(id);
   var selected = null;
   var offset = 0;
   var total = 0;
   var sequence = 0;
   var items = /* @__PURE__ */ new Map();
-  var key = () => el("v2AffairsKey").value;
+  var key = () => el2("v2AffairsKey").value;
   var message = (text) => {
-    el("v2AffairsMsg").textContent = text;
-    el("v2AffairEditorMsg").textContent = text;
+    el2("v2AffairsMsg").textContent = text;
+    el2("v2AffairEditorMsg").textContent = text;
   };
   function edit(item = null, show = true) {
     selected = item;
-    el("v2AffairEditorMsg").textContent = "";
-    for (const [field, id] of [["title", "Title"], ["detail", "Detail"], ["nextAction", "NextAction"], ["source", "Source"]]) el("v2Affair" + id).value = item?.[field] || "";
-    el("v2AffairStatus").value = item?.status || "pending";
-    el("v2AffairPriority").value = String(item?.priority ?? 1);
-    el("v2AffairEditorTitle").textContent = item ? "编辑事务" : "新增事务";
-    if (show && !el("v2AffairEditor").open) el("v2AffairEditor").showModal();
+    el2("v2AffairEditorMsg").textContent = "";
+    for (const [field, id] of [["title", "Title"], ["detail", "Detail"], ["nextAction", "NextAction"], ["source", "Source"]]) el2("v2Affair" + id).value = item?.[field] || "";
+    el2("v2AffairStatus").value = item?.status || "pending";
+    el2("v2AffairPriority").value = String(item?.priority ?? 1);
+    el2("v2AffairEditorTitle").textContent = item ? "编辑事务" : "新增事务";
+    if (show && !el2("v2AffairEditor").open) el2("v2AffairEditor").showModal();
   }
   async function load() {
     const requestKey = key(), requestId = ++sequence;
@@ -417,30 +766,32 @@
     }
     message("加载中…");
     try {
-      const query = new URLSearchParams({ key: requestKey, status: el("v2AffairsFilter").value, offset, limit: 20 });
+      const query = new URLSearchParams({ key: requestKey, status: el2("v2AffairsFilter").value, offset, limit: 20 });
       const result = await api("/api/socialV2/affairs?" + query);
       if (requestId !== sequence || requestKey !== key()) return;
       if (!result.ok) throw new Error(result.error || "加载失败");
       items = new Map(result.items.map((item) => [item.id, item]));
       total = result.total;
-      el("v2AffairsList").innerHTML = result.items.length ? result.items.map((item) => `<article class="affair-card"><div class="affair-card-heading"><strong>${esc(item.title)}</strong><span class="affair-badge" data-status="${esc(item.status)}">${esc(labels[item.status])}</span></div><p class="affair-progress">${esc(item.detail || "尚无进度记录")}</p>${item.nextAction ? `<div class="affair-next"><span>下一步</span>${esc(item.nextAction)}</div>` : ""}<div class="affair-card-footer"><span class="meta">${item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() + " 更新" : ""}</span><div><button class="small" type="button" data-affair-id="${esc(item.id)}">编辑</button>${["needs_review", "pending", "doing", "waiting"].includes(item.status) ? `<button class="small" type="button" data-affair-done="${esc(item.id)}">标记完成</button>` : ""}</div></div></article>`).join("") : "当前范围没有事务";
-      el("v2AffairsPage").textContent = `共 ${total} 项 · 第 ${Math.floor(offset / 20) + 1} 页`;
-      el("v2AffairsPrev").disabled = offset === 0;
-      el("v2AffairsNext").disabled = offset + 20 >= total;
-      el("v2AffairsPreview").textContent = result.preview?.text || "（当前预算未选中事务）";
-      el("v2AffairsPreviewInfo").textContent = `事务预算 ${result.preview?.maxChars || 0} 字符：选中 ${result.preview?.selectedIds?.length || 0} 项，未选中 ${result.preview?.omittedIds?.length || 0} 项。组合记忆总预算可能进一步收紧；未选中内容仍完整保存。`;
+      el2("v2AffairsList").innerHTML = result.items.length ? result.items.map((item) => `<article class="affair-card"><div class="affair-card-heading"><strong>${esc(item.title)}</strong><span class="affair-badge" data-status="${esc(item.status)}">${esc(labels[item.status])}</span></div><p class="affair-progress">${esc(item.detail || "尚无进度记录")}</p>${item.nextAction ? `<div class="affair-next"><span>下一步</span>${esc(item.nextAction)}</div>` : ""}<div class="affair-card-footer"><span class="meta">${item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() + " 更新" : ""}</span><div><button class="small" type="button" data-affair-id="${esc(item.id)}">编辑</button>${["needs_review", "pending", "doing", "waiting"].includes(item.status) ? `<button class="small" type="button" data-affair-done="${esc(item.id)}">标记完成</button>` : ""}</div></div></article>`).join("") : "当前范围没有事务";
+      el2("v2AffairsPage").textContent = `共 ${total} 项 · 第 ${Math.floor(offset / 20) + 1} 页`;
+      el2("v2AffairsPrev").disabled = offset === 0;
+      el2("v2AffairsNext").disabled = offset + 20 >= total;
+      el2("v2AffairsPreview").textContent = result.preview?.text || "（当前预算未选中事务）";
+      el2("v2AffairsPreviewInfo").textContent = `选中 ${result.preview?.selectedIds?.length || 0} 项，未选中 ${result.preview?.omittedIds?.length || 0} 项。组合记忆总预算可能进一步收紧；未选中内容仍完整保存。`;
       message("已加载 " + result.items.length + " 项");
+      return true;
     } catch (error) {
       if (requestId === sequence) message("读取失败：" + error.message);
+      return false;
     }
   }
   async function loadKeys() {
     try {
       const result = await api("/api/socialV2/states");
       if (!result.ok) throw new Error(result.error || "无法读取会话");
-      const previous = key(), keys = result.conversations.map((item) => item.key).filter((value) => /^(private|group):\d+$/.test(value));
-      el("v2AffairsKey").innerHTML = keys.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
-      if (keys.includes(previous)) el("v2AffairsKey").value = previous;
+      const previous = key(), keys = result.conversations.map((item) => item.key).filter((value2) => /^(private|group):\d+$/.test(value2));
+      el2("v2AffairsKey").innerHTML = keys.map((value2) => `<option value="${esc(value2)}">${esc(value2)}</option>`).join("");
+      if (keys.includes(previous)) el2("v2AffairsKey").value = previous;
       await load();
     } catch (error) {
       message("读取会话失败：" + error.message);
@@ -454,39 +805,45 @@
     const requestKey = key(), payload = {
       key: requestKey,
       action: "upsert",
-      title: el("v2AffairTitle").value.trim(),
-      detail: el("v2AffairDetail").value,
-      nextAction: el("v2AffairNextAction").value,
-      source: el("v2AffairSource").value,
-      status: el("v2AffairStatus").value,
-      priority: Number(el("v2AffairPriority").value),
+      title: el2("v2AffairTitle").value.trim(),
+      detail: el2("v2AffairDetail").value,
+      nextAction: el2("v2AffairNextAction").value,
+      source: el2("v2AffairSource").value,
+      status: el2("v2AffairStatus").value,
+      priority: Number(el2("v2AffairPriority").value),
       ...selected ? { id: selected.id, expectedRevision: selected.revision } : {}
     };
     if (!payload.title) {
       message("请填写事项标题");
       return;
     }
-    el("v2AffairsSave").disabled = true;
+    el2("v2AffairsSave").disabled = true;
     try {
       const result = await api("/api/socialV2/affairs", "POST", payload);
       if (!result.ok) throw new Error(result.error || "保存失败");
       if (requestKey !== key()) return;
-      el("v2AffairEditor").close();
+      el2("v2AffairEditor").close();
       selected = null;
       await load();
       message("已保存");
     } catch (error) {
       message("保存失败：" + error.message + "。表单内容已保留；如有版本冲突，请刷新并重新打开该事务。");
     } finally {
-      el("v2AffairsSave").disabled = false;
+      el2("v2AffairsSave").disabled = false;
     }
   }
-  function initialize6() {
-    el("v2AffairsLoad").addEventListener("click", () => key() ? load() : loadKeys());
-    el("v2AffairsNew").addEventListener("click", () => edit());
-    el("v2AffairsSave").addEventListener("click", save);
-    el("v2AffairsCancel").addEventListener("click", () => el("v2AffairEditor").close());
-    el("v2AffairsList").addEventListener("click", (event) => {
+  function initialize7() {
+    initializeAffairsBudget(async () => {
+      if (!key()) return false;
+      const refreshed = await load();
+      if (refreshed === false) throw Error("事务预览刷新失败，请点“刷新事务”重试");
+      return refreshed;
+    });
+    el2("v2AffairsLoad").addEventListener("click", () => key() ? load() : loadKeys());
+    el2("v2AffairsNew").addEventListener("click", () => edit());
+    el2("v2AffairsSave").addEventListener("click", save);
+    el2("v2AffairsCancel").addEventListener("click", () => el2("v2AffairEditor").close());
+    el2("v2AffairsList").addEventListener("click", (event) => {
       const button = event.target.closest("[data-affair-id]");
       if (button) edit(items.get(button.dataset.affairId));
       const done = event.target.closest("[data-affair-done]");
@@ -502,21 +859,21 @@
         });
       }
     });
-    for (const id of ["v2AffairsKey", "v2AffairsFilter"]) el(id).addEventListener("change", () => {
+    for (const id of ["v2AffairsKey", "v2AffairsFilter"]) el2(id).addEventListener("change", () => {
       offset = 0;
       edit(null, false);
-      el("v2AffairEditor").close();
+      el2("v2AffairEditor").close();
       void load();
     });
-    el("v2AffairsPrev").addEventListener("click", () => {
+    el2("v2AffairsPrev").addEventListener("click", () => {
       offset = Math.max(0, offset - 20);
       void load();
     });
-    el("v2AffairsNext").addEventListener("click", () => {
+    el2("v2AffairsNext").addEventListener("click", () => {
       offset += 20;
       void load();
     });
-    registerPageLoader("setting-c-1", loadKeys);
+    registerPageLoader("setting-c-1", () => Promise.all([loadKeys(), loadAffairsBudget()]));
   }
 
   // console/layers/G/session-token.js
@@ -540,7 +897,7 @@
     msg.textContent = r.generated ? "已生成随机令牌，当前页面已自动使用。可点击显示后复制。" : "已保存新令牌";
     msg.className = "meta ok";
   }
-  function initialize7() {
+  function initialize8() {
     document.getElementById("consoleTokenSave").addEventListener("click", () => changeConsoleToken(false));
     document.getElementById("consoleTokenRandom").addEventListener("click", () => changeConsoleToken(true));
   }
@@ -554,7 +911,7 @@
   flags：${rule.flags || "（无）"}`).join("\n") : "（无规则）");
   }
   function formatSecurityPolicy(security, guard = {}) {
-    const terms = (value) => Array.isArray(value) && value.length ? value.join("、") : "无";
+    const terms = (value2) => Array.isArray(value2) && value2.length ? value2.join("、") : "无";
     return [
       `入站防护总开关：${guard.enabled === false ? "停用" : "启用"}；命中注入规则：${guard.quarantineInjection === false ? "不隔离" : "隔离并标记"}；命中违禁规则：${guard.blockForbidden === false ? "不拒收" : "拒收"}`,
       formatSecurityRules(security.sensitiveRules, "出站泄漏检测"),
@@ -599,10 +956,10 @@
       button.disabled = false;
     }
   }
-  async function saveSecurityField(field, value, button, msg) {
-    return saveSecurityPayload({ [field]: value }, button, msg);
+  async function saveSecurityField(field, value2, button, msg) {
+    return saveSecurityPayload({ [field]: value2 }, button, msg);
   }
-  function initialize8() {
+  function initialize9() {
     document.getElementById("secInterceptNotifySave").addEventListener("click", () => saveSecurityField(
       "interceptNotify",
       document.getElementById("secInterceptNotify").checked,
@@ -635,14 +992,14 @@
   var componentUI = {};
 
   // console/layers/V/page.js
-  function initialize9() {
+  function initialize10() {
     const load2 = () => componentUI.renderLayer("V", "vLayerRoot");
     registerPageLoader("layer-v", load2);
     document.getElementById("vLayerRefresh").addEventListener("click", load2);
   }
 
   // console/layers/S/page.js
-  function initialize10() {
+  function initialize11() {
     const load2 = () => componentUI.renderLayer("S", "sLayerRoot");
     registerPageLoader("layer-s", load2);
     document.getElementById("sLayerRefresh").addEventListener("click", load2);
@@ -658,16 +1015,18 @@
       return;
     }
     host.innerHTML = games.map((game) => {
-      const params = game.custom ? "" : Object.entries(game.parameters || {}).map(([key2, value]) => {
-        const [label, min, max] = gamesParameterLabels[key2] || [key2, 0, 100];
-        return `<label class="games-param">${esc(label)}<input type="number" data-game-param="${esc(key2)}" min="${min}" max="${max}" step="1" value="${Number(value)}"></label>`;
+      if (game.id === "spark" && !game.parameterSchema?.bodyPart) return '<article class="games-card" data-game-card="spark"><div class="games-card-head"><h3>轻微电流</h3></div><p class="meta" data-game-pending>后端尚未载入新玩法；联合启用并刷新 Games MCP 后即可配置。</p></article>';
+      const params = game.custom ? "" : Object.entries(game.parameters || {}).map(([key2, value2]) => {
+        const schema2 = game.parameterSchema?.[key2] || {}, [fallbackLabel, min, max] = gamesParameterLabels?.[key2] || [key2, 0, 100], label2 = schema2.title || fallbackLabel;
+        const control = schema2.enum ? '<select data-game-param="' + esc(key2) + '">' + schema2.enum.map((option, index) => '<option value="' + esc(option) + '" ' + (option === value2 ? "selected" : "") + ">" + esc(schema2.enumLabels?.[index] || option) + "</option>").join("") + "</select>" : '<input type="number" data-game-param="' + esc(key2) + '" min="' + (schema2.minimum ?? min) + '" max="' + (schema2.maximum ?? max) + '" step="1" value="' + Number(value2) + '">';
+        return '<label class="games-param">' + esc(label2) + control + (schema2.example ? '<small class="parameter-example">例：' + esc(schema2.example) + "</small>" : "") + "</label>";
       }).join("");
       return `<article class="games-card" data-game-card="${esc(game.id)}">
       <div class="games-card-head"><div><h3>${esc(game.name)}${game.custom ? ' <span class="meta">自定义</span>' : ""}</h3><div class="meta">${esc(game.id)} · ${esc(game.summary)}</div></div>
       <label class="games-toggle"><input type="checkbox" data-game-enabled ${game.enabled ? "checked" : ""}> 启用</label></div>
       <p class="games-rules"><strong>规则：</strong>${esc(game.rules)}</p>
       ${params ? `<div class="games-params">${params}</div>` : '<div class="meta">参数通过 adapter 的初始状态和合法动作定义。</div>'}
-      <div class="row"><button class="small" data-game-save>保存设置</button>${game.custom ? '<button class="small danger" data-game-delete>删除游戏</button>' : ""}<span class="meta" data-game-message role="status"></span></div>
+      <div class="row"><button class="small primary" data-game-save data-save-action>保存${esc(game.name)}设置</button>${game.custom ? '<button class="small danger" data-game-delete>删除游戏</button>' : ""}<span class="meta" data-game-message role="status"></span></div>
     </article>`;
     }).join("");
   }
@@ -681,12 +1040,12 @@
       if (host) host.innerHTML = `<div class="meta err">${esc(error.message)}</div>`;
     }
   }
-  async function saveGameCard(card) {
-    const id = card.dataset.gameCard;
-    const message2 = card.querySelector("[data-game-message]");
-    const parameters = Object.fromEntries([...card.querySelectorAll("[data-game-param]")].map((input) => [input.dataset.gameParam, Number(input.value)]));
+  async function saveGameCard(card2) {
+    const id = card2.dataset.gameCard;
+    const message2 = card2.querySelector("[data-game-message]");
+    const parameters = Object.fromEntries([...card2.querySelectorAll("[data-game-param]")].map((input) => [input.dataset.gameParam, input.tagName === "SELECT" ? input.value : Number(input.value)]));
     try {
-      const result = await api("/api/games/config", "POST", { id, enabled: card.querySelector("[data-game-enabled]").checked, parameters });
+      const result = await api("/api/games/config", "POST", { id, enabled: card2.querySelector("[data-game-enabled]").checked, parameters });
       if (!result.ok) throw new Error(result.error || "保存失败");
       message2.textContent = "已保存";
       message2.className = "meta ok";
@@ -696,32 +1055,24 @@
     }
   }
   var gamesRegistry;
-  function initialize11() {
+  function initialize12() {
     gamesParameterLabels = {
-      minSparks: ["最少虚构火花", 1, 5],
-      maxSparks: ["最多虚构火花", 1, 5],
-      minGlowLevel: ["最低虚构亮度等级", 1, 3],
-      maxGlowLevel: ["最高虚构亮度等级", 1, 3],
-      minCadenceMs: ["最短叙述间隔（毫秒）", 250, 5e3],
-      maxCadenceMs: ["最长叙述间隔（毫秒）", 250, 5e3],
-      minDurationSec: ["最短特效时长（秒）", 1, 5],
-      maxDurationSec: ["最长特效时长（秒）", 1, 5],
       sides: ["骰子面数", 2, 20],
       maxAttempts: ["最大作答次数", 1, 10]
     };
     gamesRegistry = document.getElementById("gamesRegistry");
     gamesRegistry?.addEventListener("click", async (event) => {
-      const card = event.target.closest("[data-game-card]");
-      if (!card) return;
+      const card2 = event.target.closest("[data-game-card]");
+      if (!card2) return;
       if (event.target.closest("[data-game-save]")) {
-        await saveGameCard(card);
+        await saveGameCard(card2);
         return;
       }
       if (event.target.closest("[data-game-delete]")) {
-        if (!confirm(`删除自定义游戏「${card.dataset.gameCard}」？`)) return;
-        const message2 = card.querySelector("[data-game-message]");
+        if (!confirm(`删除自定义游戏「${card2.dataset.gameCard}」？`)) return;
+        const message2 = card2.querySelector("[data-game-message]");
         try {
-          const result = await api("/api/games/delete", "POST", { id: card.dataset.gameCard });
+          const result = await api("/api/games/delete", "POST", { id: card2.dataset.gameCard });
           if (!result.ok) throw new Error(result.error || "删除失败");
           await loadGames();
         } catch (error) {
@@ -759,9 +1110,9 @@
   var roleCache;
   var roleInjectMax;
   function setRoleMsg(text, ok) {
-    const el2 = document.getElementById("roleCreateMsg");
-    el2.textContent = text;
-    el2.className = ok === void 0 ? "meta" : ok ? "meta ok" : "meta err";
+    const el3 = document.getElementById("roleCreateMsg");
+    el3.textContent = text;
+    el3.className = ok === void 0 ? "meta" : ok ? "meta ok" : "meta err";
   }
   function renderRoleEditor() {
     const editing = roleEditorState.mode === "edit";
@@ -769,10 +1120,10 @@
     document.getElementById("roleCreate").textContent = editing ? "保存修改" : "新建人格";
   }
   function roleEditorWarnings(text) {
-    const value = String(text ?? "");
+    const value2 = String(text ?? "");
     const warns = [];
-    if (value.length > roleInjectMax) warns.push(`超出注入上限：当前 ${value.length} 字符，只有前 ${roleInjectMax} 字符会进入提示词（多余 ${value.length - roleInjectMax} 字符不会生效）`);
-    if (/\[SILENT\]|空格分隔|按空格|用空格|空格分句|空格代表|自动转发|回复会自动|输出\s*\[SILENT\]/i.test(value)) {
+    if (value2.length > roleInjectMax) warns.push(`超出注入上限：当前 ${value2.length} 字符，只有前 ${roleInjectMax} 字符会进入提示词（多余 ${value2.length - roleInjectMax} 字符不会生效）`);
+    if (/\[SILENT\]|空格分隔|按空格|用空格|空格分句|空格代表|自动转发|回复会自动|输出\s*\[SILENT\]/i.test(value2)) {
       warns.push("含一代仿真专用指令（[SILENT] / 空格分句 / 自动转发），二代仿真下这些行会被自动过滤");
     }
     return warns;
@@ -811,8 +1162,8 @@
         const input = document.getElementById("roleInjectMax");
         if (input && document.activeElement !== input) input.value = String(roleInjectMax);
       }
-      const names = Array.isArray(r.roles) ? r.roles : [];
-      roleCache = Array.isArray(r.summaries) && r.summaries.length === names.length ? r.summaries : names.map((name) => ({ name, chars: 0, bytes: 0, excerpt: "", truncated: false }));
+      const names2 = Array.isArray(r.roles) ? r.roles : [];
+      roleCache = Array.isArray(r.summaries) && r.summaries.length === names2.length ? r.summaries : names2.map((name) => ({ name, chars: 0, bytes: 0, excerpt: "", truncated: false }));
       const box = document.getElementById("roleList");
       box.replaceChildren();
       if (!roleCache.length) {
@@ -866,13 +1217,13 @@
       document.getElementById("roleList").textContent = "加载失败：" + (error?.message ?? error);
     }
   }
-  function initialize12() {
+  function initialize13() {
     roleEditorState = { mode: "new", name: "" };
     roleCache = [];
     roleInjectMax = 6e3;
   }
-  function setRoleEditorState(value) {
-    roleEditorState = value;
+  function setRoleEditorState(value2) {
+    roleEditorState = value2;
   }
 
   // console/layers/E/sessions.js
@@ -924,7 +1275,7 @@
     } catch {
     }
   }
-  function initialize13() {
+  function initialize14() {
     document.querySelectorAll("#modeRow button").forEach((b) => b.addEventListener("click", async () => {
       if (b.disabled) return;
       await saveMode(b.dataset.mode);
@@ -967,7 +1318,7 @@
     const dryRun = document.getElementById("voiceSendDryRun").checked;
     const pick = document.querySelector('input[name="voicePick"]:checked');
     if (!target) {
-      msg.textContent = "❌ 请填发送目标（如 group:60001）";
+      msg.textContent = "❌ 请填发送目标（如 group:20010）";
       msg.className = "meta err";
       return;
     }
@@ -996,40 +1347,18 @@
       msg.className = "meta err";
     }
   }
-  function initialize14() {
+  function initialize15() {
     voiceEntries = [];
     voiceLibraryLoaded = false;
-  }
-
-  // console/layers/L/session-state.js
-  var phases = { diving: "潜水中", active: "活跃中", sleeping: "等待唤醒", waiting: "等待消息" };
-  function showSessionStates(response) {
-    const rows = Array.isArray(response.conversations) ? response.conversations : [response];
-    document.getElementById("v2StateSummary").innerHTML = rows.length ? rows.map((row) => '<div class="session-state-row"><strong>' + esc(row.key || "当前会话") + "</strong><span>" + esc(phases[row.phase || row.wakeConfig?.mode] || row.phase || row.wakeConfig?.mode || "尚未设置") + "</span><span>未读 " + esc(String(row.unreadCount ?? 0)) + " 条</span></div>").join("") : '<p class="meta">暂无会话状态。</p>';
-    document.getElementById("v2StateOutput").textContent = JSON.stringify(response, null, 2);
-  }
-  async function viewV2State() {
-    const key2 = document.getElementById("v2StateKey").value.trim();
-    if (!key2) {
-      document.getElementById("v2StateSummary").textContent = "请选择或输入一个会话。";
-      return;
-    }
-    try {
-      showSessionStates(await api("/api/socialV2/state?key=" + encodeURIComponent(key2)));
-    } catch (error) {
-      document.getElementById("v2StateSummary").textContent = "读取失败：" + error.message;
-    }
-  }
-  function initialize15() {
   }
 
   // console/layers/L/activity.js
   async function refreshV2Activity() {
     try {
       const r = await api("/api/socialV2/activity");
-      const el2 = document.getElementById("v2ActivityStatus");
-      el2.textContent = r.paused ? "二代 bot：已暂停" : "二代 bot：运行中";
-      el2.className = r.paused ? "meta err" : "meta ok";
+      const el3 = document.getElementById("v2ActivityStatus");
+      el3.textContent = r.paused ? "二代 bot：已暂停" : "二代 bot：运行中";
+      el3.className = r.paused ? "meta err" : "meta ok";
     } catch {
     }
   }
@@ -1049,24 +1378,6 @@
       msg.textContent = r.ok ? "✅ 已重置二代状态" : "❌ " + (r.error || "失败");
       msg.className = r.ok ? "meta ok" : "meta err";
       refreshV2Activity();
-      document.getElementById("v2StateSummary").textContent = "暂无会话状态。";
-      document.getElementById("v2StateOutput").textContent = "（空）";
-    });
-    document.getElementById("v2StateView").addEventListener("click", viewV2State);
-    document.getElementById("v2ForceWake").addEventListener("click", async () => {
-      const key2 = document.getElementById("v2StateKey").value.trim();
-      if (!key2) {
-        alert("请输入会话 key");
-        return;
-      }
-      const r = await api("/api/socialV2/wake", "POST", { key: key2, reason: "admin" });
-      const msg = document.getElementById("lifecycleActionMessage");
-      msg.textContent = r.ok ? "✅ 已发送唤醒" : "❌ " + (r.error || "失败");
-      msg.className = r.ok ? "meta ok" : "meta err";
-    });
-    document.getElementById("v2StatesList").addEventListener("click", async () => {
-      const r = await api("/api/socialV2/states");
-      showSessionStates(r);
     });
   }
 
@@ -1196,17 +1507,17 @@
   var slangActiveTab = "candidate";
   var slangModalId = null;
   var slangModalMode = "confirm";
-  function setSlangActiveTab(value) {
-    slangActiveTab = value;
+  function setSlangActiveTab(value2) {
+    slangActiveTab = value2;
   }
-  function setSlangEntriesCache(value) {
-    slangEntriesCache = value;
+  function setSlangEntriesCache(value2) {
+    slangEntriesCache = value2;
   }
-  function setSlangModalId(value) {
-    slangModalId = value;
+  function setSlangModalId(value2) {
+    slangModalId = value2;
   }
-  function setSlangModalMode(value) {
-    slangModalMode = value;
+  function setSlangModalMode(value2) {
+    slangModalMode = value2;
   }
 
   // console/layers/C/slang.js
@@ -1255,13 +1566,13 @@
   }
   function updateSlangSelectAll(status) {
     const id = status === "candidate" ? "slangCandidateSelectAll" : status === "confirmed" ? "slangConfirmedSelectAll" : "slangRejectedSelectAll";
-    const el2 = document.getElementById(id);
-    if (!el2) return;
+    const el3 = document.getElementById(id);
+    if (!el3) return;
     const list = slangEntriesCache.filter((e) => e.status === status);
     const q = getSlangSearch();
     const filtered = q ? list.filter((e) => slangSearchFields(e).includes(q)) : list;
-    el2.checked = filtered.length > 0 && filtered.every((e) => slangSelected.has(e.id));
-    el2.indeterminate = filtered.some((e) => slangSelected.has(e.id)) && !el2.checked;
+    el3.checked = filtered.length > 0 && filtered.every((e) => slangSelected.has(e.id));
+    el3.indeterminate = filtered.some((e) => slangSelected.has(e.id)) && !el3.checked;
   }
   function renderSlangPanel() {
     const status = slangActiveTab;
@@ -1279,7 +1590,7 @@
     const limit = getSlangLimit();
     const shown = filtered.slice(0, limit);
     let html = `<div class="meta" style="padding:6px 8px">共 ${filtered.length} 条，显示 ${shown.length} 条（可滚动查找）</div>`;
-    html += "<table><tr><th>选择</th><th>词条</th><th>次数</th><th>来源</th><th>含义 / 用法 / 示例</th><th>参考来源</th><th>语境证据</th><th>操作</th></tr>";
+    html += "<table><tr><th>选择</th><th>词条</th><th>次数</th><th>录入 / 适用来源</th><th>含义 / 用法 / 示例</th><th>参考来源</th><th>语境证据</th><th>操作</th></tr>";
     for (const e of shown) {
       const researchLabel = status === "candidate" ? Number(e.lastInferenceCount) > 0 ? Number(e.lastInferenceCount) < Number(e.count) ? "有新语境，待复核" : e.meaning ? "已研究，待审核" : "已研究，仍不确定" : e.meaning ? "已有解释，待审核" : String(e.risk || "").startsWith("研究未确定：") ? "已研究，仍不确定" : "待研究" : "";
       const meaning = e.meaning ? esc(e.meaning) + (status === "candidate" ? '<br><span class="meta">' + researchLabel + "</span>" : "") : status === "candidate" ? '<span class="meta">' + researchLabel + "</span>" : '<span class="meta">无</span>';
@@ -1300,7 +1611,7 @@
       <td><input type="checkbox" data-slang-select="${esc(e.id)}"${checked}></td>
       <td><b>${esc(e.content)}</b><br><span class="${slangStatusClass(status)}">${slangStatusLabel(status)}</span></td>
       <td>${esc(e.count)}</td>
-      <td>${esc(slangSourceLabel(e))}</td>
+      <td>${esc(slangSourceLabel(e))}<br>${sourceKeysMarkup(e)}</td>
       <td>${meaning}${e.usage ? '<br><span class="meta">用法：' + esc(e.usage) + "</span>" : ""}${e.example ? '<br><span class="meta">例：' + esc(e.example) + "</span>" : ""}${e.risk ? '<br><span class="meta">' + (String(e.risk).startsWith("研究未确定：") ? "研究备注：" + esc(String(e.risk).slice(6)) : "风险：" + esc(e.risk)) + "</span>" : ""}</td>
       <td>${slangSourcesHtml(e) || '<span class="meta">—</span>'}</td>
       <td>${slangEvidenceHtml(e)}</td>
@@ -1357,6 +1668,7 @@
     setSlangModalMode(mode);
     document.getElementById("slangModalTitle").textContent = mode === "confirm" ? `确认黑话：${e.content}` : `编辑黑话：${e.content}`;
     document.getElementById("slangModalContent").textContent = mode === "confirm" ? "你可以直接填写含义/用法并转正，也可以先送 DSH 深度联网研究，研究结果回来后在此处删改再确认。" : "修改后保存；候选不会转正，已确认仍保持已确认。";
+    document.getElementById("slangSourceKeys").value = sourceKeysText(e);
     document.getElementById("slangModalMeaning").value = e.meaning || "";
     document.getElementById("slangModalUsage").value = e.usage || "";
     document.getElementById("slangModalExample").value = e.example || "";
@@ -1372,6 +1684,7 @@
   }
   function readSlangModalPayload() {
     return {
+      sourceKeys: readSourceKeys("slangSourceKeys"),
       meaning: document.getElementById("slangModalMeaning").value.trim(),
       usage: document.getElementById("slangModalUsage").value.trim(),
       example: document.getElementById("slangModalExample").value.trim(),
@@ -1549,7 +1862,14 @@
     });
     document.getElementById("slangModalDirectConfirm").addEventListener("click", async () => {
       if (!slangModalId) return;
-      const payload = readSlangModalPayload();
+      let payload;
+      try {
+        await requireLearningScopes();
+        payload = readSlangModalPayload();
+      } catch (error) {
+        setSlangMsg(error.message, false);
+        return;
+      }
       if (!payload.meaning) {
         alert("请先填写含义，确认后才会注入 AI 上下文");
         return;
@@ -1581,7 +1901,15 @@
         alert("词条不能为空");
         return;
       }
-      const r = await api("/api/slang", "POST", { content, meaning, usage, example });
+      let scope;
+      try {
+        await requireLearningScopes();
+        scope = readSourceKeys("slangManualSourceKeys");
+      } catch (error) {
+        setSlangMsg(error.message, false);
+        return;
+      }
+      const r = await api("/api/slang", "POST", { content, meaning, usage, example, sourceKeys: scope });
       document.getElementById("slangMsg").textContent = r.ok ? "✅ 已添加" : "❌ " + (r.error || "失败");
       document.getElementById("slangMsg").className = r.ok ? "meta ok" : "meta err";
       if (r.ok) {
@@ -1600,12 +1928,18 @@
       await researchSlangIds(slangEntriesCache.filter((e) => e.status === "candidate").map((e) => e.id), event.currentTarget);
     });
     document.getElementById("slangConfigSave").addEventListener("click", async () => {
+      try {
+        await requireLearningScopes();
+      } catch (error) {
+        setSlangMsg(error.message, false);
+        return;
+      }
       const r = await api("/api/slang/config", "POST", {
         enabled: document.getElementById("slangEnabled").checked,
         extractMinMessages: Number(document.getElementById("slangExtractMin").value) || 10,
         extractCooldownMs: Number(document.getElementById("slangCooldown").value) || 3e5,
         inferenceThresholds: document.getElementById("slangThresholds").value.split(/[,，\s]+/).map(Number).filter(Boolean),
-        injectMax: Number(document.getElementById("slangInjectMax").value) || 8,
+        injectMax: Number(document.getElementById("slangInjectMax").value),
         learnerPreset: document.getElementById("slangLearnerPreset").value.trim(),
         workspaceTitle: document.getElementById("slangWorkspaceTitle").value.trim(),
         autoResearch: document.getElementById("slangAutoResearch").checked
@@ -1632,35 +1966,35 @@
   function initialize19() {
     document.querySelectorAll("input,select,textarea").forEach((input) => {
       if (input.labels?.length || input.hasAttribute("aria-label")) return;
-      let label = input.previousElementSibling;
-      while (label && label.tagName !== "LABEL") label = label.previousElementSibling;
-      if (label) {
+      let label2 = input.previousElementSibling;
+      while (label2 && label2.tagName !== "LABEL") label2 = label2.previousElementSibling;
+      if (label2) {
         const siblings = [];
-        let next = label.nextElementSibling;
+        let next = label2.nextElementSibling;
         while (next && next.tagName !== "LABEL") {
           if (next.matches("input,select,textarea")) siblings.push(next);
           next = next.nextElementSibling;
         }
-        input.setAttribute("aria-label", label.textContent.trim() + (siblings.length > 1 ? siblings.indexOf(input) === 0 ? "（下限）" : "（上限）" : ""));
+        input.setAttribute("aria-label", label2.textContent.trim() + (siblings.length > 1 ? siblings.indexOf(input) === 0 ? "（下限）" : "（上限）" : ""));
       } else {
-        const names = { consoleTokenInput: "新的控制台访问令牌", closedPreset: "封闭 Agent 使用的 DSH 预设", tsKind: "测试消息目标类型", aiNotifyKind: "后台提醒目标类型", sStateKey: "一代仿真会话", slangLimitCand: "候选词显示数量", slangLimitConfirmed: "已确认词显示数量", slangLimitRejected: "已拒绝词显示数量" };
-        input.setAttribute("aria-label", names[input.id] || input.placeholder || input.closest("section")?.querySelector("h2")?.textContent || "设置");
+        const names2 = { consoleTokenInput: "新的控制台访问令牌", closedPreset: "封闭 Agent 使用的 DSH 预设", tsKind: "测试消息目标类型", aiNotifyKind: "后台提醒目标类型", sStateKey: "一代仿真会话", slangLimitCand: "候选词显示数量", slangLimitConfirmed: "已确认词显示数量", slangLimitRejected: "已拒绝词显示数量" };
+        input.setAttribute("aria-label", names2[input.id] || input.placeholder || input.closest("section")?.querySelector("h2")?.textContent || "设置");
       }
     });
     primaryActions = ["roleSet", "roleCreate", "socialSave", "v2ConfigSaveTop", "wlSave", "secInterceptNotifySave", "secInterceptTextSave", "consoleTokenSave", "tsSend", "aiNotifySend", "slangAdd", "slangConfigSave", "slangModalDirectConfirm"];
     primaryActions.forEach((id) => document.getElementById(id)?.classList.add("primary"));
-    document.querySelectorAll('.meta[id$="Msg"], .meta[id$="Msg2"]').forEach((el2) => el2.setAttribute("role", "status"));
+    document.querySelectorAll('.meta[id$="Msg"], .meta[id$="Msg2"]').forEach((el3) => el3.setAttribute("role", "status"));
     document.getElementById("section-mode").querySelector("h2").dataset.note = "选择后即时生效";
     document.getElementById("section-activity").querySelector("h2").dataset.note = "每 3 秒自动同步";
     searchInput = document.getElementById("consoleSearch");
     searchResults = document.getElementById("searchResults");
     featureIndex = [];
-    document.querySelectorAll("section[data-page]").forEach((section) => {
-      const page = section.dataset.page;
-      featureIndex.push({ page, label: section.querySelector("h2")?.textContent || "", target: section });
-      section.querySelectorAll("details.settings-group>summary,input,textarea,select").forEach((el2) => {
-        let label = el2.tagName === "SUMMARY" ? el2.textContent : el2.getAttribute("aria-label") || el2.labels?.[0]?.textContent || el2.placeholder;
-        if (label) featureIndex.push({ page, label: label.trim(), target: el2 });
+    document.querySelectorAll("section[data-page]").forEach((section2) => {
+      const page = section2.dataset.page;
+      featureIndex.push({ page, label: section2.querySelector("h2")?.textContent || "", target: section2 });
+      section2.querySelectorAll("details.settings-group>summary,input,textarea,select").forEach((el3) => {
+        let label2 = el3.tagName === "SUMMARY" ? el3.textContent : el3.getAttribute("aria-label") || el3.labels?.[0]?.textContent || el3.placeholder;
+        if (label2) featureIndex.push({ page, label: label2.trim(), target: el3 });
       });
     });
     searchInput.addEventListener("input", () => {
@@ -1735,7 +2069,7 @@
         closeSlangModal();
       }
       if (event.key === "Tab") {
-        const controls = [...slangOverlay.querySelectorAll("button,input,textarea,select")].filter((el2) => !el2.disabled && el2.getClientRects().length);
+        const controls = [...slangOverlay.querySelectorAll("button,input,textarea,select")].filter((el3) => !el3.disabled && el3.getClientRects().length);
         const first = controls[0], last = controls.at(-1);
         if (event.shiftKey && document.activeElement === first) {
           event.preventDefault();
@@ -1823,9 +2157,9 @@
     for (let i = 0; i <= 2; i += 1) {
       const y = padT + plotH - plotH * i / 2;
       svg.appendChild(svgEl("line", { class: "usage-grid", x1: padL, y1: y, x2: W - padR, y2: y }));
-      const label = svgEl("text", { class: "usage-axis", x: padL - 8, y: y + 3, "text-anchor": "end" });
-      label.textContent = usageAxisValue(max > 0 ? scaleMax * i / 2 : 0, metric, sym);
-      svg.appendChild(label);
+      const label2 = svgEl("text", { class: "usage-axis", x: padL - 8, y: y + 3, "text-anchor": "end" });
+      label2.textContent = usageAxisValue(max > 0 ? scaleMax * i / 2 : 0, metric, sym);
+      svg.appendChild(label2);
     }
     for (let i = 0; i < buckets.length; i += 1) {
       const b = buckets[i];
@@ -1850,9 +2184,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     }
     const tickEvery = Math.max(1, Math.ceil(buckets.length / 6));
     for (let i = 0; i < buckets.length; i += tickEvery) {
-      const label = svgEl("text", { class: "usage-axis", x: padL + i * step + step / 2, y: H - padB + 16, "text-anchor": "middle" });
-      label.textContent = usageBucketClock(buckets[i].t, series.bucketMs);
-      svg.appendChild(label);
+      const label2 = svgEl("text", { class: "usage-axis", x: padL + i * step + step / 2, y: H - padB + 16, "text-anchor": "middle" });
+      label2.textContent = usageBucketClock(buckets[i].t, series.bucketMs);
+      svg.appendChild(label2);
     }
     box.innerHTML = "";
     box.appendChild(svg);
@@ -1989,17 +2323,20 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       refreshUsageTurns();
     }));
   }
+  var budgetRefreshRevision = 0;
   async function refreshUsageBudgets() {
+    const ticket = ++budgetRefreshRevision;
     const box = document.getElementById("usageBudgets");
     const msg = document.getElementById("usageBudgetMsg");
-    if (box.contains(document.activeElement)) return;
+    if (box.contains(document.activeElement) || box.querySelector("[data-budget-dirty]")) return;
     try {
       const result = await api("/api/tokens/budgets");
+      if (ticket !== budgetRefreshRevision || box.contains(document.activeElement) || box.querySelector("[data-budget-dirty]")) return;
       const rows = result.rows || [];
       const ownerEnabled = result.owner?.budgetEnabled !== false;
       const ownerInput = document.getElementById("usageOwnerBudgetEnabled");
       if (document.activeElement !== ownerInput && !ownerInput.dataset.dirty) ownerInput.checked = ownerEnabled;
-      const money = (value) => usageMoney(value, result.symbol || "¥");
+      const money = (value2) => usageMoney(value2, result.symbol || "¥");
       const global = result.global || {};
       document.getElementById("usageGlobalTurns").textContent = usageNum(global.turns);
       document.getElementById("usageGlobalCost").textContent = money(global.cost);
@@ -2177,6 +2514,13 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         button.disabled = false;
       }
     });
+    document.getElementById("usageBudgets").addEventListener("input", (event) => {
+      const row = event.target.closest("[data-budget-key]");
+      if (row) {
+        row.dataset.budgetDirty = "1";
+        budgetRefreshRevision++;
+      }
+    });
     document.getElementById("usageBudgets").addEventListener("click", async (event) => {
       const button = event.target.closest("[data-budget-save]");
       if (!button) return;
@@ -2186,7 +2530,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       button.disabled = true;
       try {
         await api("/api/tokens/budgets", "POST", { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], weakMinIntervalMin: values[2] });
-        msg.textContent = "已保存";
+        const unchanged = [...row.querySelectorAll("input")].every((input, index) => Number(input.value) === values[index]);
+        if (unchanged) delete row.dataset.budgetDirty;
+        msg.textContent = unchanged ? "已保存" : "已保存提交值；之后的修改尚未保存";
         msg.className = "meta ok";
         button.blur();
         await refreshUsageBudgets();
@@ -2308,8 +2654,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   function setConsolePage(page, { updateHash = true, focus = false, target = "" } = {}) {
     if (!Object.hasOwn(consolePages, page)) page = "overview";
     currentConsolePage = page;
-    document.querySelectorAll("[data-page]").forEach((el2) => {
-      el2.hidden = el2.dataset.page !== page;
+    document.querySelectorAll("[data-page]").forEach((el3) => {
+      el3.hidden = el3.dataset.page !== page;
     });
     document.querySelectorAll("#mainNav [data-view]").forEach((button) => {
       const selected2 = button.dataset.view === page;
@@ -2378,6 +2724,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
   function initialize22() {
     consolePages = {
+      "context-visual": ["可视化 context", "可视化 context", "选择发给 AI 的背景信息，调整顺序，并查看上次实际发送的内容。"],
       "setting-c-0": ["心情与表情", "心情与表情", "设置双形态、心情加减规则和欢迎冷却；查看真实结算。"],
       "setting-c-1": ["上下文与记忆", "上下文与记忆", "管理当前事务、轻量记忆和持久记忆的读取范围。"],
       "setting-c-2": ["会话背景", "会话背景", "按 QQ 管理人物档案、专业问答限额与会话背景。"],
@@ -2402,7 +2749,13 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       usage: ["令牌与花费", "每一次思考，都算得清楚。", "实时查看 AI 的 token 消耗与花费，可下钻到每个群、每个好友、每一轮对话。"],
       access: ["访问与安全", "明确边界，安心连接。", "管理允许对话的对象、管理员权限与控制台访问凭证。"],
       operations: ["调试与运维", "让桥接，始终井然有序。", "测试消息、引导 AI，或维护桥接进程与会话工作区。"],
-      environments: ["环境与执行", "环境与执行", "配置管理员能力、API调用、浏览器与监控脚本。"],
+      "environment-chat": ["普通聊天环境", "普通聊天环境", "管理普通聊天可用的会话辅助功能。"],
+      "environment-admin": ["管理员环境", "管理员环境", "管理员私聊的开发模式与预设。"],
+      "environment-web": ["网站操控", "网站操控", "管理打开网页、点击按钮、填写表单等通用网页操作。"],
+      "environment-watch": ["网页监督", "网页监督", "设置监控网址、检查间隔及监控时的浏览器运行方式。"],
+      "environment-scripts": ["脚本协同", "脚本协同", "添加脚本地址；执行与搜索约定显示在对应地址下方。"],
+      "images": ["图片", "图片", "设置 OpenAI 图片接口、图片额度与本机密钥。"],
+      "video": ["视频", "视频", "预留栏目；尚未接入视频生成或处理服务。"],
       "layer-v": ["失败回归", "失败回归", "将失败记录整理为可复查的用例。"],
       "human": ["human", "HUMAN IN THE LOOP", "我也是一个组件。"],
       "layer-s": ["资料参考", "资料参考", "AI 按需读取 SCHNIE 原文资料。"],
@@ -2453,13 +2806,64 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     });
     document.getElementById("refreshConsole").addEventListener("click", async function() {
       this.disabled = true;
-      await Promise.allSettled([refresh(), refreshSessions(), refreshPending(), refreshSocialStatus(), refreshV2Activity()]);
+      await Promise.allSettled([refresh2(), refreshSessions(), refreshPending(), refreshSocialStatus(), refreshV2Activity()]);
       this.disabled = false;
       if (document.getElementById("connectionAlert").hidden) showConsoleToast("运行状态已刷新");
     });
   }
 
+  // console/layers/O/preset-catalog.js
+  var DEFINITIONS = {
+    standard: { label: "通用编程助手", group: "常用", description: "DSH 的通用编程与本地工具配置。例：处理代码和文件任务。" },
+    "qq-chat-dev": { label: "小鲸鱼管理员助手", group: "常用", description: "保留小鲸鱼角色并开放本地开发工具，仅供管理员私聊。例：让小鲸鱼检查本机代码。" },
+    ptc: { label: "程序化工具调用", group: "DSH 高级", description: "通过代码编排工具调用，适合熟悉 DSH 工具执行机制的使用者。" },
+    minimal: { label: "精简编程助手", group: "DSH 高级", description: "精简的人格与工具配置。例：需要更少默认上下文时选用。" },
+    cordis: { label: "DSH 插件与配置开发", group: "DSH 高级", description: "提供 Cordis 组合、插件开发相关工具与技能。例：开发 DSH 插件。" },
+    "qq-chat": { label: "小鲸鱼一代聊天", group: "按模式自动使用", description: "一代仿真聊天预设，由桥接按运行模式选择。" },
+    "qq-chat-v2": { label: "小鲸鱼二代仿真", group: "按模式自动使用", description: "二代仿真专用，自主读消息、用工具发言和等待；由桥接按模式选择。" },
+    "qq-task-worker": { label: "独立任务执行", group: "后台专用", description: "小鲸鱼处理委派任务时创建的独立工作会话，不是日常聊天入口。" },
+    "qq-learning": { label: "知识学习与核实", group: "后台专用", description: "后台学习、核实公开知识；不接入聊天人格、QQ 发送或本机执行。" },
+    "campus-summary": { label: "网页更新整理", group: "后台专用", description: "整理监控网页差异；无工具，不发送消息，不读取聊天历史。" }
+  };
+  function presetInfo(preset) {
+    const p = typeof preset === "string" ? { id: preset } : preset;
+    return { ...p, ...DEFINITIONS[p.id] || { label: p.name || "自定义预设", group: "自定义", description: p.description || "用途由此自定义预设声明；请核对其工具与权限。" } };
+  }
+  function presetChoices(presets, showAll = false, selected2 = "") {
+    const unique = new Map(presets.map((p) => [p.id, presetInfo(p)]));
+    if (selected2 && !unique.has(selected2)) unique.set(selected2, { id: selected2, label: "当前配置（DSH 未列出）", group: "当前设置", description: "DSH 暂未列出这个预设，请先核对是否已安装。" });
+    return [...unique.values()].filter((p) => showAll || p.group === "常用" || p.group === "自定义" || p.id === selected2);
+  }
+
   // console/layers/O/status.js
+  var presetRows = [];
+  function renderPresetChoices(selected2) {
+    const select = document.getElementById("closedPreset");
+    if (!select) return;
+    select.replaceChildren(new Option("跟随 DSH 默认（推荐）", ""));
+    const groups = /* @__PURE__ */ new Map();
+    for (const p of presetChoices(presetRows, document.getElementById("showAllPresets")?.checked, selected2)) {
+      if (!groups.has(p.group)) {
+        const group = document.createElement("optgroup");
+        group.label = p.group;
+        groups.set(p.group, group);
+        select.append(group);
+      }
+      const option = new Option(p.label + " · " + p.id, p.id);
+      option.title = p.description;
+      groups.get(p.group).append(option);
+    }
+    select.value = selected2;
+    updatePresetHelp();
+  }
+  function updatePresetHelp(mode) {
+    const select = document.getElementById("closedPreset"), help = document.getElementById("closedPresetHelp");
+    if (!select || !help) return;
+    const p = presetRows.find((p2) => p2.id === select.value) || { id: select.value };
+    help.textContent = select.value ? presetInfo(p).description : "使用 DSH 当前声明的默认预设，通常无需另选。";
+    const scope = document.getElementById("closedPresetScope");
+    if (scope && mode) scope.textContent = mode === "closed-agent" ? "作用范围：当前管理员封闭 Agent 模式。切换选项后立即保存。" : "作用范围：仅封闭 Agent 模式；当前聊天或仿真模式的预设由桥接自动选择。";
+  }
   function fmtAgoMs(ms) {
     if (ms === null || ms === void 0 || ms === "") return "未知";
     const n = Number(ms);
@@ -2471,12 +2875,12 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     return Math.round(n / 864e5) + " 天";
   }
   function renderSnowlumaHealth(sl) {
-    const el2 = document.getElementById("snowlumaWarn");
+    const el3 = document.getElementById("snowlumaWarn");
     const strong = document.getElementById("metricSnowluma");
     const hint = document.getElementById("metricSnowlumaHint");
-    if (!el2 || !strong || !hint) return;
+    if (!el3 || !strong || !hint) return;
     if (!sl || typeof sl !== "object") {
-      el2.style.display = "none";
+      el3.style.display = "none";
       strong.textContent = "未知";
       strong.className = "";
       hint.textContent = "桥接未上报上游健康（旧版桥接）";
@@ -2501,15 +2905,15 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       hint.textContent = (receiving ? "最近一份上游事件包在 " + fmtAgoMs(ago) + "前 · " : "") + (sl.good === false ? "good=false" : sl.good === true ? "good=true" : "good 未上报");
     }
     if (!degraded) {
-      el2.style.display = "none";
+      el3.style.display = "none";
       return;
     }
     document.getElementById("snowlumaWarnHint").textContent = sl.hint || "桥接与 QQ 网关的 WebSocket 连着，但一直收不到 QQ 侧的数据。";
     document.getElementById("snowlumaWarnPkt").textContent = (receiving ? fmtAgoMs(ago) + "前" : "从未收到") + (sl.lastPacketKind ? "（" + sl.lastPacketKind + "）" : "");
     document.getElementById("snowlumaWarnGood").textContent = goodText;
-    el2.style.display = "";
+    el3.style.display = "";
   }
-  async function refresh() {
+  async function refresh2() {
     try {
       const s = await api("/api/status");
       document.querySelectorAll("#modeRow button").forEach((b) => (b.classList.toggle("active", b.dataset.mode === s.mode), b.setAttribute("aria-pressed", String(b.dataset.mode === s.mode))));
@@ -2519,7 +2923,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       updateOverview(s, modeLabel);
       document.getElementById("activity").textContent = s.activity || "（空）";
       const presetSel = document.getElementById("closedPreset");
-      if (presetSel && document.activeElement !== presetSel) presetSel.value = s.closedAgentPreset || "";
+      if (presetSel && document.activeElement !== presetSel) renderPresetChoices(s.closedAgentPreset || "");
+      updatePresetHelp(s.mode);
     } catch (e) {
       document.getElementById("statusText").textContent = "连接中断 · 请检查桥接服务";
       setConnectionError(e);
@@ -2528,19 +2933,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   async function refreshPresets() {
     try {
       const r = await api("/api/presets");
-      const sel = document.getElementById("closedPreset");
-      sel.innerHTML = "";
-      const defOpt = document.createElement("option");
-      defOpt.value = "";
-      defOpt.textContent = "（DSH 默认 preset）";
-      sel.appendChild(defOpt);
-      for (const p of r.presets) {
-        const opt = document.createElement("option");
-        opt.value = p.id;
-        opt.textContent = p.id + (p.trust === "user" ? "（用户）" : "");
-        sel.appendChild(opt);
-      }
-      refresh();
+      presetRows = r.presets || [];
+      renderPresetChoices(document.getElementById("closedPreset").value);
+      refresh2();
     } catch {
     }
   }
@@ -2548,7 +2943,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     const preset = document.getElementById("closedPreset").value || "";
     const r = await api("/api/mode", "POST", { mode, closedAgentPreset: preset });
     if (r.ok) {
-      refresh();
+      refresh2();
       if (r.dshSynced === false) {
         alert("模式已写入本地，但未能同步到 DSH 设置（DSH 未运行？）——\n下一次轮询（约 5 秒）会把模式改回去。请检查 DSH 与桥接日志。");
       }
@@ -2558,15 +2953,17 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     return r;
   }
   function initialize23() {
+    document.getElementById("showAllPresets")?.addEventListener("change", () => renderPresetChoices(document.getElementById("closedPreset").value));
+    document.getElementById("closedPreset")?.addEventListener("change", () => updatePresetHelp());
   }
 
   // console/layers/C/preset-prompt.js
   var simPromptOriginal;
   var simPromptPreset;
   function setSimMsg(text, ok) {
-    const el2 = document.getElementById("simPromptMsg");
-    el2.textContent = text;
-    el2.className = ok === void 0 ? "meta" : ok ? "meta ok" : "meta err";
+    const el3 = document.getElementById("simPromptMsg");
+    el3.textContent = text;
+    el3.className = ok === void 0 ? "meta" : ok ? "meta ok" : "meta err";
   }
   function setSimEditing(editing) {
     const area = document.getElementById("simPromptText");
@@ -2604,40 +3001,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     simPromptOriginal = "";
     simPromptPreset = "qq-chat-v2";
   }
-  function setSimPromptOriginal(value) {
-    simPromptOriginal = value;
-  }
-
-  // console/layers/O/model-status.js
-  async function refreshDshModel() {
-    try {
-      const r = await api("/api/dsh/model");
-      document.getElementById("dshModelText").textContent = r.model || "-";
-      document.getElementById("dshProviderText").textContent = r.provider || "-";
-      const select = document.getElementById("dshEffortSelect");
-      const labels2 = r.labels || {};
-      select.replaceChildren();
-      for (const option of r.options || []) {
-        const el2 = document.createElement("option");
-        el2.value = option;
-        const info = labels2[option] || {};
-        const isDefault = option === (r.providerDefault || r.default);
-        el2.textContent = `${option}${isDefault ? "（默认）" : ""}`;
-        if (info.description) el2.title = info.description;
-        select.appendChild(el2);
-      }
-      select.value = r.reasoningEffort;
-      const parts = [];
-      if (r.providerDefault) parts.push(`DSH 出厂默认是 ${r.providerDefault}`);
-      parts.push(r.catalogSource === "dsh" ? "档位取自 DSH 实际公布的能力" : "未能读取 DSH 能力，档位为内置清单");
-      document.getElementById("dshEffortNote").textContent = parts.join("；") + "。";
-      document.getElementById("dshEffortSideEffect").textContent = r.globalSideEffect ? "注意：切换会同时写入 DSH 的全局默认（~/.dsh/settings.yaml 的 agent-default-model），也就是 Web GUI 里新建会话的默认强度也会跟着变。" : "";
-      document.getElementById("dshEffortMsg").textContent = "";
-    } catch (error) {
-      document.getElementById("dshEffortMsg").textContent = "读取失败：" + (error?.message ?? error);
-    }
-  }
-  function initialize25() {
+  function setSimPromptOriginal(value2) {
+    simPromptOriginal = value2;
   }
 
   // console/layers/G/access.js
@@ -2652,11 +3017,11 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     } catch {
     }
   }
-  function initialize26() {
+  function initialize25() {
   }
 
   // console/layers/C/preset-actions.js
-  function initialize27() {
+  function initialize26() {
     document.getElementById("simPromptEdit").addEventListener("click", () => {
       setSimEditing(true);
       setSimMsg("编辑中：改完点「保存并同步到 DSH」。保存会先备份，并做 YAML 与安全不变量校验。");
@@ -2703,16 +3068,16 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/layers/C/persona-actions.js
-  function initialize28() {
+  function initialize27() {
     document.getElementById("roleInjectMaxSave").addEventListener("click", async () => {
       const msg = document.getElementById("roleInjectMaxMsg");
-      const value = Number(document.getElementById("roleInjectMax").value);
-      if (!Number.isFinite(value) || value < 1e3 || value > 2e4) {
+      const value2 = Number(document.getElementById("roleInjectMax").value);
+      if (!Number.isFinite(value2) || value2 < 1e3 || value2 > 2e4) {
         msg.textContent = "请输入 1000~20000 之间的整数";
         msg.className = "meta err";
         return;
       }
-      const r = await api("/api/roles/limit", "POST", { maxInjectChars: value });
+      const r = await api("/api/roles/limit", "POST", { maxInjectChars: value2 });
       msg.textContent = r.ok ? `✅ 已设为 ${r.maxInjectChars} 字符，下一条消息生效` : "❌ " + (r.error || "保存失败");
       msg.className = r.ok ? "meta ok" : "meta err";
       if (r.ok) refreshRoles();
@@ -2725,7 +3090,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     document.getElementById("roleClear").addEventListener("click", async () => {
       await api("/api/role", "POST", { role: null });
       refreshRoles();
-      refresh();
+      refresh2();
     });
     document.getElementById("roleCreate").addEventListener("click", async () => {
       const name = document.getElementById("newRoleName").value.trim();
@@ -2783,31 +3148,21 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       resetRoleForm();
       setRoleMsg(r.clearedCurrent ? `已删除「${name}」，并清除了当前启用的人格` : `已删除「${name}」`, true);
       refreshRoles();
-      refresh();
+      refresh2();
     });
     document.getElementById("roleFormReset").addEventListener("click", () => resetRoleForm());
     document.getElementById("newRoleContent").addEventListener("input", updateRoleEditorWarnings);
   }
 
-  // console/layers/O/model-actions.js
-  function initialize29() {
-    document.getElementById("dshEffortSave").addEventListener("click", async () => {
-      const effort = document.getElementById("dshEffortSelect").value;
-      const msg = document.getElementById("dshEffortMsg");
-      msg.textContent = "保存中…";
-      msg.className = "meta";
-      const r = await api("/api/dsh/effort", "POST", { reasoningEffort: effort });
-      msg.textContent = r.ok ? `✅ 已设为 ${r.reasoningEffort}，下一条消息生效` : "❌ " + (r.error || "保存失败");
-      msg.className = r.ok ? "meta ok" : "meta err";
-      if (r.ok) refreshDshModel();
-    });
+  // console/layers/O/control-actions.js
+  function initialize28() {
     document.getElementById("silentOn").addEventListener("click", async () => {
       await api("/api/role-mode", "POST", { mode: "silent" });
-      refresh();
+      refresh2();
     });
     document.getElementById("silentOff").addEventListener("click", async () => {
       await api("/api/role-mode", "POST", { mode: "active" });
-      refresh();
+      refresh2();
     });
     document.getElementById("wlSave").addEventListener("click", async () => {
       const parse = (s) => s.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean).map(Number).filter(Number.isFinite);
@@ -2818,7 +3173,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       });
       if (r.ok) {
         refreshWhitelist();
-        refresh();
+        refresh2();
         alert("白名单已保存并生效");
       } else alert(r.error || "保存失败");
     });
@@ -2842,7 +3197,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       document.getElementById("clearWsMsg").textContent = r.ok ? `✅ 已归档 ${r.archivedCount} 个会话，工作区已清空` : "❌ " + (r.error || "失败");
       document.getElementById("clearWsMsg").className = r.ok ? "meta ok" : "meta err";
       refreshSessions();
-      refresh();
+      refresh2();
     });
     document.getElementById("aiNotifySend").addEventListener("click", async () => {
       const kind = document.getElementById("aiNotifyKind").value;
@@ -2873,11 +3228,11 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       const convs = r.conversations || [];
       const schMap = /* @__PURE__ */ new Map();
       for (const c of sch && sch.conversations || []) schMap.set(c.key, c);
-      const fillKeys = (el2) => {
-        if (!el2) return;
-        const prev = el2.value;
-        el2.innerHTML = convs.length ? convs.map((c) => '<option value="' + esc(c.key) + '">' + esc(c.key) + "</option>").join("") : '<option value="">（暂无会话）</option>';
-        if (prev && convs.some((c) => c.key === prev)) el2.value = prev;
+      const fillKeys = (el3) => {
+        if (!el3) return;
+        const prev = el3.value;
+        el3.innerHTML = convs.length ? convs.map((c) => '<option value="' + esc(c.key) + '">' + esc(c.key) + "</option>").join("") : '<option value="">（暂无会话）</option>';
+        if (prev && convs.some((c) => c.key === prev)) el3.value = prev;
       };
       fillKeys(document.getElementById("v2TbKey"));
       fillKeys(document.getElementById("v2PmKey"));
@@ -2970,7 +3325,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       msg.textContent = "读取失败：" + (e && e.message ? e.message : e);
     }
   }
-  function initialize30() {
+  function initialize29() {
     document.getElementById("v2ScheduleRefresh").addEventListener("click", refreshV2Schedule);
     document.getElementById("v2ReminderAdd").addEventListener("click", async () => {
       const key2 = document.getElementById("v2ReminderKey").value;
@@ -3040,8 +3395,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     const allLocked = document.getElementById("v2TbAllLocked")?.checked === true;
     document.querySelectorAll("#v2TimeBubbleRows [data-tb-row]").forEach((row) => {
       const rowLocked = row.querySelector('[data-tb="locked"]')?.checked === true;
-      row.querySelectorAll('[data-tb]:not([data-tb="locked"]),[data-tb-del]').forEach((el2) => {
-        el2.disabled = allLocked || rowLocked;
+      row.querySelectorAll('[data-tb]:not([data-tb="locked"]),[data-tb-del]').forEach((el3) => {
+        el3.disabled = allLocked || rowLocked;
       });
       row.querySelector('[data-tb="locked"]').disabled = allLocked;
     });
@@ -3091,8 +3446,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     }));
   }
   function setV2TbMsg(text) {
-    const el2 = document.getElementById("v2TbMsg");
-    if (el2) el2.textContent = text || "";
+    const el3 = document.getElementById("v2TbMsg");
+    if (el3) el3.textContent = text || "";
   }
   async function loadV2TimeBubblesFor(key2) {
     if (!key2) {
@@ -3196,7 +3551,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       if (msg) msg.textContent = "保存失败：" + error.message;
     }
   }
-  function initialize31() {
+  function initialize30() {
     document.getElementById("v2TimeBubbleAdd").addEventListener("click", () => {
       const box = document.getElementById("v2TimeBubbleRows");
       if (box) {
@@ -3237,8 +3592,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/C/persistent-memory.js
   function setV2PmMsg(text) {
-    const el2 = document.getElementById("v2PmMsg");
-    if (el2) el2.textContent = text || "";
+    const el3 = document.getElementById("v2PmMsg");
+    if (el3) el3.textContent = text || "";
   }
   async function loadV2PersistentMemory(key2) {
     const ta = document.getElementById("v2PmContent");
@@ -3293,7 +3648,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       setV2PmMsg("清空失败：" + (e && e.message ? e.message : e));
     }
   }
-  function initialize32() {
+  function initialize31() {
     document.getElementById("v2PmLoad").addEventListener("click", () => loadV2PersistentMemory(document.getElementById("v2PmKey").value));
     document.getElementById("v2PmSave").addEventListener("click", () => saveV2PersistentMemory(document.getElementById("v2PmKey").value));
     document.getElementById("v2PmUpdate").addEventListener("click", () => triggerV2PersistentMemory(document.getElementById("v2PmKey").value));
@@ -3378,7 +3733,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       if (msg) msg.textContent = "读取失败：" + (e && e.message ? e.message : e);
     }
   }
-  function initialize33() {
+  function initialize32() {
     document.getElementById("v2DdRefresh").addEventListener("click", refreshV2Diary);
     document.getElementById("v2DdCatchUp").addEventListener("click", async () => {
       const msg = document.getElementById("v2DdMsg");
@@ -3418,8 +3773,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   var v2DiaryHistorySection;
   var V2_DA_EMPTY;
   function setV2DaMsg(text) {
-    const el2 = document.getElementById("v2DaMsg");
-    if (el2) el2.textContent = text || "";
+    const el3 = document.getElementById("v2DaMsg");
+    if (el3) el3.textContent = text || "";
   }
   async function loadV2DiaryArchive(date) {
     const pre = document.getElementById("v2DaContent");
@@ -3471,7 +3826,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       listEl.classList.remove("is-loading");
     }
   }
-  function initialize34() {
+  function initialize33() {
     V2_DA_EMPTY = "日记归档插件未启用，或还没有归档";
     document.getElementById("v2DaRefresh").addEventListener("click", refreshV2DiaryHistory);
     v2DiaryHistorySection = document.getElementById("v2DaRefresh")?.closest("details.settings-group");
@@ -3484,20 +3839,20 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/layers/C/mood.js
-  var time2 = (value) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
+  var time2 = (value2) => value2 ? new Date(value2).toLocaleString("zh-CN", { hour12: false }) : "—";
   function historyItem(item) {
     const corrected = item.voided === true;
-    return '<li class="mood-history-item' + (corrected ? " is-corrected" : "") + '"><div><b>' + esc(corrected ? "已核实回应，原未答判定已更正" : item.source || "未知来源") + "</b><time>" + esc(time2(item.effectiveAt ?? item.at)) + "</time></div><p>" + esc(item.reason || "未提供原因") + "</p><span>" + esc(item.before ?? "—") + " → " + esc(item.after ?? "—") + "（变化 " + esc(item.delta ?? "—") + "）</span>" + (corrected ? "<small>原记录：" + esc(item.source) + "；原扣分 " + esc(item.originalPenalty ?? "—") + "；记录于 " + esc(time2(item.recordedAt)) + "<br>更正依据：" + esc(typeof item.correction === "string" ? item.correction : JSON.stringify(item.correction || {})) + "</small>" : "") + "</li>";
+    return '<li class="mood-history-item' + (corrected ? " is-corrected" : "") + '"><div><b>' + esc(corrected ? "已核实回应，原未答判定已更正" : { "daily-recovery": "每日04:00保底恢复", "daily-first": "历史首次发言恢复", "model-adjustment": "AI加减分", "unanswered": "主动未回应扣分" }[item.source] || item.source || "未知来源") + "</b><time>" + esc(time2(item.effectiveAt ?? item.at)) + "</time></div><p>" + esc(item.reason || "未提供原因") + "</p><span>" + esc(item.before ?? "—") + " → " + esc(item.after ?? "—") + "（变化 " + esc(item.delta ?? "—") + "）</span>" + (corrected ? "<small>原记录：" + esc(item.source) + "；原扣分 " + esc(item.originalPenalty ?? "—") + "；记录于 " + esc(time2(item.recordedAt)) + "<br>更正依据：" + esc(typeof item.correction === "string" ? item.correction : JSON.stringify(item.correction || {})) + "</small>" : "") + "</li>";
   }
   async function refreshV2Mood() {
-    const el2 = document.getElementById("v2MoodCurrent");
-    if (!el2) return;
+    const el3 = document.getElementById("v2MoodCurrent");
+    if (!el3) return;
     const stamp = document.getElementById("v2MoodUpdated");
-    el2.classList.add("is-loading");
+    el3.classList.add("is-loading");
     try {
       const response = await api("/api/socialV2/states");
       if (response.ok === false) throw Error(response.error || "读取失败");
-      el2.innerHTML = (response.conversations || []).map((conversation) => {
+      el3.innerHTML = (response.conversations || []).map((conversation) => {
         const state = conversation.moodState;
         if (!state) return '<div class="mood-card"><b>' + esc(conversation.key) + "</b><p>心情组件未启用或状态不可用</p></div>";
         const history2 = conversation.moodHistory || [];
@@ -3505,12 +3860,12 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       }).join("") || '<div class="mood-empty">暂无会话</div>';
       if (stamp) stamp.textContent = "更新于 " + (/* @__PURE__ */ new Date()).toLocaleTimeString("zh-CN", { hour12: false });
     } catch (error) {
-      el2.innerHTML = '<div class="mood-empty err">读取失败：' + esc(error.message) + "</div>";
+      el3.innerHTML = '<div class="mood-empty err">读取失败：' + esc(error.message) + "</div>";
     } finally {
-      el2.classList.remove("is-loading");
+      el3.classList.remove("is-loading");
     }
   }
-  function initialize35() {
+  function initialize34() {
   }
 
   // console/layers/C/config-load.js
@@ -3539,8 +3894,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/T/config-load.js
   function applyTConfig(c) {
-    document.querySelectorAll("[data-v2-tool]").forEach((el2) => {
-      el2.checked = c.tools && c.tools[el2.dataset.v2Tool] !== false;
+    document.querySelectorAll("[data-v2-tool]").forEach((el3) => {
+      el3.checked = c.tools && c.tools[el3.dataset.v2Tool] !== false;
     });
   }
 
@@ -3554,26 +3909,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   // console/layers/L/config-load.js
   function applyLConfig(c) {
     const w = c.wake || {};
-    document.getElementById("v2WakeDefaultMode").value = w.defaultMode === "active" ? "active" : "diving";
-    document.getElementById("v2RecDefaultInfinite").checked = w.recommendedDefaultInfinite !== false;
-    document.getElementById("v2RecSleepMin").value = Math.round((w.recommendedSleepMinMs || 3e5) / 6e4);
-    document.getElementById("v2RecSleepMax").value = Math.round((w.recommendedSleepMaxMs || 72e5) / 6e4);
-    document.getElementById("v2RecProb").value = w.recommendedProbability ?? 0.05;
-    document.getElementById("v2RecKeywords").value = (w.recommendedKeywords || []).join(", ");
-    document.getElementById("v2RecAt").checked = w.recommendedAtMention !== false;
-    document.getElementById("v2RecName").checked = w.recommendedNameMention !== false;
-    document.getElementById("v2RecQuestion").checked = w.recommendedQuestion !== false;
-    document.getElementById("v2RecPoke").checked = w.recommendedPoke !== false;
     document.getElementById("v2WakeHint").value = w.recommendedHint || "";
-    document.getElementById("v2SleepMinMs").value = Math.round((w.sleepMinMs || 6e4) / 1e3);
-    document.getElementById("v2SleepMaxMs").value = Math.round((w.sleepMaxMs || 0) / 1e3);
     document.getElementById("v2MaxWakeMin").value = w.maxWakePerMinute ?? 1;
     document.getElementById("v2MaxWakeHour").value = w.maxWakePerHour ?? 12;
-    document.getElementById("v2BatchWindowMs").value = w.batchWindowMs ?? 8e3;
-    document.getElementById("v2NoActionLimit").value = w.noActionLimit ?? 3;
-    document.getElementById("v2MaxWakeConfigReminders").value = w.maxWakeConfigReminders ?? 2;
-    document.getElementById("v2PreSleepWaitEnabled").checked = w.preSleepWaitEnabled !== false;
-    document.getElementById("v2PreSleepWaitMin").value = Number.isFinite(Number(w.preSleepWaitMs)) ? Math.round(Number(w.preSleepWaitMs) / 6e4) : 5;
     const wt = c.wait || {};
     document.getElementById("v2WaitDefaultMs").value = wt.defaultMs ?? 3e4;
     document.getElementById("v2WaitMinMs").value = wt.minMs ?? 5e3;
@@ -3588,7 +3926,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     document.getElementById("v2NewsMax").value = nw.maxItems ?? 2;
     const defaultNewsTopics = ["鲸鱼", "海洋", "少年感", "海洋 纪录片", "大海 治愈", "少年 成长"];
     document.getElementById("v2NewsKeywords").value = (Array.isArray(nw.keywords) && nw.keywords.length ? nw.keywords : defaultNewsTopics).join("\n");
-    const defaultNewsUploaders = [];
+    const defaultNewsUploaders = [{ topic: "鲸鱼", uploader: "正太肥鱼与龙少的日常", weight: 2 }];
     const topicUploaders = Array.isArray(nw.topicUploaders) ? nw.topicUploaders : defaultNewsUploaders;
     document.getElementById("v2NewsUploaders").value = topicUploaders.map((x) => `${x.topic} | ${x.uploader} | ${x.weight ?? 1}`).join("\n");
     document.getElementById("v2NewsSessions").value = (Array.isArray(nw.sessionWhitelist) ? nw.sessionWhitelist : []).join("\n");
@@ -3636,7 +3974,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       console.error("Console configuration failed", error);
     }
   }
-  function initialize36() {
+  function initialize35() {
   }
 
   // console/layers/O/self-review.js
@@ -3671,7 +4009,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       if (button) button.disabled = false;
     }
   }
-  function initialize37() {
+  function initialize36() {
     document.getElementById("v2SelfReviewSave")?.addEventListener("click", (event) => saveV2SelfReviewConfig(event.currentTarget));
     document.getElementById("v2SelfReviewRun").addEventListener("click", async () => {
       const msg = document.getElementById("v2SelfReviewMsg");
@@ -3689,7 +4027,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     "setting-c-0": ["sticker"],
     "setting-c-1": ["persistentMemory", "context"],
     "v2-t": ["tools"],
-    environments: ["adminDev"],
+    "environment-admin": ["adminDev"],
     "setting-l-0": ["wake", "doubleStamp"],
     "setting-l-1": ["wait", "autoReplyCheckMs"],
     "setting-l-2": ["dailyNews"],
@@ -3734,7 +4072,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   // console/layers/T/config-save.js
   function collectTConfig() {
     return {
-      tools: Object.fromEntries([...document.querySelectorAll("[data-v2-tool]")].map((el2) => [el2.dataset.v2Tool, el2.checked]))
+      tools: Object.fromEntries([...document.querySelectorAll("[data-v2-tool]")].map((el3) => [el3.dataset.v2Tool, el3.checked]))
     };
   }
 
@@ -3753,26 +4091,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     return {
       autoReplyCheckMs: Math.round(Number(document.getElementById("v2AutoReplyCheckSec").value) || 30) * 1e3,
       wake: {
-        defaultMode: document.getElementById("v2WakeDefaultMode").value,
-        recommendedDefaultInfinite: document.getElementById("v2RecDefaultInfinite").checked,
-        preSleepWaitEnabled: document.getElementById("v2PreSleepWaitEnabled").checked,
-        preSleepWaitMs: (Number.isFinite(Number(document.getElementById("v2PreSleepWaitMin").value)) && Number(document.getElementById("v2PreSleepWaitMin").value) >= 0 ? Math.round(Number(document.getElementById("v2PreSleepWaitMin").value)) : 5) * 6e4,
-        recommendedSleepMinMs: Math.round(Number(document.getElementById("v2RecSleepMin").value) || 5) * 6e4,
-        recommendedSleepMaxMs: Math.round(Number(document.getElementById("v2RecSleepMax").value) || 120) * 6e4,
-        recommendedProbability: Number(document.getElementById("v2RecProb").value) || 0,
-        recommendedKeywords: document.getElementById("v2RecKeywords").value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
-        recommendedAtMention: document.getElementById("v2RecAt").checked,
-        recommendedNameMention: document.getElementById("v2RecName").checked,
-        recommendedQuestion: document.getElementById("v2RecQuestion").checked,
-        recommendedPoke: document.getElementById("v2RecPoke").checked,
         recommendedHint: document.getElementById("v2WakeHint").value,
-        sleepMinMs: Math.round(Number(document.getElementById("v2SleepMinMs").value) || 0) * 1e3,
-        sleepMaxMs: Math.round(Number(document.getElementById("v2SleepMaxMs").value) || 0) * 1e3,
         maxWakePerMinute: Math.round(Number(document.getElementById("v2MaxWakeMin").value) || 0),
-        maxWakePerHour: Math.round(Number(document.getElementById("v2MaxWakeHour").value) || 0),
-        batchWindowMs: Math.round(Number(document.getElementById("v2BatchWindowMs").value) || 8e3),
-        noActionLimit: Math.round(Number(document.getElementById("v2NoActionLimit").value) || 3),
-        maxWakeConfigReminders: Math.round(Number(document.getElementById("v2MaxWakeConfigReminders").value) || 2)
+        maxWakePerHour: Math.round(Number(document.getElementById("v2MaxWakeHour").value) || 0)
       },
       wait: {
         defaultMs: Math.round(Number(document.getElementById("v2WaitDefaultMs").value) || 5e3),
@@ -3831,7 +4152,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     const r = await api("/api/socialV2/config", "POST", body);
     const msg = btn && btn.closest && btn.closest("section")?.querySelector(".v2-save-msg") || document.getElementById("lifecycleActionMessage");
     msg.textContent = r.ok ? "✅ 已保存" : "❌ " + (r.error || "失败");
-    msg.className = r.ok ? "meta ok" : "meta err";
+    msg.classList.remove("ok", "err");
+    msg.classList.add("meta", r.ok ? "ok" : "err");
     if (r.ok) {
       const slots = [...btn?.closest("section")?.querySelectorAll('.inline-component-settings[data-defer-save="1"]') || []];
       try {
@@ -3861,7 +4183,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       const msg = button?.closest("section")?.querySelector(".v2-save-msg");
       if (msg) {
         msg.textContent = "保存失败：" + error.message;
-        msg.className = "meta err";
+        msg.classList.remove("ok");
+        msg.classList.add("meta", "err");
       }
     } finally {
       if (button) {
@@ -3870,7 +4193,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       }
     }
   }
-  function initialize38() {
+  function initialize37() {
   }
 
   // console/layers/O/tool-log.js
@@ -3950,8 +4273,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     }
     return parts.join(" | ") || JSON.stringify(obj);
   }
-  function v2ToolLogCell(value, tool) {
-    const text = value == null ? "" : String(value);
+  function v2ToolLogCell(value2, tool) {
+    const text = value2 == null ? "" : String(value2);
     if (!text) return '<span class="meta">-</span>';
     const summary = tool ? summarizeToolArgs(tool, text) : text;
     const short = summary.length > 100 ? summary.slice(0, 100) + "…" : summary;
@@ -3984,7 +4307,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       renderV2ToolLog([]);
     });
   }
-  function initialize39() {
+  function initialize38() {
     document.getElementById("v2ToolLogOutput").addEventListener("click", (ev) => {
       const cell = ev.target.closest(".tool-log-cell");
       if (!cell) return;
@@ -4001,13 +4324,13 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/layers/C/light-memory.js
-  function renderV2Memory(data) {
+  function renderV2Memory(data2) {
     const box = document.getElementById("v2MemoryOutput");
-    if (!data || !data.ok) {
+    if (!data2 || !data2.ok) {
       box.innerHTML = '<span class="meta">加载失败</span>';
       return;
     }
-    const raw = data.raw || {};
+    const raw = data2.raw || {};
     const topics = Array.isArray(raw.activeTopics) ? raw.activeTopics : [];
     const thoughts = Array.isArray(raw.pendingThoughts) ? raw.pendingThoughts : [];
     const impressions = raw.memberImpressions && typeof raw.memberImpressions === "object" ? raw.memberImpressions : {};
@@ -4027,9 +4350,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     }
     html += "</div>";
     html += '<div class="memory-section"><b>当前小上下文窗口内对用户的行为印象</b> <button class="small" data-action="clear" data-cat="memberImpression">清空</button>';
-    const names = Object.keys(impressions);
-    if (!names.length) html += '<div class="meta">（空）</div>';
-    for (const name of names) {
+    const names2 = Object.keys(impressions);
+    if (!names2.length) html += '<div class="meta">（空）</div>';
+    for (const name of names2) {
       const im = impressions[name] || {};
       const traits = Array.isArray(im.traits) ? im.traits : [];
       html += `<div style="margin:4px 0">👤 ${esc(name)}：${traits.length ? esc(traits.join("、")) : "暂无记录"}（互动 ${Number(im.interactionCount) || 0} 次） <button class="small" data-action="edit" data-cat="memberImpression" data-target="${esc(name)}" data-traits="${esc(traits.join(", "))}">编辑</button> <button class="small" data-action="remove" data-cat="memberImpression" data-target="${esc(name)}">删除</button></div>`;
@@ -4056,7 +4379,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       msg.className = "meta err";
     });
   }
-  function initialize40() {
+  function initialize39() {
     document.getElementById("v2MemoryLoad").addEventListener("click", loadV2Memory);
     document.getElementById("v2MemoryClearAll").addEventListener("click", async () => {
       const key2 = document.getElementById("v2MemoryKey").value.trim();
@@ -4109,83 +4432,56 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     });
   }
 
-  // console/layers/L/wake-status.js
-  function formatWakeStatus(r) {
-    if (!r || !r.ok) return '<span class="meta">加载失败</span>';
-    const wc = r.wakeConfig || {};
-    const lines = [];
-    const mode = wc.mode === "active" ? "活跃（任何消息都会唤醒）" : wc.mode === "diving" ? "潜水" : wc.mode || "未知";
-    lines.push(`<div><b>模式：</b>${esc(mode)}</div>`);
-    lines.push(`<div><b>无限期：</b>${wc.infinite ? "是" : "否"}</div>`);
-    const safety = r.wakeSafety || {};
-    const badge = safety.guaranteed ? "🟢 已保证" : "🔴 无保证";
-    lines.push(`<div><b>唤醒保证：</b>${badge}${safety.stale ? "（配置较旧，未确认）" : ""}</div>`);
-    let next = "";
-    if (wc.mode === "active" || wc.triggers?.anyMessage) {
-      next = "任何新消息都会唤醒";
-    } else if (wc.sleepUntil) {
-      const until = new Date(wc.sleepUntil).getTime();
-      const remain = until - Date.now();
-      if (!Number.isFinite(remain)) next = "时间格式无效";
-      else if (remain > 0) next = `约 ${Math.max(1, Math.round(remain / 1e3))} 秒后（${new Date(wc.sleepUntil).toLocaleString()}）`;
-      else next = "已到期，等待下一次唤醒";
-    } else if (wc.infinite) {
-      next = "无限期潜水，等待指定条件";
-    } else {
-      next = "未设置时间";
-    }
-    lines.push(`<div><b>下次唤醒：</b>${esc(next)}</div>`);
-    const tr = wc.triggers || {};
-    const conds = [];
-    if (tr.atMention) conds.push("@");
-    if (tr.nameMention) conds.push("名字");
-    if (Array.isArray(tr.keywords) && tr.keywords.length) conds.push("关键词：" + tr.keywords.join("、"));
-    if (Array.isArray(tr.speakerIds) && tr.speakerIds.length) conds.push("指定成员：" + tr.speakerIds.join("、"));
-    if (tr.question) conds.push("提问");
-    if (tr.poke) conds.push("拍一拍");
-    if (tr.anyMessage) conds.push("任何消息");
-    if (Number(tr.probability) > 0) conds.push("普通消息概率 " + Number(tr.probability));
-    lines.push(`<div><b>提前唤醒条件：</b>${conds.length ? esc(conds.join("；")) : "（无）"}</div>`);
-    lines.push(`<div><b>最近唤醒原因：</b>${esc(r.lastWakeReason || "-")}</div>`);
-    lines.push(`<div><b>唤醒次数：</b>${Number(wc.wakeCount) || 0}</div>`);
-    if (wc.confirmedAt) {
-      const ago = Math.max(0, Math.round((Date.now() - wc.confirmedAt) / 6e4));
-      lines.push(`<div><b>配置确认：</b>${ago} 分钟前（${esc(wc.confirmedBy || "unknown")}）</div>`);
-    }
-    if (r.lastAiReplyAt) {
-      const ago = Math.max(0, Math.round((Date.now() - r.lastAiReplyAt) / 6e4));
-      lines.push(`<div><b>上次发言：</b>${ago} 分钟前</div>`);
-    }
-    lines.push(`<div><b>未读：</b>${Number(r.unreadCount) || 0} 条</div>`);
-    return '<div style="padding:8px">' + lines.join("") + "</div>";
+  // console/layers/C/initial-prompt-sessions.js
+  var manualSession = "__manual__";
+  var validSessionKey = (key2) => /^(group|private):\d+$/.test(key2);
+  var picker = () => document.getElementById("v2InitPromptKey");
+  function initialPromptKey() {
+    return picker().value === manualSession ? document.getElementById("v2InitPromptManualKey").value.trim() : picker().value;
   }
-  function loadV2WakeStatus() {
-    const key2 = document.getElementById("v2WakeKey").value.trim();
-    const msg = document.getElementById("v2WakeStatusMsg");
-    if (!key2) {
-      msg.textContent = "请输入会话 key";
-      msg.className = "meta err";
-      return;
-    }
-    msg.textContent = "加载中…";
-    msg.className = "meta";
-    return api("/api/socialV2/state?key=" + encodeURIComponent(key2)).then((r) => {
-      document.getElementById("v2WakeStatusOutput").innerHTML = formatWakeStatus(r);
-      msg.textContent = r.ok ? "✅ 已加载" : "❌ " + (r.error || "失败");
-      msg.className = r.ok ? "meta ok" : "meta err";
-    }).catch((e) => {
-      msg.textContent = "❌ " + (e.message || e);
-      msg.className = "meta err";
+  function selectInitialPromptKey(key2) {
+    const select = picker();
+    if (key2 && ![...select.options].some((option) => option.value === key2)) select.add(new Option(key2, key2), select.options.length - 1);
+    select.value = key2;
+    document.getElementById("v2InitPromptManualKey").hidden = true;
+  }
+  async function refreshInitialPromptSessions() {
+    const results = await Promise.allSettled([api("/api/socialV2/states"), api("/api/sessions"), api("/api/socialV2/initial-prompt")]);
+    const keys = /* @__PURE__ */ new Set();
+    const fields = ["conversations", "sessions", "entries"];
+    let available = 0;
+    results.forEach((result, index) => {
+      if (result.status !== "fulfilled" || result.value.ok === false) return;
+      available++;
+      for (const item of result.value[fields[index]] || []) if (validSessionKey(item.key)) keys.add(item.key);
     });
-  }
-  function initialize41() {
-    document.getElementById("v2WakeStatusLoad").addEventListener("click", loadV2WakeStatus);
+    if (!available) throw Error("无法读取会话列表，可选择手动填写会话 key");
+    const select = picker(), previous = select.value;
+    if (validSessionKey(previous)) keys.add(previous);
+    select.replaceChildren(
+      new Option("选择群聊或私聊…", ""),
+      ...[...keys].sort().map((key2) => new Option((key2.startsWith("group:") ? "群聊 · " : "私聊 · ") + key2, key2)),
+      new Option("手动填写新会话…", manualSession)
+    );
+    select.value = previous;
   }
 
   // console/layers/C/initial-prompt.js
   var v2InitPromptTextEl;
+  var requestSequence = 0;
+  var loadedKey = "";
+  var dirty2 = false;
+  var loading2 = false;
+  var writing = false;
+  var writable = true;
   function v2InitPromptKeyValue() {
-    return document.getElementById("v2InitPromptKey").value.trim();
+    return initialPromptKey();
+  }
+  function updateInitialPromptActions() {
+    const ready = !!loadedKey && loadedKey === v2InitPromptKeyValue() && !loading2 && !writing;
+    v2InitPromptTextEl.disabled = !ready;
+    document.getElementById("v2InitPromptSave").disabled = !ready || !writable;
+    document.getElementById("v2InitPromptClear").disabled = !ready || !writable;
   }
   function setV2InitPromptMsg(text, kind) {
     const msg = document.getElementById("v2InitPromptMsg");
@@ -4214,9 +4510,22 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
   async function loadV2InitialPrompt() {
     const key2 = v2InitPromptKeyValue();
+    if (key2 && !validSessionKey(key2)) {
+      setV2InitPromptMsg("会话格式应为 group:群号 或 private:QQ号", "err");
+      return;
+    }
+    if (dirty2 && !confirm("重新加载将放弃尚未保存的会话背景，是否继续？")) return;
+    const sequence2 = ++requestSequence;
+    loadedKey = "";
+    dirty2 = false;
+    loading2 = true;
+    v2InitPromptTextEl.value = "";
+    updateV2InitPromptCount();
+    updateInitialPromptActions();
     setV2InitPromptMsg("加载中…");
     try {
       const r = await api("/api/socialV2/initial-prompt" + (key2 ? "?key=" + encodeURIComponent(key2) : ""));
+      if (sequence2 !== requestSequence || key2 !== v2InitPromptKeyValue()) return;
       if (!r.ok) {
         setV2InitPromptMsg("❌ " + (r.error || "失败"), "err");
         return;
@@ -4229,12 +4538,19 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         return;
       }
       v2InitPromptTextEl.value = r.text || "";
+      loadedKey = key2;
+      writable = !readOnly;
       updateV2InitPromptCount();
       document.getElementById("v2InitPromptList").textContent = r.exists ? "该会话已设置初始提示词；再点「保存」会覆盖。" : "该会话还没有设置初始提示词；填写后点「保存」新建。";
       if (readOnly) setV2InitPromptMsg("⚠️ 文件不可写（只读降级）：能看不能存", "err");
       else setV2InitPromptMsg(r.exists ? "✅ 已加载" : "（空）", r.exists ? "ok" : "");
     } catch (e) {
-      setV2InitPromptMsg("❌ " + (e.message || e), "err");
+      if (sequence2 === requestSequence) setV2InitPromptMsg("❌ " + (e.message || e), "err");
+    } finally {
+      if (sequence2 === requestSequence) {
+        loading2 = false;
+        updateInitialPromptActions();
+      }
     }
   }
   async function saveV2InitialPrompt() {
@@ -4243,14 +4559,23 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       setV2InitPromptMsg("请输入会话 key（group:群号 或 private:QQ号）", "err");
       return;
     }
+    if (key2 !== loadedKey || loading2 || writing) {
+      setV2InitPromptMsg("请先加载此会话背景", "err");
+      return;
+    }
+    const sequence2 = requestSequence, text = v2InitPromptTextEl.value;
+    writing = true;
+    updateInitialPromptActions();
     setV2InitPromptMsg("保存中…");
     try {
-      const r = await api("/api/socialV2/initial-prompt", "POST", { key: key2, text: v2InitPromptTextEl.value });
+      const r = await api("/api/socialV2/initial-prompt", "POST", { key: key2, text });
+      if (sequence2 !== requestSequence || key2 !== v2InitPromptKeyValue()) return;
       if (!r.ok) {
         setV2InitPromptMsg("❌ " + (r.error || "失败"), "err");
         return;
       }
       applyV2InitPromptMax(r.maxChars);
+      dirty2 = false;
       if (r.deleted) {
         v2InitPromptTextEl.value = "";
         updateV2InitPromptCount();
@@ -4259,11 +4584,43 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         setV2InitPromptMsg(`✅ 已保存（${r.chars} 字符），该会话下一次首次唤醒时注入`, "ok");
       }
     } catch (e) {
-      setV2InitPromptMsg("❌ " + (e.message || e), "err");
+      if (sequence2 === requestSequence) setV2InitPromptMsg("❌ " + (e.message || e), "err");
+    } finally {
+      writing = false;
+      updateInitialPromptActions();
     }
   }
-  function initialize42() {
+  function initialize40() {
     v2InitPromptTextEl = document.getElementById("v2InitPromptText");
+    updateInitialPromptActions();
+    document.getElementById("v2InitPromptKey").addEventListener("change", () => {
+      if (dirty2 && !confirm("切换会话将放弃尚未保存的背景，是否继续？")) {
+        selectInitialPromptKey(loadedKey);
+        return;
+      }
+      ++requestSequence;
+      dirty2 = false;
+      loadedKey = "";
+      loading2 = false;
+      v2InitPromptTextEl.value = "";
+      updateV2InitPromptCount();
+      updateInitialPromptActions();
+      const manual = document.getElementById("v2InitPromptKey").value === manualSession;
+      const input = document.getElementById("v2InitPromptManualKey");
+      input.hidden = !manual;
+      if (manual) {
+        input.value = "";
+        input.focus();
+        setV2InitPromptMsg("填写会话 key 后点“加载”");
+      } else void loadV2InitialPrompt();
+    });
+    document.getElementById("v2InitPromptManualKey").addEventListener("input", () => {
+      ++requestSequence;
+      loadedKey = "";
+      loading2 = false;
+      updateInitialPromptActions();
+    });
+    registerPageLoader("setting-c-2", () => refreshInitialPromptSessions().catch((error) => setV2InitPromptMsg(error.message, "err")));
     document.getElementById("v2InitPromptLoad").addEventListener("click", loadV2InitialPrompt);
     document.getElementById("v2InitPromptSave").addEventListener("click", saveV2InitialPrompt);
     document.getElementById("v2InitPromptClear").addEventListener("click", async () => {
@@ -4272,25 +4629,39 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         setV2InitPromptMsg("请输入会话 key", "err");
         return;
       }
+      if (key2 !== loadedKey || loading2 || writing) return;
       if (!confirm(`确定删除 ${key2} 的初始提示词？`)) return;
+      const sequence2 = requestSequence;
+      writing = true;
+      updateInitialPromptActions();
       try {
         const r = await api("/api/socialV2/initial-prompt", "POST", { key: key2, delete: true });
+        if (sequence2 !== requestSequence || key2 !== v2InitPromptKeyValue()) return;
         if (!r.ok) {
           setV2InitPromptMsg("❌ " + (r.error || "失败"), "err");
           return;
         }
         v2InitPromptTextEl.value = "";
+        dirty2 = false;
         updateV2InitPromptCount();
         setV2InitPromptMsg("✅ 已删除", "ok");
       } catch (e) {
-        setV2InitPromptMsg("❌ " + (e.message || e), "err");
+        if (sequence2 === requestSequence) setV2InitPromptMsg("❌ " + (e.message || e), "err");
+      } finally {
+        writing = false;
+        updateInitialPromptActions();
       }
     });
-    v2InitPromptTextEl.addEventListener("input", updateV2InitPromptCount);
+    v2InitPromptTextEl.addEventListener("input", () => {
+      dirty2 = true;
+      updateV2InitPromptCount();
+    });
     document.getElementById("v2InitPromptList").addEventListener("click", (ev) => {
       const btn = ev.target.closest("button[data-init-prompt-key]");
       if (!btn) return;
-      document.getElementById("v2InitPromptKey").value = btn.dataset.initPromptKey || "";
+      if (dirty2 && !confirm("切换会话将放弃尚未保存的背景，是否继续？")) return;
+      dirty2 = false;
+      selectInitialPromptKey(btn.dataset.initPromptKey || "");
       loadV2InitialPrompt();
     });
     document.getElementById("v2MoodRefresh").addEventListener("click", refreshV2Mood);
@@ -4333,7 +4704,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       msg.className = "meta err";
     });
   }
-  function initialize43() {
+  function initialize41() {
     document.getElementById("v2ReceiptLoad").addEventListener("click", loadV2Receipts);
   }
 
@@ -4354,7 +4725,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       if (summary) summary.textContent = `历史记录-${q.historyCount ?? r.historyCount ?? entries.length}　·　待修复 ${counts.pending || 0}（用户反馈 ${counts.userPending || 0} · Bot自我发现/工具 ${counts.selfPending || 0} · 管理员反馈 ${counts.adminPending || 0}）　·　困难问题 ${counts.difficulty || 0}　·　已修复 ${counts.completed || 0}　·　已删除 ${counts.deleted || 0}　·　今日新增 ${counts.todayTotal || 0}`;
       const host = document.getElementById("v2FeedbackQueueOutput");
       const historyHost = document.getElementById("v2FeedbackHistoryOutput");
-      const escText = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      const escText = (value2) => String(value2 ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
       const queueName = { user: "待修复 · 用户反馈 · 2 小时 / 每轮最多 3 条", self: "待修复 · Bot自我发现/工具 · 6 小时 / 每轮最多 3 条", admin: "待修复 · 管理员反馈 · 即时" };
       const itemCard = (item) => {
         const kind = item.kind || ({ user: "用户反馈", self: "自我发现/工具反馈", admin: "管理员即时反馈" }[item.origin] || "反馈");
@@ -4368,7 +4739,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       const queues = q.queues || {};
       const metrics = document.getElementById("v2FeedbackQueueMetrics");
       if (metrics) metrics.innerHTML = `<div class="feedback-metric"><span>用户反馈</span><b>${(queues.user || []).length}</b><small>每 2 小时 · 每轮最多 3 条</small></div><div class="feedback-metric"><span>自我发现 / 工具</span><b>${(queues.self || []).length}</b><small>每 6 小时 · 每轮最多 3 条</small></div><div class="feedback-metric"><span>管理员即时</span><b>${(queues.admin || []).length}</b><small>收到后即时处理</small></div><div class="feedback-metric is-difficult"><span>困难问题</span><b>${(q.difficulties || []).length}</b><small>三次未解决或手动移入</small></div>`;
-      const section = (key2, items2) => `<section class="feedback-queue"><h4><strong class="feedback-status feedback-status-pending">${queueName[key2]}</strong><span>${items2.length}</span></h4>${items2.length ? items2.map(itemCard).join("") : '<div class="feedback-empty">当前队列为空</div>'}</section>`;
+      const section2 = (key2, items2) => `<section class="feedback-queue"><h4><strong class="feedback-status feedback-status-pending">${queueName[key2]}</strong><span>${items2.length}</span></h4>${items2.length ? items2.map(itemCard).join("") : '<div class="feedback-empty">当前队列为空</div>'}</section>`;
       const hard = (q.difficulties || []).map((item) => {
         const result = item.result ? `<div class="feedback-result"><span class="feedback-result-label">处理记录</span><p>${escText(item.result)}</p></div>` : "";
         return `<article class="feedback-item"><div class="feedback-item-main"><div class="feedback-description">${escText(item.text || item.message || item.description || item.issue || item.detail || "（原记录未包含描述）")}</div><small class="feedback-item-meta"><span>编号 ${escText(item.id)}</span><span>类别 ${escText(item.kind || item.origin || "反馈")}</span><span>来源 ${escText(item.source || item.reporter || "未知来源")}</span><span>${escText(item.createdAt || "")}</span><span>累计尝试 ${Number(item.attempts) || 0}</span></small>${result}</div><div class="feedback-actions"><label class="feedback-transfer-label" for="restore-${escText(item.id)}">移回哪个队列</label><select id="restore-${escText(item.id)}" aria-label="移回目标队列" data-restore-select="${escText(item.id)}"><option value="user" ${item.queue === "user" ? "selected" : ""}>用户反馈队列</option><option value="self" ${item.queue === "self" ? "selected" : ""}>自我发现/工具队列</option><option value="admin" ${item.queue === "admin" ? "selected" : ""}>管理员反馈队列</option></select><button class="small" data-feedback-action="restore" data-id="${escText(item.id)}">移回队列末尾</button><button class="small" data-feedback-action="resolve" data-id="${escText(item.id)}">已修复</button><button class="small danger" data-feedback-action="delete" data-id="${escText(item.id)}">删除</button></div></article>`;
@@ -4377,7 +4748,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       const historyStateClass = (status) => ({ "待修复": "pending", "困难问题": "difficulty", "已修复": "completed", "已删除": "deleted" })[status] || "pending";
       const history2 = entries.slice().sort((a, b) => Date.parse(b.createdAt || b.time || 0) - Date.parse(a.createdAt || a.time || 0)).slice(0, 100).map((item) => `<div class="feedback-history-row"><b class="feedback-status feedback-status-${historyStateClass(item.status)}">${escText(historyStatus(item))}</b><span>${escText(item.createdAt || item.time || "")}</span><p>${escText(item.text || item.message || item.description || item.issue || item.detail || "（原记录未包含描述）")}</p></div>`).join("");
       historyHost.innerHTML = `<div class="feedback-history-list"><div class="meta">最近显示 ${Math.min(entries.length, 100)} 条 / 历史共 ${q.historyCount ?? entries.length} 条</div>${history2 || '<div class="feedback-empty">暂无历史反馈</div>'}</div>`;
-      host.innerHTML = `<div class="feedback-manager"><p class="meta">状态共四种：待修复、困难问题、已修复、已删除。待修复按用户反馈、Bot自我发现/工具、管理员反馈分队列；删除后仍保留在历史中，连续三次未解决自动转入困难问题。</p>${section("user", queues.user || [])}${section("self", queues.self || [])}${section("admin", queues.admin || [])}<section class="feedback-queue"><h4><strong class="feedback-status feedback-status-difficulty">困难问题列表</strong><span>${(q.difficulties || []).length}</span></h4>${hard || '<div class="feedback-empty">暂无困难问题</div>'}</section></div>`;
+      host.innerHTML = `<div class="feedback-manager"><p class="meta">状态共四种：待修复、困难问题、已修复、已删除。待修复按用户反馈、Bot自我发现/工具、管理员反馈分队列；删除后仍保留在历史中，连续三次未解决自动转入困难问题。</p>${section2("user", queues.user || [])}${section2("self", queues.self || [])}${section2("admin", queues.admin || [])}<section class="feedback-queue"><h4><strong class="feedback-status feedback-status-difficulty">困难问题列表</strong><span>${(q.difficulties || []).length}</span></h4>${hard || '<div class="feedback-empty">暂无困难问题</div>'}</section></div>`;
       host.querySelectorAll("[data-feedback-action]").forEach((button) => button.addEventListener("click", async () => {
         const action = button.dataset.feedbackAction, id = button.dataset.id;
         if (action === "research") {
@@ -4430,7 +4801,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       if (loadButton) loadButton.disabled = false;
     }
   }
-  function initialize44() {
+  function initialize42() {
     document.getElementById("v2FeedbackLoad").addEventListener("click", loadV2FeedbackState);
     loadV2FeedbackState();
   }
@@ -4454,7 +4825,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       if (button) button.disabled = false;
     }
   }
-  function initialize45() {
+  function initialize43() {
     document.getElementById("v2OptimizationSummaryLoad")?.addEventListener("click", loadV2OptimizationSummary);
     loadV2OptimizationSummary();
     document.getElementById("v2ToolLogLoad").addEventListener("click", async () => {
@@ -4477,7 +4848,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   function renderNavIcon(view) {
     return '<span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">' + (NAV_ICON_PATHS[view] || NAV_ICON_PATHS.registry) + "</svg></span>";
   }
-  function initialize46() {
+  function initialize44() {
     NAV_ICON_PATHS = {
       "terms": '<path d="m12 3-10 5 10 5 10-5ZM6 11v5c3 3 9 3 12 0v-5M22 8v8"/>',
       "persona": '<circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',
@@ -4488,7 +4859,13 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       "games": '<path d="M6 8h12a4 4 0 0 1 3.8 5.2l-1 3A2 2 0 0 1 17 17l-2-2H9l-2 2a2 2 0 0 1-3.8-.8l-1-3A4 4 0 0 1 6 8Z"/><path d="M7 10v4m-2-2h4m7-1h.01M18 13h.01"/>',
       "codex-peer": '<rect x="2" y="4" width="8" height="7" rx="1.5"/><rect x="14" y="13" width="8" height="7" rx="1.5"/><path d="M14 6h5v4m-3-3 3 3M10 18H5v-4m3 3-3-3"/>',
       "injection-lab": '<path d="M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1 2h14a1.3 1.3 0 0 0 1-2L14 9V3M7 15h10M10 18h.01M14 12h.01"/>',
-      "environments": '<rect x="3" y="3" width="18" height="14" rx="2"/><path d="m7 7 3 3-3 3m6 0h4M12 17v4M8 21h8"/>',
+      "environment-chat": '<path d="M21 11a8 8 0 0 1-8 8H7l-4 2V9a7 7 0 0 1 7-7h4a7 7 0 0 1 7 7Z"/>',
+      "environment-admin": '<path d="m12 3-8 3v6c0 5 8 9 8 9s8-4 8-9V6Z"/><path d="m9 12 2 2 4-4"/>',
+      "environment-web": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 8h18m-8 4 5 2-3 1-1 3Z"/>',
+      "environment-watch": '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+      "environment-scripts": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3m6 0h4"/>',
+      "images": '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="2"/><path d="m3 17 5-5 4 4 3-3 6 6"/>',
+      "video": '<rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/>',
       "sessions": '<path d="M21 12a8 8 0 0 1-8 8H7l-4 2V10a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z"/><path d="m8 11 3 3 5-5"/>',
       "v2-e": '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8"/>',
       "v2-l": '<path d="m13 2-9 12h7l-1 8 10-12h-7Z"/>',
@@ -4517,14 +4894,14 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/shared/config-actions.js
-  function initialize47() {
+  function initialize45() {
     document.querySelectorAll(".v2-save").forEach((button) => button.addEventListener("click", () => saveV2Config(button)));
   }
 
   // console/shared/startup.js
-  function initialize48() {
+  function initialize46() {
     setTimeout(() => setConsolePage(location.hash.slice(1), { updateHash: false }), 0);
-    refresh();
+    refresh2();
     refreshRoles();
     refreshWhitelist();
     refreshSessions();
@@ -4539,9 +4916,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     loadSlangConfig();
     loadSecurity();
     refreshSimPrompt();
-    refreshDshModel();
     setInterval(() => {
-      refresh();
+      refresh2();
       refreshSessions();
       refreshPending();
       refreshSocialStatus();
@@ -4554,7 +4930,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/shared/theme.js
-  function initialize49() {
+  function initialize47() {
     (function() {
       var root = document.documentElement;
       var button = document.getElementById("themeToggle");
@@ -4669,19 +5045,22 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   // console/layers/E/ownership.js
   var ownership_default2 = {
     "env-bridge": {
-      "page": "environments"
+      "page": "environment-chat",
+      "presentation": "internal"
     },
     "exec-browser-manager": {
-      "page": "environments"
+      "page": "environment-web"
     },
     "exec-image-generation": {
-      "page": "environments"
+      "page": "images"
     },
     "exec-sandbox": {
-      "page": "environments"
+      "page": "environment-admin",
+      "presentation": "internal"
     },
     "gov-admin-dev-mode": {
-      "page": "environments"
+      "page": "environment-admin",
+      "presentation": "internal"
     }
   };
 
@@ -4713,8 +5092,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/L/ownership.js
   var ownership_default6 = {
+    "life-conversation-wait": { "page": "setting-l-1", "selector": '[data-component-slot="life-conversation-wait"]' },
     "life-campus-watch": {
-      "page": "setting-l-0"
+      "page": "environment-watch"
     },
     "life-daily-worklog": {
       "page": "setting-o-1"
@@ -4731,7 +5111,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       "page": "setting-l-2"
     },
     "life-relay-message": {
-      "page": "setting-l-0"
+      "page": "environment-chat"
     },
     "life-schedule-reminder": {
       "page": "setting-l-2"
@@ -4756,6 +5136,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/O/ownership.js
   var ownership_default7 = {
+    "obs-context-assembly": { "presentation": "internal", "page": "context-visual" },
     "life-token-budget": {
       "page": "usage",
       "selector": "#section-usage"
@@ -4811,7 +5192,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/shared/components/ownership.js
   var COMPONENT_OWNERS = Object.assign({}, ownership_default, ownership_default2, ownership_default3, ownership_default4, ownership_default5, ownership_default6, ownership_default7, ownership_default8, ownership_default9);
-  var DEFAULT_LAYER_PAGES = { "C": "setting-c-1", "T": "v2-t", "E": "environments", "L": "setting-l-0", "O": "overview", "V": "layer-v", "G": "access", "S": "layer-s", "R": "registry" };
+  var DEFAULT_LAYER_PAGES = { "C": "setting-c-1", "T": "v2-t", "E": "environment-admin", "L": "setting-l-0", "O": "overview", "V": "layer-v", "G": "access", "S": "layer-s", "R": "registry" };
   function componentPage(plugin) {
     return COMPONENT_OWNERS[plugin.id]?.page || DEFAULT_LAYER_PAGES[plugin.layer || "R"];
   }
@@ -4824,13 +5205,14 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/layers/E/editors/image-generation.js
-  async function mountImageGeneration({ id, body, p, el: el2, form }) {
+  async function mountImageGeneration({ id, body, p, el: el3, form }) {
     body.insertAdjacentHTML("beforeend", '<div class="quota-console image-generation-console"><div class="quota-console-head"><div><b>本地 API 密钥</b><div class="meta">密钥不会写入组件配置，状态查询也不会返回密钥内容。</div></div><span class="meta image-secret-state" role="status">正在读取保存状态…</span></div><div class="row" style="gap:8px;margin-top:10px"><input type="password" class="image-secret-input comp-form-text" autocomplete="new-password" aria-label="图片生成 API 密钥" placeholder="输入新密钥" style="flex:1;min-width:180px;max-width:420px"><button type="button" class="small primary image-secret-set" data-save-action>保存本机 API 密钥</button><button type="button" class="small danger image-secret-clear">清除密钥</button></div><div class="meta image-secret-message" aria-live="polite"></div><div class="quota-console-head" style="margin-top:18px"><div><b>今日图片生成用量</b><div class="meta">按上海时间统计请求次数。</div></div><button type="button" class="small image-usage-refresh">刷新用量</button></div><div class="meta image-usage-result" aria-live="polite">正在读取…</div></div>');
     const panel = body.querySelector(".image-generation-console");
-    const imageProvider = p.config?.provider === "ark" ? "ark" : "openai";
-    panel.querySelector(".quota-console-head b").textContent = imageProvider === "ark" ? "火山方舟 API 密钥" : "OpenAI API 密钥";
+    panel.querySelector(".quota-console-head b").textContent = "OpenAI API 密钥";
     const secretInput = panel.querySelector(".image-secret-input");
-    secretInput.setAttribute("aria-label", imageProvider === "ark" ? "火山方舟 API 密钥" : "OpenAI API 密钥");
+    secretInput.setAttribute("aria-label", "OpenAI API 密钥");
+    secretInput.placeholder = "输入用于图片生成的 OpenAI API 密钥";
+    panel.querySelector(".image-secret-set").textContent = "保存本机 OpenAI 密钥";
     const secretState = panel.querySelector(".image-secret-state");
     const secretMessage = panel.querySelector(".image-secret-message");
     const usageResult = panel.querySelector(".image-usage-result");
@@ -4841,8 +5223,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       return result;
     };
     const showSecretState = (configured) => {
-      const ready = imageProvider === "ark" ? p.config?.arkApiBase && p.config?.arkModel : p.config?.apiBase && p.config?.model;
-      secretState.textContent = configured ? ready ? "已启用" : "密钥已保存；请配置接口地址和模型" : "未配置密钥";
+      const ready = p.config?.apiBase && p.config?.model;
+      secretState.textContent = configured ? ready ? "OpenAI 密钥已保存" : "密钥已保存；请配置 OpenAI 接口地址和模型" : "未配置 OpenAI 密钥";
     };
     const refreshSecret = async () => {
       try {
@@ -4894,67 +5276,115 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/layers/C/editors/knowledge-quota.js
-  async function mountKnowledgeQuota({ id, body, p, el: el2, form }) {
-    body.insertAdjacentHTML("beforeend", '<div class="quota-console"><div class="quota-console-head"><div><b>今日用量</b><div class="meta">留空查询全部会话，也可填写一个会话 key。</div></div><div class="quota-console-actions"><input class="quota-key" placeholder="例如 group:60000" aria-label="配额查询会话 key"><button class="small quota-query">查询用量</button><button class="small danger quota-reset">清空今日用量</button></div></div><div class="quota-result" aria-live="polite">选择会话后查询，或直接查询全部会话。</div></div>');
-    const panel = body.querySelector(".quota-console"), keyInput = panel.querySelector(".quota-key"), result = panel.querySelector(".quota-result");
-    const call = async (action) => {
-      const key2 = keyInput.value.trim();
-      const r = await api("/api/plugins/call", "POST", { tool: "knowledge_quota", input: { action, ...key2 ? { key: key2 } : {} } });
-      return r?.result || r || {};
+  var validKey = (key2) => /^(group|private):\d+(?:#\d+)?$/.test(key2);
+  async function mountKnowledgeQuota({ body, p }) {
+    body.insertAdjacentHTML("beforeend", '<div class="quota-console"><div class="quota-console-head"><div><b>今日用量</b><div class="meta">选择全部或某个会话；切换后自动查询，最新计数可点“刷新用量”。</div></div><div class="quota-console-actions"><select class="quota-key member-key" aria-label="配额查询会话"><option value="">全部会话</option><option value="__manual__">手动填写会话…</option></select><input class="quota-manual-key" placeholder="group:群号 或 private:QQ号" aria-label="手动填写配额查询会话 key" data-session-picker="owned" hidden><button class="small quota-query">刷新用量</button><button class="small danger quota-reset">清空今日用量</button></div></div><div class="quota-result" aria-live="polite">正在读取…</div></div>');
+    const panel = body.querySelector(".quota-console"), select = panel.querySelector(".quota-key"), manual = panel.querySelector(".quota-manual-key"), result = panel.querySelector(".quota-result");
+    let sequence2 = 0;
+    const keys = /* @__PURE__ */ new Set();
+    const keyValue = () => {
+      const key2 = select.value === "__manual__" ? manual.value.trim() : select.value;
+      if ((select.value === "__manual__" || key2) && !validKey(key2)) throw Error("请填写 group:群号 或 private:QQ号；按群成员查询可加 #QQ号");
+      return key2;
     };
-    panel.querySelector(".quota-query").addEventListener("click", async () => {
-      result.textContent = "正在读取…";
+    const fillOptions = () => {
+      const previous = select.value;
+      select.replaceChildren(new Option("全部会话", ""), ...[...keys].sort().map((key2) => new Option(key2, key2)), new Option("手动填写会话…", "__manual__"));
+      select.value = previous;
+    };
+    const call = async (action, key2) => {
+      const response = await api("/api/plugins/call", "POST", { tool: "knowledge_quota", input: { action, ...key2 ? { key: key2 } : {} } });
+      if (response.ok === false) throw Error(response.error || "请求失败");
+      const data2 = response.result || response;
+      if (data2.ok !== true) throw Error(data2.error || "请求失败");
+      return data2;
+    };
+    const query = async () => {
+      const request = ++sequence2;
       try {
-        const d = await call("query");
-        if (d.ok !== true) throw Error(d.error || "查询失败");
-        const rows = Array.isArray(d.entries) ? d.entries : d.key ? [{ key: d.key, used: d.used, remaining: d.remaining }] : [];
-        result.innerHTML = '<div class="quota-summary"><span>日期 <b>' + esc(d.day || "—") + "</b></span><span>每日上限 <b>" + esc(d.limit ?? "—") + "</b></span><span>计数方式 <b>" + esc(d.countBy === "user" ? "按发言人" : "按会话") + "</b></span>" + (d.enabled === false ? '<span class="quota-off">功能已停用</span>' : "") + "</div>" + (rows.length ? '<div class="quota-rows">' + rows.map((x) => '<div class="quota-row"><code>' + esc(x.key) + "</code><span>已用 <b>" + esc(x.used) + "</b></span><span>剩余 <b>" + esc(x.remaining) + "</b></span></div>").join("") + "</div>" : '<div class="quota-empty">今天还没有专业问答用量。</div>');
-      } catch (e) {
-        result.textContent = "读取失败：" + e.message;
+        const key2 = keyValue();
+        result.textContent = "正在读取…";
+        const data2 = await call("query", key2);
+        if (request !== sequence2 || !panel.isConnected) return;
+        const rows = Array.isArray(data2.entries) ? data2.entries : data2.key ? [{ key: data2.key, used: data2.used, remaining: data2.remaining }] : [];
+        for (const row of rows) if (validKey(row.key)) keys.add(row.key);
+        fillOptions();
+        const categories = { professional: "专业求助", casual: "日常交流", uncertain: "待澄清" };
+        const records = Array.isArray(data2.recentClassifications) ? data2.recentClassifications : [];
+        result.innerHTML = '<div class="quota-summary"><span>日期 <b>' + esc(data2.day || "—") + "</b></span><span>每日上限 <b>" + esc(data2.limit ?? "—") + "</b></span><span>计数方式 <b>" + esc(data2.countBy === "user" ? "按发言人" : "按会话") + "</b></span><span>识别方式 <b>" + ((data2.semanticEnabled ?? p.config?.semanticEnabled) !== false ? "AI语义优先" : "关键词规则") + "</b></span>" + ((data2.exemptOwner ?? p.config?.exemptOwner) !== false ? "<span>管理员提问不计数</span>" : "<span>管理员提问也计数</span>") + (data2.enabled === false ? '<span class="quota-off">功能已停用</span>' : "") + "</div>" + (rows.length ? '<div class="quota-rows">' + rows.map((row) => '<div class="quota-row"><code>' + esc(row.key) + "</code><span>已用 <b>" + esc(row.used) + "</b></span><span>剩余 <b>" + esc(row.remaining) + "</b></span></div>").join("") + "</div>" : '<div class="quota-empty">今天还没有专业问答用量。</div>');
+        if (records.length) result.insertAdjacentHTML("beforeend", '<details class="parameter-block"><summary>最近识别记录</summary>' + records.map((item) => '<p class="meta"><code>' + esc(item.bucketKey || item.key) + "</code> · " + esc(categories[item.category] || item.category) + " · " + (item.source === "ai" ? "AI判定" : item.source === "nontext" ? "媒体交回正常会话" : "规则兜底") + "<br>" + esc(item.reason) + "</p>").join("") + "</details>");
+      } catch (error) {
+        if (request === sequence2) result.textContent = "读取失败：" + error.message;
+      }
+    };
+    select.addEventListener("change", () => {
+      ++sequence2;
+      manual.hidden = select.value !== "__manual__";
+      if (manual.hidden) void query();
+      else {
+        manual.focus();
+        result.textContent = "填写会话 key 后点“刷新用量”。";
       }
     });
+    manual.addEventListener("input", () => {
+      ++sequence2;
+      result.textContent = "填写完成后点“刷新用量”。";
+    });
+    panel.querySelector(".quota-query").addEventListener("click", query);
     panel.querySelector(".quota-reset").addEventListener("click", async () => {
-      const key2 = keyInput.value.trim();
+      let key2;
+      try {
+        key2 = keyValue();
+      } catch (error) {
+        result.textContent = error.message;
+        return;
+      }
       if (!confirm(key2 ? `清空 ${key2} 今天的专业问答用量？` : "清空所有会话今天的专业问答用量？")) return;
+      const request = ++sequence2;
       result.textContent = "正在清空…";
       try {
-        const d = await call("reset");
-        if (d.ok !== true) throw Error(d.error || "清空失败");
-        result.textContent = "今日用量已清空。";
-      } catch (e) {
-        result.textContent = "清空失败：" + e.message;
+        await call("reset", key2);
+        if (request === sequence2) await query();
+      } catch (error) {
+        if (request === sequence2) result.textContent = "清空失败：" + error.message;
       }
     });
+    const sources2 = await Promise.allSettled([api("/api/socialV2/states"), api("/api/sessions")]);
+    for (const source of sources2) if (source.status === "fulfilled") {
+      for (const item of source.value.conversations || source.value.sessions || []) if (validKey(item.key)) keys.add(item.key);
+    }
+    fillOptions();
+    await query();
   }
 
   // console/layers/C/editors/person-profile.js
-  async function mountPersonProfile({ id, body, p, el: el2, form }) {
+  async function mountPersonProfile({ id, body, p, el: el3, form }) {
     body.insertAdjacentHTML("beforeend", '<section class="member-card-preview"><div class="quota-console-head"><div><b>按 QQ 管理人物档案</b><div class="meta">此 QQ 档案：按 QQ 号保存，同一人的资料可用于其相关会话。私聊自动注入本人档案；群聊不自动注入成员资料。可选择已有档案，也可输入尚未成为好友的 QQ 号。</div></div></div><div class="quota-console-actions"><select class="member-key" aria-label="选择 QQ 档案"><option value="">正在读取档案…</option></select><input class="profile-qq" inputmode="numeric" placeholder="或输入 QQ 号" aria-label="手动输入 QQ 号"><button class="small member-preview">读取档案</button></div><div class="profile-fields"></div><div class="quota-console-actions"><input class="profile-new-key" placeholder="新增 JSON 字段名" aria-label="新增档案字段名"><button class="small profile-add-key">增加字段</button><button class="small primary profile-save" data-save-action>保存此 QQ 档案</button><button class="small danger profile-delete-person">删除该 QQ 档案</button><span class="profile-status meta" aria-live="polite">固定字段可留空；新增字段会保留。</span></div></section>');
     const panel = body.querySelector(".member-card-preview"), select = panel.querySelector(".member-key"), qqInput = panel.querySelector(".profile-qq"), fieldsBox = panel.querySelector(".profile-fields"), status = panel.querySelector(".profile-status");
     const labels2 = { routine_food: "作息与饮食", hobbies: "兴趣与爱好", relationships: "人际关系", catchphrases: "口头禅" };
-    let current = {}, loadedId = "", originalKeys = /* @__PURE__ */ new Set(), readVersion = 0, reading = false, writing = false;
+    let current = {}, loadedId = "", originalKeys = /* @__PURE__ */ new Set(), readVersion = 0, reading = false, writing2 = false;
     const chosenId = () => (qqInput.value.trim() || select.value.trim()).replace(/^private:/, "");
     const syncEditor = () => {
-      const ready = !!loadedId && loadedId === chosenId() && !reading && !writing;
-      fieldsBox.querySelectorAll("textarea,button").forEach((el3) => {
-        el3.disabled = !ready;
+      const ready = !!loadedId && loadedId === chosenId() && !reading && !writing2;
+      fieldsBox.querySelectorAll("textarea,button").forEach((el4) => {
+        el4.disabled = !ready;
       });
-      panel.querySelectorAll(".profile-save,.profile-add-key,.profile-new-key,.profile-delete-person").forEach((el3) => {
-        el3.disabled = !ready;
+      panel.querySelectorAll(".profile-save,.profile-add-key,.profile-new-key,.profile-delete-person").forEach((el4) => {
+        el4.disabled = !ready;
       });
     };
-    const render = (profile) => {
+    const render2 = (profile) => {
       current = profile && typeof profile === "object" ? profile : {};
       const keys = [.../* @__PURE__ */ new Set([...Object.keys(labels2), ...Object.keys(current)])];
       fieldsBox.innerHTML = keys.map((key2) => '<div class="profile-json-field"><label><span>' + esc(labels2[key2] || key2) + (labels2[key2] ? "" : " · 扩展字段") + '</span><textarea data-profile-key="' + esc(key2) + '" rows="3" placeholder="填写一段长句或短句">' + esc(current[key2] || "") + '</textarea></label><button type="button" class="small danger profile-delete-key" data-remove-key="' + esc(key2) + '">' + (labels2[key2] ? "清空" : "删除字段") + "</button></div>").join("");
-      fieldsBox.querySelectorAll("textarea[data-profile-key]").forEach((el3) => el3.addEventListener("input", () => {
-        current[el3.dataset.profileKey] = el3.value;
+      fieldsBox.querySelectorAll("textarea[data-profile-key]").forEach((el4) => el4.addEventListener("input", () => {
+        current[el4.dataset.profileKey] = el4.value;
       }));
       fieldsBox.querySelectorAll("[data-remove-key]").forEach((btn) => btn.addEventListener("click", () => {
         const key2 = btn.dataset.removeKey;
         if (labels2[key2]) current[key2] = "";
         else delete current[key2];
-        render(current);
+        render2(current);
       }));
       syncEditor();
     };
@@ -4966,10 +5396,10 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       }
       const version = ++readVersion;
       reading = true;
-      writing = false;
+      writing2 = false;
       loadedId = "";
       originalKeys = /* @__PURE__ */ new Set();
-      render({});
+      render2({});
       status.textContent = "正在读取…";
       try {
         const r = await api("/api/plugins/call", "POST", { tool: "profile_snapshot", input: { userId: id2 } });
@@ -4979,7 +5409,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         qqInput.value = id2;
         loadedId = id2;
         originalKeys = new Set(Object.keys(d.profiles?.[id2] || {}));
-        render(d.profiles?.[id2] || {});
+        render2(d.profiles?.[id2] || {});
         status.textContent = "档案已读取；空档案也可直接填写创建。";
       } catch (e) {
         if (version === readVersion && chosenId() === id2) status.textContent = "读取失败：" + e.message;
@@ -5017,10 +5447,10 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       if (id2 !== loadedId) {
         readVersion++;
         reading = false;
-        writing = false;
+        writing2 = false;
         originalKeys = /* @__PURE__ */ new Set();
         loadedId = "";
-        render({});
+        render2({});
         status.textContent = "请先读取这个 QQ 的档案，再填写或创建。";
       }
     });
@@ -5031,13 +5461,13 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         status.textContent = "请输入有效 QQ 号。";
         return;
       }
-      if (reading || writing || loadedId !== id2) {
+      if (reading || writing2 || loadedId !== id2) {
         status.textContent = "请先读取目标档案。";
         return;
       }
       if (!confirm("确定删除 QQ " + id2 + " 的整份人物档案？此操作会移除所有字段和档案元数据。")) return;
       const version = readVersion;
-      writing = true;
+      writing2 = true;
       syncEditor();
       status.textContent = "正在删除…";
       try {
@@ -5049,19 +5479,19 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         loadedId = "";
         qqInput.value = "";
         select.value = "";
-        render({});
+        render2({});
         await loadProfiles();
         status.textContent = d.deleted ? "该 QQ 档案已删除。" : "该 QQ 档案原本不存在。";
       } catch (e) {
         if (version === readVersion) status.textContent = "删除失败：" + e.message;
       } finally {
         if (version === readVersion) {
-          writing = false;
+          writing2 = false;
           syncEditor();
         }
       }
     });
-    render({});
+    render2({});
     panel.querySelector(".profile-add-key").addEventListener("click", () => {
       const input = panel.querySelector(".profile-new-key"), key2 = input.value.trim();
       if (!/^[a-z][a-z0-9_]{0,63}$/i.test(key2)) {
@@ -5074,7 +5504,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       }
       current[key2] = "";
       input.value = "";
-      render(current);
+      render2(current);
       status.textContent = "已添加字段，填写后保存。";
     });
     panel.querySelector(".profile-save").addEventListener("click", async () => {
@@ -5083,16 +5513,16 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         status.textContent = "请输入有效 QQ 号。";
         return;
       }
-      if (reading || writing || loadedId !== id2) {
+      if (reading || writing2 || loadedId !== id2) {
         status.textContent = "请先读取目标档案。";
         return;
       }
       const version = readVersion;
-      writing = true;
+      writing2 = true;
       syncEditor();
       const patch = {};
-      fieldsBox.querySelectorAll("textarea[data-profile-key]").forEach((el3) => {
-        patch[el3.dataset.profileKey] = el3.value;
+      fieldsBox.querySelectorAll("textarea[data-profile-key]").forEach((el4) => {
+        patch[el4.dataset.profileKey] = el4.value;
       });
       status.textContent = "正在保存…";
       try {
@@ -5101,7 +5531,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         const d = r?.result || r || {};
         if (version !== readVersion || chosenId() !== id2) return;
         if (r?.ok !== true || d.ok === false) throw Error(d.error || r?.error || "保存失败");
-        render(d.profile || patch);
+        render2(d.profile || patch);
         originalKeys = new Set(Object.keys(d.profile || patch));
         qqInput.value = id2;
         loadedId = id2;
@@ -5114,7 +5544,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         if (version === readVersion) status.textContent = "保存失败：" + e.message;
       } finally {
         if (version === readVersion) {
-          writing = false;
+          writing2 = false;
           syncEditor();
         }
       }
@@ -5123,7 +5553,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/layers/O/editors/worklog.js
-  async function mountWorklog({ id, body, p, el: el2, form }) {
+  async function mountWorklog({ id, body, p, el: el3, form }) {
     body.insertAdjacentHTML("beforeend", '<section class="worklog-console" aria-label="运维日报与日报归档"><div class="worklog-console-head"><div><h3>运维日报</h3><p class="meta">日报归档每天保留当天最新版本；手动生成会立即发送摘要。</p><div class="worklog-send-setting"></div></div><div class="row"><button class="small worklog-generate-send" type="button">立即生成与发送</button><button class="small worklog-refresh" type="button">刷新列表</button></div></div><section class="worklog-sources" aria-label="日报扫描文件"><div class="worklog-sources-title">日报扫描来源</div><ul class="worklog-sources-list"><li class="worklog-source"><code>state/memory/tasks-*.md</code><span>提取当天的中期任务进度记录。</span></li><li class="worklog-source"><code>state/tasks.json</code><span>汇总当天创建或更新的独立任务及状态。</span></li><li class="worklog-source"><code>state/tool-calls.jsonl</code><span>统计当天的工具调用次数与失败次数。</span></li><li class="worklog-source"><code>state/tool-calls.jsonl.1</code><span>读取轮转的工具调用历史，补齐当天统计。</span></li><li class="worklog-source"><code>state/token-usage.jsonl</code><span>统计当天模型调用步数与输入、输出 token。</span></li><li class="worklog-source"><code>state/token-usage.jsonl.1</code><span>读取轮转的 token 历史，补齐当天统计。</span></li><li class="worklog-source"><code>state/plugins/obs-self-review.json</code><span>统计反馈队列当天的状态变更；不复制反馈正文。</span></li><li class="worklog-source"><code>state/memory/_optimization.md</code><span>提取当天的自我更新发现与统一修复摘要。</span></li></ul></section><div class="worklog-status" aria-live="polite"></div><div class="meta worklog-action-message" aria-live="polite"></div><div class="worklog-layout"><nav class="worklog-list" aria-label="日报日期列表"><div class="worklog-empty">读取日报列表中…</div></nav><article class="worklog-preview"><div class="worklog-preview-head"><b>内容预览</b><span class="meta worklog-preview-meta">选择一份日报</span></div><pre class="worklog-preview-text">日报内容会显示在这里。</pre></article></div></section>');
     const panel = body.querySelector(".worklog-console");
     const sendOption = [...body.querySelectorAll(".comp-field")].at(-1);
@@ -5151,7 +5581,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         previewMeta.textContent = date;
       }
     };
-    const refresh2 = async () => {
+    const refresh3 = async () => {
       const config = p.config || {};
       const generated = p.state?.lastGeneratedDate || "尚无生成记录";
       const hh = String(Number(config.hour ?? 23)).padStart(2, "0");
@@ -5180,7 +5610,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       actionMessage.textContent = "正在生成并发送今天的日报…";
       try {
         const result = await api("/api/socialV2/worklog/generate-send", "POST", {});
-        await refresh2();
+        await refresh3();
         actionMessage.textContent = result.ok ? `已生成并发送 ${result.dateKey} 的日报摘要；当天归档已更新为最新版（${result.chars} 字）。` : result.generated ? `日报已更新并覆盖当天归档，但发送失败：${result.error || "未获发送确认"}` : result.error || "日报生成失败";
       } catch (error) {
         actionMessage.textContent = "生成或发送失败：" + (error.message || error);
@@ -5188,8 +5618,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         button.disabled = false;
       }
     });
-    panel.querySelector(".worklog-refresh").addEventListener("click", refresh2);
-    void refresh2();
+    panel.querySelector(".worklog-refresh").addEventListener("click", refresh3);
+    void refresh3();
   }
 
   // console/layers/C/parameter-examples.js
@@ -5199,9 +5629,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       "minIntervalMinutes": "设为60：两次私聊跟进至少间隔1小时；会话局部间隔更长时按更长的执行。",
       "dailyLimit": "设为2：同一人一天最多收到2次这类私聊跟进；局部上限更低时按更低的执行。",
       "sessionLimits": "给某个会话设更长间隔或更低上限，只收紧该会话，不放宽全局限制。",
-      "followUpCooldownMinutes": "设为30：刚跟进过同一话题时，接下来30分钟给模型提供避免重复追问的指引。",
+      "followUpCooldownMinutes": "设为30：刚跟进过同一话题时，接下来30分钟阻止对同一话题追加可选追问。",
       "newTopicCooldownMinutes": "设为60：刚开新话题后，1小时内优先延续现有话题，而非不断另起话头。",
-      "newTopicMaxPerHour": "设为2：提示模型一小时内尽量不超过2个新话题；这是语义指引，不是关键词硬拦截。"
+      "newTopicMaxPerHour": "设为2：一小时内最多成功发起2个新话题；普通聊天和主动聊天共用额度。"
     },
     "ctx-interest-terms": {
       "autoExtract": "开启后，达到消息门槛时自动提取兴趣候选；候选仍需审核确认后入库。",
@@ -5250,22 +5680,18 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   // console/layers/E/parameter-examples.js
   var parameter_examples_default2 = {
     "exec-browser-manager": {
-      "headlessFor": "填“网页监控”：相应任务优先使用无头浏览器；需要人工登录时仍可转可见窗口。",
-      "visibleFor": "填“人工登录”：该用途使用可见窗口，便于你完成验证。",
+      "headlessFor": "保留 monitor|automate|scrape-readonly：这些用途不显示窗口；用 | 分隔多个用途，登录时仍可切换到可见窗口。",
+      "visibleFor": "保留 login|auth|captcha：登录和验证码等用途显示窗口，让你完成验证；多个用途用 | 分隔。",
       "allowUrls": "填https://example.invalid：把此地址纳入允许范围；不要把账号或密钥写进网址。",
       "blockUrls": "加入某个地址后，浏览器访问规则会检查该阻止项；允许项不应被当作绕过阻止项的凭据。",
       "rules": "写“提交表单前先确认”：作为浏览器操作提示提供给模型，不替代服务端权限检查。"
     },
     "exec-image-generation": {
-      "provider": "选ark时使用方舟的地址、模型与本地密钥；选openai时使用兼容图片接口的一组配置。",
       "apiBase": "填https://images.example.invalid/v1：请求发往你自己的兼容图片接口，不会改变聊天模型地址。",
       "proxyUrl": "填http://127.0.0.1:7897：仅图片供应商请求经这个代理；留空使用现有代理环境。",
       "model": "填供应商提供的模型ID：生图请求使用该ID，不会切换平时聊天模型。",
       "size": "填1024x1024：请求正方形图片，实际尺寸支持范围由所选服务决定。",
       "quality": "填服务支持的画质档位：用于生图请求；不支持的值会由服务返回错误。",
-      "arkApiBase": "使用允许的方舟服务地址；填其他域名不会被当作任意可访问的兼容服务。",
-      "arkModel": "填已开通的Seedream模型ID：方舟请求按该模型计费和限额。",
-      "arkSize": "填该方舟模型支持的尺寸档位，例如2K；不与另一供应商的尺寸共用。",
       "quotaMode": "选both：全局额度和每会话额度都必须有余量，满足一个不能绕过另一个。",
       "dailyGlobalLimit": "设为20：所选额度模式启用全局限制时，所有会话合计受每日20次约束。",
       "dailySessionLimit": "设为3：启用会话限制时，同一会话每日最多使用3次额度。",
@@ -5330,11 +5756,11 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       "maxPromptItems": "设为5：一次提醒回合最多给模型5项，避免把整个日历塞进提示词。"
     },
     "life-scheduler": {
-      "maxJobs": "设为1000：统一排程最多容纳1000个登记任务，达到容量后不能继续无限追加。"
+      "maxJobs": "1000 表示所有会话合计最多登记1000项。满后拒绝新增，已有任务保留。"
     },
     "life-task-session": {
-      "maxConcurrentTasks": "设为2：独立任务最多同时运行2个，避免所有任务挤占模型通道。",
-      "maxTasks": "设为100：任务注册表按100项容量管理；不改变普通聊天的每轮回复条数。"
+      "maxConcurrentTasks": "设为3时，执行中和等待补充信息的任务合计最多3个。",
+      "maxTasks": "设为20时，新建任务优先清理最旧的已结束记录，进行中的任务保留。"
     },
     "life-token-budget": {
       "sessions": "为某个private或group会话设置单独花费阈值，只影响该会话预算。",
@@ -5376,10 +5802,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       "ffmpegTimeoutMs": "设为180000：一次FFmpeg任务最多等待约3分钟。"
     },
     "tool-injection-lab": {
-      "injectPrompt": "关闭后不再提供本实验室的注入测试动作，不关闭全站入站内容保护。",
-      "spar": "关闭后不允许使用对线动作；普通聊天仍由自己的规则处理。",
       "detect": "开启后记录实验发现的注入迹象，不代表对每条消息都额外调用模型。",
-      "alertWindowMs": "设为60000：一分钟内的重复告警合并，不逐条发送重复提示。",
+      "alertWindowMs": "设为60000：最近一次命中后，后续聊天回合会在1分钟内继续收到上下文警报；到期后停止沿用旧警报，新的命中会重新计时。此参数不控制 QQ 消息发送频率。",
       "sparPerHour": "设为2：对线实验一小时最多触发2次。"
     },
     "tool-registry": {
@@ -5435,12 +5859,12 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/L/components/life-scheduler.js
   var life_scheduler_default = {
-    saveLabel: "保存调度队列容量",
-    "title": "调度容量",
+    saveLabel: "保存定时任务上限",
+    "title": "后台定时任务",
     "fields": [
       {
         "key": "maxJobs",
-        "label": "统一调度队列容量（项）",
+        "label": "定时任务总上限（项）",
         "type": "number"
       }
     ]
@@ -5448,8 +5872,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/T/components/tool-bilibili.js
   var tool_bilibili_default = {
-    saveLabel: "保存视频处理参数",
-    "title": "视频处理",
+    saveLabel: "保存 bilibili 视频处理设置",
+    "title": "bilibili 视频处理工具",
     "fields": [
       {
         "key": "ffmpegPath",
@@ -5525,12 +5949,14 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   // console/layers/C/components/ctx-knowledge-quota.js
   var ctx_knowledge_quota_default = { saveLabel: "保存专业问答配额", title: "专业问答配额规则", fields: [
     { key: "enabled", label: "启用配额规则", help: "关闭后专业问题不再计数，也不会因达到上限而被拦截；配额查询工具仍可查看已有记录。", type: "boolean" },
+    { key: "semanticEnabled", label: "AI语义识别专业求助", help: "按实际意图区分专业求助、日常交流和待澄清；不要求命中关键词。关闭后只用规则识别。", example: "开启后，“矩阵的秩是什么”也可识别；“写代码好累”可作为倾诉处理。", type: "boolean" },
+    { key: "classificationTimeoutSeconds", label: "AI识别最长等待（秒）", help: "包括后台工作队列等待；超时、模型不可用或结果无效时使用兜底关键词规则，不阻塞后续聊天。", example: "设为12：最多等待12秒，迟到结果不会补扣用量。", type: "number", min: 1, max: 30 },
     { key: "dailyLimit", label: "每个计数对象每日可回答次数", help: "达到此次数后，后续命中的专业问题会改为使用下方的自然带过提示。设为 0 表示不允许额度内回答。", type: "number", min: 0, max: 1e3 },
     { key: "resetHour", label: "每日重置时间（小时）", help: "按桥接所在时区重置每日计数。填 0 表示午夜重置；填 4 表示每天凌晨 4 点重置。", type: "number", min: 0, max: 23 },
     { key: "exemptOwner", label: "主人不受配额限制", help: "开启后，主人发起的专业问题不计入配额，也不会被配额拦截。", type: "boolean" },
     { key: "countBy", label: "配额计数方式", help: "session：同一群或私聊共用额度；user：群内每位发言者各自计算，私聊仍按会话计算。", type: "select", options: ["session", "user"] },
     { key: "deflectText", label: "超额时实际发送的短句", help: "超额后直接发送这句话，停止本条请求的模型调度。最多 120 字；空白使用默认短句。", type: "textarea" },
-    { key: "keywords", label: "专业问题关键词（逗号分隔）", help: "领域关键词结合问句、解释、推导、编写等明确请求识别；普通的论文或代码话题闲聊不计数。匹配不区分英文大小写。", type: "comma-list" }
+    { key: "keywords", label: "规则兜底关键词（逗号分隔）", help: "AI识别关闭或失败时，才结合明确提问/任务表达判定；AI正常工作时无需命中这些词。匹配不区分英文大小写。", type: "comma-list" }
   ] };
 
   // console/layers/L/components/ctx-chat-reply-shape.js
@@ -5550,22 +5976,27 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   ] };
 
   // console/layers/L/components/ctx-chat-topic-drive.js
-  var ctx_chat_topic_drive_default = { saveLabel: "保存全局话题跟进规则", title: "话题跟进", fields: [
-    { key: "privateFollowupEnabled", label: "允许群聊后私聊跟进", help: "鲸鱼自行判断是否值得追问；只联系确有私聊关系的人。", type: "boolean" },
-    { key: "minIntervalMinutes", label: "全局私聊跟进最小间隔（分钟）", help: "两次私聊跟进之间至少间隔多久；间隔采用较大值，每日上限采用较小值。", type: "number", min: 0, max: 10080 },
-    { key: "dailyLimit", label: "全局每日私聊跟进上限", help: "每天最多向同一人私聊跟进几次；间隔采用较大值，每日上限采用较小值。", type: "number", min: 0, max: 30 },
-    { key: "followUpCooldownMinutes", label: "同一话题跟进冷却（分钟）", help: "普通聊天与主动消息共用的跟进冷却指引。", type: "number", min: 0 },
-    { key: "newTopicCooldownMinutes", label: "新话题冷却（分钟）", help: "普通聊天与主动消息共用的新话题冷却指引。", type: "number", min: 0 },
-    { key: "newTopicMaxPerHour", label: "每小时最多新话题数", help: "普通聊天与主动消息共用的模型选择指引；依据真实发送收据更新，不是语义硬拦截。", type: "number", min: 0, max: 60 }
+  var ctx_chat_topic_drive_default = { saveLabel: "保存话题发起与跟进", title: "话题发起与跟进", fields: [
+    { key: "privateFollowupEnabled", label: "允许群聊转私聊跟进", help: "根据群内话题私聊追问，只联系已有私聊关系的人。", type: "boolean", group: "群聊转私聊" },
+    { key: "minIntervalMinutes", label: "全局私聊跟进最小间隔（分钟）", help: "同一人两次跨私聊跟进的冷却；与会话限制取较大值。", type: "number", min: 0, max: 10080 },
+    { key: "dailyLimit", label: "全局每日私聊跟进上限", help: "同一人每天的跨私聊跟进次数；与会话限制取较小值。", type: "number", min: 0, max: 30 },
+    { key: "followUpCooldownMinutes", label: "同一话题跟进冷却（分钟）", help: "私聊、群聊共用规则；“还在吗”等催回复也算追问。", type: "number", min: 0, group: "当前会话的话题（私聊、群聊）" },
+    { key: "newTopicCooldownMinutes", label: "新话题冷却（分钟）", help: "两次主动换题至少间隔多久，正常聊天也受限。", type: "number", min: 0 },
+    { key: "newTopicMaxPerHour", label: "每小时最多新话题数", help: "按实际成功发送的话题波次计数，0 表示不主动起新话题。", type: "number", min: 0, max: 60 },
+    { key: "followupWeight", label: "旧话题追问权重 a", help: "等待超时且不结束本轮时抽取；受冷却限制则继续等待。", type: "number", min: 0, max: 1, step: 0.01, group: "超时后怎么继续" },
+    { key: "newTopicWeight", label: "新话题权重 b", help: "a+b ≤ 1；剩余 1−a−b 用于继续等待。发起、跟进成功均重置主动会话状态。", type: "number", min: 0, max: 1, step: 0.01 }
   ] };
 
   // console/layers/E/components/exec-browser-manager.js
   var exec_browser_manager_default = {
     saveLabel: "保存浏览器操作规则",
-    title: "网址范围",
+    title: "浏览器设置",
     fields: [
       { key: "allowUrls", label: "允许访问的网址（每行一个）", help: "留空表示不限定。当前用于告知 AI 访问范围。", type: "lines" },
-      { key: "blockUrls", label: "禁止访问的网址（每行一个）", help: "优先于允许列表；当前用于告知 AI 避开这些地址。", type: "lines" }
+      { key: "blockUrls", label: "禁止访问的网址（每行一个）", help: "优先于允许列表；当前用于告知 AI 避开这些地址。", type: "lines" },
+      { key: "headlessFor", label: "无头运行的场景", help: "匹配这些任务用途时不显示浏览器窗口；多个用途用 | 分隔。", type: "text" },
+      { key: "visibleFor", label: "显示窗口的场景", help: "匹配登录、验证码等需要人工操作的用途时显示窗口；多个用途用 | 分隔。", type: "text" },
+      { key: "rules", label: "浏览器操作与监控规则（每行一条）", help: "供浏览器任务和监控共同参考，不只影响某一个网址；不替代实际权限检查。", type: "lines" }
     ]
   };
 
@@ -5574,15 +6005,11 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     saveLabel: "保存生图服务与额度",
     title: "图片生成设置",
     fields: [
-      { key: "provider", label: "生图服务", help: "openai 为 OpenAI 兼容接口；ark 为火山方舟 Seedream。先保存设置，下方密钥框再对应所选服务。", type: "select", options: ["openai", "ark"] },
       { key: "apiBase", label: "OpenAI API 地址", help: "兼容 OpenAI 图片接口的服务地址。", type: "text" },
       { key: "proxyUrl", label: "网络代理（可选）", help: "例如 http://127.0.0.1:7897；留空则读取系统代理环境变量。只用于生图供应商请求。", type: "text" },
       { key: "model", label: "OpenAI 模型", type: "text" },
       { key: "size", label: "OpenAI 图片尺寸", help: "例如 1024x1024，以服务商支持的尺寸为准。", type: "text" },
       { key: "quality", label: "OpenAI 画质档位", help: "以服务商支持的值为准。", type: "text" },
-      { key: "arkApiBase", label: "火山方舟 API 地址", help: "默认官方地址；仅接收 ark.cn-beijing.volces.com。", type: "text" },
-      { key: "arkModel", label: "Seedream 模型 ID", help: "请填写你在火山方舟开通管理中有免费额度的模型 ID。", type: "text" },
-      { key: "arkSize", label: "Seedream 图片尺寸", help: "Seedream 5.0 lite 可用 2K；其他模型以方舟文档为准。", type: "text" },
       { key: "quotaMode", label: "每日额度模式", help: "global 全局；session 每个会话；both 同时限制。按上海时间每天重置。", type: "select", options: ["global", "session", "both"] },
       { key: "dailyGlobalLimit", label: "全局每日请求上限", type: "number", min: 0, max: 1e4 },
       { key: "dailySessionLimit", label: "每个会话每日请求上限", type: "number", min: 0, max: 1e4 },
@@ -5603,11 +6030,11 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     title: "监控设置",
     fields: [
       { key: "webWatchEnabled", label: "启用网页监控", help: "必须填写至少一个网址；页面变化时发送新增内容的 diff。", type: "boolean" },
-      { key: "fastCheckMinutes", label: "到期轮询间隔（分钟）", help: "只检查哪些任务到期，不表示每次都抓取网页或讲座。", type: "number", min: 1, max: 1440 },
-      { key: "fullCheckMinutes", label: "普通网页完整检查间隔（分钟）", help: "普通 watchUrls 的完整抓取周期；讲座检查使用其独立周期。", type: "number", min: 1, max: 10080 },
+      { key: "fastCheckMinutes", label: "到期轮询间隔（分钟）", help: "只检查哪些网址到期，不表示每次都重新读取全部网页。", type: "number", min: 1, max: 1440 },
+      { key: "fullCheckMinutes", label: "网页完整检查间隔（分钟）", help: "按此间隔重新读取已启用的网址，并与上次内容比较。", type: "number", min: 1, max: 10080 },
       { key: "watchUrls", label: "监控网址（勾选=启用）", help: "所有网页都按普通网址监控处理，含 Blackboard 页面。可直接写 https://网址，也可写“名称 | https://网址”；取消勾选 = 暂停检测但保留。", type: "items", placeholder: "名称 | https://网址", addLabel: "添加网址" },
       { key: "scriptCollabEnabled", label: "启用脚本协同", help: "添加脚本后，AI 可以按约定查询其状态并参与任务流程。", type: "boolean" },
-      { key: "scriptPaths", label: "协同脚本（勾选=启用）", help: "每行：勾选框 = 是否协同。例如 scripts/campus-watch.mjs。绿灯由脚本写入运行心跳后显示；只填路径不会自动执行脚本。", type: "items", placeholder: "scripts/campus-watch.mjs", addLabel: "添加脚本" },
+      { key: "scriptPaths", label: "协同脚本（勾选=启用）", help: "勾选参与协同，取消勾选暂停。登记地址不会自动执行脚本。", type: "items", placeholder: "scripts/campus-watch.mjs", addLabel: "添加脚本" },
       { key: "enabledScripts", label: "内置协同任务标识（高级）", type: "text", group: "高级接口" },
       { key: "lecturesApi", label: "讲座查询接口（高级）", type: "json" },
       { key: "lecturesEnabled", label: "启用抢讲座", type: "boolean" },
@@ -5625,7 +6052,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/C/components/ctx-memory-profile-facts.js
   var ctx_memory_profile_facts_default = { saveLabel: "保存事实提取规则", title: "用户画像事实", fields: [
-    { key: "cooldownMs", label: "画像提取冷却（分钟）", help: "设为 0 时，每轮新消息都可及时整理稳定人物事实；只有值得长期使用的信息才写入档案。", type: "minutes", min: 0 },
+    { key: "cooldownMs", label: "聊天中人物资料提取冷却（分钟）", help: "设为 0 时，每轮新消息都可及时整理稳定人物事实；只有值得长期使用的信息才写入档案。", type: "minutes", min: 0 },
     { key: "maxSnippets", label: "每轮最多候选事实", help: "一轮最多挑出多少条值得记住的用户事实。", type: "number", min: 1, max: 30 },
     { key: "maxCharsPerSnippet", label: "单条事实最大字数", help: "防止把整段聊天记录当作一条画像事实。", type: "number", min: 10, max: 1e3 }
   ] };
@@ -5658,11 +6085,11 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/L/components/life-task-session.js
   var life_task_session_default = {
-    saveLabel: "保存独立任务容量",
-    title: "任务委派会话",
+    saveLabel: "保存独立任务设置",
+    title: "独立 AI 任务",
     fields: [
-      { key: "maxConcurrentTasks", label: "并发任务上限", type: "number", min: 1, max: 20 },
-      { key: "maxTasks", label: "累计任务上限", type: "number", min: 3, max: 200 }
+      { key: "maxConcurrentTasks", label: "同时进行的任务（个）", type: "number", min: 1, max: 20 },
+      { key: "maxTasks", label: "任务记录保留数（条）", type: "number", min: 3, max: 200 }
     ]
   };
 
@@ -5708,15 +6135,13 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/T/components/tool-injection-lab.js
   var tool_injection_lab_default = { saveLabel: "保存注入实验设置", title: "提示词注入实验室", fields: [
-    { key: "injectPrompt", label: "允许提示词注入实验", help: "只影响实验室工具提供的测试动作。", type: "boolean" },
-    { key: "spar", label: "允许 bot 对线", help: "开启后仍受下方频率限制。", type: "boolean" },
     { key: "detect", label: "启用检测", help: "记录实验中观察到的注入迹象。", type: "boolean" },
-    { key: "alertWindowMs", label: "重复告警合并窗口（毫秒）", help: "同一时间窗口内的重复告警合并处理。", type: "number", min: 1e3 },
+    { key: "alertWindowMs", label: "注入警报保留时长（毫秒）", help: "最近一次检测到疑似注入后，在此时长内继续向 bot 的后续上下文注入警报；再次命中会重新计时。最低 60000 毫秒（1 分钟），默认 600000 毫秒（10 分钟）。", type: "number", min: 6e4 },
     { key: "sparPerHour", label: "每小时最多对线次数", help: "限制实验工具的触发频率。", type: "number", min: 0, max: 60 }
   ] };
 
   // console/layers/L/components/life-wake-reasons.js
-  var life_wake_reasons_default = { saveLabel: "保存静默主动规则", title: "统一主动调度", fields: [
+  var life_wake_reasons_default = { saveLabel: "保存静默主动规则", title: "来信与静默主动", fields: [
     { key: "proactiveEnabled", label: "启用静默主动", type: "boolean", group: "静默与概率" },
     { key: "silenceMinutes", label: "静默阈值（分钟）", type: "number" },
     { key: "initialProbability", label: "初始概率（0–1）", type: "number" },
@@ -5728,9 +6153,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     { key: "checkFloorMinutes", label: "间隔硬下限（分钟）", type: "number" },
     { key: "minActiveGapMinutes", label: "主动最小间距（分钟）", type: "number" },
     { key: "maxSilenceMinutes", label: "最大静默兜底（分钟）", type: "number" },
-    { key: "initialWillingness", label: "未评估时默认意愿（0–100）", type: "number", group: "聊天意愿" },
-    { key: "activityWillingnessDelta", label: "人类回来时意愿变化", type: "number" },
-    { key: "purposeWillingnessDelta", label: "主动或目的发送后意愿变化", type: "number" },
+    { key: "initialWillingness", label: "默认聊天意愿：用户忙闲（0–100）", type: "number", group: "聊天意愿" },
     { key: "curfewEnabled", label: "启用宵禁", type: "boolean", group: "宵禁（上海时间）" },
     { key: "curfewStartHour", label: "开始（小时）", type: "number" },
     { key: "curfewEndHour", label: "结束（小时）", type: "number" }
@@ -5794,20 +6217,25 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   };
 
   // console/layers/C/components/ctx-user-mood.js
-  var ctx_user_mood_default = { saveLabel: "保存心情与双形态", title: "心情与双形态", fields: [
-    { key: "enabled", label: "启用心情系统", type: "boolean", group: "结算规则" },
-    { key: "initial", label: "新会话初始心情（0–100）", type: "number" },
+  var ctx_user_mood_default = { ownsEnabled: true, saveLabel: "保存心情与双形态", title: "心情与双形态", fields: [
+    { key: "enabled", label: "启用心情系统", help: "心情表示 bot 主观上是否喜欢与对方聊天，并决定风格；用户忙闲由聊天意愿单独评估。", type: "boolean", group: "结算规则" },
     { key: "noReplyAfterMinutes", label: "主动后等待回应（分钟）", type: "number" },
     { key: "modeThreshold", label: "普通与临界形态阈值（0–100）", type: "number", group: "双形态", help: "达到阈值采用普通形态；低于阈值采用临界形态。" },
     { key: "normalName", label: "普通形态名称", type: "text", maxLength: 40 },
-    { key: "normalStyle", label: "普通形态风格", type: "textarea", maxLength: 500 },
+    { key: "normalStyle", label: "普通形态：语言风格与对话示例", type: "textarea", maxLength: 2400, help: "全局规则，仅普通形态注入。写清说话习惯、聊天倾向和几组对话示例；人设卡只保留整体身份与气质。" },
     { key: "criticalName", label: "临界形态名称", type: "text", maxLength: 40 },
-    { key: "criticalStyle", label: "临界形态风格", type: "textarea", maxLength: 500 },
+    { key: "criticalStyle", label: "临界形态：语言风格与对话示例", type: "textarea", maxLength: 2400, help: "全局规则，仅低于阈值时注入。定义语气如何变化、如何延续话题；示例只校准风格，不要求照抄。" },
     { key: "positiveRules", label: "升分行为规则", type: "moodRules", direction: 1, group: "AI判断与加减分" },
     { key: "negativeRules", label: "降分行为规则", type: "moodRules", direction: -1 },
     { key: "maxAdjustment", label: "AI单次加减分上限", type: "number" },
     { key: "burstEnabled", label: "启用被叫回后的热情回应", type: "boolean", group: "重新开始聊天时" },
     { key: "recoverMinutes", label: "欢迎冷却（分钟）", type: "number", help: "0 = 无冷却；不自动恢复心情分。" }
+  ] };
+
+  // console/layers/L/components/life-conversation-wait.js
+  var life_conversation_wait_default = { title: "无人回复时结束本轮", saveLabel: "保存无人回复收尾概率", fields: [
+    { key: "endProbabilityPercent", label: "初始结束概率 p（%）", type: "number", min: 0, max: 100 },
+    { key: "probabilityStepPercent", label: "每次增加 q（百分点）", type: "number", min: 1, max: 100 }
   ] };
 
   // console/shared/components/forms.js
@@ -5844,6 +6272,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     "schnie-core": schnie_core_default
   };
   COMPONENT_FORMS["ctx-user-mood"] = ctx_user_mood_default;
+  COMPONENT_FORMS["life-conversation-wait"] = life_conversation_wait_default;
 
   // console/shared/components/field-contract.js
   var PRIVATE_FIELDS = /(?:api.?key|secret|token|password|credential)/i;
@@ -5854,9 +6283,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     const order = new Map([...overrides.keys()].map((key2, index) => [key2, index]));
     const keys = [...declaredKeys].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity));
     return keys.filter((key2) => !PRIVATE_FIELDS.test(key2) && !INTERNAL_FIELDS.has(key2) && plugin.configSchema?.[key2]?.editable !== false && plugin.configSchema?.[key2]?.readOnly !== true && (!selectedKeys || selectedKeys.includes(key2))).map((key2) => {
-      const value = plugin.config?.[key2];
+      const value2 = plugin.config?.[key2];
       const rule = plugin.configSchema?.[key2] || {};
-      const type = rule.enum ? "select" : Array.isArray(value) ? value.some((x) => typeof x === "object") ? "json" : "lines" : value !== null && typeof value === "object" ? "json" : typeof value === "boolean" ? "boolean" : typeof value === "number" ? "number" : "text";
+      const type = rule.enum ? "select" : Array.isArray(value2) ? value2.some((x) => typeof x === "object") ? "json" : "lines" : value2 !== null && typeof value2 === "object" ? "json" : typeof value2 === "boolean" ? "boolean" : typeof value2 === "number" ? "number" : "text";
       return { key: key2, label: rule.label || key2, help: rule.description || "", example: rule.example || "", type, ...overrides.get(key2), ...rule.min == null ? {} : { min: rule.min }, ...rule.max == null ? {} : { max: rule.max }, ...rule.maxLength == null ? {} : { maxLength: rule.maxLength }, ...rule.enum ? { options: rule.enum } : {} };
     });
   }
@@ -5865,58 +6294,58 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   function moodRuleRow(rule, direction) {
     return '<div class="mood-rule-row" data-rule-id="' + esc(rule.id) + '"><label>行为<input class="mood-rule-label" type="text" maxlength="80" value="' + esc(rule.label) + '"></label><label>分值<input class="mood-rule-delta" type="number" min="' + (direction > 0 ? "0.01" : "-100") + '" max="' + (direction > 0 ? "100" : "-0.01") + '" step="any" value="' + esc(rule.delta) + '"></label><label>判断说明<textarea class="mood-rule-description" rows="2" maxlength="500">' + esc(rule.description) + '</textarea></label><button class="small mood-rule-delete" type="button" aria-label="删除行为规则">删除</button></div>';
   }
-  function compFieldHtml(field, value) {
+  function compFieldHtml(field, value2) {
     const hint = (field.help ? '<small class="meta comp-help">' + esc(field.help) + "</small>" : "") + (field.example ? '<small class="parameter-example">例：' + esc(field.example) + "</small>" : "");
-    if (field.type === "moodRules") return '<div class="comp-field mood-rules" data-rule-direction="' + field.direction + '"><b>' + esc(field.label) + '</b><div class="mood-rule-list">' + (Array.isArray(value) ? value : []).map((rule) => moodRuleRow(rule, field.direction)).join("") + '</div><button class="small mood-rule-add" type="button">+ 添加行为规则</button><small class="meta comp-help">AI 结合语境选用规则；分值是该行为单次调整的上限。</small>' + hint + "</div>";
-    if (field.type === "json") return '<div class="comp-field"><label class="meta">' + esc(field.label) + '</label><textarea class="comp-form-json" rows="6">' + esc(JSON.stringify(value ?? null, null, 2)) + "</textarea>" + hint + "</div>";
+    if (field.type === "moodRules") return '<div class="comp-field mood-rules" data-rule-direction="' + field.direction + '"><b>' + esc(field.label) + '</b><div class="mood-rule-list">' + (Array.isArray(value2) ? value2 : []).map((rule) => moodRuleRow(rule, field.direction)).join("") + '</div><button class="small mood-rule-add" type="button">+ 添加行为规则</button><small class="meta comp-help">AI 结合语境选用规则；分值是该行为单次调整的上限。</small>' + hint + "</div>";
+    if (field.type === "json") return '<div class="comp-field"><label class="meta">' + esc(field.label) + '</label><textarea class="comp-form-json" rows="6">' + esc(JSON.stringify(value2 ?? null, null, 2)) + "</textarea>" + hint + "</div>";
     if (field.type === "ackGroup") {
-      const group = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+      const group = value2 && typeof value2 === "object" && !Array.isArray(value2) ? value2 : {};
       const lines = Array.isArray(group.lines) ? group.lines : [];
       return '<fieldset class="comp-field comp-ack-group" style="border:1px solid var(--border-subtle);border-radius:12px;padding:12px 14px;margin:10px 0;background:var(--surface)"><legend style="padding:0 6px;font-weight:650">' + esc(field.label) + '</legend><div class="row" style="gap:14px;align-items:center"><label><input type="checkbox" class="comp-ack-enabled"' + (group.enabled !== false ? " checked" : "") + '> 启用这组</label><label>激活延迟（秒） <input type="number" class="comp-ack-delay" value="' + esc(String(Number(group.delayMs ?? 0) / 1e3)) + '" min="0" max="600" step="0.1" style="width:110px"></label></div><label class="meta" style="display:block;margin-top:8px">固定话术表（每行一条，激活时随机选一条）</label><textarea class="comp-ack-lines" rows="' + Math.max(4, Math.min(8, lines.length)) + '" style="width:100%;min-height:100px">' + esc(lines.join("\n")) + '</textarea><small class="meta comp-help">清空话术表会让此组不发送；延迟上限为 600 秒。</small>' + hint + "</fieldset>";
     }
     if (field.type === "flags") {
-      const set = new Set(String(value || "").split("|").filter(Boolean));
-      const opts = (field.options || []).map(([v, label]) => '<label class="comp-flag"><input type="checkbox" data-flag="' + esc(v) + '"' + (set.has(v) ? " checked" : "") + "> " + esc(label) + "</label>").join("");
+      const set = new Set(String(value2 || "").split("|").filter(Boolean));
+      const opts = (field.options || []).map(([v, label2]) => '<label class="comp-flag"><input type="checkbox" data-flag="' + esc(v) + '"' + (set.has(v) ? " checked" : "") + "> " + esc(label2) + "</label>").join("");
       return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><div class="row" style="gap:10px;flex-wrap:wrap;margin-top:4px">' + opts + "</div>" + hint + "</div>";
     }
     if (field.type === "comma-list") {
-      const arr = Array.isArray(value) ? value : [];
+      const arr = Array.isArray(value2) ? value2 : [];
       return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><input type="text" class="comp-form-text" style="width:100%;max-width:520px" placeholder="例如：论文，作业，报告" value="' + esc(arr.join("， ")) + '">' + hint + "</div>";
     }
     if (field.type === "lines") {
-      const arr = Array.isArray(value) ? value : [];
+      const arr = Array.isArray(value2) ? value2 : [];
       return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><textarea class="comp-form-lines" style="width:100%;min-height:70px" rows="' + Math.max(3, arr.length + 1) + '">' + esc(arr.join("\n")) + "</textarea>" + hint + "</div>";
     }
     if (field.type === "number") {
-      return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><input type="number" class="comp-form-num" value="' + esc(String(value ?? "")) + '" min="' + (field.min ?? "") + '" max="' + (field.max ?? "") + '" step="any" style="width:120px">' + hint + "</div>";
+      return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><input type="number" class="comp-form-num" value="' + esc(String(value2 ?? "")) + '" min="' + (field.min ?? "") + '" max="' + (field.max ?? "") + '" step="any" style="width:120px">' + hint + "</div>";
     }
     if (field.type === "minutes") {
-      return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><input type="number" class="comp-form-minutes" value="' + esc(String(Math.round((Number(value) || 0) / 6e4))) + '" min="' + (field.min ?? 0) + '" step="1" style="width:120px">' + hint + "</div>";
+      return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><input type="number" class="comp-form-minutes" value="' + esc(String(Math.round((Number(value2) || 0) / 6e4))) + '" min="' + (field.min ?? 0) + '" step="1" style="width:120px">' + hint + "</div>";
     }
     if (field.type === "select") {
-      const opts = (field.options || []).map((o) => "<option" + (String(value) === o ? " selected" : "") + ">" + esc(o) + "</option>").join("");
+      const opts = (field.options || []).map((o) => "<option" + (String(value2) === o ? " selected" : "") + ">" + esc(o) + "</option>").join("");
       return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><select class="comp-form-select" style="max-width:220px">' + opts + "</select>" + hint + "</div>";
     }
     if (field.type === "boolean") {
-      return '<div class="comp-field"><label><input type="checkbox" class="comp-form-bool"' + (value === true ? " checked" : "") + "> " + esc(field.label) + "</label>" + hint + "</div>";
+      return '<div class="comp-field"><label><input type="checkbox" class="comp-form-bool"' + (value2 === true ? " checked" : "") + "> " + esc(field.label) + "</label>" + hint + "</div>";
     }
     if (field.type === "text") {
-      return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><input type="text" class="comp-form-text" maxlength="' + (field.maxLength ?? 1e4) + '" value="' + esc(String(value ?? "")) + '" style="width:100%;max-width:320px">' + hint + "</div>";
+      return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><input type="text" class="comp-form-text" maxlength="' + (field.maxLength ?? 1e4) + '" value="' + esc(String(value2 ?? "")) + '" style="width:100%;max-width:320px">' + hint + "</div>";
     }
     if (field.type === "textarea") {
-      return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><textarea class="comp-form-textarea" rows="4" maxlength="' + (field.maxLength ?? 300) + '" style="width:100%;max-width:720px">' + esc(String(value ?? "")) + "</textarea>" + hint + "</div>";
+      return '<div class="comp-field"><div class="meta">' + esc(field.label) + '</div><textarea class="comp-form-textarea" rows="4" maxlength="' + (field.maxLength ?? 300) + '" style="width:100%;max-width:720px">' + esc(String(value2 ?? "")) + "</textarea>" + hint + "</div>";
     }
     if (field.type === "items") {
-      const arr = Array.isArray(value) ? value.map((e) => typeof e === "string" ? { value: e, enabled: true } : e) : [];
+      const arr = Array.isArray(value2) ? value2.map((e) => typeof e === "string" ? { value: e, enabled: true } : e) : [];
       const ph = esc(field.placeholder || "");
       const rows = arr.map((e) => '<div class="comp-item' + (e.enabled === false ? " is-off" : "") + '"><input type="checkbox" class="comp-item-on" title="勾选=启用" aria-label="启用此项"' + (e.enabled !== false ? " checked" : "") + '><input type="text" class="comp-item-val" value="' + esc(e.value || "") + '" placeholder="' + ph + '" style="flex:1"><button type="button" class="small comp-item-del" aria-label="删除此项">删除</button></div>').join("");
       return '<div class="comp-field"><div class="meta">' + esc(field.label) + "</div>" + rows + '<div class="row" style="gap:6px;margin-top:6px"><input type="text" class="comp-item-new" placeholder="' + ph + '" style="flex:1"><button type="button" class="small comp-item-add">' + esc(field.addLabel || "添加") + "</button></div>" + hint + "</div>";
     }
     return "";
   }
-  function compFieldValue(field, el2) {
+  function compFieldValue(field, el3) {
     if (field.type === "moodRules") {
-      const rules = [...el2.querySelectorAll(".mood-rule-row")].map((row) => ({
+      const rules = [...el3.querySelectorAll(".mood-rule-row")].map((row) => ({
         id: row.dataset.ruleId,
         label: row.querySelector(".mood-rule-label").value.trim(),
         delta: Number(row.querySelector(".mood-rule-delta").value),
@@ -5931,44 +6360,44 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       }
       return rules;
     }
-    if (field.type === "json") return JSON.parse(el2.querySelector(".comp-form-json").value);
+    if (field.type === "json") return JSON.parse(el3.querySelector(".comp-form-json").value);
     if (field.type === "ackGroup") {
-      const seconds = Number(el2.querySelector(".comp-ack-delay").value);
+      const seconds = Number(el3.querySelector(".comp-ack-delay").value);
       return {
-        enabled: el2.querySelector(".comp-ack-enabled").checked,
+        enabled: el3.querySelector(".comp-ack-enabled").checked,
         delayMs: Number.isFinite(seconds) ? Math.round(Math.max(0, Math.min(600, seconds)) * 1e3) : 0,
-        lines: el2.querySelector(".comp-ack-lines").value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 100)
+        lines: el3.querySelector(".comp-ack-lines").value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 100)
       };
     }
     if (field.type === "flags") {
       const vals = [];
-      el2.querySelectorAll("input[data-flag]").forEach((c) => {
+      el3.querySelectorAll("input[data-flag]").forEach((c) => {
         if (c.checked) vals.push(c.dataset.flag);
       });
       return vals.join("|");
     }
-    if (field.type === "comma-list") return el2.querySelector(".comp-form-text").value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
-    if (field.type === "lines") return el2.querySelector(".comp-form-lines").value.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (field.type === "comma-list") return el3.querySelector(".comp-form-text").value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+    if (field.type === "lines") return el3.querySelector(".comp-form-lines").value.split("\n").map((s) => s.trim()).filter(Boolean);
     if (field.type === "number") {
-      const n = Number(el2.querySelector(".comp-form-num").value);
+      const n = Number(el3.querySelector(".comp-form-num").value);
       if (!Number.isFinite(n) || field.min != null && n < field.min || field.max != null && n > field.max) throw new Error(field.label + "超出有效范围");
       return n;
     }
     if (field.type === "minutes") {
-      const n = Number(el2.querySelector(".comp-form-minutes").value);
+      const n = Number(el3.querySelector(".comp-form-minutes").value);
       return Number.isFinite(n) ? Math.round(n) * 6e4 : void 0;
     }
-    if (field.type === "select") return el2.querySelector(".comp-form-select").value;
-    if (field.type === "boolean") return el2.querySelector(".comp-form-bool").checked;
-    if (field.type === "text") return el2.querySelector(".comp-form-text").value.trim();
-    if (field.type === "textarea") return el2.querySelector(".comp-form-textarea").value.trim();
+    if (field.type === "select") return el3.querySelector(".comp-form-select").value;
+    if (field.type === "boolean") return el3.querySelector(".comp-form-bool").checked;
+    if (field.type === "text") return el3.querySelector(".comp-form-text").value.trim();
+    if (field.type === "textarea") return el3.querySelector(".comp-form-textarea").value.trim();
     if (field.type === "items") {
       const items2 = [];
-      el2.querySelectorAll(".comp-item").forEach((row) => {
+      el3.querySelectorAll(".comp-item").forEach((row) => {
         const val = row.querySelector(".comp-item-val").value.trim();
         if (val) items2.push({ value: val, enabled: row.querySelector(".comp-item-on").checked });
       });
-      const add = el2.querySelector(".comp-item-new");
+      const add = el3.querySelector(".comp-item-new");
       if (add) {
         const nv = add.value.trim();
         if (nv) items2.push({ value: nv, enabled: true });
@@ -6007,10 +6436,12 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/shared/components/form.js
-  function renderComponentForm(p, selectedKeys, showTitle = true) {
+  function renderComponentForm(p, selectedKeys, showTitle = true, expandGroups = false) {
     const cfg = { ...p.config || {} };
     if (p.id === "exec-image-generation") delete cfg.apiKey;
     const componentForm = COMPONENT_FORMS[p.id];
+    const ownsEnabled = componentForm?.ownsEnabled === true;
+    if (ownsEnabled) cfg.enabled = p.enabled !== false && cfg.enabled !== false;
     const form = { title: componentForm?.title || p.name || "功能设置", fields: resolveComponentFields(p, componentForm, selectedKeys) };
     if (!form.fields.length) return { html: '<p class="meta">此功能没有需要填写的参数。</p>', collect: () => ({ ...cfg }), empty: true };
     let grouped = false, groupCount = 0;
@@ -6024,14 +6455,14 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       }
       let heading = "";
       if (f.group) {
-        heading = (grouped ? "</div></details>" : "") + '<details class="parameter-group"' + (groupCount++ === 0 ? " open" : "") + "><summary>" + esc(f.group) + '</summary><div class="component-fields">';
+        heading = (grouped ? "</div></details>" : "") + '<details class="parameter-group"' + (groupCount++ === 0 || expandGroups ? " open" : "") + "><summary>" + esc(f.group) + '</summary><div class="component-fields">';
         grouped = true;
       }
       return heading + html;
     }).join("") + (grouped ? "</div></details>" : "");
-    return { saveLabel: componentForm?.saveLabel || "保存" + form.title, html: (showTitle ? '<div class="meta" style="margin:6px 0">' + esc(form.title) + "</div>" : "") + '<div class="component-fields">' + fields + "</div>", collect: (el2) => {
+    return { ownsEnabled, saveLabel: componentForm?.saveLabel || "保存" + form.title, html: (showTitle ? '<div class="meta" style="margin:6px 0">' + esc(form.title) + "</div>" : "") + '<div class="component-fields">' + fields + "</div>", collect: (el3) => {
       const out = {};
-      const fields2 = el2.querySelectorAll(".comp-field[data-config-key]");
+      const fields2 = el3.querySelectorAll(".comp-field[data-config-key]");
       form.fields.forEach((f, index) => {
         const v = compFieldValue(f, fields2[index]);
         if (v === void 0) delete out[f.key];
@@ -6056,19 +6487,19 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     "exec-image-generation": "本机 API 服务、额度与密钥；密钥单独保存，普通参数按钮不修改密钥。",
     "obs-cost-policy": "小鲸鱼全局调用规则；不改写 DSH 的全局默认模型设置。"
   };
-  function componentScope(id, label) {
+  function componentScope(id, label2) {
     const prefix = LOCAL.has(id) ? "本机" : "全局";
-    const action = label || "保存功能设置";
+    const action = label2 || "保存功能设置";
     return {
       label: prefix === "本机" ? "本机配置" : "全局规则",
-      description: NOTES[id] || (prefix === "本机" ? "配置保存在本机，供此 bot 的相关功能使用。" : "适用于此 bot 符合条件的会话；不修改下方单个会话或人物的内容。"),
+      description: id === "life-campus-watch" && action.includes("脚本") ? "本机脚本地址与逐项启停；执行和搜索细节按开发者与 AI 的约定处理。" : id === "life-campus-watch" ? "本机网页监控配置；通知发送到配置的目标会话。" : NOTES[id] || (prefix === "本机" ? "配置保存在本机，供此 bot 的相关功能使用。" : "适用于此 bot 符合条件的会话；不修改下方单个会话或人物的内容。"),
       saveLabel: action.includes(prefix) ? action : action.replace(/^保存/, "保存" + prefix)
     };
   }
 
   // console/shared/components/detail.js
-  async function loadComponentDetail(id, el2) {
-    const body = el2.querySelector(".comp-body");
+  async function loadComponentDetail(id, el3) {
+    const body = el3.querySelector(".comp-body");
     if (!body || body.dataset.loaded === "1") return;
     try {
       const resp = await api("/api/plugins/detail?id=" + encodeURIComponent(id));
@@ -6078,13 +6509,13 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         body.dataset.loaded = "1";
         return;
       }
-      const form = renderComponentForm(p, el2.dataset.inlineFields ? el2.dataset.inlineFields.split(",") : null, !!el2.dataset.inlineFields && id !== "life-daily-worklog");
-      const toggleLabel = id === "tool-user-checking" ? "启用自查与桌面便签" : el2.dataset.toggleLabel || "启用此功能";
-      const enabled = el2.dataset.hideToggle === "1" || id === "exec-image-generation" ? "" : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? " checked" : "") + "> <span>" + esc(toggleLabel) + '</span></label><span class="meta comp-toggle-msg"></span>';
+      const form = renderComponentForm(p, el3.dataset.inlineFields ? el3.dataset.inlineFields.split(",") : null, !!el3.dataset.inlineFields && id !== "life-daily-worklog" && !el3.closest(".env-comp-root"), !!el3.closest(".environment-page"));
+      const toggleLabel = id === "tool-user-checking" ? "启用自查与桌面便签" : el3.dataset.toggleLabel || "启用此功能";
+      const enabled = el3.dataset.hideToggle === "1" || id === "exec-image-generation" || form?.ownsEnabled ? "" : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? " checked" : "") + "> <span>" + esc(toggleLabel) + '</span></label><span class="meta comp-toggle-msg"></span>';
       if (form) {
-        const saveLabel = id === "life-campus-watch" ? el2.closest("#envCompScript") ? "保存脚本协同参数" : "保存网页监控参数" : form.saveLabel || "保存" + p.name;
+        const saveLabel = el3.dataset.saveLabel || (id === "life-campus-watch" ? el3.closest("#envCompScript") ? "保存脚本协同参数" : "保存网页监控参数" : form.saveLabel || "保存" + p.name);
         const scope = componentScope(id, saveLabel);
-        body.innerHTML = (form.empty ? "" : '<p class="parameter-scope" data-config-scope="' + esc(scope.label) + '"><b>' + esc(scope.label) + "</b> · " + esc(scope.description) + "</p>") + enabled + form.html + (form.empty || el2.dataset.deferSave === "1" ? "" : '<div class="row" style="gap:8px;margin-top:8px"><button class="small primary comp-save" data-save-action>' + esc(scope.saveLabel) + '</button><span class="meta comp-msg"></span></div>');
+        body.innerHTML = (form.empty ? "" : '<p class="parameter-scope" data-config-scope="' + esc(scope.label) + '"><b>' + esc(scope.label) + "</b> · " + esc(scope.description) + "</p>") + enabled + form.html + (form.empty || el3.dataset.deferSave === "1" ? "" : '<div class="row" style="gap:8px;margin-top:8px"><button class="small primary comp-save" data-save-action>' + esc(scope.saveLabel) + '</button><span class="meta comp-msg"></span></div>');
         if (id === "life-proactive-time-bubble") {
           const capacityInput = body.querySelector(".comp-form-num");
           if (capacityInput) {
@@ -6092,10 +6523,10 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
             syncV2TimeBubbleCapacity();
           }
         }
-        if (id === "exec-image-generation") await mountImageGeneration({ id, body, p, el: el2, form });
-        if (id === "ctx-knowledge-quota") await mountKnowledgeQuota({ id, body, p, el: el2, form });
-        if (id === "ctx-memory-profile-store") await mountPersonProfile({ id, body, p, el: el2, form });
-        if (id === "life-daily-worklog") await mountWorklog({ id, body, p, el: el2, form });
+        if (id === "exec-image-generation") await mountImageGeneration({ id, body, p, el: el3, form });
+        if (id === "ctx-knowledge-quota") await mountKnowledgeQuota({ id, body, p, el: el3, form });
+        if (id === "ctx-memory-profile-store") await mountPersonProfile({ id, body, p, el: el3, form });
+        if (id === "life-daily-worklog") await mountWorklog({ id, body, p, el: el3, form });
         wireItems(body);
         body.dataset.loaded = "1";
         body.querySelector(".comp-enabled")?.addEventListener("change", async (event) => {
@@ -6111,16 +6542,16 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
             msg.textContent = "更新失败：" + error.message;
           }
         });
-        el2.__saveComponent = async () => {
+        el3.__saveComponent = async () => {
           const cfg2 = form.collect(body);
           const msg = body.querySelector(".comp-msg");
           if (msg) msg.textContent = "保存中…";
           let next = cfg2;
-          if (el2.dataset.inlineFields) {
+          if (el3.dataset.inlineFields) {
             const latest = await api("/api/plugins/detail?id=" + encodeURIComponent(id));
             next = { ...(latest.plugin || latest).config || {}, ...cfg2 };
           }
-          if (id === "life-campus-watch" && el2.closest("#envCompBrowserWatch")) {
+          if (id === "life-campus-watch" && el3.closest("#envCompBrowserWatch")) {
             next.watchUrlsConfigured = true;
             next.bbCoursesConfigured = true;
             next.bbCourses = [];
@@ -6128,24 +6559,35 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
             const activeUrls = (next.watchUrls || []).filter((e) => typeof e === "string" ? true : e.enabled !== false);
             if (next.webWatchEnabled && !activeUrls.length) throw Error("请先勾选并填写至少一个监控网址");
           }
-          if (id === "life-campus-watch" && el2.closest("#envCompScript")) {
+          if (id === "life-campus-watch" && el3.closest("#envCompScript")) {
             const activeScripts = (next.scriptPaths || []).filter((e) => typeof e === "string" ? true : e.enabled !== false);
-            if (next.scriptCollabEnabled && !activeScripts.length) throw Error("请先勾选并填写至少一个脚本路径");
+            next.scriptCollabEnabled = activeScripts.length > 0;
           }
           const out = await api("/api/plugins/config", "POST", { id, config: next });
           if (out.ok === false) throw Error(out.error || "保存失败");
+          if (form.ownsEnabled && next.enabled === true) {
+            try {
+              const active = await api("/api/plugins/toggle", "POST", { id, enabled: true });
+              if (active.ok !== true) throw Error(active.error || "启用失败");
+            } catch (error) {
+              const control = body.querySelector('[data-config-key="enabled"] input');
+              if (control) control.checked = false;
+              throw Error("参数已保存，但组件启用失败：" + error.message);
+            }
+          }
           if (msg) msg.textContent = "已保存并重载";
           body.dataset.loaded = "";
-          await loadComponentDetail(id, el2);
+          await loadComponentDetail(id, el3);
           const readbackMsg = body.querySelector(".comp-msg");
           if (readbackMsg) readbackMsg.textContent = "已保存并重载，已重新读取";
+          el3.dispatchEvent(new CustomEvent("component-config-saved", { bubbles: true, detail: { id } }));
         };
         body.querySelector(".comp-save")?.addEventListener("click", async (event) => {
           const button = event.currentTarget;
           button.disabled = true;
           button.setAttribute("aria-busy", "true");
           try {
-            await el2.__saveComponent();
+            await el3.__saveComponent();
           } catch (error) {
             const msg = body.querySelector(".comp-msg");
             if (msg) msg.textContent = "保存失败：" + error.message;
@@ -6162,6 +6604,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/T/tool-presentation.js
   var TOOL_PRESENTATION = {
+    learningSources: { group: "记忆、心情与排程", label: "调整知识适用来源", example: "例：高频用到某条确认资料时，把当前会话加入默认注入名单；不确认候选。" },
+    aliasQuery: { group: "知识与反馈", label: "查询成员绰号", example: "例：按完整QQ号查询已确认称呼；跨来源不返回原始聊天证据。" },
+    aliasSubmit: { group: "知识与反馈", label: "提交绰号候选", example: "例：发现新称呼后提交候选，仍由管理员确认。" },
     "status": {
       "group": "读取与状态",
       "label": "连接状态",
@@ -6219,8 +6664,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     },
     "waitMessages": {
       "group": "回复、等待与收尾",
-      "label": "等待新消息",
-      "example": "例：开启并保存后，可观察用户补充或等待后续来信；仍受会话权限与额度约束。"
+      "label": "等待新消息与确认说完",
+      "example": "例：开启并保存后，可分别使用等新消息、等对方说完两个工具；仍受会话权限与额度约束。"
     },
     "markRead": {
       "group": "回复、等待与收尾",
@@ -6378,6 +6823,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     qq_send_burst: "sendBurst",
     qq_send_message: "sendMessage",
     qq_wait_for_messages: "waitMessages",
+    qq_wait_for_quiet: "waitMessages",
     qq_report_feedback: "feedback",
     qq_get_my_recent_messages: "getMyRecent",
     qq_get_message_detail: "getMessageDetail",
@@ -6393,6 +6839,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     qq_availability: "availability",
     qq_slang_query: "slangQuery",
     qq_slang_submit: "slangSubmit",
+    qq_alias_query: "aliasQuery",
+    qq_alias_submit: "aliasSubmit",
+    qq_knowledge_sources: "learningSources",
     qq_term_query: "termQuery",
     qq_term_submit: "termSubmit",
     qq_send_voice: "sendVoice",
@@ -6423,7 +6872,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
 
   // console/layers/T/tool-inventory.js
   function toolRows(tools) {
-    return tools.map((tool) => '<div class="tool-reference-item"><code>' + esc(tool.qualifiedName) + "</code><span>" + esc(tool.description) + "<br><small>" + esc(tool.server) + " · " + (tool.botInjectedSessions || 0) + " 个聊天会话有注入记录</small></span></div>").join("");
+    const name = (tool) => tool.name || String(tool.qualifiedName || "").split("__").slice(2).join("__");
+    return [...tools].sort((a, b) => name(a).localeCompare(name(b), "en", { sensitivity: "base", numeric: true }) || String(a.server).localeCompare(String(b.server))).map((tool) => '<div class="tool-reference-item"><code title="' + esc(tool.qualifiedName) + '">' + esc(name(tool)) + "</code><span>" + esc(tool.description) + "<br><small>" + esc(tool.server) + " · " + (tool.botInjectedSessions || 0) + " 个聊天会话有注入记录</small></span></div>").join("");
   }
   async function loadToolCatalog() {
     const root = document.getElementById("toolReferenceRoot");
@@ -6447,7 +6897,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       return null;
     }
   }
-  async function renderToolInventory() {
+  async function renderToolInventory(pluginsReady) {
     const groups = /* @__PURE__ */ new Map();
     for (const [name, flag] of Object.entries(TOOL_CONFIG_FLAGS)) {
       if (!groups.has(flag)) groups.set(flag, []);
@@ -6455,30 +6905,53 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     }
     const root = document.getElementById("v2Tools");
     const sections = /* @__PURE__ */ new Map();
-    for (const [flag, names] of groups) {
-      const view = TOOL_PRESENTATION[flag] || { group: "其他能力", label: names.join(" / "), example: "调整后需保存，并刷新对应MCP工具清单。" };
+    for (const [flag, names2] of groups) {
+      const view = TOOL_PRESENTATION[flag] || { group: "其他能力", label: names2.join(" / "), example: "调整后需保存，并刷新对应MCP工具清单。" };
       if (!sections.has(view.group)) sections.set(view.group, []);
-      sections.get(view.group).push({ flag, names, ...view });
+      sections.get(view.group).push({ flag, names: names2, ...view });
     }
-    root.innerHTML = [...sections].map(([title, items2]) => '<details class="tool-parameter-group"><summary>' + esc(title) + '<small class="meta" data-tool-group-count></small></summary><div class="tool-parameter-options">' + items2.map(({ flag, names, label, example }) => '<label class="v2-tool-item"><input type="checkbox" data-v2-tool="' + esc(flag) + '"><span><b>' + esc(label) + '</b><small class="meta">' + esc(names.join(" / ")) + '</small><small class="parameter-example">' + esc(example) + "</small></span></label>").join("") + "</div></details>").join("");
-    const config = await api("/api/socialV2/config");
-    root.querySelectorAll("[data-v2-tool]").forEach((input) => {
-      input.checked = config.config?.tools?.[input.dataset.v2Tool] !== false;
-    });
+    root.dataset.loaded = "0";
+    root.innerHTML = [...sections].map(([title, items2]) => '<details class="tool-parameter-group tool-switch-group" data-tool-group="' + esc(title) + '"><summary><span>' + esc(title) + '</span><small class="meta" data-tool-group-count></small></summary><div class="tool-parameter-options">' + items2.map(({ flag, names: names2, label: label2, example }) => '<label class="v2-tool-item"><input type="checkbox" disabled data-v2-tool="' + esc(flag) + '"><span><b>' + esc(label2) + '</b><small class="meta tool-call-names">' + esc(names2.join(" / ")) + '</small><small class="parameter-example">' + esc(example) + "</small></span></label>").join("") + "</div></details>").join("");
+    const save2 = document.querySelector("#section-v2-t .v2-save"), status = document.getElementById("toolSwitchStatus"), retry = document.getElementById("toolSwitchRetry");
+    save2.disabled = true;
     const updateCounts = () => root.querySelectorAll(".tool-parameter-group").forEach((group) => {
-      const all = group.querySelectorAll("[data-v2-tool]");
-      group.querySelector("[data-tool-group-count]").textContent = " · 勾选 " + [...all].filter((x) => x.checked).length + "/" + all.length;
+      const all = group.querySelectorAll('.v2-tool-item input[type="checkbox"]');
+      group.querySelector("[data-tool-group-count]").textContent = root.dataset.loaded === "1" ? "已启用 " + [...all].filter((x) => x.checked).length + " / " + all.length : all.length + " 项 · 读取中";
     });
     updateCounts();
     root.onchange = updateCounts;
-    const balance = (await api("/api/plugins")).plugins?.find((p) => p.id === "tool-deepseek-balance");
-    const extras = document.getElementById("toolSwitchExtras");
-    if (balance) {
+    const loadConfig = async () => {
+      status.textContent = "读取开关状态…";
+      retry.hidden = true;
+      try {
+        const out = await api("/api/socialV2/config");
+        if (out.ok !== true || !out.config || typeof out.config !== "object") throw Error(out.error || "未取得当前配置");
+        root.querySelectorAll("[data-v2-tool]").forEach((input) => {
+          input.checked = out.config.tools?.[input.dataset.v2Tool] !== false;
+          input.disabled = false;
+        });
+        root.dataset.loaded = "1";
+        save2.disabled = false;
+        status.textContent = "";
+        updateCounts();
+      } catch (error) {
+        status.textContent = "开关读取失败：" + error.message;
+        retry.hidden = false;
+      }
+    };
+    retry.onclick = loadConfig;
+    document.getElementById("toolsCatalogRefresh").onclick = loadToolCatalog;
+    registerPageLoader("reference", loadToolCatalog);
+    const configReady = loadConfig();
+    const balanceReady = Promise.resolve(pluginsReady || api("/api/plugins")).then((data2) => {
+      const balance = data2.plugins?.find((p) => p.id === "tool-deepseek-balance");
+      if (!balance) return;
       const row = document.createElement("div");
       row.id = "balanceToolControl";
       row.dataset.componentId = balance.id;
-      row.innerHTML = '<label class="v2-tool-item"><input type="checkbox" id="balanceToolEnabled"' + (balance.enabled ? " checked" : "") + '><span><b>DeepSeek 余额查询</b><span class="meta">管理员私聊只读查询；开关即时生效。</span></span></label><span class="meta" role="status"></span>';
-      extras.before(row);
+      row.innerHTML = '<label class="v2-tool-item"><input type="checkbox" id="balanceToolEnabled"' + (balance.enabled ? " checked" : "") + '><span><b>DeepSeek 余额查询</b><small class="meta">管理员私聊只读查询；开关即时生效。</small></span></label><span class="meta" role="status"></span>';
+      root.querySelector('[data-tool-group="读取与状态"] .tool-parameter-options').append(row);
+      updateCounts();
       row.querySelector("input").addEventListener("change", async (event) => {
         const input = event.target, previous = !input.checked, msg = row.querySelector("[role=status]");
         input.disabled = true;
@@ -6491,17 +6964,21 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
           msg.textContent = "更新失败：" + error.message;
         } finally {
           input.disabled = false;
+          updateCounts();
         }
       });
-    }
-    document.getElementById("toolSwitchExtras").textContent = "开关来自 MCP 的唯一注册定义。组件工具在所属层管理；工具参考只把有真实请求注入证据的聊天工具列为可用。";
-    document.getElementById("toolsCatalogRefresh").addEventListener("click", loadToolCatalog);
-    registerPageLoader("reference", loadToolCatalog);
-    await loadToolCatalog();
+    }).catch((error) => {
+      status.textContent = "组件工具状态读取失败：" + error.message;
+    });
+    await Promise.all([configReady, balanceReady]);
   }
 
   // console/shared/component-renderer.js
-  function initialize50() {
+  function initialize48() {
+    const pluginsReady = api("/api/plugins");
+    void renderToolInventory(pluginsReady).catch((error) => {
+      document.getElementById("toolSwitchStatus").textContent = "工具开关加载失败：" + error.message;
+    });
     (() => {
       const COMP_LAYERS = [
         { id: "C", name: "上下文与记忆" },
@@ -6539,7 +7016,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         const root = typeof rootOrId === "string" ? document.getElementById(rootOrId) : rootOrId;
         if (!root) return;
         const items2 = compCache.filter((p) => !isInternalPromptComponent(p) && (ids || []).includes(p.id));
-        root.innerHTML = items2.length ? items2.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${["ctx-memory-profile-store", "life-campus-watch", "exec-image-generation"].includes(p.id) ? "1" : "0"}" data-toggle-label="${p.id === "exec-browser-manager" ? "启用 DOM 操作" : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || "")}"><div class="comp-body">加载设置…</div></div>`).join("") : "";
+        root.innerHTML = items2.length ? items2.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${root.dataset.hideToggle === "1" || ["ctx-memory-profile-store", "life-campus-watch", "exec-image-generation"].includes(p.id) ? "1" : "0"}" data-save-label="${esc(root.dataset.saveLabel || "")}" data-toggle-label="${p.id === "exec-browser-manager" ? "启用 DOM 操作" : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || "")}"><div class="comp-body">加载设置…</div></div>`).join("") : "";
         await Promise.all([...root.querySelectorAll(".comp-card")].map((d) => loadComponentDetail(d.dataset.id, d)));
       };
       componentUI.loadMessageAck = async () => {
@@ -6563,15 +7040,15 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         }
       };
       componentUI.mount = async () => {
-        const data = await api("/api/plugins");
-        compCache = data.plugins || [];
+        const data2 = await pluginsReady;
+        compCache = data2.plugins || [];
         const inlineSettings = [
           ["life-proactive-time-bubble", "v2TimeBubbleAdd", "maxBubblesPerDay"],
           ["life-schedule-reminder", "v2ScheduleRefresh", "enabled,advanceMinutes,intervalMinutes,lateMinutes,horizonDays,maxItems,maxPromptItems"],
           ["ctx-media-sticker-pick", "v2StickerEnabled"],
           ["ctx-memory-profile-facts", "v2PmEnabled"],
-          ["ctx-memory-context", "v2ContextRecentLimit"],
-          ["ctx-chat-topic-drive", "v2FollowupGlobalAnchor", "privateFollowupEnabled,minIntervalMinutes,dailyLimit,followUpCooldownMinutes,newTopicCooldownMinutes,newTopicMaxPerHour"],
+          ["ctx-memory-context", "v2ContextRecentLimit", "maxChars"],
+          ["ctx-chat-topic-drive", "v2FollowupGlobalAnchor", "privateFollowupEnabled,minIntervalMinutes,dailyLimit,followUpCooldownMinutes,newTopicCooldownMinutes,newTopicMaxPerHour,followupWeight,newTopicWeight"],
           ["life-daily-worklog", "v2DdEnabled"],
           ["ctx-memory-store", "v2DdEnabled", "diaryArchive"]
         ];
@@ -6593,7 +7070,6 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
           else target.append(slot);
           loadComponentDetail(id, slot);
         }
-        await renderToolInventory(data, compCache);
         const main = document.getElementById("mainContent");
         const grid = main.querySelector(":scope > .grid");
         for (const slot of main.querySelectorAll("[data-component-slot]")) {
@@ -6618,17 +7094,17 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
           if (p.layer === "V" || p.layer === "S") continue;
           const page = componentPage(p);
           if (!page) continue;
-          const section = document.createElement("section");
-          section.className = "card span-all commercial-component";
-          section.dataset.page = page;
-          section.dataset.componentId = p.id;
-          section.hidden = currentConsolePage !== page;
-          section.innerHTML = '<div class="component-heading"><div><h2>' + esc(p.name) + '</h2><p class="meta">' + esc(p.description || "此功能没有额外说明。") + "</p></div></div>" + ((p.tools || []).length && p.id !== "ctx-memory-profile-store" ? '<div class="tool-reference-list">' + p.tools.map((t) => '<div class="tool-reference-item"><code>' + esc(t.name) + "</code><span>" + esc(t.description || "由 AI 按需使用") + "</span></div>").join("") + "</div>" : "") + '<div class="comp-body">读取设置中…</div>';
+          const section2 = document.createElement("section");
+          section2.className = "card span-all commercial-component";
+          section2.dataset.page = page;
+          section2.dataset.componentId = p.id;
+          section2.hidden = currentConsolePage !== page;
+          section2.innerHTML = '<div class="component-heading"><div><h2>' + esc(p.name) + '</h2><p class="meta">' + esc(p.description || "此功能没有额外说明。") + "</p></div></div>" + ((p.tools || []).length && p.id !== "ctx-memory-profile-store" ? '<div class="tool-reference-list">' + p.tools.map((t) => '<div class="tool-reference-item"><code>' + esc(t.name) + "</code><span>" + esc(t.description || "由 AI 按需使用") + "</span></div>").join("") + "</div>" : "") + '<div class="comp-body">读取设置中…</div>';
           const pageAnchor = page === "setting-c-2" ? grid.querySelector('section[data-page="setting-c-2"]') : null;
-          if (pageAnchor) pageAnchor.before(section);
-          else grid.append(section);
-          featureIndex.push({ page, label: p.name, target: section });
-          loadComponentDetail(p.id, section);
+          if (pageAnchor) pageAnchor.before(section2);
+          else grid.append(section2);
+          featureIndex.push({ page, label: p.name, target: section2 });
+          loadComponentDetail(p.id, section2);
         }
       };
       componentUI.mount().catch((error) => {
@@ -6638,7 +7114,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/layers/R/registry.js
-  function initialize51() {
+  function initialize49() {
     (() => {
       async function loadRegistry() {
         const root = document.getElementById("registryRoot");
@@ -6646,8 +7122,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         if (!root) return;
         root.innerHTML = '<div class="meta">读取中…</div>';
         try {
-          const data = await api("/api/plugins");
-          const userPlugins = (data.plugins || []).filter((p) => p.builtin === false);
+          const data2 = await api("/api/plugins");
+          const userPlugins = (data2.plugins || []).filter((p) => p.builtin === false);
           if (!userPlugins.length) {
             root.innerHTML = '<div class="meta">（空）没有第三方项目。把项目放进 <code>plugins/qq-components-user/&lt;id&gt;/</code>（至少带 plugin.json），刷新后就会出现在这里。</div>';
             if (status) status.textContent = "0 个待管理化";
@@ -6681,7 +7157,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   }
 
   // console/layers/C/aliases.js
-  function initialize52() {
+  function initialize50() {
     (() => {
       const message2 = document.getElementById("aliasMsg");
       let rows = [], active = "candidate", selected2 = /* @__PURE__ */ new Set();
@@ -6691,28 +7167,29 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         return document.getElementById("aliasSearch" + suffix).value.trim().toLowerCase();
       }
       function openEditor(entry) {
+        document.getElementById("aliasSourceKeys").value = sourceKeysText(entry);
         document.getElementById("aliasEditId").value = entry.id;
         document.getElementById("aliasModalName").value = entry.alias || "";
         document.getElementById("aliasModalQq").value = entry.qq || "";
         document.getElementById("aliasModalNote").value = entry.note || entry.reason || "";
         document.getElementById("aliasModalTitle").textContent = entry.status === "candidate" ? "审核绰号：" + entry.alias : "编辑绰号：" + entry.alias;
-        document.getElementById("aliasModalContent").textContent = (entry.targetName ? "被称呼者线索：" + entry.targetName + " · " : "") + (entry.sourceKey || "");
+        document.getElementById("aliasModalContent").textContent = (entry.targetName ? "被称呼者线索：" + entry.targetName + " · " : "") + ("最初采集：" + (entry.originKey || "手动录入"));
         document.getElementById("aliasModalEvidence").innerHTML = learningEvidence(entry.evidence);
         document.getElementById("aliasModalConfirm").textContent = entry.status === "candidate" ? "确认映射" : "保存修改";
         document.getElementById("aliasModalReject").style.display = entry.status === "candidate" ? "" : "none";
         document.getElementById("aliasModalOverlay").classList.add("open");
       }
-      function render() {
+      function render2() {
         const suffix = active === "candidate" ? "Cand" : active[0].toUpperCase() + active.slice(1), target = document.getElementById("alias" + active[0].toUpperCase() + active.slice(1) + "List"), q = search(), limit = Number(document.getElementById("aliasLimit" + suffix).value) || 100;
-        const list = rows.filter((x) => x.status === active), filtered = list.filter((x) => !q || [x.alias, x.qq, x.note, x.reason, x.targetName, x.sourceKey, ...(x.evidence || []).map((y) => y.text)].join(" ").toLowerCase().includes(q)), shown = filtered.slice(0, limit);
+        const list = rows.filter((x) => x.status === active), filtered = list.filter((x) => !q || [x.alias, x.qq, x.note, x.reason, x.targetName, (x.sourceKeys || []).join(" "), ...(x.evidence || []).map((y) => y.text)].join(" ").toLowerCase().includes(q)), shown = filtered.slice(0, limit);
         if (!shown.length) {
           target.innerHTML = '<div class="meta" style="padding:8px">' + (list.length ? "没有符合条件的绰号" : active === "candidate" ? "暂无候选；可刷新近期群消息或手动添加" : "暂无" + statusLabel[active] + "绰号") + "</div>";
           return;
         }
-        let html = '<div class="meta" style="padding:6px 8px">共 ' + filtered.length + " 条，显示 " + shown.length + " 条</div><table><tr><th>选择</th><th>绰号</th><th>被称呼者</th><th>对应 QQ</th><th>来源 / 语境证据</th><th>备注</th><th>操作</th></tr>";
+        let html = '<div class="meta" style="padding:6px 8px">共 ' + filtered.length + " 条，显示 " + shown.length + " 条</div><table><tr><th>选择</th><th>绰号</th><th>被称呼者</th><th>对应 QQ</th><th>适用会话 / 语境证据</th><th>备注</th><th>操作</th></tr>";
         for (const e of shown) {
           const actions = active === "candidate" ? '<button class="small" data-alias-edit="' + esc(e.id) + '">查看 / 编辑</button><button class="small primary" data-alias-confirm="' + esc(e.id) + '">确认</button><details class="compact-actions"><summary>更多</summary><div class="compact-actions-menu"><button class="small" data-alias-reject="' + esc(e.id) + '">拒绝</button></div></details>' : active === "confirmed" ? '<button class="small" data-alias-edit="' + esc(e.id) + '">编辑</button><button class="small danger" data-alias-delete="' + esc(e.id) + '">删除</button>' : '<span class="meta">已记入拒绝记录</span>';
-          html += '<tr data-alias-id="' + esc(e.id) + '"><td>' + (active !== "rejected" ? '<input type="checkbox" data-alias-select="' + esc(e.id) + '" ' + (selected2.has(e.id) ? "checked" : "") + ">" : "—") + "</td><td><b>" + esc(e.alias) + '</b><br><span class="' + (active === "candidate" ? "pill b" : active === "confirmed" ? "pill g" : "pill r") + '">' + statusLabel[active] + "</span></td><td>" + esc(e.targetName || "—") + "</td><td>" + esc(e.qq || "未绑定") + "</td><td>" + esc(e.sourceKey || "手动") + (e.evidence?.length ? "<br>" + learningEvidence(e.evidence) : "") + "</td><td>" + esc(e.note || e.reason || "—") + '</td><td class="row">' + actions + "</td></tr>";
+          html += '<tr data-alias-id="' + esc(e.id) + '"><td>' + (active !== "rejected" ? '<input type="checkbox" data-alias-select="' + esc(e.id) + '" ' + (selected2.has(e.id) ? "checked" : "") + ">" : "—") + "</td><td><b>" + esc(e.alias) + '</b><br><span class="' + (active === "candidate" ? "pill b" : active === "confirmed" ? "pill g" : "pill r") + '">' + statusLabel[active] + "</span></td><td>" + esc(e.targetName || "—") + "</td><td>" + esc(e.qq || "未绑定") + "</td><td>" + sourceKeysMarkup(e) + (e.evidence?.length ? "<br>" + learningEvidence(e.evidence) : "") + "</td><td>" + esc(e.note || e.reason || "—") + '</td><td class="row">' + actions + "</td></tr>";
         }
         target.innerHTML = html + "</table>";
         target.querySelectorAll("[data-alias-select]").forEach((cb) => cb.addEventListener("change", () => {
@@ -6732,15 +7209,16 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       const loadAliases = async () => {
         if (!document.getElementById("aliasCandidateList")) return;
         try {
-          const [data, detail] = await Promise.all([learningCall("alias_list"), api("/api/plugins/detail?id=ctx-member-alias")]);
+          const [data2, detail] = await Promise.all([learningCall("alias_list"), api("/api/plugins/detail?id=ctx-member-alias")]);
           const config = (detail.plugin || detail).config || {};
           document.getElementById("aliasAutoExtract").checked = config.autoExtract !== false;
           document.getElementById("aliasAutoSemantic").checked = config.autoSemantic !== false;
           document.getElementById("aliasMinMessages").value = config.minMessages ?? 15;
           document.getElementById("aliasCooldown").value = Number(config.cooldownMs ?? 18e5) / 6e4;
           document.getElementById("aliasMaxCalls").value = config.maxCallsPerHour ?? 4;
-          rows = [...data.entries || [], ...data.rejected || []];
-          render();
+          document.getElementById("aliasInjectMax").value = config.injectMax ?? 40;
+          rows = [...data2.entries || [], ...data2.rejected || []];
+          render2();
         } catch (e) {
           document.getElementById("aliasCandidateList").innerHTML = '<span class="err">读取失败：' + esc(e.message) + "</span>";
         }
@@ -6749,19 +7227,19 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         active = button.dataset.aliasTab;
         document.querySelectorAll("#aliasTabs [data-alias-tab]").forEach((x) => x.classList.toggle("active", x === button));
         document.querySelectorAll("#section-alias .alias-panel").forEach((panel) => panel.classList.toggle("active", panel.id === "aliasPanel" + active[0].toUpperCase() + active.slice(1)));
-        render();
+        render2();
       }));
       for (const status of ["candidate", "confirmed", "rejected"]) {
         const suffix = status === "candidate" ? "Cand" : status[0].toUpperCase() + status.slice(1);
-        document.getElementById("aliasSearch" + suffix).addEventListener("input", render);
-        document.getElementById("aliasLimit" + suffix).addEventListener("change", render);
+        document.getElementById("aliasSearch" + suffix).addEventListener("input", render2);
+        document.getElementById("aliasLimit" + suffix).addEventListener("change", render2);
       }
       for (const status of ["candidate", "confirmed"]) document.getElementById("alias" + status[0].toUpperCase() + status.slice(1) + "SelectAll").addEventListener("change", (event) => {
         for (const e of rows.filter((x) => x.status === status)) {
           if (event.target.checked) selected2.add(e.id);
           else selected2.delete(e.id);
         }
-        render();
+        render2();
       });
       document.getElementById("aliasRejectSelected").addEventListener("click", async () => {
         for (const id of selected2) {
@@ -6785,6 +7263,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
             continue;
           }
           try {
+            await requireLearningScopes();
             await learningCall("alias_confirm", { id: e.id, alias: e.alias, qq: e.qq, note: e.note || "" });
             confirmed++;
           } catch {
@@ -6829,8 +7308,9 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         button.disabled = true;
         msg.textContent = "正在保存…";
         try {
+          await requireLearningScopes();
           const latest = await api("/api/plugins/detail?id=ctx-member-alias");
-          const config = { ...(latest.plugin || latest).config || {}, autoExtract: document.getElementById("aliasAutoExtract").checked, autoSemantic: document.getElementById("aliasAutoSemantic").checked, minMessages, cooldownMs: cooldownMinutes * 6e4, maxCallsPerHour };
+          const config = { ...(latest.plugin || latest).config || {}, autoExtract: document.getElementById("aliasAutoExtract").checked, autoSemantic: document.getElementById("aliasAutoSemantic").checked, minMessages, cooldownMs: cooldownMinutes * 6e4, maxCallsPerHour, injectMax: Number(document.getElementById("aliasInjectMax").value) };
           const result = await api("/api/plugins/config", "POST", { id: "ctx-member-alias", config });
           if (result.ok !== true) throw Error(result.error || "保存失败");
           msg.textContent = "已保存学习设置";
@@ -6844,7 +7324,8 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       });
       document.getElementById("aliasAdd").addEventListener("click", async () => {
         try {
-          const result = await learningCall("alias_add", { alias: document.getElementById("aliasName").value, qq: document.getElementById("aliasQq").value, note: document.getElementById("aliasNote").value });
+          await requireLearningScopes();
+          const result = await learningCall("alias_add", { alias: document.getElementById("aliasName").value, qq: document.getElementById("aliasQq").value, note: document.getElementById("aliasNote").value, sourceKeys: readSourceKeys("aliasManualSourceKeys") });
           message2.textContent = result.ok ? "已添加；不会覆盖该用户其他绰号" : "保存失败";
           await loadAliases();
         } catch (e) {
@@ -6869,7 +7350,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         const id = document.getElementById("aliasEditId").value, entry = rows.find((x) => x.id === id);
         if (!entry) return;
         try {
-          await learningCall("alias_confirm", { id, alias: document.getElementById("aliasModalName").value, qq: document.getElementById("aliasModalQq").value, note: document.getElementById("aliasModalNote").value });
+          await learningCall("alias_confirm", { id, alias: document.getElementById("aliasModalName").value, qq: document.getElementById("aliasModalQq").value, note: document.getElementById("aliasModalNote").value, sourceKeys: readSourceKeys("aliasSourceKeys") });
           message2.textContent = "已确认并保存；同一用户的其他绰号保留";
           document.getElementById("aliasModalOverlay").classList.remove("open");
           await loadAliases();
@@ -6896,16 +7377,63 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
     })();
   }
 
+  // console/layers/E/monitor-status.js
+  var states = /* @__PURE__ */ new Set(["green", "red", "stable", "changed", "baseline", "pending", "none", "unknown", "sent"]);
+  var names = { fetch: { green: "读取正常", red: "读取失败", unknown: "待检查" }, auth: { green: "访问正常", red: "需要登录", unknown: "待确认" }, diff: { green: "暂无变化", stable: "暂无变化", changed: "发现更新", baseline: "已记录初始内容", red: "对比失败", unknown: "待对比" }, delivery: { green: "已发送", sent: "已发送", red: "发送失败", pending: "等待发送", none: "暂无待发送", unknown: "尚无发送记录" } };
+  var oneLine = (value2) => String(value2 || "").replace(/\s+/g, " ").trim();
+  function siteStatusMarkup(sites = []) {
+    if (!sites.length) return '<p class="meta">尚未添加监控网址，可在上方填写。</p>';
+    return sites.map((site) => {
+      const health = site.health || {}, raw = String(site.url || "");
+      let url = "";
+      try {
+        const parsed = new URL(raw);
+        if (["http:", "https:"].includes(parsed.protocol) && !parsed.username && !parsed.password) url = parsed.href;
+      } catch {
+      }
+      const at = Number(health.checkedAt), date = at > 0 ? new Date(at) : null;
+      const time3 = date && !Number.isNaN(date.getTime()) ? new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date) : "尚未检查";
+      const rows = [["fetch", "读取"], ["auth", "访问／登录"], ["diff", "内容变化"], ["delivery", "通知发送"]].map(([key2, label2]) => {
+        const state = states.has(health[key2]) ? health[key2] : "unknown";
+        return '<div class="watch-state"><dt>' + label2 + '</dt><dd class="watch-value ' + state + '">' + esc(names[key2][state] || names[key2].unknown) + "</dd></div>";
+      }).join("");
+      const hint = oneLine(health.hint), showHint = hint && !/^(页面可读取|页面读取正常|访问正常|无变化)$/.test(hint);
+      return '<article class="watch-site"><div class="watch-site-heading"><h4>' + esc(site.name || "未命名网页") + '</h4><span class="watch-check-time">' + esc(time3) + "</span></div>" + (url ? '<a class="watch-site-url" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(raw) + "</a>" : '<span class="watch-site-url">' + esc(raw) + "</span>") + '<dl class="watch-state-grid">' + rows + "</dl>" + (showHint ? '<p class="watch-note">' + esc(hint) + "</p>" : "") + "</article>";
+    }).join("");
+  }
+  function fillScriptDescriptions(root, scripts = []) {
+    if (!root) return;
+    const normalize = (value2) => String(value2 || "").trim().replace(/\\/g, "/"), byPath = new Map(scripts.map((s) => [normalize(s.path), s]));
+    for (const row of root.querySelectorAll(".comp-item")) {
+      const input = row.querySelector(".comp-item-val");
+      if (!input) continue;
+      const script = byPath.get(normalize(input.value)), state = script?.health || "unknown";
+      const status = { green: "运行正常", red: "运行失败", paused: "已暂停", stale: "心跳过期", fallback: "备用流程正常", unknown: "暂无心跳" }[state] || "暂无心跳";
+      const description = oneLine(script?.description) || "执行与搜索约定尚未记录，由开发者与 AI 确定";
+      const text = status + " · " + description;
+      let line = row.querySelector(".script-brief");
+      if (!line) {
+        line = document.createElement("small");
+        line.className = "script-brief";
+        row.append(line);
+      }
+      line.textContent = text;
+      line.title = text;
+      line.setAttribute("aria-label", text);
+    }
+  }
+
   // console/layers/E/environment-components.js
-  function initialize53() {
+  function initialize51() {
     (() => {
-      const loadEnvironments = () => {
+      let lastScripts = [];
+      const loadEnvironmentPage = async (page) => {
         if (!componentUI.renderIds) return;
-        document.querySelectorAll(".env-comp-root").forEach((root) => {
+        await Promise.all([...document.querySelectorAll('section[data-page="' + page + '"] .env-comp-root')].map((root) => {
           const ids = (root.dataset.ids || "").split(",").map((s) => s.trim()).filter(Boolean);
-          componentUI.renderIds(ids, root.id);
-        });
-        void loadStatus();
+          return componentUI.renderIds(ids, root.id);
+        }));
+        if (["environment-watch", "environment-scripts"].includes(page)) void loadStatus();
       };
       const loadStatus = () => {
         const status = document.getElementById("envMonitorStatus");
@@ -6913,28 +7441,29 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         if (!status) return;
         api("/api/plugins/call", "POST", { tool: "campus_watch_status", input: {} }).then((response) => {
           const result = response.result || {};
-          const label = { green: "正常", red: "需协助", baseline: "已建基线", stable: "无变化", changed: "有更新", pending: "待发送", none: "无待发送", unknown: "待检查" };
-          const lamps = [["fetch", "读取"], ["auth", "登录"], ["diff", "变化"], ["delivery", "发送"]];
-          status.innerHTML = (result.sites || []).length ? result.sites.map((site) => '<div class="tool-reference-item"><strong>' + esc(site.name) + "</strong><span><code>" + esc(site.url) + "</code><br>" + lamps.map(([key2, title]) => {
-            const value = site.health?.[key2] || "unknown";
-            return '<span class="monitor-lamp ' + esc(value) + '" title="' + esc(title + "：" + (label[value] || value)) + '">● ' + esc(title) + "</span>";
-          }).join("") + "<br><small>" + esc(site.health?.hint || "等待首次检查") + "</small></span></div>").join("") : '<div class="meta">暂无监控网址。可在上方填写。</div>';
-          if (scriptStatus) scriptStatus.innerHTML = (result.scripts || []).length ? result.scripts.map((script) => '<div class="tool-reference-item"><code>' + esc(script.path) + '</code><span class="monitor-lamp ' + esc(script.health) + '">● ' + esc(script.health === "fallback" ? "备用流程正常" : script.health === "green" ? "运行正常" : script.health === "red" ? "运行失败" : script.health === "paused" ? "未启用" : script.health === "stale" ? "心跳过期" : "暂无心跳") + "</span><small>" + esc((script.checkedAt ? new Date(script.checkedAt).toLocaleString() + " · " : "") + (script.hint || "")) + "</small></div>").join("") : '<div class="meta">暂无协同脚本。可在上方每行填写一个路径。</div>';
-        }).catch(() => {
-          status.innerHTML = '<div class="meta">监控灯等待组件重载后显示。</div>';
-          if (scriptStatus) scriptStatus.innerHTML = '<div class="meta">脚本灯等待组件重载后显示。</div>';
+          if (response.ok !== true || result.ok !== true) throw Error(result.error || "状态读取失败");
+          status.innerHTML = siteStatusMarkup(result.sites || []);
+          lastScripts = result.scripts || [];
+          fillScriptDescriptions(document.getElementById("envCompScript"), lastScripts);
+          if (scriptStatus) scriptStatus.textContent = lastScripts.length ? "" : "尚未登记协同脚本，可在上方添加地址。";
+        }).catch((error) => {
+          status.textContent = "读取监控状态失败：" + error.message;
+          if (scriptStatus) scriptStatus.textContent = "读取脚本状态失败：" + error.message;
         });
       };
-      registerPageLoader("environments", loadEnvironments);
+      for (const page of ["environment-chat", "environment-admin", "environment-web", "environment-watch", "environment-scripts", "images"]) registerPageLoader(page, () => loadEnvironmentPage(page));
       document.getElementById("envStatusRefresh").addEventListener("click", loadStatus);
+      document.getElementById("envMonitorRefresh").addEventListener("click", loadStatus);
+      document.getElementById("envCompScript").addEventListener("input", () => fillScriptDescriptions(document.getElementById("envCompScript"), lastScripts));
+      document.getElementById("envCompScript").addEventListener("component-config-saved", loadStatus);
       setInterval(() => {
-        if (document.visibilityState === "visible" && !document.getElementById("section-environments").hidden) loadStatus();
+        if (document.visibilityState === "visible" && ["section-environment-watch", "section-environment-scripts"].some((id) => !document.getElementById(id).hidden)) loadStatus();
       }, 3e4);
     })();
   }
 
   // console/layers/L/availability.js
-  function initialize54() {
+  function initialize52() {
     (() => {
       const fmtMin = (mins) => {
         const m = Math.max(0, Math.min(1439, Math.round(Number(mins) || 0)));
@@ -6948,7 +7477,7 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
       const KIND = { daily: "每天固定", quiet: "一次性免打扰", later: "稍后联系", indefinite: "无限期免打扰" };
       const DONE = { expired: "已过期", cancelled: "已取消", dispatched: "已派发", triggered: "已触发" };
       const typeLabel = (p) => p.kind === "quiet" && p.indefinite ? "无限期免打扰" : KIND[p.kind] || p.kind || "—";
-      const section = document.getElementById("availabilityRefresh")?.closest("details.settings-group");
+      const section2 = document.getElementById("availabilityRefresh")?.closest("details.settings-group");
       const windowLabel = (p) => {
         if (p.kind === "daily") {
           const ws = Array.isArray(p.windows) ? p.windows : Number.isFinite(p.start) ? [{ start: p.start, end: p.end }] : [];
@@ -6984,10 +7513,10 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
         }
       };
       document.getElementById("availabilityRefresh").addEventListener("click", () => loadAvailability());
-      if (section) section.addEventListener("toggle", () => {
-        if (section.open) loadAvailability();
+      if (section2) section2.addEventListener("toggle", () => {
+        if (section2.open) loadAvailability();
       });
-      if (section?.open) loadAvailability();
+      if (section2?.open) loadAvailability();
       registerPageLoader("setting-l-0", loadAvailability);
     })();
   }
@@ -6995,56 +7524,54 @@ ${usageMetricLabel(metric)}：${usageAxisValue(v, metric, sym)}
   // console/app.js
   initialize();
   initialize3();
-  initialize11();
-  initialize23();
+  initialize4();
   initialize12();
+  initialize23();
+  initialize13();
   initialize24();
   initialize25();
+  initialize14();
   initialize26();
-  initialize13();
   initialize27();
   initialize28();
-  initialize29();
-  initialize14();
-  initialize31();
-  initialize32();
-  initialize6();
-  initialize33();
-  initialize34();
+  initialize15();
   initialize30();
+  initialize31();
+  initialize7();
+  initialize32();
+  initialize33();
+  initialize29();
+  initialize34();
   initialize35();
   initialize36();
   initialize37();
   initialize38();
-  initialize15();
   initialize39();
   initialize40();
+  initialize16();
   initialize41();
   initialize42();
-  initialize16();
   initialize43();
-  initialize44();
-  initialize45();
   initialize17();
   initialize18();
   initialize22();
   initialize19();
   initialize20();
   initialize21();
+  initialize44();
+  initialize45();
   initialize46();
   initialize47();
   initialize48();
   initialize49();
+  initialize5();
   initialize50();
   initialize51();
-  initialize4();
   initialize52();
-  initialize53();
-  initialize54();
-  initialize9();
   initialize10();
+  initialize11();
+  initialize9();
   initialize8();
-  initialize7();
-  initialize5();
+  initialize6();
   initialize2();
 })();

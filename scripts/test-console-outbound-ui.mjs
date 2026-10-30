@@ -6,6 +6,7 @@ import {startConsoleFixture} from './console-ui-fixture.mjs';
 const {chromium}=createRequire(import.meta.url)('playwright');
 const executablePath=[path.join(process.env.PROGRAMFILES||'','Google/Chrome/Application/chrome.exe'),path.join(process.env['PROGRAMFILES(X86)']||'','Microsoft/Edge/Application/msedge.exe')].find(fs.existsSync);
 const fixture=await startConsoleFixture();
+fixture.componentFixtures.get('ctx-user-mood').enabled=false;
 const browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});
 const errors=[];
 try {
@@ -29,6 +30,9 @@ try {
  assert.equal(fixture.componentFixtures.get('ctx-chat-reply-shape').config.maxSendPerHour,0);
  await page.locator('[data-view="setting-c-0"]').first().click();
  const mood=page.locator('[data-component-id="ctx-user-mood"]');
+ assert.equal(await mood.locator('.comp-enabled').count(),0,'心情系统只保留一个启用入口');
+ assert.equal(await mood.locator('[data-config-key="enabled"] input').isChecked(),false,'组件停用时不能假显示心情已启用');
+ await mood.locator('[data-config-key="enabled"] input').check();
  assert(await mood.locator('details.parameter-group:not([open])').count()>0,'Mood detail tuning should start collapsed');
  await mood.locator('details.parameter-group').evaluateAll(nodes=>nodes.forEach(el=>el.open=true));
  await mood.locator('[data-config-key="recoverMinutes"] input').fill('0');
@@ -39,6 +43,8 @@ try {
  await mood.locator('.comp-save').click();
  await page.waitForFunction(()=>document.querySelector('[data-component-id="ctx-user-mood"] .comp-msg')?.textContent.includes('重载'));
  const cfg=fixture.componentFixtures.get('ctx-user-mood').config;
+ assert.equal(fixture.componentFixtures.get('ctx-user-mood').enabled,true,'统一开关需要实际激活组件');
+ assert.equal(cfg.enabled,true);
  assert.equal(cfg.recoverMinutes,0);assert.equal(cfg.burstEnabled,false);assert.equal(cfg.normalName,'普通');
  assert.equal(cfg.positiveRules[0].label,'积极交流');assert.deepEqual(cfg.negativeRules,[]);
  await page.reload();
@@ -47,6 +53,12 @@ try {
  assert.equal(await mood.locator('[data-config-key="recoverMinutes"] input').inputValue(),'0');
  assert.equal(await mood.locator('[data-config-key="burstEnabled"] input').isChecked(),false);
  assert.equal(await mood.locator('[data-config-key="negativeRules"] .mood-rule-row').count(),0);
+ await mood.locator('[data-config-key="enabled"] input').uncheck();
+ await mood.locator('.comp-save').click();
+ await page.waitForFunction(()=>document.querySelector('[data-component-id="ctx-user-mood"] .comp-msg')?.textContent.includes('重载'));
+ assert.equal(cfg.enabled,false);
+ assert.equal(fixture.componentFixtures.get('ctx-user-mood').enabled,true,'关闭机制时保留组件中的既有账本');
+ assert.equal(await mood.locator('[data-config-key="enabled"] input').isChecked(),false);
  await page.locator('#v2MoodRefresh').click();
  await page.waitForFunction(()=>document.querySelector('#v2MoodCurrent')?.textContent.includes('已核实回应'));
  await page.locator('.mood-history').first().locator('summary').click();

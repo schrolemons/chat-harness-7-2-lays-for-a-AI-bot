@@ -9,18 +9,19 @@
       </div>
       <p class="parameter-scope"><b>此会话背景</b> · 只修改下方选中群聊或私聊的背景。</p>
       <div class="row">
-        <input type="text" id="v2InitPromptKey" placeholder="group:60000" style="flex:1" aria-label="初始提示词的会话 key">
+        <select id="v2InitPromptKey" style="flex:1;min-width:180px" aria-label="初始提示词的会话"><option value="">选择群聊或私聊…</option><option value="__manual__">手动填写新会话…</option></select>
+        <input type="text" id="v2InitPromptManualKey" placeholder="group:群号 或 private:QQ号" style="flex:1" aria-label="手动填写初始提示词会话 key" data-session-picker="owned" hidden>
         <button id="v2InitPromptLoad" class="small">加载</button>
         <button id="v2InitPromptSave" class="small primary" data-save-action>保存此会话背景</button>
         <button id="v2InitPromptClear" class="small danger">删除</button>
         <span class="meta" id="v2InitPromptMsg"></span>
       </div>
-      <textarea id="v2InitPromptText" rows="5" aria-label="初始提示词正文" placeholder="例如：这是一个偏技术的闲聊群，群友喜欢玩梗、聊模型和本地部署；氛围轻松，别长篇大论，遇到配置问题直接给结论。"></textarea>
+      <textarea id="v2InitPromptText" rows="5" aria-label="初始提示词正文" disabled placeholder="例如：这是一个偏技术的闲聊群，群友喜欢玩梗、聊模型和本地部署；氛围轻松，别长篇大论，遇到配置问题直接给结论。"></textarea>
       <div class="meta">
         当前 <span id="v2InitPromptCount">0</span> / <span id="v2InitPromptMax">2000</span> 字符（上限可在 config.json 的
         <code>socialV2.initialPromptMaxChars</code> 调整）。
       </div>
-      <div id="v2InitPromptList" class="tool-log-table">（点「加载」且 key 留空时，列出所有已设置的会话）</div>
+      <div id="v2InitPromptList" class="tool-log-table">选择会话后自动加载背景；手动填写 key 后点「加载」。未选择会话时点「加载」可列出全部已设置的背景。</div>
 
 </div></details>
 

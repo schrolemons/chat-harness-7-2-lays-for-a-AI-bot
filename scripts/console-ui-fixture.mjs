@@ -5,11 +5,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import { createAffairStore } from '../plugins/qq-components/ctx-memory-store/affairs.mjs';
 import { routeMemoryManagement } from '../src/console/memory-management.js';
+import {routeContextManagement} from '../src/console/context-management.js';
+import {createContextPreviewFixture} from './fixtures/context-preview.mjs';
 import { renderConsoleDocument, readConsoleAsset, isConsoleAssetPath } from '../src/console/document.js';
 import { existsSync } from 'node:fs';
 import { TOOL_CONFIG_FLAGS } from '../src/tools/flags.js';
 import {createPlugin as createAliasLearning} from '../plugins/qq-components/ctx-member-alias/index.js';
 import {createPlugin as createTermLearning} from '../plugins/qq-components/ctx-interest-terms/index.js';
+import {createPlugin as createKnowledgeQuota} from '../plugins/qq-components/ctx-knowledge-quota/index.js';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -74,8 +77,8 @@ function usageConversationFixture(key, buckets, cost, turns, steps, unattributed
 
 function usageSummaryFixture() {
   const conversations = [
-    usageConversationFixture('group:60000', { cacheMiss: 41230, cacheHit: 1284000, cacheWrite: 0, output: 18420, reasoning: 0 }, 0.2886, 42, 231),
-    usageConversationFixture('private:60006', { cacheMiss: 8600, cacheHit: 210400, cacheWrite: 0, output: 3900, reasoning: 0 }, 0.0467, 9, 48),
+    usageConversationFixture('group:20009', { cacheMiss: 41230, cacheHit: 1284000, cacheWrite: 0, output: 18420, reasoning: 0 }, 0.2886, 42, 231),
+    usageConversationFixture('private:20012', { cacheMiss: 8600, cacheHit: 210400, cacheWrite: 0, output: 3900, reasoning: 0 }, 0.0467, 9, 48),
     usageConversationFixture('internal:黑话学习', { cacheMiss: 2200, cacheHit: 18000, cacheWrite: 0, output: 900, reasoning: 0 }, 0.0075, 3, 11),
   ];
   const buckets = conversations.reduce((acc, c) => ({
@@ -189,7 +192,7 @@ function usageSeriesFixture(hoursRaw) {
       turns,
       steps,
       tier: tierOfBucket(t),
-      keys: steps > 0 ? ['group:60000'] : [],
+      keys: steps > 0 ? ['group:20009'] : [],
     });
   }
   const totals = buckets.reduce((acc, b) => ({
@@ -219,7 +222,7 @@ function usageSeriesFixture(hoursRaw) {
 }
 
 function usageTurnsFixture(key) {
-  const target = key || 'group:60000';
+  const target = key || 'group:20009';
   const base = Date.parse(timestamp);
   const rows = [];
   for (let i = 0; i < 6; i += 1) {
@@ -274,7 +277,7 @@ function usageRecentFixture() {
   for (let i = 0; i < 8; i += 1) {
     rows.push({
       time: base - i * 45_000,
-      key: i % 3 === 2 ? 'private:60006' : 'group:60000',
+      key: i % 3 === 2 ? 'private:20012' : 'group:20009',
       sessionId: 'fixture-session',
       turn: 42 - Math.floor(i / 4),
       step: 1 + (i % 4),
@@ -309,12 +312,12 @@ export function makeFixtureState() {
     },
     roleInjectMax: 8000,
     dshEffort: 'max',
-    whitelist: { allow: { groups: [60000, 60008], private: [60006] }, deny: { groups: [], private: [] }, ownerQQ: '60006' },
-    diaryCatchUpSent: { 'private:60006': false, 'private:60007': false },
+    whitelist: { allow: { groups: [20009, 20014], private: [20012] }, deny: { groups: [], private: [] }, ownerQQ: '20012' },
+    diaryCatchUpSent: { 'private:20012': false, 'private:20013': false },
     sessions: [
-      { key: 'group:60000', sessionId: 'demo-community-20260920', owner: false },
-      { key: 'group:60008', sessionId: 'demo-development-20260920', owner: false },
-      { key: 'private:60006', sessionId: 'demo-owner-20260920', owner: true },
+      { key: 'group:20009', sessionId: 'demo-community-20260920', owner: false },
+      { key: 'group:20014', sessionId: 'demo-development-20260920', owner: false },
+      { key: 'private:20012', sessionId: 'demo-owner-20260920', owner: true },
     ],
     social: {
       triggerProbability: 0.2, activeCheckMinMs: 10000, activeCheckMaxMs: 30000,
@@ -328,7 +331,7 @@ export function makeFixtureState() {
       proactiveIdleThresholdMs: 1800000, proactiveCheckMinMs: 300000,
       proactiveCheckMaxMs: 900000, proactiveProbability: 0.2,
     },
-    socialStates: { 'group:60000': { phase: 'active' }, 'group:60008': { phase: 'idle' } },
+    socialStates: { 'group:20009': { phase: 'active' }, 'group:20014': { phase: 'idle' } },
     v2: { enabled: true, doubleStamp:{enabled:true,windowCount:12}, tools: {} },
     // 会话初始提示词（离线示例）：整段内容都是虚构的演示文本。
     initPrompt: '离线示例：这是一个演示用的群聊环境说明，不会写进任何真实配置。',
@@ -343,8 +346,8 @@ export function makeFixtureState() {
     // （真实场景：Windows 上未以管理员身份运行桥接时就是这个状态）。
     hardenStateDir: false,
     toolLog: [
-      { time: timestamp, key: 'group:60000', tool: 'qq_get_recent_messages', type: 'call', args: JSON.stringify({ key: 'group:60000', limit: 20 }) },
-      { time: timestamp, key: 'group:60000', tool: 'qq_get_recent_messages', type: 'result', ok: true },
+      { time: timestamp, key: 'group:20009', tool: 'qq_get_recent_messages', type: 'call', args: JSON.stringify({ key: 'group:20009', limit: 20 }) },
+      { time: timestamp, key: 'group:20009', tool: 'qq_get_recent_messages', type: 'result', ok: true },
     ],
     feedback: [{ time: timestamp, level: 'info', message: '这是离线演示反馈。' }],
   };
@@ -357,11 +360,12 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
   const state = makeFixtureState();
   const memoryFixtureRoot = mkdtempSync(resolve(os.tmpdir(), 'whale-console-memory-'));
   const affairsStore = createAffairStore(memoryFixtureRoot);
+  const contextFixtureHost=createContextPreviewFixture(memoryFixtureRoot);
   const learningStates={alias:{entries:structuredClone(learningFixtures.aliases||[])},terms:{entries:structuredClone(learningFixtures.terms||[])}};
   const learningContexts={},learningTools=new Map();
   for(const [kind,id,factory] of [['alias','ctx-member-alias',createAliasLearning],['terms','ctx-interest-terms',createTermLearning]]){
     const manifest=JSON.parse(await readFile(resolve(projectRoot,'plugins/qq-components',id,'plugin.json'),'utf8'));
-    const context={id,config:structuredClone(manifest.config),runtime:{},signal:new AbortController().signal,isActive:()=>true,log:()=>{},warn:()=>{},state:{get:()=>structuredClone(learningStates[kind]),set:patch=>Object.assign(learningStates[kind],structuredClone(patch))},registerTool:(name,tool)=>learningTools.set(name,{id,tool}),capabilities:{getOwnerQQ:()=>60006,getLearningHistory:async()=>[],getLearningMembers:async()=>[],learningPrompt:async()=>JSON.stringify({summary:'公开聚会以创作、交流与活动为内容，具体规则依主办方。不同成员观点并不完全相同。',sources:['https://www.anthrocon.org/']})}};
+    const context={id,config:structuredClone(manifest.config),runtime:{},signal:new AbortController().signal,isActive:()=>true,log:()=>{},warn:()=>{},state:{get:()=>structuredClone(learningStates[kind]),set:patch=>Object.assign(learningStates[kind],structuredClone(patch))},registerTool:(name,tool)=>learningTools.set(name,{id,tool}),capabilities:{getOwnerQQ:()=>20012,getLearningHistory:async()=>[],getLearningMembers:async()=>[],learningPrompt:async()=>JSON.stringify({summary:'公开聚会以创作、交流与活动为内容，具体规则依主办方。不同成员观点并不完全相同。',sources:['https://www.anthrocon.org/']})}};
     learningContexts[kind]=context;factory(context);
   }
 
@@ -379,7 +383,14 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
       componentFixtures.set(id, { ...manifest, enabled:manifest.enabled!==false, config:structuredClone(manifest.config||{}), configKeys:Object.keys(manifest.config||{}), configSchema:manifest.configSchema||{}, tools, state:{}, metrics:{} });
     } catch {}
   }
-  componentFixtures.get('life-user-availability').state = { plans: { 'private:60006': {kind:'quiet',start:Date.now(),end:Date.now()+3600000} } };
+  const quotaContext = { config: componentFixtures.get('ctx-knowledge-quota').config,
+    state: { get: () => structuredClone(componentFixtures.get('ctx-knowledge-quota').state),
+      set: patch => Object.assign(componentFixtures.get('ctx-knowledge-quota').state, structuredClone(patch)) }, registerTool() {}, capabilities: {} };
+  const quotaService = createKnowledgeQuota(quotaContext).services.knowledgeQuota;
+  componentFixtures.get('life-user-availability').state = { plans: { 'private:20012': {kind:'quiet',start:Date.now(),end:Date.now()+3600000} } };
+  const scriptsFixture=componentFixtures.get('life-campus-watch');
+  scriptsFixture.config.scriptPaths=[{value:'scripts/example-watch.mjs',enabled:true},{value:'scripts/example-summary.mjs',enabled:false}];
+  scriptsFixture.config.scriptDescriptions={'scripts/example-watch.mjs':'按约定检查指定网页，发现更新后通知','scripts/example-summary.mjs':'整理已有结果，不主动搜索或发送'};
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     const path = url.pathname;
@@ -389,6 +400,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
       res.end(JSON.stringify(value));
     };
     try {
+      if(path==='/api/learning/sources'&&method==='GET')return json({ok:true,scopeVersion:1});
       if (method === 'GET' && ['/', '/console', '/console.html'].includes(path)) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
           'content-security-policy': "connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'" });
@@ -407,7 +419,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
       if(method==='GET')reads.push({method,path,search:url.search});
       if (method === 'GET' && path === '/api/socialV2/affairs') {
         await routeMemoryManagement({ req, url, readBody: async () => ({}), sendJson: json,
-          pluginHost: { callService: (_, action, input) => affairsStore[action](input) }, agentTokenOk: () => false, affairsMaxChars: 4000 }); return;
+          pluginHost: { callService: (_, action, input) => affairsStore[action](input) }, agentTokenOk: () => false, affairsMaxChars: componentFixtures.get('ctx-memory-context').config.affairsMaxChars }); return;
       }
 
       let body = {};
@@ -418,7 +430,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
         if (path === '/api/socialV2/affairs') {
           requests.push({ method, path, body });
           await routeMemoryManagement({ req, url, readBody: async () => body, sendJson: json,
-            pluginHost: { callService: (_, action, input) => affairsStore[action](input) }, agentTokenOk: () => false, affairsMaxChars: 4000 }); return;
+            pluginHost: { callService: (_, action, input) => affairsStore[action](input) }, agentTokenOk: () => false, affairsMaxChars: componentFixtures.get('ctx-memory-context').config.affairsMaxChars }); return;
         }
         if (path === '/api/plugins/call' && (['worklog_history', 'diary_history', 'diary_read', 'profile_snapshot', 'image_generation_status', 'campus_watch_status'].includes(body.tool)
           || body.tool === 'image_generation_secret' && body.input?.op === 'status')) readToolCalls.push(body);
@@ -431,6 +443,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
         const kind=url.searchParams.get('id')==='ctx-member-alias'?'alias':url.searchParams.get('id')==='ctx-interest-terms'?'terms':null;
         if(kind){const c=learningContexts[kind];return json({ok:true,plugin:{id:c.id,config:c.config,state:learningStates[kind]}});}
       }
+      if(path==='/api/plugins/toggle' && method==='POST'&&componentFixtures.has(body.id)){componentFixtures.get(body.id).enabled=body.enabled!==false;return json({ok:true});}
       if(path==='/api/plugins/config' && method==='POST'){
         const kind=body.id==='ctx-member-alias'?'alias':body.id==='ctx-interest-terms'?'terms':null;
         if(kind){Object.assign(learningContexts[kind].config,body.config);return json({ok:true});}
@@ -444,13 +457,16 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
       if(path==='/api/plugins/call' && method==='POST' && learningTools.has(body.tool)){
         const {id,tool}=learningTools.get(body.tool);return json({ok:true,plugin:id,result:await tool.handler(body.input||{})});
       }
+      if(await routeContextManagement({req,url,readBody:async()=>body,sendJson:json,pluginHost:contextFixtureHost})){
+        return;
+      }
       if (method === 'GET') {
         switch (path) {
           case '/api/games': return json({ok:true,games:[{id:'fixture-dice',name:'离线骰子',summary:'隔离测试游戏',rules:'参与者同意后掷骰',enabled:true,parameters:{sides:6}}]});
           case '/api/socialV2/self-review-feedback': return json({ok:true,pending:[],completed:[],admin:[],queues:{user:[],self:[],admin:[]},difficulties:[],history:[],counts:{pending:0,completed:0},historyCount:0});
           case '/api/socialV2/optimization-memory': return json({ok:true,content:'离线优化记录',chars:6,path:'fixture/_optimization.md',exists:true,updatedAt:Date.now()});
-          case '/api/status': return json({ ok: true, dshReady: true, mode: state.mode, role: state.role, roleMode: state.roleMode, closedAgentPreset: state.closedAgentPreset, ownerQQ: state.whitelist.ownerQQ, allowGroups: state.whitelist.allow.groups, allowPrivate: state.whitelist.allow.private, activity: '[08:30:00] 演示桥接已连接\n[08:30:12] group:60000 · 已处理一条消息\n[08:30:20] 二代社交助手正在运行\n以上均为离线模拟数据。' });
-          case '/api/presets': return json({ presets: [{ id: 'qq-chat-v2', trust: 'user' }, { id: 'qq-chat', trust: 'user' }] });
+          case '/api/status': return json({ ok: true, dshReady: true, mode: state.mode, role: state.role, roleMode: state.roleMode, closedAgentPreset: state.closedAgentPreset, ownerQQ: state.whitelist.ownerQQ, allowGroups: state.whitelist.allow.groups, allowPrivate: state.whitelist.allow.private, activity: '[08:30:00] 演示桥接已连接\n[08:30:12] group:20009 · 已处理一条消息\n[08:30:20] 二代社交助手正在运行\n以上均为离线模拟数据。' });
+          case '/api/presets': return json({ presets: ['standard','ptc','minimal','cordis','qq-chat','qq-chat-v2','qq-chat-dev','qq-task-worker','qq-learning','campus-summary'].map(id=>({id,trust:'user'})) });
           case '/api/roles': return json({
             roles: state.roles.slice(),
             summaries: state.roles.map((name) => {
@@ -521,14 +537,14 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           });
           case '/api/whitelist': return json(state.whitelist);
           case '/api/sessions': return json({ sessions: state.sessions });
-          case '/api/pending': return json({ pending: [{ key: 'group:60000', kind: 'approval', toolName: '演示工具', reason: '等待管理员确认（离线示例）' }] });
-          case '/api/social': return json({ config: state.social, states: state.socialStates, pendingSummaries: { 'group:60000': 2 } });
+          case '/api/pending': return json({ pending: [{ key: 'group:20009', kind: 'approval', toolName: '演示工具', reason: '等待管理员确认（离线示例）' }] });
+          case '/api/social': return json({ config: state.social, states: state.socialStates, pendingSummaries: { 'group:20009': 2 } });
           case '/api/socialV2/config': return json({ ok: true, config: state.v2 });
           case '/api/socialV2/daily-diary': {
             const todayDate = new Date();
             const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
             const today = dateKey(todayDate);
-            return json({ ok: true, conversations: ['private:60006', 'private:60007'].map(key => ({ key, targetDate: today, hasDiary: true,
+            return json({ ok: true, conversations: ['private:20012', 'private:20013'].map(key => ({ key, targetDate: today, hasDiary: true,
               diaryChars: 120, diarySource: 'memory', lastDiaryDate: today, targetSent: true, sentAt: Date.now(),
               deliveryStatus: 'sent', diaryPending: false })) });
           }
@@ -550,7 +566,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
                 maxChars: 2000,
                 writable: true,
                 entries: state.initPrompt
-                  ? [{ key: 'group:60000', chars: String(state.initPrompt).length, updatedAt: Date.now(), preview: String(state.initPrompt).slice(0, 80) }]
+                  ? [{ key: 'group:20009', chars: String(state.initPrompt).length, updatedAt: Date.now(), preview: String(state.initPrompt).slice(0, 80) }]
                   : []
               });
             }
@@ -563,7 +579,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           case '/api/voice/list':
           case '/api/socialV2/voices': return json({
             ok: true,
-            key: url.searchParams.get('key') || 'group:60000',
+            key: url.searchParams.get('key') || 'group:20009',
             count: 2,
             voices: [
               { name: '演示-问候.mp3', ok: true, bytes: 20480, detail: '2秒 · 20.0 KB · mp3 · 24.0kHz · 单声道', seconds: 2 },
@@ -601,7 +617,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           case '/api/tokens/budgets/replies': return json({ ok: true,
             privateReplies: state.mechanicalReplies?.privateReplies || DEFAULT_PRIVATE_REPLIES,
             groupReplies: state.mechanicalReplies?.groupReplies || DEFAULT_GROUP_REPLIES });
-          case '/api/tokens/budgets': return json({ ok: true, symbol: '¥', owner:{key:'private:60006',budgetEnabled:state.ownerBudgetEnabled!==false},recoveryWindows:state.recoveryWindows||{privateMessages:5,groupMessages:5,groupAtMessages:5},global: { cost: 0.09, turns: 3, limit: state.globalBudgetLimit || 0, remaining: state.globalBudgetLimit ? Math.max(0, state.globalBudgetLimit - 0.09) : null, reached: false, partial: false }, rows: usageSummaryFixture().conversations.map((item) => ({
+          case '/api/tokens/budgets': return json({ ok: true, symbol: '¥', owner:{key:'private:20012',budgetEnabled:state.ownerBudgetEnabled!==false},recoveryWindows:state.recoveryWindows||{privateMessages:5,groupMessages:5,groupAtMessages:5},global: { cost: 0.09, turns: 3, limit: state.globalBudgetLimit || 0, remaining: state.globalBudgetLimit ? Math.max(0, state.globalBudgetLimit - 0.09) : null, reached: false, partial: false }, rows: usageSummaryFixture().conversations.map((item) => ({
             key: item.key, cost: 0.03, turns: 1, stage: 'normal', partial: false,
             remainingYuan: state.budgetConfigs?.[item.key]?.hardLimitYuan ? Math.max(0, state.budgetConfigs[item.key].hardLimitYuan - 0.03) : null,
             coldLimitYuan: state.budgetConfigs?.[item.key]?.coldLimitYuan || 0,
@@ -619,7 +635,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           if(['privateMessages','groupMessages','groupAtMessages'].some(field=>!Number.isSafeInteger(body[field])||body[field]<1||body[field]>30))return json({ok:false,error:'三个恢复窗口均需为 1–30 条整数'},400);
           state.recoveryWindows=structuredClone(body);return json({ok:true,recoveryWindows:state.recoveryWindows});
         }
-        if(path==='/api/tokens/budgets/owner'){state.ownerBudgetEnabled=body.ownerBudgetEnabled;return json({ok:true,owner:{key:'private:60006',budgetEnabled:state.ownerBudgetEnabled}});}
+        if(path==='/api/tokens/budgets/owner'){state.ownerBudgetEnabled=body.ownerBudgetEnabled;return json({ok:true,owner:{key:'private:20012',budgetEnabled:state.ownerBudgetEnabled}});}
         if (path === '/api/tokens/budgets/replies') {
           state.mechanicalReplies = { privateReplies: body.privateReplies, groupReplies: body.groupReplies };
           return json({ ok: true, ...state.mechanicalReplies });
@@ -635,10 +651,11 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
         }
         switch (path) {
           case '/api/plugins/call': {
-            if(body.tool==='profile_snapshot')return json({ok:true,plugin:'ctx-memory-profile-store',result:{ok:true,version:1,updatedAt:Date.now(),profiles:{'60006':{hobbies:'离线档案兴趣'}},people:{'60006':{name:'演示用户',keys:['private:60006']}}}});
+            if(body.tool==='knowledge_quota')return json({ok:true,plugin:'ctx-knowledge-quota',result:body.input?.action==='reset'?quotaService.reset(body.input?.key||''):quotaService.report(body.input?.key||'')});
+            if(body.tool==='profile_snapshot')return json({ok:true,plugin:'ctx-memory-profile-store',result:{ok:true,version:1,updatedAt:Date.now(),profiles:{'20012':{hobbies:'离线档案兴趣'}},people:{'20012':{name:'演示用户',keys:['private:20012']}}}});
             if(body.tool==='image_generation_secret'&&body.input?.op==='status')return json({ok:true,plugin:'exec-image-generation',result:{ok:true,configured:false}});
             if(body.tool==='image_generation_status')return json({ok:true,plugin:'exec-image-generation',result:{ok:true,day:'2026-10-29',globalUsed:0,globalLimit:10,sessionLimit:3,quotaMode:'requests'}});
-            if(body.tool==='campus_watch_status')return json({ok:true,plugin:'life-campus-watch',result:{ok:true,enabled:true,watchUrls:[],scripts:[],running:[],lastRun:null}});
+            if(body.tool==='campus_watch_status')return json({ok:true,plugin:'life-campus-watch',result:{ok:true,enabled:true,watchUrls:[],sites:[{name:'课程公告',url:'https://example.invalid/course?course_id=100&content_id=200&context='+('long-address-'.repeat(18)),health:{checkedAt:Date.now(),fetch:'green',auth:'green',diff:'stable',delivery:'none',hint:'页面可读取'}}],scripts:(scriptsFixture.config.scriptPaths||[]).map(item=>({path:typeof item==='string'?item:item.value,health:item.enabled===false?'paused':'green',description:scriptsFixture.config.scriptDescriptions?.[typeof item==='string'?item:item.value]||''})),running:[],lastRun:null}});
             if (body.tool === 'diary_read') {
               return json({ ok: true, plugin: 'ctx-memory-store', result: { ok: true, date: body.input?.date, text: '自动加载的日记预览' } });
             }
@@ -649,7 +666,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
               todayDate.setDate(todayDate.getDate() - 1);
               const yesterday = dateKey(todayDate);
               return json({ ok: true, plugin: 'ctx-memory-store', result: { ok: true, dates: [{ date: yesterday, count: 1, chars: 120,
-                deliveries: ['private:60006', 'private:60007'].map(key => ({ key, status: state.diaryCatchUpSent[key] ? 'sent' : 'archive_only' })) }] } });
+                deliveries: ['private:20012', 'private:20013'].map(key => ({ key, status: state.diaryCatchUpSent[key] ? 'sent' : 'archive_only' })) }] } });
             }
             if (body.tool !== 'worklog_history') return json({ ok: false, error: '演示工具不存在' }, 404);
             const reports = [
@@ -733,7 +750,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
             }
             state.security = body;
             return json({ ok: true });
-          case '/api/console/token': return json({ ok: true, token: body.token || 'offline-demo-token-60002', generated: !body.token });
+          case '/api/console/token': return json({ ok: true, token: body.token || 'offline-demo-token-20011', generated: !body.token });
           case '/api/test-send': return json({ ok: true, message_id: 'mock-message-001' });
           // 语音试发（操作者通道）：离线只回执，不产生任何真实 QQ 消息
           case '/api/voice/send': return json(body.dryRun
@@ -776,7 +793,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
     }
   });
   await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolveListen); });
-  return { server, state, learningStates, learningContexts, requests, reads, componentFixtures,readToolCalls, unknownRequests, affairsStore,
+  return { server, state, learningStates, learningContexts, requests, reads, componentFixtures,readToolCalls, unknownRequests, affairsStore, quotaService,
     url: `http://127.0.0.1:${server.address().port}`, close: () => new Promise(resolveClose => server.close(() => { rmSync(memoryFixtureRoot, { recursive: true, force: true }); resolveClose(); })) };
 }
 

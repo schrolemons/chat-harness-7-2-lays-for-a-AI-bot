@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { startConsoleFixture } from './console-ui-fixture.mjs';
+const { chromium } = createRequire(import.meta.url)('playwright');
+const executablePath = [path.join(process.env.PROGRAMFILES || '', 'Google/Chrome/Application/chrome.exe'), path.join(process.env['PROGRAMFILES(X86)'] || '', 'Microsoft/Edge/Application/msedge.exe')].find(fs.existsSync);
+const fixture = await startConsoleFixture();
+const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } }), errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.route('**/*', route => new URL(route.request().url()).origin === fixture.url ? route.continue() : route.abort());
+  await page.goto(fixture.url + '/#setting-l-1');
+  const panel = page.locator('#section-setting-l-1 .parameter-block');
+  await panel.locator('summary').click();
+  const root = panel.locator('[data-component-slot="life-conversation-wait"]');
+  await root.locator('.comp-save').waitFor();
+  const p = root.getByLabel('初始结束概率 p（%）', { exact: true });
+  const q = root.getByLabel('每次增加 q（百分点）', { exact: true });
+  assert.equal(await p.inputValue(), '50'); assert.equal(await q.inputValue(), '25');
+  await q.fill('0'); await root.locator('.comp-save').click();
+  await root.getByText(/超出有效范围/).waitFor();
+  assert.equal(fixture.componentFixtures.get('life-conversation-wait').config.probabilityStepPercent, 25);
+  await p.fill('60'); await q.fill('20'); await root.locator('.comp-save').click();
+  await page.waitForFunction(() => document.querySelector('[data-component-slot="life-conversation-wait"] .comp-msg')?.textContent.includes('已重新读取'));
+  assert.deepEqual(fixture.componentFixtures.get('life-conversation-wait').config, { endProbabilityPercent: 60, probabilityStepPercent: 20 });
+  assert.equal(await p.inputValue(),'60'); assert.equal(await q.inputValue(),'20');
+  fs.mkdirSync('state/audits/wait-cycle-20261030', { recursive: true });
+  await panel.screenshot({ path: 'state/audits/wait-cycle-20261030/wait-settings.png' });
+  await page.goto(fixture.url + '/#setting-l-0');
+  await page.waitForFunction(() => document.getElementById('v2MaxWakeMin')?.value !== '');
+  const group = page.locator('#section-setting-l-0 details').filter({ has: page.locator('#v2MaxWakeMin') });
+  await group.locator('summary').click();
+  assert.match(await group.locator('summary').innerText(), /来信唤醒偏好（仅群聊）/);
+  for (const old of ['v2SleepMinMs', 'v2SleepMaxMs', 'v2BatchWindowMs', 'v2NoActionLimit', 'v2MaxWakeConfigReminders', 'v2PreSleepWaitEnabled', 'v2PreSleepWaitMin']) assert.equal(await page.locator('#' + old).count(), 0, old);
+  await group.getByLabel('群聊每分钟最多唤醒', { exact: true }).fill('2');
+  await group.getByLabel('群聊每小时最多唤醒', { exact: true }).fill('30');
+  await page.locator('#section-setting-l-0 > .row .v2-save').click();
+  await page.waitForFunction(() => document.querySelector('#section-setting-l-0 > .row .v2-save-msg')?.textContent.includes('已保存'));
+  assert.equal(fixture.state.v2.wake.maxWakePerMinute, 2); assert.equal(fixture.state.v2.wake.maxWakePerHour, 30);
+  await group.screenshot({ path: 'state/audits/wait-cycle-20261030/group-wake-settings.png' });
+  for (const width of [768, 390]) { await page.setViewportSize({ width, height: 1000 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); }
+  assert.deepEqual(errors, []);
+  console.log('PASS p/q read, invalid q rejected, save/readback, retired controls absent, group-only caps merged and saved, responsive layout');
+} finally { await browser.close(); await fixture.close(); }

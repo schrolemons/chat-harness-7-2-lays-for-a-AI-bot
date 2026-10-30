@@ -174,7 +174,7 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
     }
     const waitSchema = listed.tools.find((tool) => tool.name === 'qq_wait_for_messages').inputSchema;
     assert.deepEqual(waitSchema.properties.purpose.enum, ['messages', 'reply']);
-    assert.equal(waitSchema.required.includes('purpose'), true);
+    assert.equal(waitSchema.required.includes('purpose'), false);
     const common = { key: 'group:123', token: 'fixture-token' };
     const read = await client.callTool({ name: 'qq_get_unread_messages', arguments: common });
     const readText = read.content.find((part) => part.type === 'text').text;
@@ -194,17 +194,19 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
       assert.equal(requests.length, before);
     }
 
-    // Omitted purpose is rejected before reaching the API.
+    // New message-wait tool defaults to messages; quiet has its own tool.
     const beforeWait = requests.length;
     const omittedWait = await client.callTool({ name: 'qq_wait_for_messages', arguments: common });
-    assert.equal(omittedWait.isError, true);
-    assert.equal(requests.length, beforeWait);
+    assert.notEqual(omittedWait.isError, true);
+    assert.equal(requests.length, beforeWait + 1);
+    assert.equal(requests.at(-1).body.purpose, 'messages');
+    assert.ok(listed.tools.some(tool => tool.name === 'qq_wait_for_quiet'));
     for (const purpose of ['messages', 'reply']) {
       await client.callTool({ name: 'qq_wait_for_messages', arguments: {
         ...common, purpose, timeoutMs: 30000, quietMs: 10000, minNewMessages: 1
       } });
       assert.deepEqual(requests.at(-1).body, {
-        key: common.key, purpose, timeoutMs: 30000, minNewMessages: 1, quietMs: 10000
+        key: common.key, purpose, timeoutMs: 30000, quietMs: 10000
       });
     }
     for (const purpose of ['sleep', '', 1, null]) {
@@ -219,11 +221,11 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
     assert.deepEqual(requests.at(-1).body, { key: common.key, throughSeq: 21 });
     assert.equal(requests.at(-1).token, common.token);
 
-    await client.callTool({ name: 'qq_set_wake_config', arguments: { ...common, config: { mode: 'diving' }, throughSeq: 0 } });
+    await client.callTool({ name: 'qq_set_wake_config', arguments: { ...common, config: { infinite: false, sleepMs: 1000 }, throughSeq: 0 } });
     assert.equal(requests.at(-1).url, '/api/socialV2/wake-config');
-    assert.deepEqual(requests.at(-1).body, { key: common.key, config: { mode: 'diving' }, throughSeq: 0 });
-    await client.callTool({ name: 'qq_set_wake_config', arguments: { ...common, config: { mode: 'active' } } });
-    assert.deepEqual(requests.at(-1).body, { key: common.key, config: { mode: 'active' } });
+    assert.deepEqual(requests.at(-1).body, { key: common.key, config: { infinite: false, sleepMs: 1000 }, throughSeq: 0 });
+    await client.callTool({ name: 'qq_set_wake_config', arguments: { ...common, config: { infinite: true } } });
+    assert.deepEqual(requests.at(-1).body, { key: common.key, config: { infinite: true } });
 
     for (const value of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, '21']) {
       const before = requests.length;

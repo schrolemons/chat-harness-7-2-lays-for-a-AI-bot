@@ -5,9 +5,9 @@ export default {
     "minIntervalMinutes": "设为60：两次私聊跟进至少间隔1小时；会话局部间隔更长时按更长的执行。",
     "dailyLimit": "设为2：同一人一天最多收到2次这类私聊跟进；局部上限更低时按更低的执行。",
     "sessionLimits": "给某个会话设更长间隔或更低上限，只收紧该会话，不放宽全局限制。",
-    "followUpCooldownMinutes": "设为30：刚跟进过同一话题时，接下来30分钟给模型提供避免重复追问的指引。",
+    "followUpCooldownMinutes": "设为30：刚跟进过同一话题时，接下来30分钟阻止对同一话题追加可选追问。",
     "newTopicCooldownMinutes": "设为60：刚开新话题后，1小时内优先延续现有话题，而非不断另起话头。",
-    "newTopicMaxPerHour": "设为2：提示模型一小时内尽量不超过2个新话题；这是语义指引，不是关键词硬拦截。"
+    "newTopicMaxPerHour": "设为2：一小时内最多成功发起2个新话题；普通聊天和主动聊天共用额度。"
   },
   "ctx-interest-terms": {
     "autoExtract": "开启后，达到消息门槛时自动提取兴趣候选；候选仍需审核确认后入库。",

@@ -34,21 +34,21 @@ test('gameplay entries exclude entering or leaving circles; culture entries rema
   const h=await fixture();assert.equal((await h.call('term_submit',{term:'入圈指南',topic:'三角洲行动',category:'游戏玩法',summary:'教你入圈与退圈'})).ok,false);
   assert.equal((await h.call('term_submit',{term:'兽聚',topic:'furry',category:'文化与活动',summary:'公开的同好活动'})).ok,true);
 });
-test('confirmed entries inject only relevant topics and respect group scope',async()=>{
-  const h=await fixture();await h.call('term_save',{term:'摸金撤离',topic:'三角洲行动',category:'游戏玩法',summary:'玩法知识',status:'confirmed',sources:['https://df.qq.com/']});
-  await h.call('term_save',{term:'兽聚',topic:'furry',category:'文化与活动',summary:'活动知识',status:'confirmed',sourceKey:'group:789',sources:['https://example.org/']});
+test('confirmed entries default by multiple applicable sessions and query foreign names exactly',async()=>{
+  const h=await fixture();await h.call('term_save',{term:'摸金撤离',topic:'三角洲行动',category:'游戏玩法',summary:'玩法知识',status:'confirmed',sourceKeys:['group:456','private:123'],sources:['https://df.qq.com/']});
+  await h.call('term_save',{term:'兽聚',topic:'furry',category:'文化与活动',summary:'活动知识',status:'confirmed',sourceKeys:['group:789'],sources:['https://example.org/']});
   assert.match(h.plugin.hooks.beforePrompt({key:'group:456',incomingText:'三角洲摸金撤离怎么玩'}),/玩法知识/);
-  assert.doesNotMatch(h.plugin.hooks.beforePrompt({key:'group:456',incomingText:'你好'}),/玩法知识|活动知识/);
+  assert.match(h.plugin.hooks.beforePrompt({key:'group:456',incomingText:'你好'}),/玩法知识/);assert.doesNotMatch(h.plugin.hooks.beforePrompt({key:'group:456',incomingText:'兽聚'}),/活动知识/);
   assert.equal((await h.call('term_query',{key:'group:456',q:'furry'})).entries.length,0);
 });
 test('group collection deduplicates hooks, ignores private messages, and batches learning',async()=>{
   const h=await fixture();await h.plugin.hooks.onIncoming({key:'private:123',text:'私人话题',messageId:'p'});
-  const m={key:'group:456',text:'三角洲这个打法不错',messageId:'a',userId:'60000'};
+  const m={key:'group:456',text:'三角洲这个打法不错',messageId:'a',userId:'20009'};
   await h.plugin.hooks.onIncoming(m);await h.plugin.hooks.onIncoming(m);
   await h.plugin.hooks.onIncoming({...m,text:'撤离路线怎么选',messageId:'b'});
   await h.plugin.hooks.onTick({now:Date.now()});
   assert.equal(h.prompts.length,1);assert.equal(h.state().entries[0].status,'candidate');
-  assert.equal(h.state().entries[0].sourceKey,'group:456');assert.ok(h.state().entries[0].evidence.length);
+  assert.equal(h.state().entries[0].originKey,'group:456');assert.ok(h.state().entries[0].evidence.length);
 });
 test('research may keep a useful summary without a reference URL and never automatically confirms it',async()=>{
   const h=await fixture();const a=await h.call('term_submit',{term:'兽聚',topic:'furry',category:'文化与活动'});
@@ -106,10 +106,10 @@ test('interrupted persisted research becomes retryable when no operation owns it
 test('model extraction cannot promote group evidence to public scope',async()=>{
  const h=await fixture();h.ctx.capabilities.learningPrompt=async()=>JSON.stringify({entries:[{term:'摸金',topic:'三角洲行动',category:'游戏玩法',sourceKey:'*',status:'confirmed',sourceIds:[1]}]});
  await h.plugin.hooks.onIncoming({key:'group:456',text:'三角洲摸金',messageId:'a'});await h.plugin.hooks.onIncoming({key:'group:456',text:'撤离玩法',messageId:'b'});
- await h.plugin.hooks.onTick({now:Date.now()});assert.equal(h.state().entries[0].sourceKey,'group:456');assert.equal(h.state().entries[0].status,'candidate');
+ await h.plugin.hooks.onTick({now:Date.now()});assert.equal(h.state().entries[0].originKey,'group:456');assert.equal(h.state().entries[0].status,'candidate');
 });
 test('manual refresh backfills recent group history and extracts at most one term in one model call',async()=>{
- const h=await fixture();let scanned=0;h.ctx.capabilities.getLearningHistory=async options=>{scanned++;assert.equal(options.limit,100);return [{key:'group:456',text:'三角洲的撤离机制',messageId:'recent-1',userId:'60000'},{key:'group:456',text:'撤离路线和玩法讨论',messageId:'recent-2',userId:'987654321'}];};
+ const h=await fixture();let scanned=0;h.ctx.capabilities.getLearningHistory=async options=>{scanned++;assert.equal(options.limit,100);return [{key:'group:456',text:'三角洲的撤离机制',messageId:'recent-1',userId:'20009'},{key:'group:456',text:'撤离路线和玩法讨论',messageId:'recent-2',userId:'987654321'}];};
  h.ctx.capabilities.learningPrompt=async()=>{h.prompts.push('refresh');return JSON.stringify({entries:[{term:'撤离机制',topic:'三角洲行动',category:'游戏玩法',sourceIds:[1]},{term:'第二个词条',topic:'三角洲行动',category:'游戏玩法',sourceIds:[2]}]});};
  const result=await h.call('term_refresh');assert.equal(scanned,1);assert.equal(h.prompts.length,1);assert.equal(result.processed,1);assert.equal(h.state().entries.length,1);assert.equal(h.state().entries[0].term,'撤离机制');
 });

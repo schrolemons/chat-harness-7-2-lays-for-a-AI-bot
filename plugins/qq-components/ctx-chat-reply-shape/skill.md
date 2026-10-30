@@ -13,3 +13,5 @@
 停用或缺失本组件会明确拒绝模型投递与发送，不退回旧 socialV2.send 或无上限。操作者/机械/通知没有模型整轮条数，但仍共享实际目标的频次和间隔；可信存储通知保留既有模型预算豁免及暂停、静默、白名单、时效、收据防重守卫。
 
 验证：scripts/test-resolved-send-plan.mjs、test-outbound-facts.mjs、test-outbound-host.mjs 与隔离 test:plugin-audit；这些是模拟网关/模型证据，不代表生产QQ发送验收。
+
+聊天意愿由proactive.availability读取，调用方不能用payload伪造。与心情共用ctx-chat-reply-shape/engagement.mjs的F公式，先缩放条数再施加现有上限；detailLevel按F分档，styleInstruction只来自心情。低忙闲分数不改变语气或人设；严肃问题仍需完整回答。

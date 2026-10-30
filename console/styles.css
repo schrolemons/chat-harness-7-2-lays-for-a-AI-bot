@@ -9,3 +9,10 @@
 @import './shared/styles/components.css';
 
 @import './shared/styles/form-layout.css';
+@import './layers/O/context-visual.css';
+
+@import './layers/C/learning.css';
+
+@import './layers/T/tools.css';
+@import './layers/E/environments.css';
+@import './layers/L/task-capacity.css';

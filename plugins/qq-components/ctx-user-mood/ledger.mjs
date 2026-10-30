@@ -1,12 +1,12 @@
-const { clamp, DAILY_FLOOR, moodSnapshot, UNANSWERED_PENALTY, validKey, validScore, validUser } = await import((()=>{const u=new URL('./policy.mjs',import.meta.url);u.search=new URL(import.meta.url).search;return u.href;})());
+const { clamp, moodSnapshot, UNANSWERED_PENALTY, validKey, validScore, validUser } = await import((()=>{const u=new URL('./policy.mjs',import.meta.url);u.search=new URL(import.meta.url).search;return u.href;})());
 const { recordHistory, replayHistory } = await import((()=>{const u=new URL('./history.mjs',import.meta.url);u.search=new URL(import.meta.url).search;return u.href;})());
+const { recoveryDay, recoverDaily } = await import((()=>{const u=new URL('./daily-recovery.mjs',import.meta.url);u.search=new URL(import.meta.url).search;return u.href;})());
 
 const conversationalReasons = new Set(['proactiveCheck', 'timeBubble', 'startupGreeting', 'privateFollowup']);
 const normalReplyReasons = new Set(['message', 'reply']);
 const timestamp = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 const stableId = value => (typeof value === 'string' || typeof value === 'number') && String(value).trim().length > 0;
 const pair = (key, id) => JSON.stringify([key, String(id)]);
-const dayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' });
 
 function loadLedger(raw) {
   return { version: 1, conversations: {}, waits: {}, deliveries: {}, incoming: {}, ...(raw || {}) };
@@ -15,7 +15,7 @@ function loadLedger(raw) {
 function conversation(ledger, key, policy, now) {
   return ledger.conversations[key] ||= {
     score: policy.initial, baseScore: policy.initial, unansweredStreak: 0, updatedAt: now,
-    dailyDays: {}, humanAt: null, directedAt: null, userAt: {}, lastUnansweredAt: null
+    lastRecoveryDay: recoveryDay(now), humanAt: null, directedAt: null, userAt: {}, lastUnansweredAt: null
   };
 }
 
@@ -54,7 +54,7 @@ export function createMoodLedger(ctx, getPolicy) {
 
   function settleDue(ledger, policy, now) {
     let settled = 0;
-    if (!policy.enabled) return { settled, changed: false };
+    if (!policy.enabled) return { settled, changed: false, recoveredKeys: [] };
     const due = Object.values(ledger.waits).filter(wait => wait.settledAt == null && wait.answeredAt == null && wait.dueAt <= now)
       .sort((a, b) => a.dueAt - b.dueAt || a.sentAt - b.sentAt);
     for (const wait of due) {
@@ -73,7 +73,8 @@ export function createMoodLedger(ctx, getPolicy) {
     }
     let changed = settled > 0;
     for (const key of Object.keys(ledger.conversations)) changed = deriveStreak(ledger, key) || changed;
-    return { settled, changed };
+    const recoveredKeys=recoverDaily(ledger,policy,now);
+    return { settled, changed:changed||recoveredKeys.length>0, recoveredKeys };
   }
 
   const api = {
@@ -81,6 +82,7 @@ export function createMoodLedger(ctx, getPolicy) {
     initialize({ conversations = [], now = Date.now() } = {}) {
       if (!Array.isArray(conversations) || !timestamp(now)) return { ok: false, imported: 0 };
       return transact((ledger, policy) => {
+        const recoveredKeys=recoverDaily(ledger,policy,now);
         let imported = 0;
         for (const legacy of conversations) {
           if (!validKey(legacy?.key) || !validScore(legacy?.score) || Object.hasOwn(ledger.conversations, legacy.key)) continue;
@@ -88,7 +90,7 @@ export function createMoodLedger(ctx, getPolicy) {
           entry.score = entry.baseScore = legacy.score;
           imported++;
         }
-        return { changed: imported > 0, value: { ok: true, imported } };
+        return { changed: imported > 0||recoveredKeys.length>0, value: { ok: true, imported, recovered:recoveredKeys.length } };
       });
     },
     read({ key, now = Date.now() } = {}) {
@@ -198,21 +200,13 @@ export function createMoodLedger(ctx, getPolicy) {
     incoming({ key, messageId, userId, at = Date.now(), hasText, hasImage, isSelf, directedAtBot, reengaged } = {}) {
       if (!validKey(key) || !stableId(messageId) || !validUser(userId) || !timestamp(at)) return { ok: false, reason: 'invalid_incoming' };
       return transact((ledger, policy) => {
-        const { settled, changed } = settleDue(ledger, policy, at);
+        const { settled, changed, recoveredKeys } = settleDue(ledger, policy, at);
         if (!policy.enabled || isSelf === true || (hasText !== true && hasImage !== true)) return { changed, value: { ok: true, accepted: false, settled } };
         const id = pair(key, messageId);
         if (Object.hasOwn(ledger.incoming, id)) return { changed, value: { ok: true, accepted: false, duplicate: true, settled } };
         ledger.incoming[id] = { key, at, userId: String(userId), directedAtBot: directedAtBot === true };
         const entry = conversation(ledger, key, policy, at);
-        const day = dayFormatter.format(at);
-        entry.dailyDays ||= {};
-        const floored = !Object.hasOwn(entry.dailyDays, day);
-        if (floored) {
-          const before = entry.score;
-          entry.score = Math.max(entry.score, DAILY_FLOOR);
-          entry.dailyDays[day] = at;
-          recordHistory(entry, { at, source: 'daily-first', before, reason: '上海日历日首次人类文本或图片，至少恢复至60', messageId: String(messageId), day });
-        }
+        const floored=recoveredKeys.includes(key);
         entry.humanAt = Math.max(entry.humanAt ?? 0, at);
         entry.userAt ||= {};
         entry.userAt[String(userId)] = Math.max(entry.userAt[String(userId)] ?? 0, at);
@@ -240,8 +234,8 @@ export function createMoodLedger(ctx, getPolicy) {
     settle({ now = Date.now() } = {}) {
       if (!timestamp(now)) return { ok: false, reason: 'invalid_time' };
       return transact((ledger, policy) => {
-        const { settled, changed } = settleDue(ledger, policy, now);
-        return { changed, value: { ok: true, settled } };
+        const { settled, changed, recoveredKeys } = settleDue(ledger, policy, now);
+        return { changed, value: { ok: true, settled, recovered:recoveredKeys.length } };
       });
     }
   };

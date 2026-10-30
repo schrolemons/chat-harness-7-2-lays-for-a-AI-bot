@@ -268,7 +268,7 @@ check('bridge：有 /api/socialV2/schedules 路由', bridge.includes("url.pathna
 check('bridge：schedule 工具开关默认开', /schedule:\s*true/.test(bridge));
 check('bridge：route 校验 agent token 与开关', bridge.includes('工具未启用：qq_schedule') && bridge.includes("callService('schedules'"));
 check('mcp：注册 qq_schedule', mcp.includes("'qq_schedule'"));
-check('mcp：qq_schedule 走唯一的 schedule 开关定义', mcp.includes(["from", "'./tools/flags.js'"].join(" ")) && /qq_schedule:\s*'schedule'/.test(fs.readFileSync('src/tools/flags.js', 'utf8')));
+check('mcp：qq_schedule 走唯一的 schedule 开关定义', mcp.includes("from './tools/flags.js'") && /qq_schedule:\s*'schedule'/.test(fs.readFileSync('src/tools/flags.js', 'utf8')));
 check('bridge：schedules 路由支持 update/complete 并透传提前量和间歇周期', bridge.includes("action === 'update'")
   && bridge.includes("action === 'complete'") && bridge.includes('intervalMinutes: body.intervalMinutes'));
 check('mcp：qq_schedule 暴露提醒周期、修改和完成确认', mcp.includes('intervalMinutes') && mcp.includes('action=complete')

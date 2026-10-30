@@ -1,0 +1,30 @@
+{
+  "id": "life-conversation-wait",
+  "name": "无人回复时结束本轮",
+  "version": "1.0.0",
+  "description": "私聊、群聊共用：每次等新消息超时且确无新来信时，按递增概率结束本轮；新来信重置概率，等对方说完不计次。",
+  "layer": "L",
+  "category": "生命周期与编排",
+  "order": 35,
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [],
+  "config": {
+    "endProbabilityPercent": 50,
+    "probabilityStepPercent": 25
+  },
+  "configSchema": {
+    "endProbabilityPercent": {
+      "min": 0,
+      "max": 100,
+      "label": "初始结束概率 p（%）",
+      "example": "首次无人回复超时的结束概率。"
+    },
+    "probabilityStepPercent": {
+      "min": 1,
+      "max": 100,
+      "label": "每次增加 q（百分点）",
+      "example": "p=50、q=25：50% → 75% → 100%，最多3次。"
+    }
+  }
+}

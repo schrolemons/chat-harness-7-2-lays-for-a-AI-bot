@@ -151,3 +151,6 @@
                   thresholdChars: 16000
                   headChars: 12000
                   tailChars: 2000
+          - id: qq-context-composer
+            name: qq-agent-presets/context-composer.mjs
+            config: {}

@@ -5,8 +5,8 @@ import http from 'node:http';
 import { bridgeHarness } from './audit-bridge-harness.mjs';
 
 const KEY = 'group:456';
-const ACTIVE = { mode: 'active' };
-const DIVING = { mode: 'diving', infinite: true, triggers: { atMention: true, anyMessage: false } };
+const ACTIVE = { infinite: true };
+const DIVING = { infinite: true };
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const seqs = (messages) => Array.from(messages, (message) => message.seq);
 let failures = 0;
@@ -26,7 +26,13 @@ async function test(name, run, { observe = false } = {}) {
   const st = h.getSocialV2State(KEY);
   const server = h.startConsoleServer();
   if (!server.listening) await new Promise((resolve) => server.once('listening', resolve));
-  const request = (route, { body, token = st.agentToken, key = KEY, admin = false, query = '' } = {}) => new Promise((resolve, reject) => {
+  const request = async (route, { body, token = st.agentToken, key = KEY, admin = false, query = '' } = {}) => {
+    if(route==='wait'){
+      // Only provide an active transport turn; do not grant any unread cursor here.
+      const sid=await h.ensureSession(key);
+      if(!h.activeTurnEnvelopes.has(sid))h.activeTurnEnvelopes.set(sid,{key,sessionId:sid,turn:1,actionId:'cursor-test-wait',reason:'message'});
+    }
+    return new Promise((resolve, reject) => {
     const headers = { 'x-console-token': 'fixture-console-token' };
     if (!admin) headers['x-agent-token'] = token;
     if (body !== undefined) headers['content-type'] = 'application/json';
@@ -46,6 +52,7 @@ async function test(name, run, { observe = false } = {}) {
     req.setTimeout(4000, () => req.destroy(new Error('fixture HTTP request timed out')));
     req.end(body === undefined ? undefined : JSON.stringify({ key, ...body }));
   });
+  };
   const append = (text, { key = KEY, id = `fixture-${h.getSocialV2State(key).lastUnreadSeq + 1}`, media = [], forwards = [] } = {}) => {
     h.appendSocialV2Message(key, 'fixture-person', text, text, false, false, id, media, '789', forwards);
     return h.getSocialV2State(key).lastUnreadSeq;
@@ -76,7 +83,7 @@ await test('wake-config atomically acknowledges its displayed watermark while pr
   assert.equal(result.status, 200);
   assert.equal(result.data.markedCount, 1);
   assert.equal(st.wakeConfig.confirmedBy, 'set_wake_config');
-  assert.equal(st.wakeConfig.mode, 'active');
+  assert.equal(st.wakeConfig.mode, 'diving');
   assert.deepEqual(seqs(st.unread), [2]);
 });
 
@@ -136,26 +143,24 @@ await test('my-recent returns an existing safe cursor without authorizing unrela
   assert.deepEqual(seqs(st.unread), [1]);
 });
 
-await test('combined close cannot bypass the pre-sleep observation guard', async ({ st, request, append }) => {
+await test('combined cursor acknowledgment no longer adds a fixed pre-sleep observation gate', async ({ st, request, append }) => {
   append('still discussing a normal topic');
   const read = await request('unread');
-  const before = plain(st.wakeConfig);
-  for (const route of ['mark-read', 'wake-config']) {
-    const result = await request(route, { body: { throughSeq: read.data.readThroughSeq, config: DIVING } });
-    assert.equal(result.status, 400);
-    assert.ok(result.data.preSleepWaitRemainingMs > 0);
-    assert.deepEqual(seqs(st.unread), [1]);
-    assert.deepEqual(plain(st.wakeConfig), before);
-  }
+  const result = await request('wake-config', { body: { throughSeq: read.data.readThroughSeq, config: DIVING } });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.markedCount, 1);
+  assert.equal('preSleepWaitRemainingMs' in result.data, false);
+  assert.deepEqual(seqs(st.unread), []);
 }, { observe: true });
 
-await test('a full quiet observation allows a single combined close', async ({ h, st, request, append }) => {
+await test('quiet-only observation preserves its read cursor for one acknowledgment', async ({ h, st, request, append }) => {
   h.cfg.socialV2.wake.preSleepWaitMs = 100;
   append('ordinary topic');
   const read = await request('unread');
-  const waited = await request('wait', { body: { timeoutMs: 100, quietMs: 0 } });
+  const waited = await request('wait', { body: { purpose: 'reply', timeoutMs: 100, quietMs: 0 } });
   assert.equal(waited.status, 200);
-  assert.equal(waited.data.preSleepWaitSatisfied, true);
+  assert.equal(waited.data.purpose, 'reply');
+  assert.equal('preSleepWaitRemainingMs' in waited.data, false);
   assert.equal(waited.data.readThroughSeq, read.data.readThroughSeq);
   const close = await request('wake-config', { body: { config: DIVING, throughSeq: waited.data.readThroughSeq } });
   assert.equal(close.status, 200);
@@ -166,18 +171,19 @@ await test('a full quiet observation allows a single combined close', async ({ h
 await test('wait exposes new messages and grants only their actually observed cursor', async ({ st, request, append }) => {
   append('message before wait');
   await request('unread');
+  await request('mark-read', {body:{throughSeq:1}});
   const waiting = request('wait', { body: { timeoutMs: 1000, quietMs: 0 } });
   const timer = setTimeout(() => append('message during observation'), 60);
   let waited;
   try { waited = await waiting; } finally { clearTimeout(timer); }
   assert.equal(waited.status, 200);
   assert.equal(waited.data.arrived, true);
-  assert.equal(waited.data.preSleepWaitObserved, true);
+  assert.equal(waited.data.purpose, 'messages');
   assert.deepEqual(seqs(waited.data.newMessages), [2]);
   assert.equal(waited.data.readThroughSeq, 2);
   const close = await request('wake-config', { body: { config: DIVING, throughSeq: waited.data.readThroughSeq } });
   assert.equal(close.status, 200);
-  assert.equal(close.data.markedCount, 2);
+  assert.equal(close.data.markedCount, 1);
   assert.deepEqual(seqs(st.unread), []);
 }, { observe: true });
 
@@ -256,6 +262,8 @@ await test('combined close respects the separate mark-read and wake-config tool 
 await test('an in-flight wait cannot authorize new messages after its session token is retired', async ({ h, st, request, append }) => {
   await h.ensureSession(KEY);
   append('before wait');
+  await request('unread');
+  await request('mark-read', {body:{throughSeq:1}});
   const oldToken = st.agentToken;
   const waiting = request('wait', { body: { timeoutMs: 1000, quietMs: 0 }, token: oldToken });
   const timer = setTimeout(() => { h.retireSession(KEY); append('arrived after token retirement'); }, 60);
@@ -269,6 +277,8 @@ await test('an in-flight wait cannot authorize new messages after its session to
 
 await test('an in-flight wait cannot write observation into a replaced conversation state', async ({ h, st, request, append }) => {
   append('old state');
+  await request('unread');
+  await request('mark-read', {body:{throughSeq:1}});
   const waiting = request('wait', { body: { timeoutMs: 100, quietMs: 0 } });
   const timer = setTimeout(() => {
     h.socialV2.conversations.delete(KEY);
@@ -285,6 +295,8 @@ await test('an in-flight wait cannot write observation into a replaced conversat
 
 await test('an in-flight wait rechecks mode permission before exposing a new arrival', async ({ h, request, append }) => {
   append('before mode change');
+  await request('unread');
+  await request('mark-read', {body:{throughSeq:1}});
   const waiting = request('wait', { body: { timeoutMs: 1000, quietMs: 0 } });
   const timer = setTimeout(() => { h.setMode('chat'); append('after mode change'); }, 60);
   let result;
@@ -310,6 +322,8 @@ await test('building a budgeted snapshot preserves whole oldest messages without
 
 await test('an in-flight wait rechecks paused, feature, tool and allowlist permissions without granting observation', async ({ h, st, request, append }) => {
   append('unread before policy changes');
+  await request('unread');
+  await request('mark-read', {body:{throughSeq:1}});
   const cases = [
     ['pause', () => { h.socialV2.paused = true; }, () => { h.socialV2.paused = false; }],
     ['feature disable', () => { h.cfg.socialV2.enabled = false; }, () => { h.cfg.socialV2.enabled = true; }],
@@ -523,7 +537,7 @@ await test('oldest-first unread paging can drain a backlog beyond both recent an
   append('arrived after complete read');
   assert.equal((await request('wake-config', { body: { config: ACTIVE, throughSeq: next.data.readThroughSeq } })).status, 200);
   assert.deepEqual(seqs(st.unread), [151]);
-  for (const value of ['', '-1', '1.2', 'text', '60005']) {
+  for (const value of ['', '-1', '1.2', 'text', '20021']) {
     assert.equal((await request('unread', { query: `&afterSeq=${value}` })).status, 400);
   }
 });

@@ -1,4 +1,5 @@
 import { initialize as initSessionOptions } from './shared/session-options.js';
+import { initialize as initContextVisual } from './layers/O/context-visual.js';
 import {initialize as initProactivePreview} from './layers/L/proactive-preview.js';
 import { initialize as initterms } from './layers/C/terms.js';
 import { initialize as initaffairs } from './layers/C/affairs.js';
@@ -11,12 +12,11 @@ import { initialize as init1 } from "./layers/T/games.js";
 import { initialize as init2 } from "./layers/O/status.js";
 import { initialize as init3 } from "./layers/C/persona.js";
 import { initialize as init4 } from "./layers/C/preset-prompt.js";
-import { initialize as init5 } from "./layers/O/model-status.js";
 import { initialize as init6 } from "./layers/G/access.js";
 import { initialize as init7 } from "./layers/E/sessions.js";
 import { initialize as init8 } from "./layers/C/preset-actions.js";
 import { initialize as init9 } from "./layers/C/persona-actions.js";
-import { initialize as init10 } from "./layers/O/model-actions.js";
+import { initialize as init10 } from "./layers/O/control-actions.js";
 import { initialize as init11 } from "./layers/E/voice.js";
 import { initialize as init12 } from "./layers/L/time-bubbles.js";
 import { initialize as init13 } from "./layers/C/persistent-memory.js";
@@ -27,10 +27,8 @@ import { initialize as init17 } from "./layers/C/mood.js";
 import { initialize as init18 } from "./shared/config-load.js";
 import { initialize as init19 } from "./layers/O/self-review.js";
 import { initialize as init20 } from "./shared/config-save.js";
-import { initialize as init21 } from "./layers/L/session-state.js";
 import { initialize as init22 } from "./layers/O/tool-log.js";
 import { initialize as init23 } from "./layers/C/light-memory.js";
-import { initialize as init24 } from "./layers/L/wake-status.js";
 import { initialize as init25 } from "./layers/C/initial-prompt.js";
 import { initialize as init26 } from "./layers/L/activity.js";
 import { initialize as init27 } from "./layers/L/receipts.js";
@@ -54,17 +52,17 @@ import { initialize as init45 } from "./layers/E/environment-components.js";
 import { initialize as init46 } from "./layers/L/availability.js";
 import { api } from './shared/api.js';
 init0(); // shared/api
+initContextVisual();
 initProactivePreview();
 init1(); // layers/T/games
 init2(); // layers/O/status
 init3(); // layers/C/persona
 init4(); // layers/C/preset-prompt
-init5(); // layers/O/model-status
 init6(); // layers/G/access
 init7(); // layers/E/sessions
 init8(); // layers/C/preset-actions
 init9(); // layers/C/persona-actions
-init10(); // layers/O/model-actions
+init10(); // layers/O/control-actions
 init11(); // layers/E/voice
 init12(); // layers/L/time-bubbles
 init13(); // layers/C/persistent-memory
@@ -76,10 +74,8 @@ init17(); // layers/C/mood
 init18(); // shared/config-load
 init19(); // layers/O/self-review
 init20(); // shared/config-save
-init21(); // layers/L/session-state
 init22(); // layers/O/tool-log
 init23(); // layers/C/light-memory
-init24(); // layers/L/wake-status
 init25(); // layers/C/initial-prompt
 init26(); // layers/L/activity
 init27(); // layers/L/receipts

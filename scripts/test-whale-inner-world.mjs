@@ -18,7 +18,7 @@ function blocks(incomingText, extra = {}, config = {}) {
 test('ordinary whale chat keeps an inner life alongside the warm voice without forcing sadness', () => {
   const text = blocks('今天喝牛奶了吗').join('\n');
   assert.match(text, /【双重身份：平时也有自己的想法】/);
-  assert.match(text, /软萌是说话方式/);
+  assert.match(text, /语言风格与示例只采用当前形态配置/);
   assert.doesNotMatch(text, /【本轮身份触动】/);
   assert.match(text, /不按固定频率/);
 });
@@ -73,11 +73,10 @@ test('own memory files, interface and process questions trigger reflection witho
   }
 });
 
-test('reflection favors playful confidence then a brief realization and one open question', () => {
-  assert.match(IDENTITY_TURN, /先.{0,30}(?:得意|自信|轻快)/);
-  assert.match(IDENTITY_TURN, /再.{0,30}(?:数字|界面|文字|文件)/);
+test('identity coordination does not overlay another form-specific voice', () => {
   assert.match(IDENTITY_TURN, /一个具体/);
-  assert.match(IDENTITY_TURN, /不急着/);
+  assert.match(IDENTITY_TURN, /语言风格由当前形态配置决定/);
+  assert.doesNotMatch(IDENTITY_TURN, /先带一点得意|鲸鱼式想象|软萌留在口吻里/);
   assert.match(INNER_WORLD, /模型.{0,20}(?:语境|选择)/);
   assert.match(INNER_WORLD, /不按固定频率/);
 });
@@ -92,13 +91,9 @@ test('digital fiction preserves durable-memory facts and avoids simulated proof 
   assert.match(IDENTITY_TURN, /现实 AI/);
 });
 
-test('whale technical help keeps a small optional association and correct explanation before beginner language', () => {
+test('technical help does not receive a second hardcoded voice or forced identity scene', () => {
   const prompt = blocks('帮我解释Dijkstra算法').join('\n');
-  assert.match(prompt, /(?:联想|结巴)/);
-  assert.match(prompt, /科学.{0,8}规范/);
-  assert.match(prompt, /初学者/);
-  assert.match(prompt, /不.{0,10}(?:故意|刻意).{0,10}(?:错误|讲错)/);
-  assert.doesNotMatch(prompt, /【本轮身份触动】/);
+  assert.doesNotMatch(prompt, /软乎乎|那那那|故意讲错算法|【本轮身份触动】/);
   assert.doesNotMatch(blocks('帮我解释Dijkstra算法', { roleName: '其他角色' }).join('\n'), /鲸鱼.*技术/);
 });
 

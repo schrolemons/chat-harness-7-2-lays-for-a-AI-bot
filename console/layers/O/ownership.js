@@ -1,5 +1,6 @@
 // Canonical page and source mount; internal helpers do not create cards.
 export default {
+  "obs-context-assembly": {"presentation":"internal","page":"context-visual"},
   "life-token-budget": {
     "page": "usage",
     "selector": "#section-usage"

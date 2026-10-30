@@ -32,6 +32,7 @@ export function createPlugin(ctx) {
   const watchUrls = parseWatchUrls(cfg.watchUrls, cfg.watchUrlsConfigured === true ? [] : (base.bookmarkPages || []));
   const enabledScripts = parseEnabledScripts(cfg.enabledScripts);
   const scriptPaths = parseScriptPaths(cfg.scriptPaths);
+  const allScriptPaths=parseScriptPaths((Array.isArray(cfg.scriptPaths)?cfg.scriptPaths:[]).map(item=>typeof item==='object'&&item?{...item,enabled:true}:item));
   const legacyBbLines = Array.isArray(base.bbCourses) ? base.bbCourses.flatMap(course =>
     (course.pages || []).map(page => [course.name, course.courseId, page.label, page.contentId].join('|'))) : [];
   const bbCourses = parseBbCourses(cfg.bbCoursesConfigured === true ? cfg.bbCourses :
@@ -43,10 +44,11 @@ export function createPlugin(ctx) {
     handler: () => {
       const state = readJson(path.join(ctx.root, 'state', 'campus-watch-state.json'));
       const heartbeats = readJson(path.join(ctx.root, 'state', 'script-heartbeats.json'));
-      const scripts = scriptPaths.map(script => {
+      const scripts = allScriptPaths.map(script => {
         const beat = heartbeats[script] || {};
         const recent = Number(beat.at) > 0 && Date.now() - Number(beat.at) < Math.max(full * 2, (Number(cfg.lecturesIntervalMinutes) || 10) * 120000, 10 * 60000);
-        return { path: script, health: cfg.scriptCollabEnabled === false ? 'paused' : recent ? (beat.ok === false ? 'red' : beat.mode === 'fallback' ? 'fallback' : 'green') : Number(beat.at)>0 ? 'stale' : 'unknown', checkedAt: beat.at || null, hint: beat.hint || (recent ? '最近有运行心跳' : '尚未接入运行心跳') };
+        const description=typeof cfg.scriptDescriptions?.[script]==='string'?cfg.scriptDescriptions[script].replace(/\s+/g,' ').trim().slice(0,240):'';
+        return { path: script, description, health: cfg.scriptCollabEnabled === false || !scriptPaths.includes(script) ? 'paused' : recent ? (beat.ok === false ? 'red' : beat.mode === 'fallback' ? 'fallback' : 'green') : Number(beat.at)>0 ? 'stale' : 'unknown', checkedAt: beat.at || null, hint: beat.hint || (recent ? '最近有运行心跳' : '尚未接入运行心跳') };
       });
       const bbSites = bbCourses.flatMap(course => (course.pages || []).map(p => {
         const url = `https://portal.example.invalid/webapps/blackboard/content/listContent.jsp?course_id=${course.courseId}&content_id=${p.contentId}&mode=reset`;

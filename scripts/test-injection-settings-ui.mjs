@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { startConsoleFixture } from './console-ui-fixture.mjs';
+const { chromium } = createRequire(import.meta.url)('playwright');
+const executablePath = [path.join(process.env.PROGRAMFILES || '', 'Google/Chrome/Application/chrome.exe'), path.join(process.env['PROGRAMFILES(X86)'] || '', 'Microsoft/Edge/Application/msedge.exe')].find(fs.existsSync);
+const fixture = await startConsoleFixture();
+const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/*', route => new URL(route.request().url()).origin === fixture.url ? route.continue() : route.abort());
+  await page.goto(fixture.url + '/#injection-lab');
+  const root = page.locator('[data-component-slot="tool-injection-lab"]');
+  await root.locator('.comp-save').waitFor();
+  assert.equal(await root.locator('input[type=checkbox]').count(), 2);
+  const enabled = root.getByRole('checkbox', { name: '启用 bot 对线实验', exact: true });
+  assert.equal(await enabled.isChecked(), true);
+  assert.equal(await root.locator('[data-config-key="injectPrompt"], [data-config-key="spar"]').count(), 0);
+  const retention = root.getByRole('spinbutton', { name: '注入警报保留时长（毫秒）', exact: true });
+  assert.equal(await retention.getAttribute('min'), '60000');
+  await retention.fill('59999');
+  assert.equal(await retention.evaluate(input => input.checkValidity()), false);
+  await retention.fill('60000');
+  assert.equal(await retention.evaluate(input => input.checkValidity()), true);
+  await root.locator('.comp-save').click();
+  await page.waitForFunction(() => document.querySelector('[data-component-slot="tool-injection-lab"] .comp-msg')?.textContent.includes('已重新读取'));
+  assert.equal(await retention.inputValue(), '60000');
+  const plugin = fixture.componentFixtures.get('tool-injection-lab');
+  assert.equal(plugin.config.alertWindowMs, 60000);
+  assert.equal(Object.hasOwn(plugin.config, 'injectPrompt'), false);
+  assert.equal(Object.hasOwn(plugin.config, 'spar'), false);
+  await enabled.uncheck();
+  await page.waitForFunction(() => document.querySelector('[data-component-slot="tool-injection-lab"] .comp-toggle-msg')?.textContent === '已停用');
+  assert.equal(plugin.enabled, false);
+  await enabled.check();
+  await page.waitForFunction(() => document.querySelector('[data-component-slot="tool-injection-lab"] .comp-toggle-msg')?.textContent === '已启用');
+  assert.equal(plugin.enabled, true);
+  assert.match(await root.innerText(), /再次命中会重新计时/);
+  assert.doesNotMatch(await root.innerText(), /重复告警合并窗口|允许提示词注入实验|允许 bot 对线/);
+  const dir = 'state/audits/injection-settings-20261030';
+  fs.mkdirSync(dir, { recursive: true });
+  await page.screenshot({ path: path.join(dir, 'fixture-desktop.png'), fullPage: true });
+  for (const width of [768, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  }
+  assert.deepEqual(errors, []);
+  console.log('PASS single switch read/toggle/save; retired flags absent; minimum 60000; retention copy; 1440/768/390 layout');
+} finally { await browser.close(); await fixture.close(); }

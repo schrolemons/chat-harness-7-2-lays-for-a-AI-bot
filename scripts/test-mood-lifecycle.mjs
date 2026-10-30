@@ -84,29 +84,29 @@ test('adjust validates positive finite amounts, clamps scores and isolates conve
 });
 
 test('policy uses one configuration owner and disabled mood leaves scheduling neutral', async t => {
-  const f = await fixture(t, { enabled: false, initial: 77, noReplyAfterMinutes: 5, decayPerHour: 99, dailyFloor: 99 });
+  const f = await fixture(t, { enabled: false, initial: 60, noReplyAfterMinutes: 5, decayPerHour: 99, dailyFloor: 99 });
   const policy = f.call('policy');
-  assert.deepEqual({ enabled: policy.enabled, initial: policy.initial, noReplyAfterMinutes: policy.noReplyAfterMinutes }, { enabled: false, initial: 77, noReplyAfterMinutes: 5 });
+  assert.deepEqual({ enabled: policy.enabled, initial: policy.initial, noReplyAfterMinutes: policy.noReplyAfterMinutes }, { enabled: false, initial: 60, noReplyAfterMinutes: 5 });
   assert.equal('decayPerHour' in policy, false);
   assert.equal(f.read().frequencyFactor, 1);
   f.sent(); f.call('settle', { now: T + 100 * minute });
-  assert.equal(f.read().score, 77);
+  assert.equal(f.read().score, 60);
 });
 
-test('image-only daily first event floors at 60 once and ignores own/empty events and replay', async t => {
+test('image and text no longer trigger a first-message recovery', async t => {
   const f = await fixture(t);
   f.call('initialize', { conversations: [{ key, score: 10 }], now: T });
   f.incoming({ isSelf: true }); f.incoming({ hasText: false });
   assert.equal(f.read().score, 10);
   f.incoming({ hasText: false, hasImage: true });
-  assert.equal(f.read().score, 60);
+  assert.equal(f.read().score, 10);
   f.call('adjust', { key, action: 'dec', value: 20, now: T + 2 * minute });
   f.incoming({ messageId: 'm2', at: T + 3 * minute });
-  assert.equal(f.read().score, 40);
+  assert.equal(f.read().score, 0);
   await f.restart();
   f.incoming({ at: T + 25 * minute, hasText: false, hasImage: true });
-  assert.equal(f.read().score, 40, 'old image replay on a new day is not new activity');
-  f.incoming({ messageId: 'm3', at: T + 26 * minute });
+  assert.equal(f.read().score, 0, 'old image replay on a new day is not new activity');
+  f.incoming({ messageId: 'm3', at: T + 286 * minute });
   assert.equal(f.read().score, 60);
 });
 
@@ -114,10 +114,10 @@ test('cross-day incoming settles overdue penalty before daily floor, preserving 
   const f = await fixture(t);
   f.call('initialize', { conversations: [{ key, score: 60 }], now: T });
   f.sent();
-  f.incoming({ at: T + 25 * minute });
+  f.incoming({ at: T + 285 * minute });
   assert.equal(f.read().score, 60);
   assert.equal(f.read().unansweredStreak, 0);
-  f.call('settle', { now: T + 100 * minute });
+  f.call('settle', { now: T + 300 * minute });
   assert.equal(f.read().score, 60);
 });
 
@@ -173,10 +173,10 @@ test('private image response answers all earlier waits and persists completion',
   assert.equal(f.read().unansweredStreak, 0);
 });
 
-test('group unrelated humans floor daily mood but only target or direct replies answer waits', async t => {
+test('group human replies end waits without extra recovery; daily 04:00 floors independently', async t => {
   const f = await fixture(t);
   const group = 'group:789';
-  f.call('initialize', { conversations: [{ key: group, score: 10 }], now: T });
+  f.call('initialize', { conversations: [{ key: group, score: 60 }], now: T });
   f.sent({ key: group, targetUserId: '123' });
   f.incoming({ key: group, userId: '456', at: T + minute });
   assert.equal(f.read(group).score, 60);
@@ -186,7 +186,7 @@ test('group unrelated humans floor daily mood but only target or direct replies 
   f.incoming({ key: group, messageId: 'm2', userId: '123', at: T + 22 * minute });
   f.sent({ key: group, proactiveId: 'p3', deliveryId: 'd3', targetUserId: '123', sentAt: T + 23 * minute });
   f.incoming({ key: group, messageId: 'm3', userId: '456', at: T + 24 * minute, directedAtBot: true });
-  f.call('settle', { now: T + 100 * minute });
+  f.call('settle', { now: T + 300 * minute });
   assert.equal(f.read(group).score, 60, 'new day floor applies; valid responses consume both waits');
   assert.equal(f.read(group).unansweredStreak, 0);
 });
@@ -199,7 +199,7 @@ test('zero enters pleading only following unanswered proactive turn and human re
   const view = f.read();
   assert.deepEqual([view.mode, view.band, view.replyCeiling, view.detailLevel], ['critical', 'pleading', 2, 'gentle-fragments']);
   f.incoming({ at: T + 21 * minute });
-  assert.equal(f.read().band, 'playful');
+  assert.equal(f.read().band, 'reflective');
   assert.equal(f.read().unansweredStreak, 0);
 });
 
@@ -267,12 +267,12 @@ test('default autonomous cap and behavior rules are exposed without automatic ke
 test('history persists model, daily and unanswered changes with actual before/after values', async t => {
   const f = await fixture(t);
   f.call('adjust', { key, action: 'dec', value: 20, reason: 'clear request for quiet', now: T });
-  f.incoming();
-  f.sent({ sentAt: T + 2 * minute });
-  f.call('settle', { now: T + 22 * minute });
+  f.incoming({at:T+261*minute});
+  f.sent({ sentAt: T + 262 * minute });
+  f.call('settle', { now: T + 282 * minute });
   await f.restart();
   const history = f.call('history', { key, limit: 10 });
-  assert.deepEqual(history.items.map(item => [item.source, item.before, item.after, item.delta]), [['unanswered', 60, 50, -10], ['daily-first', 40, 60, 20], ['model-adjustment', 60, 40, -20]]);
+  assert.deepEqual(history.items.map(item => [item.source, item.before, item.after, item.delta]), [['unanswered', 60, 50, -10], ['daily-recovery', 40, 60, 20], ['model-adjustment', 60, 40, -20]]);
   assert.equal(history.items[2].reason, 'clear request for quiet');
   assert.equal(f.call('history', { key, limit: 1 }).items.length, 1);
   assert.deepEqual(f.call('history', { key: 'group:999', limit: 10 }).items, []);
@@ -294,15 +294,15 @@ test('failed atomic persistence leaves penalty and daily receipt retryable toget
   // The host has already loaded state. Make only its atomic replacement fail.
   fs.renameSync(f.stateFile, f.stateFile + '.saved');
   fs.mkdirSync(f.stateFile);
-  assert.equal(f.host.callService('mood', 'incoming', { key, messageId: 'm1', userId: '123', hasImage: true, at: T + 25 * minute }), null);
+  assert.equal(f.host.callService('mood', 'incoming', { key, messageId: 'm1', userId: '123', hasImage: true, at: T + 285 * minute }), null);
   assert.equal(f.read().unansweredStreak, 0);
   fs.rmdirSync(f.stateFile);
   fs.renameSync(f.stateFile + '.saved', f.stateFile);
-  const result = f.incoming({ at: T + 25 * minute, hasText: false, hasImage: true });
+  const result = f.incoming({ at: T + 285 * minute, hasText: false, hasImage: true });
   assert.equal(result.settled, 1);
   assert.equal(result.floored, true);
   assert.equal(f.read().score, 60);
-  assert.deepEqual(f.call('history', { key }).items.map(item => item.source), ['daily-first', 'unanswered']);
+  assert.deepEqual(f.call('history', { key }).items.map(item => item.source), ['daily-recovery', 'unanswered']);
 });
 
 test('more than 200 pending turns and consumed IDs survive restart without arbitrary trimming', async t => {
@@ -478,19 +478,19 @@ test('delayed confirmation replays due penalty before next-day floor and later e
     const f = await fixture(t);
     f.incoming({ messageId: 'before', at: T - minute });
     if (!delayed) f.sent();
-    f.incoming({ messageId: 'next-day', at: T + 25 * minute });
-    f.call('adjust', { key, action: 'dec', value: 5, reason: 'after daily floor', now: T + 26 * minute });
+    f.incoming({ messageId: 'next-day', at: T + 285 * minute });
+    f.call('adjust', { key, action: 'dec', value: 5, reason: 'after daily floor', now: T + 286 * minute });
     await f.restart();
     if (delayed) f.sent();
-    f.call('settle', { now: T + 30 * minute });
+    f.call('settle', { now: T + 290 * minute });
     assert.equal(f.read().score, 55, 'late evidence must not apply old penalty after already applied daily floor');
     const events = f.call('history', { key, limit: 10 }).items.reverse();
-    assert.deepEqual(events.map(item => [item.source, item.before, item.after]), [['daily-first', 60, 60], ['unanswered', 60, 50], ['daily-first', 50, 60], ['model-adjustment', 60, 55]]);
-    assert.equal(events[1].effectiveAt, T + 20 * minute);
-    assert.equal(typeof events[1].recordedAt, 'number');
+    assert.deepEqual(events.map(item => [item.source, item.before, item.after]), [['unanswered', 60, 50], ['daily-recovery', 50, 60], ['model-adjustment', 60, 55]]);
+    assert.equal(events[0].effectiveAt, T + 20 * minute);
+    assert.equal(typeof events[0].recordedAt, 'number');
     await f.restart(); f.sent({ deliveryId: 'duplicate-part' });
-    f.call('settle', { now: T + 40 * minute });
-    assert.equal(f.call('history', { key }).items.length, 4);
+    f.call('settle', { now: T + 300 * minute });
+    assert.equal(f.call('history', { key }).items.length, 3);
     assert.equal(f.read().score, 55);
   }
 });
@@ -537,7 +537,7 @@ test('delayed group receipts use persisted direct-or-target qualification and re
 });
 
 test('owned zero with no score history remains the replay baseline when current default differs', async t => {
-  const f = await fixture(t, { initial: 99 }, { mood: { conversations: { [key]: { score: 0, unansweredStreak: 0, updatedAt: T } } } });
+  const f = await fixture(t, { initial: 99 }, { mood: { conversations: { [key]: { score: 0, unansweredStreak: 0, updatedAt: T, lastRecoveryDay:"2026-10-28" } } } });
   f.sent();
   f.call('adjust', { key, action: 'add', value: 10, now: T + 21 * minute });
   await f.restart();
@@ -621,8 +621,8 @@ test('late first-target receipt voids a mistaken penalty through chronology and 
  f.call('settle',{now:sendAt+21*minute});
  const penalty=f.call('history',{key:group}).items.find(x=>x.source==='unanswered');
  assert.equal(f.read(group).score,55);
- f.incoming({key:group,userId:'999',messageId:'next-day-floor',at:T+21*minute});
- f.call('adjust',{key:group,action:'dec',value:20,reason:'fixture',now:T+22*minute});
+ f.incoming({key:group,userId:'999',messageId:'next-day-floor',at:T+281*minute});
+ f.call('adjust',{key:group,action:'dec',value:20,reason:'fixture',now:T+282*minute});
  assert.equal(f.read(group).score,40);
  await f.restart();
  f.sent({key:group,deliveryId:'target-part',targetUserId:'123',sentAt:sendAt+5*minute});

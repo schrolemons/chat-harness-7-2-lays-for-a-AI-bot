@@ -168,7 +168,7 @@ await test('非法 key / 超长 / 缺 text 都被拒，且不会误删已有内�
     assert.equal(h.getInitialPrompt('group:456').text.length, 100, '被拒的写入不得覆盖原有内容');
 
     await withServer(h, async (port) => {
-      for (const key of ['', 'group:', 'group:abc', 'private:0', 'group:-1', 'wechat:123', 'group:60012']) {
+      for (const key of ['', 'group:', 'group:abc', 'private:0', 'group:-1', 'wechat:123', 'group:20019']) {
         const res = await call(port, '/api/socialV2/initial-prompt', { method: 'POST', headers: ADMIN, body: { key, text: 'x' } });
         assert.equal(res.status, 400, `非法 key「${key}」必须 400，实际 ${res.status}`);
       }

@@ -65,7 +65,7 @@ test('migration seeds preserve effective old mood, real rate history, zero and n
   assert.deepEqual(result.moodSeed.conversations, [{ key: 'private:10001', score: 0 }, { key: 'group:20001', score: 78 }]);
   assert.deepEqual(result.replySeed.conversations[0], { key: 'private:10001', sendTimes: [now - 500] });
   assert.equal(result.overrides['ctx-user-mood'].modeThreshold, 33);
-  assert.equal(result.overrides['ctx-user-mood'].initial, 0);
+  assert.equal(result.overrides['ctx-user-mood'].initial, undefined, 'retired per-new-conversation initial is not reintroduced');
   assert.equal(result.overrides['ctx-user-mood'].recoverMinutes, 0);
   assert.deepEqual(result.overrides['ctx-user-mood'].positiveRules, []);
   const again = planOutboundMigration({ config: result.config, overrides: result.overrides, manifests, socialState, now });
@@ -160,7 +160,7 @@ test('malformed real data fails before any configuration write', async () => {
 
 test('complete owner contract rejects missing preserved keys before planning',async()=>{
  const {planOutboundMigration}=await module();
- for(const [id,key] of [['ctx-user-mood','initial'],['life-wake-reasons','curfewEnabled'],['ctx-chat-topic-drive','dailyLimit']]){
+ for(const [id,key] of [['ctx-user-mood','modeThreshold'],['life-wake-reasons','curfewEnabled'],['ctx-chat-topic-drive','dailyLimit']]){
   const partial=structuredClone(manifests);delete partial[id].config[key];
   assert.throws(()=>planOutboundMigration({config:legacy(),manifests:partial,now}),/contract/);
  }

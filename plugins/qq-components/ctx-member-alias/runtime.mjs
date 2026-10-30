@@ -1,3 +1,5 @@
+const scopesUrl=new URL('../learning-scopes.mjs',import.meta.url);scopesUrl.search=new URL(import.meta.url).search;
+const {migrateScope,sourceKeys,validSessionKey,injectLimit,injectionReport,defaultEntries,queryEntries,changeCurrentSource,lookupHints,queryEnabled,sourceGuidance,promptInputs}=await import(scopesUrl.href);
 const url=new URL('./policy.mjs',import.meta.url);url.search=new URL(import.meta.url).search;
 const {validQq,cleanName,validAlias,validNicknameCandidate,aliasId,extractSelfAlias,extractAliasClaims}=await import(url.href);
 export {extractSelfAlias};
@@ -5,12 +7,13 @@ const text=v=>String(v??'').trim();
 const parseJson=v=>JSON.parse(String(v||'').replace(/^\x60{3}(?:json)?\s*/i,'').replace(/\s*\x60{3}$/,'').trim());
 export function createPlugin(ctx){
   const alive=()=>ctx.isActive?.()!==false,state=()=>ctx.state.get()||{},rt=ctx.runtime||{};
+  const migrated=(state().entries||[]).map(migrateScope);if(JSON.stringify(migrated)!==JSON.stringify(state().entries||[]))ctx.state.set({entries:migrated});
   rt.memberCache ||=new Map();rt.busy ||=new Set();
   function entries(){
     const list=[];
     for(const e of state().entries||[])for(const raw of text(e.alias).split(/[,，、;；]+/)){
       const alias=cleanName(raw);if(!validAlias(alias))continue;
-      const qq=validQq(e.qq)?String(e.qq):'',row={...e,alias,qq,id:aliasId(alias,qq,e.sourceKey),status:e.status||'candidate',evidence:Array.isArray(e.evidence)?e.evidence:[]};
+      const qq=validQq(e.qq)?String(e.qq):'',row={...e,alias,qq,id:(text(e.alias).split(/[,，、;；]+/).length===1?e.id:'')||aliasId(alias,qq,e.originKey),status:e.status||'candidate',evidence:Array.isArray(e.evidence)?e.evidence:[]};
       if(!list.some(x=>x.id===row.id))list.push(row);
     }return list;
   }
@@ -18,16 +21,18 @@ export function createPlugin(ctx){
   const fingerprint=m=>m?m.messageId||[m.time,m.userId,m.text].join(':'):'';
   function budget(){const calls=(state().calls||[]).filter(t=>Date.now()-t<3600000);if(calls.length>=Math.min(12,Math.max(1,Number(ctx.config?.maxCallsPerHour)||4)))return false;ctx.state.set({calls:[...calls,Date.now()]});return true;}
   const save=list=>{if(!alive())throw Error('插件已停用');ctx.state.set({entries:list});};
-  const evidence=i=>({key:text(i.key||i.sourceKey),messageId:text(i.messageId),userId:text(i.userId),text:text(i.text||i.note).slice(0,400),time:Number(i.at)||Date.now()});
+  const evidence=i=>({key:text(i.key||i.originKey),messageId:text(i.messageId),userId:text(i.userId),text:text(i.text||i.note).slice(0,400),time:Number(i.at)||Date.now()});
   function upsert(i,confirmed=false){
-    const alias=cleanName(i.alias),qq=validQq(i.qq)?String(i.qq):'',key=text(i.key||i.sourceKey);
+    const alias=cleanName(i.alias),qq=validQq(i.qq)?String(i.qq):'',key=text(i.key||i.originKey);
     if(!validAlias(alias))return {ok:false,error:'绰号无效'};
     if(!confirmed&&['agent','auto','semantic'].includes(String(i.source||''))&&!validNicknameCandidate(alias))return {ok:false,error:'候选不像短绰号，请勿提交整句或普通聊天内容'};
     if(confirmed&&!qq||i.qq&&!validQq(i.qq))return {ok:false,error:'请先填写有效 QQ，不能把发言者当成被称呼的人'};
     if(!confirmed&&(state().rejectedAliases||[]).some(x=>x.alias===alias.toLowerCase()&&(x.key==='*'||x.key===key)))return {ok:false,error:'管理员已拒绝此候选，不自动重复收录'};
+    let explicitSources;try{if(confirmed&&i.sourceKeys!==undefined)explicitSources=sourceKeys(i.sourceKeys);}catch(error){return {ok:false,error:error.message};}
     const list=entries(),id=aliasId(alias,qq,key);let e=list.find(x=>x.id===id);
     if(e?.status==='confirmed'&&!confirmed)return {ok:true,duplicate:true,entry:e};
-    if(!e){if(list.length>=200)return {ok:false,error:'绰号表已满，请先处理候选；已确认记录不会被自动删除'};e={id,alias,qq,sourceKey:key,status:confirmed?'confirmed':'candidate',at:Date.now(),evidence:[]};list.push(e);}
+    if(!e){if(list.length>=200)return {ok:false,error:'绰号表已满，请先处理候选；已确认记录不会被自动删除'};e={id,alias,qq,originKey:key,sourceKeys:validSessionKey(key)?[key]:[],status:confirmed?'confirmed':'candidate',at:Date.now(),evidence:[]};list.push(e);}
+    if(explicitSources)e.sourceKeys=explicitSources;
     const ev=evidence(i);
     if(ev.text&&!e.evidence.some(x=>ev.messageId?x.messageId===ev.messageId&&x.key===ev.key:x.key===ev.key&&x.text===ev.text&&x.userId===ev.userId))e.evidence=[...e.evidence,ev].slice(-6);
     Object.assign(e,{targetName:text(i.targetName||e.targetName).slice(0,80),reason:text(i.reason||e.reason||'AI 提交的疑似绰号'),source:i.source||e.source||'agent',at:Date.now()});
@@ -45,14 +50,16 @@ export function createPlugin(ctx){
   tool('alias_confirm','管理员按 id 编辑绰号和 QQ 后确认；QQ 必填',i=>{
     const list=entries(),e=select(list,i);if(!e)return {ok:false,error:'没有这条候选'};
     const alias=cleanName(i.alias||e.alias),qq=text(i.qq||e.qq);if(!validQq(qq)||!validAlias(alias))return {ok:false,error:'请先填写有效绰号与 QQ'};
+    if(i.sourceKeys!==undefined){try{e.sourceKeys=sourceKeys(i.sourceKeys);}catch(error){return {ok:false,error:error.message};}}
     const id=aliasId(alias,qq),dup=list.find(x=>x.id===id&&x.id!==e.id);
-    if(dup){dup.status='confirmed';dup.evidence=[...dup.evidence,...e.evidence].slice(-6);save(list.filter(x=>x.id!==e.id));return {ok:true,entry:dup};}
+    if(dup){let merged;try{merged=sourceKeys([...new Set([...(dup.sourceKeys||[]),...(e.sourceKeys||[])])]);}catch(error){return {ok:false,error:error.message};}dup.status='confirmed';dup.sourceKeys=merged;dup.evidence=[...dup.evidence,...e.evidence].slice(-6);save(list.filter(x=>x.id!==e.id));return {ok:true,entry:dup};}
     Object.assign(e,{id,alias,qq,status:'confirmed',note:text(i.note??e.note),at:Date.now()});save(list);return {ok:true,entry:e};
   });
   tool('alias_reject','按 id 或精确绰号/QQ 删除单条映射，不误删同一人的其他绰号',i=>{
-    const list=entries(),e=select(list,i);if(!e)return {ok:false,error:'没有这条记录'};ctx.state.set({rejectedAliases:[...(state().rejectedAliases||[]),{alias:e.alias.toLowerCase(),key:e.sourceKey||'*',at:Date.now()}].slice(-500)});save(list.filter(x=>x.id!==e.id));return {ok:true,removed:e};
+    const list=entries(),e=select(list,i);if(!e)return {ok:false,error:'没有这条记录'};ctx.state.set({rejectedAliases:[...(state().rejectedAliases||[]),{alias:e.alias.toLowerCase(),key:e.originKey||'*',at:Date.now()}].slice(-500)});save(list.filter(x=>x.id!==e.id));return {ok:true,removed:e};
   });
   tool('alias_query','查询绰号和 QQ；candidate 只是线索，不是确认的身份',i=>{
+    if(i.key){const out=queryEntries(entries(),'alias',i);return {...out,matches:out.entries||[]};}
     const q=text(i.q).toLowerCase();return {ok:true,matches:entries().filter(e=>!q||e.alias.toLowerCase().includes(q)||e.qq.includes(q)).slice(0,50)};
   });
   function lookupConfirmed({alias}={}){
@@ -66,7 +73,7 @@ export function createPlugin(ctx){
     if(!validAlias(alias)||!validQq(qq))return {ok:false,error:'昵称或 QQ 号无效'};
     const conflict=entries().find(e=>e.status==='confirmed'&&e.alias.normalize('NFKC').toLowerCase()===alias.normalize('NFKC').toLowerCase()&&String(e.qq)!==qq);
     if(conflict)return {ok:false,error:'该昵称已链接到另一个 QQ，请先在成员绰号页核对'};
-    return upsert({alias,qq,sourceKey:'*',source:'manual',reason:'管理员在传话会话中确认',note:text(input.note||'管理员在传话会话中确认')},true);
+    return upsert({alias,qq,sourceKeys:[],source:'manual',reason:'管理员在传话会话中确认',note:text(input.note||'管理员在传话会话中确认')},true);
   }
   async function members(key){
     const cache=rt.memberCache.get(key);if(cache&&Date.now()-cache.at<300000)return cache.value;
@@ -86,7 +93,7 @@ export function createPlugin(ctx){
     for(const claim of p.collectClaims===false?[]:extractAliasClaims(body)){
       let qq=claim.self&&validQq(p.userId)?String(p.userId):'';
       if(claim.targetName){if(validQq(claim.targetName))qq=claim.targetName;else{const matched=(await members(key)).filter(x=>[x.nickname,x.card].some(n=>cleanName(n)===claim.targetName));if(matched.length===1)qq=String(matched[0].userId);}}
-      if(!alive()||!allowed(key))return;upsert({...claim,...p,text:body,qq,source:'auto',sourceKey:key});
+      if(!alive()||!allowed(key))return;upsert({...claim,...p,text:body,qq,source:'auto',originKey:key});
     }
   }
   async function extract({key,maxCandidates=12,stopAfterGroup=false}={}){
@@ -135,17 +142,17 @@ export function createPlugin(ctx){
     if(key){const result=await extract({key,maxCandidates:1,stopAfterGroup:true});if(result?.ok===false)return {...result,scanned:recent.length,analyzed,processed};analyzed=1;processed=Number(result?.processed)||0;}
     return {ok:true,scanned:recent.length,groups:keys.size,analyzed,processed,candidates:entries().filter(x=>x.status!=='confirmed').length};
   });
-  return {services:{aliases:{extract,lookupConfirmed,linkConfirmed}},hooks:{onIncoming:incoming,
+  return {services:{aliases:{injectionPreview:({key}={})=>injectionReport(entries(),'alias',key,injectLimit(ctx.config?.injectMax,40)),extract,lookupConfirmed,linkConfirmed,query:i=>queryEntries(entries(),'alias',i),updateSources:i=>{const list=entries(),out=changeCurrentSource(list,i);if(out.ok&&out.changed)save(list);return out;}}},hooks:{onIncoming:incoming,
     async onTick({now=Date.now()}={}){
       if(ctx.config?.autoExtract===false||ctx.config?.autoSemantic===false)return;
       for(const [key,win] of Object.entries(state().windows||{})){if(!allowed(key)||state().learning?.[key]?.through===fingerprint(win.at(-1))||win.length<Number(ctx.config?.minMessages||15)||now-Number(state().learning?.[key]?.at||0)<Number(ctx.config?.cooldownMs||1800000))continue;await extract({key});break;}
     },
-    beforePrompt(){
-      const confirmed=entries().filter(e=>e.status==='confirmed'),owner=String(ctx.capabilities?.getOwnerQQ?.()||'');
+    beforePrompt(p={}){
+      const confirmed=defaultEntries(entries(),'alias',p.key,injectLimit(ctx.config?.injectMax,40)),owner=String(ctx.capabilities?.getOwnerQQ?.()||'');
       const lines=confirmed.slice(0,40).map(e=>'- '+e.alias+' = '+e.qq+(owner===e.qq?'（管理员/主人）':''));
-      return '【成员绰号学习】一个人可有多个绰号。认人/@/传话先 qq_alias_query(key,token,q)，只把 confirmed 当成确认身份，candidate 不能确定收件人；同名多人不猜。\n'
+      return sourceGuidance('alias',ctx.capabilities)+'\n'+(queryEnabled(ctx.capabilities,'alias')?lookupHints(entries(),'alias',{...promptInputs(p),injected:confirmed}):'')+'\n'+'【成员绰号学习】一个人可有多个绰号。'+(queryEnabled(ctx.capabilities,'alias')?'认人/@/传话先 qq_alias_query(key,token,q)，':'查询工具关闭，不猜测缺失映射。')+'只把 confirmed 当成确认身份，candidate 不能确定收件人；同名多人不猜。\n'
         +(ctx.config?.autoExtract===false?'自动学习已关闭，保留管理员确认的称呼。\n':'使用 qq_alias_submit 提交高置信度绰号候选：优先明确自称或明确说明某称呼属于谁；疑似称呼也可留空 QQ 供管理员判断，模糊情况须有多条独立消息把同一短称呼用于同一成员。单条邀约、问句、@后的文字、整句、黑话、辱骂或性内容都不算证据。QQ没证据就留空，note 写原文语境与目标线索；绝不能把发言者绑定为被讨论的人。候选由管理员在控制台编辑、确认或拒绝。\n')
-        +(lines.length?'【已确认成员绰号速查】\n'+lines.join('\n'):'当前没有已确认映射，仍须按流程收集候选。');
+        +(lines.length?'【已确认成员绰号速查】\n'+lines.join('\n'):'当前适用来源没有默认注入的映射；遇到完整绰号或回复具体QQ时按需查询。');
     }
   }};
 }

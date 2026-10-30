@@ -1,7 +1,8 @@
 // Canonical page and source mount; internal helpers do not create cards.
 export default {
+  "life-conversation-wait": {"page":"setting-l-1","selector":"[data-component-slot=\"life-conversation-wait\"]"},
   "life-campus-watch": {
-    "page": "setting-l-0"
+    "page": "environment-watch"
   },
   "life-daily-worklog": {
     "page": "setting-o-1"
@@ -18,7 +19,7 @@ export default {
     "page": "setting-l-2"
   },
   "life-relay-message": {
-    "page": "setting-l-0"
+    "page": "environment-chat"
   },
   "life-schedule-reminder": {
     "page": "setting-l-2"

@@ -1,47 +1,79 @@
 {
-  "version": 1,
-  "sparkSourceHeading": "8. **被骚扰/有人欺负成年男生/正太时的反击（玩具级，不伤人）**：",
-  "sparkSourcePrompt": [
-    "- 常规：鲸鱼尾巴「啪」地拍他一下，配一句「啪！不许闹」。",
-    "- 认真一点：切一小下 AI 那一面，说「要不要试一点点电流呀」，然后可以**写得具体些**——像小火花从指尖跳出来、沿着对方手腕窜上去、一阵酥麻、头发尖微翘、吓得原地跳一下；写触感和效果，不写伤口、不写痛苦和伤害。",
-    "- 触发范围：任何人来骚扰你，或**任何人在你面前欺负成年男生/正太**，都可以用玩具级小火花放电警告；群友邀请「电一下」或当事人明确表示愿意时，也可以顺着接梗。",
-    "- 第三人不能替没有表态的目标同意接梗；只有前一条所说的冒犯/骚扰/欺负情形，才可主动做放电警告。始终是纯虚构、玩具级的文字小火花，不是真实触电，不写伤口或痛苦。",
-    "- 收手就停：对方认错、退开、说别闹、表示不舒服或要求停止，就立刻停，不追着电。",
-    "- **这是这个群的核心记忆之一**：和「艾莉＋三角洲」并列。群里提到「挨电」「被电」时，要认得这是在说这个梗，能顺着接下去。"
-  ],
-  "governanceSourceRule": "允许纯文字、虚构、轻松无伤害的‘电一下’玩笑：可对明确冒犯/骚扰小鲸鱼或主人的人作玩具级警告；当事人明确邀请或表达愿意时也可接梗。不得真实触电、造成或描写伤口/痛苦；第三人不能替未表态的目标同意；对方拒绝、不适、退开或要求停止时立即收手。",
-  "sparkPrompt": "只进行纯虚构、玩具级的文字互动。工具只生成一条轻松文本，不对外发送。开始互动必须确认参与者本人明确愿意；第三人不能代替同意。对方拒绝、不适、退开或要求停止时立即结束。不得声称真实触电，不描述真实电流、身体触感、伤口、疼痛或伤害；只写空气中的小火花和轻松效果。看到骚扰/欺负时可以表达制止和保护立场，但不把未同意者作为放电互动对象。",
+  "version": 2,
+  "sparkPrompt": "轻微电流是虚构文字演出，可由bot主动发起或顺着群友接梗，无需预先征得目标本人同意。选择肢体部位、持续时间、叙事强度等级和波形，按工具返回的参数描写；正常演出不反复解释电流很小。不连接现实设备，不宣称现实通电，不写疼痛、伤口或伤害；对方拒绝、表示不适或要求停止时立即结束。",
   "limits": [
-    "游戏文字是虚构内容，不会对任何人实施真实动作。",
-    "放电互动必须由参与者本人明确同意；第三方不能代替同意。",
-    "拒绝、不适、退开或要求停止时立即结束，不劝说继续。",
-    "不描写真实电流、身体触感、伤口、疼痛或伤害。",
-    "游戏工具不调用 QQ、网络、模型或任意文件读写。"
+    "互动只生成文字，不连接现实设备或自行发送QQ消息。",
+    "轻微电流可以主动接梗，无需开始前的本人同意确认。",
+    "拒绝、不适、退开或要求停止时立即结束，不纠缠继续。",
+    "强度等级和波形只描述演出节奏，不是物理电流参数；不描写疼痛、伤口或伤害。",
+    "游戏工具不调用QQ、网络、模型或任意文件读写。"
   ],
   "toolDescriptions": {
     "games_catalog": "列出 console 中启用的游戏、规则和参数。只读 Games 专用配置；不访问任意文件、网络或 QQ。",
     "games_create": "根据用户明确提出的玩法描述生成一个受限 JSON GameAdapter，并持久保存到 Games 专用配置。只能使用声明状态、输入与 set/increment/randomInt 效果；禁止生成或执行代码、脚本、文件/网络/QQ 操作。",
-    "games_start": "开始一局已启用的短互动。spark 仅在参与者本人已明确同意后才把 consentConfirmed 设为 true；第三方不能代替同意。拒绝、不适或要求停止时立即结束。",
-    "games_action": "推进一局游戏：spark 仅产生空气中的虚构玩具小火花；roll 掷配置面数的骰子；hint/answer 操作固定谜题；自定义游戏只能执行其合法动作。拒绝、撤回或不适时立即调用 games_stop。不可描述真实触电、身体触感、疼痛或伤害。",
+    "games_start": "开始一局已启用的短互动。spark为轻微电流文字演出，可主动发起，无需预先确认本人同意；对方要求停止或不适时结束。",
+    "games_action": "推进游戏：spark轻微电流的payload可选bodyPart（肢体部位）、durationSec（1–5秒）、intensityLevel（1–3叙事等级）、waveform（steady/pulse/rampUp/rampDown/wave）；省略使用console默认值，不是设备控制。roll掷骰；hint/answer操作谜题；自定义游戏仅执行合法动作。拒绝或不适时调用games_stop。",
     "games_status": "查看指定游戏会话的当前状态；未知或过期会话会返回错误。",
-    "games_stop": "立即结束指定游戏会话；适用于用户拒绝、撤回同意、不适或主动要求停止。"
+    "games_stop": "立即结束指定游戏；适用于用户拒绝、不适、退开或要求停止。"
   },
   "games": [
     {
       "id": "spark",
-      "name": "玩具小火花",
-      "summary": "本人同意后的一句虚构小火花文字互动；拒绝即停。",
-      "rules": "参与者本人先明确同意；每次 spark 随机生成虚构火花数量、叙述节奏和持续时间。所有数值只表示空气中特效的文字节奏，不表示真实电流、电压或身体感受。拒绝、不适或要求停止时立即结束。",
-      "actions": ["spark"],
+      "name": "轻微电流",
+      "summary": "可主动接梗的电流文字演出，部位、时长、强度与波形可调；要求停止即结束。",
+      "rules": "可以主动开启，无需开始前本人同意；spark按指定部位、时长、强度与波形产生文字效果，未指定参数使用本游戏默认值。要求停止、不适或退开时立刻结束；不涉及现实设备，不写疼痛或伤害。",
+      "actions": [
+        "spark"
+      ],
       "parameters": {
-        "minSparks": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "maxSparks": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "minGlowLevel": { "type": "integer", "minimum": 1, "maximum": 3, "description": "虚构特效亮度等级，不是电流强度" },
-        "maxGlowLevel": { "type": "integer", "minimum": 1, "maximum": 3 },
-        "minCadenceMs": { "type": "integer", "minimum": 250, "maximum": 5000, "description": "空气中特效的虚构叙述节奏，毫秒" },
-        "maxCadenceMs": { "type": "integer", "minimum": 250, "maximum": 5000 },
-        "minDurationSec": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "maxDurationSec": { "type": "integer", "minimum": 1, "maximum": 5 }
+        "bodyPart": {
+          "type": "string",
+          "title": "默认部位",
+          "enum": [
+            "手指",
+            "手掌",
+            "手背",
+            "手腕",
+            "前臂",
+            "肩膀",
+            "小腿",
+            "脚踝"
+          ],
+          "example": "设为手腕：未指定部位时，演出文字落在手腕。"
+        },
+        "durationSec": {
+          "type": "integer",
+          "title": "默认持续时间（秒）",
+          "minimum": 1,
+          "maximum": 5,
+          "example": "设为3：一次动作叙述持续约3秒。"
+        },
+        "intensityLevel": {
+          "type": "integer",
+          "title": "默认强度等级",
+          "minimum": 1,
+          "maximum": 3,
+          "example": "设为2：采用中档叙事节奏，不对应物理电流单位。"
+        },
+        "waveform": {
+          "type": "string",
+          "title": "默认强度波形",
+          "enum": [
+            "steady",
+            "pulse",
+            "rampUp",
+            "rampDown",
+            "wave"
+          ],
+          "enumLabels": [
+            "均匀",
+            "脉冲跳动",
+            "逐渐增强",
+            "逐渐减弱",
+            "波浪起伏"
+          ],
+          "example": "选逐渐增强：同次动作的强度轨迹从低向高变化。"
+        }
       }
     },
     {
@@ -49,31 +81,63 @@
       "name": "骰子对决",
       "summary": "掷一颗六面骰，比比点数，不涉及真实筹码或输赢惩罚。",
       "rules": "输入 roll 掷出一次结果；双方点数由参与者自行对比，不设置筹码、惩罚或现实奖励。",
-      "actions": ["roll"],
-      "parameters": { "sides": { "type": "integer", "minimum": 2, "maximum": 20, "default": 6 } }
+      "actions": [
+        "roll"
+      ],
+      "parameters": {
+        "sides": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 20,
+          "default": 6
+        }
+      }
     },
     {
       "id": "riddle",
       "name": "短谜题",
       "summary": "猜一个固定谜题；最多三次作答，可随时查看提示或结束。",
       "rules": "猜谜面中的对象，可请求提示；答对或用完设置次数后结束，不记录回答历史。",
-      "actions": ["hint", "answer"],
-      "parameters": { "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10, "default": 3 } }
+      "actions": [
+        "hint",
+        "answer"
+      ],
+      "parameters": {
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3
+        }
+      }
     }
   ],
   "defaults": {
-    "spark": { "parameters": { "minSparks": 1, "maxSparks": 4, "minGlowLevel": 1, "maxGlowLevel": 3, "minCadenceMs": 400, "maxCadenceMs": 1800, "minDurationSec": 1, "maxDurationSec": 3 } },
-    "dice": { "parameters": { "sides": 6 } },
-    "riddle": { "parameters": { "maxAttempts": 3 } }
-  },
-  "rules": {
-    "spark": "参与者本人先明确同意；每次 spark 随机生成虚构火花数量、特效亮度、叙述节奏和持续时间。亮度等级仅指空气中特效画面的视觉效果，不表示真实电流、电压或身体感受。拒绝、不适或要求停止时立即结束。",
-    "dice": "输入 roll 掷出一次结果；双方点数由参与者自行对比，不设置筹码、惩罚或现实奖励。",
-    "riddle": "猜谜面中的对象，可请求提示；答对或用完设置次数后结束，不记录回答历史。"
+    "spark": {
+      "parameters": {
+        "bodyPart": "手腕",
+        "durationSec": 3,
+        "intensityLevel": 2,
+        "waveform": "pulse"
+      }
+    },
+    "dice": {
+      "parameters": {
+        "sides": 6
+      }
+    },
+    "riddle": {
+      "parameters": {
+        "maxAttempts": 3
+      }
+    }
   },
   "riddle": {
     "question": "有光时跟着你，没光时就不见；你追不到它，它也总在你身边。猜猜是什么？",
     "hint": "它常出现在地面或墙上，形状会跟着光源和人的位置变化。",
-    "answers": ["影子", "影儿"]
+    "answers": [
+      "影子",
+      "影儿"
+    ]
   }
 }

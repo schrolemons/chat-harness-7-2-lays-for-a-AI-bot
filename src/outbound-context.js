@@ -19,10 +19,11 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
   }
   function reportDelivered(fact) {
     // A failed observer cannot convert a completed physical operation into a retry.
+    let drive; try { drive = call('conversationDrive','sent',{...fact,at:fact.sentAt,eventId:fact.deliveryId,episodeId:fact.proactiveId,kind:fact.conversationIntent}); } catch(error) { log('outbound fact conversationDrive: '+error.message); }
+    const active = drive?.isProactive === true || ['followup','newTopic'].includes(fact.conversationIntent) || fact.originReason === 'privateFollowup';
     for(const [service,method,payload] of [
-      ['proactive','observe',{...fact,at:fact.sentAt,kind:'sent',reason:fact.wakeReason,eventId:'sent:'+fact.deliveryId,episodeId:fact.proactiveId}],
+      ['proactive','observe',{...fact,isProactive:active,at:fact.sentAt,kind:'sent',reason:fact.wakeReason,eventId:'sent:'+fact.deliveryId,episodeId:drive?.episodeId||fact.proactiveId}],
       ['mood','sent',fact],
-      ['conversationDrive','sent',{...fact,at:fact.sentAt,eventId:fact.deliveryId,episodeId:fact.proactiveId,kind:fact.conversationIntent}],
       ['proactive','refresh',{key:fact.key,now:fact.sentAt}]
     ])try{call(service,method,payload);}catch(error){log('outbound fact '+service+': '+error.message);}
   }
@@ -36,18 +37,25 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
   }
   async function performNow({key,context,kind='text',text='',send,assertAllowed,requestedDelay,targetUserId}={}) {
     const c=context||outboundScope.getStore()||capture({key});
-    const operationId=randomUUID(),plan=c.plan;
-    if(plan && String(text).length>plan.maxMessageChars){const e=Error('发送计划拒绝：message_length');e.knownFailed=true;throw e;}
+    const operationId=randomUUID();
+    const scope=c.envelope?.sessionId && c.envelope?.turn!=null ? c.envelope.sessionId+':'+c.envelope.turn : undefined;
+    const topicLease=call('conversationDrive','reserve',{key,scope,operationId,kind:c.conversationIntent,topicId:c.topicId,text,episodeId:c.actionId,originReason:c.reason,now:clock()});
+    if(topicLease?.ok===false){const e=Error('话题动作拒绝：'+topicLease.reason);e.knownFailed=true;throw e;}
+    const plan=topicLease?.timeoutAction ? call('replyPlan','resolve',{key,turnId:topicLease.episodeId,incomingText:'',mood:call('mood','read',{key})||c.envelope?.mood,agent:c.agent})||c.plan : c.plan;
+    if(plan && String(text).length>plan.maxMessageChars){call('conversationDrive','release',{lease:topicLease});const e=Error('发送计划拒绝：message_length');e.knownFailed=true;throw e;}
     const assertGuard=assertAllowed||guard(key,c);
     const reservation=call('replyPlan','reserve',{key,plan,operationId,kind,requestedDelay,now:clock()});
-    if(!reservation?.ok){const e=Error('发送计划拒绝：'+(reservation?.reason||'service_unavailable'));e.statusCode=429;e.knownFailed=true;throw e;}
+    if(!reservation?.ok){call('conversationDrive','release',{lease:topicLease});const e=Error('发送计划拒绝：'+(reservation?.reason||'service_unavailable'));e.statusCode=429;e.knownFailed=true;throw e;}
     let started=false,result;
     try {
       if(reservation.waitMs>0)await sleep(reservation.waitMs);
-      assertGuard();started=true;result=await send();
+      assertGuard();
+      if(call('conversationDrive','authorize',{key,lease:topicLease})?.ok===false){const e=Error('话题动作已因新来信失效');e.knownFailed=true;throw e;}
+      started=true;result=await send();
       if(result?.status==='failed'||(result?.retcode!=null&&result.retcode!==0)){const e=Error('网关拒绝发送');e.knownFailed=true;throw e;}
     }catch(error){
       call('replyPlan','release',{key,operationId,knownFailed:!started||error?.knownFailed===true});
+      call('conversationDrive','release',{lease:topicLease});
       throw error;
     }
     const sentAt=clock(),gatewayMessageId=result?.data?.message_id??result?.message_id??result?.messageId;
@@ -59,7 +67,7 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
     reportDelivered({key,sourceKey:c.sourceKey,operationId,deliveryId,gatewayMessageId,kind,text,sentAt,success:true,
       origin:c.origin,originReason:c.reason,wakeReason,proactiveId:c.actionId,episodeId:c.actionId,
       expectsReply:conversational&&c.origin!=='operator',targetUserId:targetUserId ?? c.targetUserId ?? c.envelope?.targetUserId,
-      mode:c.mode,conversationIntent:c.conversationIntent,topicId:c.topicId});
+      mode:c.mode,topicLease,conversationIntent:topicLease?.kind||c.conversationIntent,topicId:topicLease?.topicId||c.topicId});
     return result;
   }
   return {capture,perform,reportDelivered};

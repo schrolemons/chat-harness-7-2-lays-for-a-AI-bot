@@ -1,4 +1,4 @@
-export default {saveLabel:"保存静默主动规则",title:'统一主动调度',fields:[
+export default {saveLabel:"保存静默主动规则",title:'来信与静默主动',fields:[
 {key:'proactiveEnabled',label:'启用静默主动',type:'boolean',group:'静默与概率'},
 {key:'silenceMinutes',label:'静默阈值（分钟）',type:'number'},
 {key:'initialProbability',label:'初始概率（0–1）',type:'number'},
@@ -10,9 +10,7 @@ export default {saveLabel:"保存静默主动规则",title:'统一主动调度',
 {key:'checkFloorMinutes',label:'间隔硬下限（分钟）',type:'number'},
 {key:'minActiveGapMinutes',label:'主动最小间距（分钟）',type:'number'},
 {key:'maxSilenceMinutes',label:'最大静默兜底（分钟）',type:'number'},
-{key:'initialWillingness',label:'未评估时默认意愿（0–100）',type:'number',group:'聊天意愿'},
-{key:'activityWillingnessDelta',label:'人类回来时意愿变化',type:'number'},
-{key:'purposeWillingnessDelta',label:'主动或目的发送后意愿变化',type:'number'},
+{key:'initialWillingness',label:'默认聊天意愿：用户忙闲（0–100）',type:'number',group:'聊天意愿'},
 {key:'curfewEnabled',label:'启用宵禁',type:'boolean',group:'宵禁（上海时间）'},
 {key:'curfewStartHour',label:'开始（小时）',type:'number'},
 {key:'curfewEndHour',label:'结束（小时）',type:'number'}

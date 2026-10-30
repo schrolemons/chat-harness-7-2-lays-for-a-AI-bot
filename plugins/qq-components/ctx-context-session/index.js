@@ -1,3 +1,4 @@
+import {slicePromptUnicode} from '../../../src/prompt-unicode.js';
 // ctx-context-session（C 层｜会话事实与身份上下文）
 //
 // 这些以前是 buildWakePromptV2 里内联的：当前角色名、机器人身份（@/昵称/QQ 号）、
@@ -30,7 +31,7 @@ function buildStatus(st, now = Date.now()) {
   const lastAiMin = st.lastAiReplyAt ? Math.max(0, Math.round((now - Number(st.lastAiReplyAt)) / 60000)) : null;
   if (lastMsg) {
     const lastAgo = describeAge(lastMsg.time, now);
-    bits.push(`最近一条来自 ${String(lastMsg.sender || '未知')}${lastAgo ? `（${lastAgo} 前）` : ''}：${String(lastMsg.text || lastMsg.plain || '').slice(0, 30)}`);
+    bits.push(`最近一条来自 ${slicePromptUnicode(lastMsg.sender || '未知',64)}${lastAgo ? `（${lastAgo} 前）` : ''}`);
   }
   if (lastMsg && looksLikeUnfinished(String(lastMsg.tail || lastMsg.plain || lastMsg.text || ''))) bits.push('对方可能没说完');
   if (lastAiMin != null) bits.push(`你上次发言 ${lastAiMin} 分钟前`);

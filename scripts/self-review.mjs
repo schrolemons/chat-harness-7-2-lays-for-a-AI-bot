@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * self-review.mjs — 轻量自我更新：快速总结最近 N 小时的对话/运行情况，写入持久优化记忆。
+ * self-review.mjs — 轻量自我更新：快速总结最近 N 小时的对话/运行情况，输出给桥接作为本轮分析上下文。
  * 纯本地规则，不调用 AI、不占用聊天会话；几秒内完成。
  *
  * 用法：node scripts/self-review.mjs [--hours 6]
@@ -14,13 +14,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv;
 const hoursArg = args.includes('--hours') ? Number(args[args.indexOf('--hours') + 1]) : 0;
 let hours = Number.isFinite(hoursArg) && hoursArg > 0 ? hoursArg : 6;
-let configuredMemoryFile = 'state/memory/_optimization.md';
 try {
   const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
   if (!hoursArg) hours = Number(cfg?.socialV2?.selfReview?.intervalHours) || 6;
-  configuredMemoryFile = String(cfg?.socialV2?.selfReview?.memoryFile || configuredMemoryFile).trim() || configuredMemoryFile;
 } catch {}
-const MEM_FILE = path.isAbsolute(configuredMemoryFile) ? configuredMemoryFile : path.join(ROOT, configuredMemoryFile);
 const now = Date.now();
 const windowMs = hours * 3600 * 1000;
 
@@ -132,7 +129,7 @@ if (busyQueued > 10) suggestions.push('频繁“会话繁忙”说明回合耗�
 if (skippedWake > 3) suggestions.push('多发“跳过补发”，确认是否有新消息被误判为已处理');
 if (!suggestions.length) suggestions.push('最近未发现明显问题，保持当前参数');
 
-// 5) 汇总并写入 MD
+// 5) 汇总供桥接本轮注入；本脚本不写自我更新/统一修复摘要文件。
 const stamp = new Date(now).toLocaleString('zh-CN', { hour12: false });
 const topKeys = Object.entries(perKey).sort((a, b) => b[1] - a[1]);
 const lines = [];
@@ -166,32 +163,6 @@ for (const s of suggestions) lines.push('- ' + s);
 lines.push('');
 const section = lines.join('\n');
 
-// 去重节流：桥接每次重启都会跑一次本脚本，同一段总结短时间内会重复写好几遍，
-// 把优化记忆刷成噪音。规则：内容与上一段完全一致、且上一段在 30 分钟内 → 跳过写入。
-function bodyOf(text) {
-  return text.replace(/^## \[[^\]]*\][^\n]*\n+/, '').trim();
-}
-let prev = '';
-try { prev = fs.readFileSync(MEM_FILE, 'utf8'); } catch {}
-const lastHeadAt = prev.lastIndexOf('\n## [');
-const lastSection = (lastHeadAt >= 0 ? prev.slice(lastHeadAt + 1) : prev).trim();
-const lastStamp = /^## \[([^\]]+)\]/.exec(lastSection);
-let lastAt = 0;
-if (lastStamp) {
-  const parsed = Date.parse(String(lastStamp[1]).replace(/\//g, '-').replace(' ', 'T'));
-  if (Number.isFinite(parsed)) lastAt = parsed;
-}
-const isDuplicate = Boolean(lastSection) && bodyOf(lastSection) === bodyOf(section) && now - lastAt < 30 * 60 * 1000;
-if (!isDuplicate) {
-  try {
-    fs.mkdirSync(path.dirname(MEM_FILE), { recursive: true });
-    fs.writeFileSync(MEM_FILE, (prev + '\n' + section + '\n').slice(-20000), 'utf8');
-  } catch (error) {
-    console.log(JSON.stringify({ ok: false, error: String(error?.message || error) }));
-    process.exit(1);
-  }
-}
-
 console.log(JSON.stringify({
   ok: true,
   hours,
@@ -207,7 +178,5 @@ console.log(JSON.stringify({
   envChecks,
   taskChecks,
   suggestions,
-  skippedDuplicate: isDuplicate,
-  file: MEM_FILE,
   summary: section
 }));

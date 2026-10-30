@@ -3,24 +3,24 @@ import {startConsoleFixture} from './console-ui-fixture.mjs';
 const {chromium}=createRequire(import.meta.url)('playwright');
 const executablePath=[path.join(process.env.PROGRAMFILES||'','Google/Chrome/Application/chrome.exe'),path.join(process.env['PROGRAMFILES(X86)']||'','Microsoft/Edge/Application/msedge.exe')].find(fs.existsSync);
 const fixture=await startConsoleFixture({learningFixtures:{aliases:[
- {alias:'明明',qq:'60000',status:'confirmed'},{alias:'小明',qq:'60000',status:'confirmed'},
- {alias:'快递猫',qq:'',status:'candidate',reason:'邀约中的疑似称呼',sourceKey:'group:60000',evidence:[{key:'group:60000',text:'快递猫还不来玩游戏吗',time:Date.now()}]}
-],terms:[{id:'demo-game',term:'摸金撤离',topic:'三角洲行动',category:'游戏玩法',summary:'候选玩法摘要',status:'candidate',sourceKey:'*',sources:[],evidence:[{key:'group:60000',text:'撤离路线怎么选',time:Date.now()}],research:{status:'failed',error:'研究未给出可核实来源'},revision:1}] }});
+ {alias:'明明',qq:'20009',status:'confirmed'},{alias:'小明',qq:'20009',status:'confirmed'},
+ {alias:'快递猫',qq:'',status:'candidate',reason:'邀约中的疑似称呼',sourceKey:'group:20009',evidence:[{key:'group:20009',text:'快递猫还不来玩游戏吗',time:Date.now()}]}
+],terms:[{id:'demo-game',term:'摸金撤离',topic:'三角洲行动',category:'游戏玩法',summary:'候选玩法摘要',status:'candidate',sourceKey:'*',sources:[],evidence:[{key:'group:20009',text:'撤离路线怎么选',time:Date.now()}],research:{status:'failed',error:'研究未给出可核实来源'},revision:1}] }});
 const browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});const errors=[];
 try{
  const page=await browser.newPage({viewport:{width:1440,height:1080}});page.on('pageerror',e=>errors.push(e.message));
  await page.goto(fixture.url+'/#alias');await page.waitForSelector('#aliasCandidateList [data-alias-id]');
- const suspect=page.locator('#aliasCandidateList [data-alias-id]').filter({hasText:'快递猫'});await suspect.locator('[data-alias-edit]').click();await page.locator('#aliasModalQq').fill('60000');await page.locator('#aliasModalConfirm').click();
+ const suspect=page.locator('#aliasCandidateList [data-alias-id]').filter({hasText:'快递猫'});await suspect.locator('[data-alias-edit]').click();await page.locator('#aliasModalQq').fill('20009');await page.locator('#aliasModalConfirm').click();
  await page.waitForFunction(()=>document.getElementById('aliasMsg').textContent.includes('确认'));
- assert.equal(fixture.learningStates.alias.entries.filter(x=>x.qq==='60000'&&x.status==='confirmed').length,3);
+ assert.equal(fixture.learningStates.alias.entries.filter(x=>x.qq==='20009'&&x.status==='confirmed').length,3);
  await page.locator('#aliasPanelCandidate>.row .compact-actions').evaluate(el=>el.open=true);await page.locator('#aliasRefreshCandidates').click();await page.waitForFunction(()=>document.getElementById('aliasMsg').textContent.includes('刷新完成'));
- await page.locator('#aliasName').fill('手动测试绰号');await page.locator('#aliasQq').fill('60000');await page.locator('#aliasAdd').click();await page.waitForFunction(()=>document.getElementById('aliasMsg').textContent.includes('已添加'));
- assert.ok(fixture.learningStates.alias.entries.some(x=>x.alias==='手动测试绰号'&&x.qq==='60000'&&x.status==='confirmed'));
+ await page.locator('#aliasName').fill('手动测试绰号');await page.locator('#aliasQq').fill('20009');await page.locator('#aliasManualSourceKeys').fill('group:20009\nprivate:20012');await page.locator('#aliasAdd').click();await page.waitForFunction(()=>document.getElementById('aliasMsg').textContent.includes('已添加'));
+ assert.ok(fixture.learningStates.alias.entries.some(x=>x.alias==='手动测试绰号'&&x.qq==='20009'&&x.status==='confirmed'));
  await page.locator('#aliasTabs [data-alias-tab="confirmed"]').click();await page.locator('#aliasConfirmedList').getByText('手动测试绰号').waitFor();
  const aliasSettings=page.locator('#aliasConfigSave').locator('xpath=ancestor::details');if(await aliasSettings.getAttribute('open')===null)await aliasSettings.locator(':scope > summary').click();
- await page.locator('#aliasAutoSemantic').uncheck();await page.locator('#aliasMinMessages').fill('9');await page.locator('#aliasCooldown').fill('7');await page.locator('#aliasMaxCalls').fill('3');await page.locator('#aliasConfigSave').click();
+ await page.locator('#aliasAutoSemantic').uncheck();await page.locator('#aliasMinMessages').fill('9');await page.locator('#aliasCooldown').fill('7');await page.locator('#aliasMaxCalls').fill('3');await page.locator('#aliasInjectMax').fill('0');await page.locator('#aliasConfigSave').click();
  await page.waitForFunction(()=>document.getElementById('aliasConfigMsg')?.textContent.includes('已保存'));
- assert.deepEqual(fixture.learningContexts.alias.config,{autoExtract:true,autoSemantic:false,minMessages:9,cooldownMs:420000,maxCallsPerHour:3});
+ assert.deepEqual(fixture.learningContexts.alias.config,{autoExtract:true,autoSemantic:false,minMessages:9,cooldownMs:420000,maxCallsPerHour:3,injectMax:0});
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'expanded alias settings must fit a phone');await page.setViewportSize({width:1440,height:1080});
  await page.reload();await page.locator('#mainNav [data-view="alias"]').click();await page.waitForFunction(()=>document.getElementById('aliasCooldown')?.value==='7');
  assert.equal(await page.locator('#aliasAutoSemantic').isChecked(),false);assert.equal(await page.locator('#aliasMinMessages').inputValue(),'9');assert.equal(await page.locator('#aliasMaxCalls').inputValue(),'3');
@@ -38,6 +38,8 @@ try{
  for(let i=0;i<6;i++)await page.locator('#slangCandidateList [data-slang-select="batch-'+i+'"]').check();
  await page.locator('#slangBatchResearch').click();await page.waitForFunction(()=>document.getElementById('slangMsg').textContent.includes('研究已写回'));
  assert.deepEqual(fixture.requests.filter(x=>x.path==='/api/plugins/call'&&x.body.tool==='slang_research_batch').slice(-2).map(x=>x.body.input.ids.length),[5,1]);
+ await page.locator('#slangContent').fill('手动来源黑话');await page.locator('#slangMeaning').fill('测试含义');await page.locator('#slangManualSourceKeys').fill('group:20009\nprivate:20012');await page.locator('#slangAdd').click();await page.waitForFunction(()=>document.getElementById('slangMsg').textContent.includes('已添加'));assert.deepEqual(fixture.state.slang.find(x=>x.content==='手动来源黑话').sourceKeys,['group:20009','private:20012']);
+ await page.locator('#slangConfigSave').locator('xpath=ancestor::details').evaluate(el=>el.open=true);await page.locator('#slangInjectMax').fill('0');await page.locator('#slangConfigSave').click();await page.waitForFunction(()=>document.getElementById('slangConfigMsg').textContent.includes('保存'));assert.equal(fixture.state.slangConfig.injectMax,0);
  await page.locator('#mainNav [data-view="terms"]').click();await page.waitForSelector('#termsCandidateList [data-term-id]');
  assert.match(await page.locator('#termsCandidateList [data-term-id="demo-game"]').innerText(),/待核实摘要|未核实/);
  assert.match(await page.locator('#termsCandidateList [data-term-id="demo-game"]').innerText(),/研究未给出可核实来源/);
@@ -53,7 +55,7 @@ try{
  const furry=fixture.learningStates.terms.entries.find(x=>x.term==='兽聚');assert.equal(furry.status,'candidate');assert.equal(furry.category,'社群文化');assert.equal(furry.research.status,'researched');assert.ok(furry.sources.length);
  await page.locator('#termsCandidateList [data-term-id]').filter({hasText:'兽聚'}).locator('[data-term-select]').check();await page.locator('#termsConfirmSelected').click();await page.waitForFunction(()=>document.getElementById('termsMsg').textContent.includes('批量确认'));
  assert.equal(fixture.learningStates.terms.entries.find(x=>x.term==='兽聚').status,'confirmed');
- await page.locator('#termManualName').fill('手动测试词条');await page.locator('#termManualTopic').fill('福瑞/furry');await page.locator('#termManualCategory').fill('活动观察');await page.locator('#termManualDraft').click();await page.waitForFunction(()=>document.getElementById('termsMsg').textContent.includes('自定义词条已加入候选'));
+ await page.locator('#termManualName').fill('手动测试词条');await page.locator('#termManualTopic').fill('福瑞/furry');await page.locator('#termManualCategory').fill('活动观察');await page.locator('#termManualSourceKeys').fill('group:20009\nprivate:20012');await page.locator('#termManualDraft').click();await page.waitForFunction(()=>document.getElementById('termsMsg').textContent.includes('自定义词条已加入候选'));
  assert.ok(fixture.learningStates.terms.entries.some(x=>x.term==='手动测试词条'&&x.status==='candidate'&&x.category==='活动观察'));
  await page.locator('#termManualName').fill('无引用测试词条');await page.locator('#termManualSummary').fill('管理员可自行确认的摘要');await page.locator('#termManualConfirm').click();await page.waitForFunction(()=>document.getElementById('termsMsg').textContent.includes('自定义词条已确认入库'));
  assert.ok(fixture.learningStates.terms.entries.some(x=>x.term==='无引用测试词条'&&x.status==='confirmed'&&x.sources.length===0));
@@ -66,9 +68,10 @@ try{
  assert.equal(fixture.learningStates.terms.calls.length,4);
  await page.locator('#termsPanelCandidate>.row .compact-actions').evaluate(el=>el.open=true);await page.locator('#termsRefresh').click();await page.waitForFunction(()=>document.getElementById('termsMsg').textContent.includes('刷新完成'));
  await page.locator('#section-terms details.settings-group').first().locator('summary').click();
- await page.locator('#termsMinMessages').fill('2');await page.locator('#termsMaxCalls').fill('3');await page.locator('#termsConfigSave').click();
+ await page.locator('#termsMinMessages').fill('2');await page.locator('#termsMaxCalls').fill('3');await page.locator('#termsInjectMax').fill('0');await page.locator('#termsConfigSave').click();
  await page.waitForFunction(()=>document.getElementById('termsConfigMsg').textContent.includes('保存'));
- assert.equal(fixture.learningContexts.terms.config.minMessages,2);assert.equal(fixture.learningContexts.terms.config.maxCallsPerHour,3);
+ assert.equal(fixture.learningContexts.terms.config.injectMax,0);assert.equal(fixture.learningContexts.terms.config.minMessages,2);assert.equal(fixture.learningContexts.terms.config.maxCallsPerHour,3);
+ await page.route('**/api/learning/sources',route=>route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({ok:false,error:'old running bridge'})}));const beforeBlocked=fixture.requests.filter(x=>x.path==='/api/plugins/config').length;await page.locator('#termsConfigSave').click();await page.waitForFunction(()=>document.getElementById('termsConfigMsg').textContent.includes('后端尚未启用'));assert.equal(fixture.requests.filter(x=>x.path==='/api/plugins/config').length,beforeBlocked);await page.unroute('**/api/learning/sources');
  fs.mkdirSync('state/ui-previews/learning',{recursive:true});await page.screenshot({path:'state/ui-previews/learning/terms-desktop.png',fullPage:true});
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
  await page.screenshot({path:'state/ui-previews/learning/terms-mobile.png',fullPage:true});

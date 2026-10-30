@@ -28,5 +28,7 @@ L 层「生命周期与编排」组件，负责 campus-watch 脚本的定时拉�
 - 离线回归：`node --test scripts/test-campus-browser-session.mjs scripts/test-campus-monitor-scheduling.mjs`。真实内核隔离回归：`node --test scripts/test-campus-browser-handoff.mjs`，仅创建临时profile并访问127.0.0.1合成站点，不连接生产9222、不发送QQ或模型消息。
 
 ## 边界
+- E 层脚本协同只编辑 `scriptPaths` 及逐项启停；没有启用项时 `scriptCollabEnabled=false`。保存清单时保留网页配置及开发者维护的脚本约定。
+- `scriptDescriptions` 是开发者与 AI 维护的“脚本地址 → 执行／搜索约定”映射，只读展示在地址下方。`campus_watch_status` 将说明折叠为一行（最多240字符），同时返回已暂停条目；状态查询不执行脚本。未登记约定时不臆造执行细节。
 - `index.js` 只做「何时拉起」；网页摘要规则由同组件内的独立模块提供，抓取和通知接口仍由 campus-watch.mjs 编排。
 - 桥接只提供 spawnCampusWatch 能力，不在这里写调度逻辑。

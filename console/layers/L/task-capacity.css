@@ -1,0 +1,23 @@
+#taskCapacitySettings .task-capacity-scope{margin:0 0 18px;font-size:12px;line-height:1.7;color:var(--muted,#65738a)}
+#taskCapacitySettings .task-capacity-scope strong{color:var(--text-strong)}
+#taskCapacitySettings .task-capacity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:stretch}
+#taskCapacitySettings .task-capacity-panel{display:flex;flex-direction:column;min-width:0;padding:20px;border:1px solid var(--border-subtle);border-radius:12px}
+#taskCapacitySettings .task-capacity-panel>h3{margin:0 0 8px;font-size:17px!important;line-height:1.45}
+#taskCapacitySettings .task-capacity-description{margin:0 0 18px;font-size:12px;line-height:1.7;color:var(--muted,#65738a)}
+#taskCapacitySettings [data-component-slot],#taskCapacitySettings .comp-card,#taskCapacitySettings .comp-body{display:flex;flex:1;flex-direction:column;min-width:0}
+#taskCapacitySettings [data-component-slot]{margin:0}
+#taskCapacitySettings .parameter-scope{display:none}
+#taskCapacitySettings .comp-card{margin:0;border:0;padding:0;background:transparent}
+#taskCapacitySettings .comp-body{padding:0;margin:0;gap:0}
+#taskCapacitySettings .component-fields{display:grid;grid-template-columns:1fr;gap:16px;align-content:start;flex:1;margin:0;padding:0}
+#taskCapacitySettings [data-component-slot="life-task-session"] .component-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+#taskCapacitySettings .comp-toggle-msg:empty{display:none}
+#taskCapacitySettings .comp-field{display:flex;flex-direction:column;align-items:flex-start;gap:7px;margin:0;padding:0;border:0}
+#taskCapacitySettings .comp-field>.meta{margin:0;font-size:13px;line-height:1.5;font-weight:600}
+#taskCapacitySettings .comp-field input[type=number]{width:126px!important;margin:0}
+#taskCapacitySettings .parameter-example{margin:0;max-width:none;font-size:12px;line-height:1.7}
+#taskCapacitySettings .comp-toggle{align-self:flex-start;margin:0 0 16px}
+#taskCapacitySettings .comp-body>.row:has(.comp-save){margin-top:18px!important;padding-top:16px!important;padding-bottom:0!important}
+#taskCapacitySettings .comp-save{max-width:100%;white-space:normal}
+@media(max-width:1000px){#taskCapacitySettings .task-capacity-grid{grid-template-columns:1fr}#taskCapacitySettings .task-capacity-panel{padding:16px}}
+@media(max-width:640px){#taskCapacitySettings [data-component-slot="life-task-session"] .component-fields{grid-template-columns:1fr}}

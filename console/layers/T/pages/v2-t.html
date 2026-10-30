@@ -1,12 +1,11 @@
-<section id="section-v2-t" data-page="v2-t" class="card span-all">
+<section id="section-v2-t" data-page="v2-t" class="card span-all tool-switch-page">
   <h2>工具开关</h2>
   <div class="meta">勾选后向 AI 提供工具；取消勾选后停止提供。保存后写入配置，DSH 重启时刷新工具清单。</div>
-<div class="settings-content">
+<div class="settings-content tool-switch-content">
       <div class="v2-tool-list" id="v2Tools"></div>
-      <div id="toolSwitchExtras"></div>
-      <details class="settings-group"><summary>Bilibili 视频处理参数</summary><div class="settings-content"><div data-component-slot="tool-bilibili"></div></div></details>
-      <div class="meta" style="margin-top:6px">二代黑话学习：AI 可用 <code>qq_slang_submit</code> 提交陌生词，也可由桥接自动提取；管理员在「黑话词库」页面筛选确认后，词条会自动写入黑话提示词并注入 <code>qq_get_prompt</code> 与后续唤醒。</div>
+      <p id="toolSwitchExtras" class="meta">开关按 MCP 注册定义生成。组件工具在所属层管理；实际注入情况见“工具参考”。</p>
+      <details class="settings-group tool-switch-group tool-video-group"><summary>bilibili 视频处理工具</summary><div class="settings-content"><div data-component-slot="tool-bilibili"></div></div></details>
 
       </div>
-<div class="row" style="margin-top:10px"><button class="small v2-save primary" data-page="v2-t" style="font-weight:bold;padding:8px 16px" data-save-action>保存全局工具开关</button><span class="meta v2-save-msg"></span></div>
+<div class="row tool-switch-actions"><button class="v2-save primary" data-page="v2-t" data-save-action disabled>保存全局工具开关</button><span id="toolSwitchStatus" class="meta" role="status">读取开关状态…</span><button id="toolSwitchRetry" class="small" type="button" hidden>重试读取</button><span class="meta v2-save-msg"></span></div>
 </section>

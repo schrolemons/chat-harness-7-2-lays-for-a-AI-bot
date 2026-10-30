@@ -2,7 +2,7 @@
   "id": "ctx-context-lifecycle",
   "name": "唤醒/节奏/收尾提示",
   "version": "1.0.0",
-  "description": "【当前唤醒】/【这是你主动开口】、首回复节奏、沉睡前强制等待、刚解除静音、到点提醒文案；桥接只传唤醒配置/回复时序/待提醒条目等事实。",
+  "description": "当前唤醒、首回复静默节奏、每波回复后等待新互动、刚解除静音和到点提醒；无人回复收尾概率由 life-conversation-wait 执行。",
   "layer": "C",
   "category": "上下文与记忆",
   "order": 17,

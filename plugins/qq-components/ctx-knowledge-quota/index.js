@@ -1,6 +1,8 @@
-// 专业问题配额：可配置领域词 + 明确问答/任务意图，保守识别，不调用模型分类。
+// 专业求助以异步AI语义分类为主；关键词仅在不可用或同步旧回合中兜底。
 // preflight 在模型投递前机械处理超额请求；beforePrompt 复用同一消息决定。
 import { createHash } from 'node:crypto';
+const semanticUrl = new URL('./semantic.mjs', import.meta.url); semanticUrl.search = new URL(import.meta.url).search;
+const { requestClassification } = await import(semanticUrl.href);
 
 const NON_REQUEST_REASONS = new Set([
   'memoryWrite', 'selfReview', 'selfOptimize', 'userFeedbackReview', 'slangLearn',
@@ -11,6 +13,7 @@ const KNOWLEDGE_QUESTION = /怎么|怎样|为什么|为啥|如何|为何|什么�
 const DIRECT_REQUEST = /^(?:(?:请(?:你|帮我)?|麻烦(?:你)?|帮我|帮忙|能不能|可不可以|能否|可以|给我|求|想请教|我想了解|我想知道|继续|再)\s*)?(?:写|实现|设计|分析|比较|推导|证明|求解|计算|讲解|解释|介绍|总结|综述|翻译|润色|排查|修复|调试|优化|审阅|评估|检查|改写|看一下|看看)|^(?:请|麻烦|帮我|帮忙|给我|能不能|可不可以|能否)\s*|\b(?:explain|implement|debug|fix|derive|prove|calculate|analyze|summarize|compare)\b/i;
 const NOT_A_REQUEST = /(?:不需要|不用|别|不要|不必).{0,8}(?:解释|讲解|分析|写|聊|讨论)|(?:提醒|记得提醒|闹钟|备忘).{0,20}(?:论文|代码|科研|实验)|(?:论文|代码|实验).{0,8}(?:写完|读完|做完|完成|提交|交了).{0,4}(?:吗|没|了没)|(?:你|您|大家).{0,10}(?:今天|最近|还在).{0,8}(?:写代码|读论文|写论文|做实验).{0,4}(?:吗|没)|(?:写代码|写论文|做实验).{0,5}(?:好累|真累|累死|好烦)/;
 const DEFLECT_TEXT = '唔，这个专业问题我现在有点说不清，你先自己查查资料，好不好？';
+const CLARIFY_TEXT = '你是想让我详细解释这个问题，还是只是随口聊聊呀？';
 const MAX_DECISIONS = 2000;
 const pad2 = n => String(n).padStart(2, '0');
 function dayKey(nowMs, resetHour) {
@@ -48,8 +51,10 @@ export function classifyProfessionalRequest(text, keywords = []) {
 
 export function createPlugin(ctx) {
   const config = () => ctx.config || {};
+  const inflight = new Map();
+  const alive = () => ctx.isActive?.() !== false && !ctx.signal?.aborted;
   const deflectText = () => String(config().deflectText || DEFLECT_TEXT).replace(/\s+/g, ' ').trim().slice(0, 120) || DEFLECT_TEXT;
-  const stateOf = () => { const s = ctx.state.get() || {}; return { day: String(s.day || ''), used: { ...(s.used || {}) }, hits: { ...(s.hits || {}) } }; };
+  const stateOf = () => { const s = ctx.state.get() || {}; return { day: String(s.day || ''), used: { ...(s.used || {}) }, hits: { ...(s.hits || {}) }, classifications: { ...(s.classifications || {}) } }; };
   function usage(key, nowMs = Date.now()) {
     const c = config(), s = stateOf(), day = dayKey(nowMs, c.resetHour), limit = Math.max(0, Math.floor(Number(c.dailyLimit) || 0));
     const used = s.day === day ? Math.max(0, Number(s.used[key]) || 0) : 0;
@@ -57,9 +62,14 @@ export function createPlugin(ctx) {
   }
   function report(key) {
     const c = config(), s = stateOf(), status = usage(key);
-    if (key) return { ok: true, ...status, key, enabled: c.enabled !== false };
-    return { ok: true, day: status.day, limit: status.limit, enabled: c.enabled !== false, countBy: String(c.countBy || 'session'),
-      enforcement: 'preflight-for-recognized-requests', entries: Object.entries(s.day === status.day ? s.used : {}).map(([bucket, used]) => ({ key: bucket, used, remaining: Math.max(0, status.limit - used) })) };
+    const common = { ok: true, day: status.day, limit: status.limit, enabled: c.enabled !== false,
+      countBy: String(c.countBy || 'session'), exemptOwner: c.exemptOwner !== false, semanticEnabled: c.semanticEnabled !== false,
+      recentClassifications: Object.entries(s.classifications).map(([signature, item]) => ({ signature, ...item })).filter(item => !key || item.key === key || item.bucketKey === key)
+        .sort((a,b) => b.at - a.at).slice(0, 10), enforcement: 'preflight-for-recognized-requests' };
+    if (key && !(common.countBy === 'user' && /^group:\d+$/.test(key))) return { ...common, ...status, key };
+    const matches = bucket => !key || bucket === key || bucket.startsWith(key + '#');
+    return { ...common, ...(key ? { key } : {}), entries: Object.entries(s.day === status.day ? s.used : {}).filter(([bucket]) => matches(bucket))
+      .map(([bucket, used]) => ({ key: bucket, used, remaining: Math.max(0, status.limit - used) })) };
   }
   function reset(key) {
     if (!key) {
@@ -83,12 +93,34 @@ export function createPlugin(ctx) {
     // Real message IDs and session-local sequence numbers already identify the
     // author. Different trusted call contexts must reuse the same admission.
     const signature = createHash('sha256').update(JSON.stringify([key, identity])).digest('hex');
-    return { ...classifyProfessionalRequest(message.text, Array.isArray(c.keywords) ? c.keywords : []), key, bucketKey, signature, messageId: message.messageId };
+    const cached = stateOf().classifications[signature];
+    return { ...classifyProfessionalRequest(message.text, Array.isArray(c.keywords) ? c.keywords : []), ...cached, key, bucketKey, signature, messageId: message.messageId };
+  }
+  async function classifyBeforeAdmission(payload) {
+    const basic = classify(payload);
+    if (basic.action === 'ignore' || config().semanticEnabled === false || stateOf().classifications[basic.signature] || stateOf().hits[basic.signature]?.action) return;
+    if (inflight.has(basic.signature)) return inflight.get(basic.signature);
+    const work = (async () => {
+      let verdict;
+      try { verdict = await requestClassification(ctx, { key: basic.key, text: currentMessage(payload).text }); }
+      catch (error) {
+        if (!alive()) return;
+        verdict = { category: basic.professional ? 'professional' : 'casual', professional: basic.professional, source: 'rules-fallback',
+          reason: String(error?.message || 'classifier_failed').slice(0, 160), keyword: basic.keyword };
+      }
+      if (!alive()) return;
+      const classifications = { ...stateOf().classifications, [basic.signature]: { ...verdict, key: basic.key, bucketKey: basic.bucketKey, at: Date.now() } };
+      const entries = Object.entries(classifications).sort((a,b) => b[1].at - a[1].at).slice(0, MAX_DECISIONS);
+      ctx.state.set({ classifications: Object.fromEntries(entries) });
+    })();
+    inflight.set(basic.signature, work);
+    try { return await work; } finally { inflight.delete(basic.signature); }
   }
   function promptFor(decision) {
     if (decision.action === 'ignore') return '';
+    if (decision.action === 'clarify') return '【专业求助意图待确认】先澄清是否需要专业解答，暂不扣额，也不直接展开专业答案。';
     if (decision.action === 'deflect') return ['【专业问答配额已用完｜C 层上下文管理】',
-      `本轮专业问题（命中「${decision.keyword}」）的计数对象今天已用掉 ${decision.used}/${decision.limit} 次额度。`,
+      `本轮已识别的专业求助，计数对象今天已用掉 ${decision.used}/${decision.limit} 次额度。`,
       '不要给出这道题的技术答案、代码、公式、步骤、链接或半个结论。', '只按这句自然带过：' + deflectText(), '不解释额度、不承诺明天回答。'].join('\n');
     if (decision.originalDay && decision.originalDay !== dayKey(Date.now(), config().resetHour)) return '';
     if (decision.remaining === 0) return '【专业问答配额｜提示】这是今天最后一次专业问答额度了，讲完这道就别再展开新的。';
@@ -112,8 +144,8 @@ export function createPlugin(ctx) {
     if (classified.key.startsWith('group:') && String(payload.reason || '').split(':')[0] === 'bootstrap' && !old?.action) {
       return { ...classified, action: 'ignore', reason: 'unadmitted_group_bootstrap', prompt: '' };
     }
-    if (!classified.professional) return { ...classified, action: 'ignore', prompt: '' };
-    const now = Date.now(), status = usage(classified.bucketKey, now), action = status.used < status.limit ? 'allow' : 'deflect';
+    if (!classified.professional && classified.category !== 'uncertain') return { ...classified, action: 'ignore', prompt: '' };
+    const now = Date.now(), status = usage(classified.bucketKey, now), action = classified.category === 'uncertain' ? 'clarify' : status.used < status.limit ? 'allow' : 'deflect';
     const used = status.used + (action === 'allow' ? 1 : 0), decision = { ...classified, ...status, action, used, remaining: Math.max(0, status.limit - used), at: now };
     const hits = { ...s.hits, [classified.signature]: decision }, ids = Object.keys(hits);
     // Outbound claims/receipts are not ordinary dedup entries. Retain them even
@@ -126,13 +158,17 @@ export function createPlugin(ctx) {
     if (payload.allowed === false) return { handled: false, action: 'ignore', reason: 'session_not_allowed' };
     const markHandled = () => { try { payload.onHandled?.(); } catch (error) { ctx.warn?.('配额入站标记失败：' + (error?.message || error)); } };
     let decision;
-    try { decision = evaluate(payload); }
+    try {
+      await classifyBeforeAdmission(payload);
+      if (!alive()) { markHandled(); return { handled: true, action: 'ignore', reason: 'classifier_aborted' }; }
+      decision = evaluate(payload);
+    }
     catch (error) { markHandled(); ctx.warn?.('配额决定持久化失败：' + (error?.message || error)); return { handled: true, action: 'deflect', delivered: false, receiptStatus: 'persist_failed' }; }
-    if (decision.action !== 'deflect') return { handled: false, action: decision.action, decision };
+    if (!['deflect', 'clarify'].includes(decision.action)) return { handled: false, action: decision.action, decision };
     // Claim before external IO. Uncertain/failed sends remain handled: neither
     // model fallthrough nor automatic resend is allowed for the same decision.
     const s = stateOf(), stored = s.hits[decision.signature];
-    if (stored?.deflection) { markHandled(); return { handled: true, action: 'deflect', decision, duplicate: true, receiptStatus: stored.deflection.status, delivered: stored.deflection.status === 'sent' }; }
+    if (stored?.deflection) { markHandled(); return { handled: true, action: decision.action, decision, duplicate: true, receiptStatus: stored.deflection.status, delivered: stored.deflection.status === 'sent' }; }
     const claim = { status: 'claimed', at: Date.now() };
     try { ctx.state.set({ hits: { ...s.hits, [decision.signature]: { ...stored, deflection: claim } } }); }
     catch (error) { markHandled(); ctx.warn?.('配额拒答凭据持久化失败：' + (error?.message || error)); return { handled: true, action: 'deflect', decision, delivered: false, receiptStatus: 'persist_failed' }; }
@@ -140,22 +176,29 @@ export function createPlugin(ctx) {
     // an already running round must not fetch this refused request meanwhile.
     markHandled();
     let delivered = false;
-    try { delivered = await ctx.capabilities?.sendSessionText?.(decision.key, deflectText()) === true; }
+    try { delivered = await ctx.capabilities?.sendSessionText?.(decision.key, decision.action === 'clarify' ? CLARIFY_TEXT : deflectText()) === true; }
     catch (error) { ctx.warn?.('配额带过消息未确认送达：' + (error?.message || error)); }
     const latest = stateOf();
     try { ctx.state.set({ hits: { ...latest.hits, [decision.signature]: { ...latest.hits[decision.signature], deflection: { ...claim, status: delivered ? 'sent' : 'uncertain' } } } }); }
     catch (error) { ctx.warn?.('配额拒答回执持久化失败：' + (error?.message || error)); }
-    return { handled: true, action: 'deflect', decision, delivered, receiptStatus: delivered ? 'sent' : 'uncertain' };
+    return { handled: true, action: decision.action, decision, delivered, receiptStatus: delivered ? 'sent' : 'uncertain' };
   }
   function isMessageBlocked({ key, messageId } = {}) {
     if (!key || messageId == null || messageId === '') return false;
     const signature = createHash('sha256').update(JSON.stringify([String(key), ['messageId', String(messageId)]])).digest('hex');
-    return stateOf().hits[signature]?.action === 'deflect';
+    return ['deflect', 'clarify'].includes(stateOf().hits[signature]?.action);
   }
   ctx.registerTool?.('knowledge_quota', {
-    description: '查看或清空专业问答配额用量。action=query（默认）或 reset；key 可为会话或群聊#用户计数对象。',
-    schema: { type: 'object', properties: { action: { type: 'string' }, key: { type: 'string' } } },
-    handler: (input = {}) => String(input.action || 'query') === 'reset' ? reset(String(input.key || '')) : report(String(input.key || ''))
+    description: '管理员查询/清空专业问答用量，或用classify只测试语义识别、不扣额不发QQ；key为会话或群聊#成员。',
+    schema: { type: 'object', properties: { action: { type: 'string', enum: ['query','reset','classify'] }, key: { type: 'string' }, text: { type: 'string', maxLength: 12000 } } },
+    handler: (input = {}) => {
+      const action = String(input.action || 'query'), key = String(input.key || '');
+      if (action === 'reset') return reset(key);
+      if (action === 'query') return report(key);
+      if (action !== 'classify' || !/^(private|group):\d+$/.test(key) || !String(input.text || '').trim()) return { ok: false, error: 'classify需要有效会话key与待测text' };
+      return requestClassification(ctx, { key, text: String(input.text) }).then(result => ({ ok: true, ...result, dryRun: true }))
+        .catch(error => ({ ok: true, ...classifyProfessionalRequest(input.text, config().keywords || []), source: 'rules-fallback', reason: String(error?.message || 'classifier_failed'), dryRun: true }));
+    }
   });
   return { services: { knowledgeQuota: { report, reset, usage, classify, evaluate, preflight, isMessageBlocked } }, canWake() { return true; },
     hooks: { beforePrompt: payload => evaluate(payload).prompt } };

@@ -1,3 +1,4 @@
+import {parse} from 'acorn';
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';import yaml from 'js-yaml';
 import {configure} from './configure.mjs';import {createPluginHost} from '../src/plugin-host.js';import {createRuntime} from '../plugins/qq-components/schnie-core/runtime.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -7,7 +8,15 @@ test('long and accumulated monitor notifications fit transport limits and retain
 });
 test('every static local module import resolves inside the complete distribution',()=>{
  const files=[];const walk=dir=>{for(const e of fs.readdirSync(dir,{withFileTypes:true})){if(['node_modules','.git','state'].includes(e.name))continue;const f=path.join(dir,e.name);if(e.isDirectory())walk(f);else if(/\.(?:js|mjs)$/.test(e.name))files.push(f);}};walk(root);
- const missing=[];for(const file of files){const text=fs.readFileSync(file,'utf8');for(const m of text.matchAll(/(?:from\s*|import\s*\(|import\s*)['"](\.[^'"?]+)(?:\?[^'"]*)?['"]/g)){const resolved=path.resolve(path.dirname(file),m[1]);if(!fs.existsSync(resolved))missing.push(path.relative(root,file)+' -> '+m[1]);}}
+ const missing=[];for(const file of files){
+  const tree=parse(fs.readFileSync(file,'utf8'),{ecmaVersion:'latest',sourceType:'module',allowHashBang:true});
+  const walk=node=>{if(!node||typeof node!=='object')return;
+   const source=['ImportDeclaration','ExportNamedDeclaration','ExportAllDeclaration','ImportExpression'].includes(node.type)?node.source:null;
+   if(source?.type==='Literal'&&typeof source.value==='string'&&source.value.startsWith('.')){const relative=source.value.split('?')[0];if(!fs.existsSync(path.resolve(path.dirname(file),relative)))missing.push(path.relative(root,file)+' -> '+relative);}
+   for(const value of Object.values(node))if(Array.isArray(value))value.forEach(walk);else if(value&&typeof value==='object')walk(value);
+  };walk(tree);
+ }
+
  assert.deepEqual(missing,[]);
 });
 test('all packaged components load, including general reference and Codex Peer support',async()=>{

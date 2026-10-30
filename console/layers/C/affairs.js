@@ -1,6 +1,7 @@
 import './affairs.css';
 import { api, esc } from '../../shared/api.js';
 import { registerPageLoader } from '../../shared/page-loaders.js';
+import { initializeAffairsBudget, loadAffairsBudget } from './affairs-budget.js';
 const labels = { needs_review: '待核实', pending: '待处理', doing: '进行中', waiting: '等待结果', done: '已完成', cancelled: '已取消', superseded: '被替代' };
 const el = id => document.getElementById(id);
 let selected = null, offset = 0, total = 0, sequence = 0;
@@ -30,9 +31,10 @@ async function load() {
     el('v2AffairsPage').textContent = `共 ${total} 项 · 第 ${Math.floor(offset / 20) + 1} 页`;
     el('v2AffairsPrev').disabled = offset === 0; el('v2AffairsNext').disabled = offset + 20 >= total;
     el('v2AffairsPreview').textContent = result.preview?.text || '（当前预算未选中事务）';
-    el('v2AffairsPreviewInfo').textContent = `事务预算 ${result.preview?.maxChars || 0} 字符：选中 ${result.preview?.selectedIds?.length || 0} 项，未选中 ${result.preview?.omittedIds?.length || 0} 项。组合记忆总预算可能进一步收紧；未选中内容仍完整保存。`;
+    el('v2AffairsPreviewInfo').textContent = `选中 ${result.preview?.selectedIds?.length || 0} 项，未选中 ${result.preview?.omittedIds?.length || 0} 项。组合记忆总预算可能进一步收紧；未选中内容仍完整保存。`;
     message('已加载 ' + result.items.length + ' 项');
-  } catch (error) { if (requestId === sequence) message('读取失败：' + error.message); }
+    return true;
+  } catch (error) { if (requestId === sequence) message('读取失败：' + error.message); return false; }
 }
 async function loadKeys() {
   try {
@@ -60,6 +62,12 @@ async function save() {
   finally { el('v2AffairsSave').disabled = false; }
 }
 export function initialize() {
+  initializeAffairsBudget(async () => {
+    if (!key()) return false;
+    const refreshed = await load();
+    if (refreshed === false) throw Error('事务预览刷新失败，请点“刷新事务”重试');
+    return refreshed;
+  });
   el('v2AffairsLoad').addEventListener('click', () => key() ? load() : loadKeys());
   el('v2AffairsNew').addEventListener('click', () => edit());
   el('v2AffairsSave').addEventListener('click', save);
@@ -72,5 +80,5 @@ export function initialize() {
   for (const id of ['v2AffairsKey', 'v2AffairsFilter']) el(id).addEventListener('change', () => { offset = 0; edit(null, false); el('v2AffairEditor').close(); void load(); });
   el('v2AffairsPrev').addEventListener('click', () => { offset = Math.max(0, offset - 20); void load(); });
   el('v2AffairsNext').addEventListener('click', () => { offset += 20; void load(); });
-  registerPageLoader('setting-c-1', loadKeys);
+  registerPageLoader('setting-c-1', () => Promise.all([loadKeys(), loadAffairsBudget()]));
 }

@@ -28,7 +28,7 @@ try{const page=await browser.newPage({viewport:{width:1440,height:1000}});page.o
  });
  assert.deepEqual(structure.duplicates,[],'Each component must have one source-owned form');
  assert.deepEqual(structure.missingExamples,[],'Every declared user-facing parameter needs a behavior example');
- assert.equal(await page.locator('#dshEffortSave').innerText(),'保存 DSH 全局默认');
+ assert.equal(await page.locator('#section-dsh,#dshEffortSave').count(),0);
  assert.equal(await page.locator('#v2PmSave').innerText(),'保存此会话事实');
  assert.equal(await page.locator('#v2InitPromptSave').innerText(),'保存此会话背景');
  assert.equal(await page.locator('#v2TbSave').innerText(),'保存此会话时段');
@@ -38,7 +38,6 @@ try{const page=await browser.newPage({viewport:{width:1440,height:1000}});page.o
  assert(structure.ordered,'Memory must run from short-term context to affairs, durable facts, and injection budgets');
  await page.setViewportSize({width:1440,height:1000});
  await page.locator('[data-view="overview"]').first().click();
- const effort=await page.locator('#dshEffortSelect').boundingBox(),save=await page.locator('#dshEffortSave').boundingBox();assert(Math.abs(effort.y+effort.height-save.y-save.height)<=2,'Effort save button must align with its select');
  const preset=await page.locator('#closedPreset').boundingBox();assert(preset.height<=44&&preset.width<=321,'Preset selector must stay single-line');
 
  await page.locator('[data-view="environments"]').first().click();await page.locator('#envCompImageGeneration .comp-body[data-loaded="1"]').waitFor();
@@ -46,6 +45,7 @@ try{const page=await browser.newPage({viewport:{width:1440,height:1000}});page.o
  assert.equal(await page.locator('.comp-card[data-id="exec-image-generation"],[data-component-id="exec-image-generation"]').count(),1);
  assert.match(await page.locator('#section-environments').innerText(),/API调用/);
  const width=await page.locator('#envCompImageGeneration [data-config-key="model"] input').evaluate(e=>e.getBoundingClientRect().width);assert(width<=321);
- await page.locator('[data-view="setting-l-0"]').first().click();const input=page.locator('#v2StateKey');const list=await input.getAttribute('list');assert(list);assert(await page.locator('#'+list+' option[value="private:60006"]').count());await input.fill('private:60006');await page.locator('#v2StateView').click();await page.locator('#v2StateSummary').getByText('未读 2 条').waitFor();assert.equal(await page.locator('#v2AllStatesOutput').count(),0);
- await page.setViewportSize({width:390,height:844});await page.locator('[data-view="environments"]').first().click();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);console.log('PASS: 30 pages × 3 viewports, compact controls including preset, unique profiles/API mount, session picker, no JS errors');
+ await page.locator('[data-view="setting-l-0"]').first().click();assert.equal(await page.locator('#v2StateKey,#v2StateView,#v2StateSummary,#v2WakeStatusLoad,#v2WakeStatusOutput').count(),0);
+ await page.locator('[data-view="setting-l-1"]').first().click();await page.locator('#proactivePreview .runtime-preview').first().waitFor();assert.match(await page.locator('#proactivePreview').innerText(),/聊天意愿/);
+ await page.setViewportSize({width:390,height:844});await page.locator('[data-view="environments"]').first().click();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);console.log('PASS: all pages × 3 viewports, compact controls, unique profiles/API mount, lifecycle cleanup and retained send/wait preview, no JS errors');
 }finally{await browser.close();await fixture.close();}

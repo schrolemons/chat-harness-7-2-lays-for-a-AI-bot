@@ -36,13 +36,14 @@ for (const { serverName, script } of SERVERS) {
     if (serverName === 'snowluma') {
       const waitTool = tools.find((tool) => tool.name === 'qq_wait_for_messages');
       const required = waitTool?.inputSchema?.required ?? [];
-      if (!required.includes('purpose')) {
-        console.log('   ❌ qq_wait_for_messages.purpose 必须为必填参数，避免默认等待未来消息');
+      const quietTool = tools.find((tool) => tool.name === 'qq_wait_for_quiet');
+      if (required.includes('purpose') || !quietTool || !(quietTool.inputSchema?.required || []).includes('token')) {
+        console.log('   ❌ 等新消息与确认静默必须分开注册，保留会话令牌验证');
         failures += 1;
       }
       const waitDescription = waitTool?.description ?? '';
-      if (!waitDescription.includes('只有回复已完成且没有待处理来信时') ||
-          !waitDescription.includes('存在待处理来信时必须先处理来信')) {
+      if (!waitDescription.includes('不能有待处理来信时') ||
+          !waitDescription.includes('endRound') || !quietTool?.description?.includes('不增加或绕过无人回复结束计数')) {
         console.log('   ❌ qq_wait_for_messages 必须说明 messages 仅用于回复完成后交互等待，待处理消息先处理');
         failures += 1;
       }

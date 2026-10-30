@@ -93,10 +93,10 @@ await test('group-members 令牌校验：代理令牌错 / 什么令牌都没有
 
 await test('group-members 不在白名单的群被拒（不会变成任意群枚举入口）', async () => {
   await withBridge(async ({ st, request }) => {
-    const out = await request('group-members', { key: 'group:60009', token: st.agentToken });
+    const out = await request('group-members', { key: 'group:20015', token: st.agentToken });
     assert.equal(out.status, 403, JSON.stringify(out.data));
     // 关键：**不带令牌**也不能绕过白名单（closed-agent 的代理调用正是无令牌路径）
-    const noToken = await request('group-members', { key: 'group:60009', token: '' });
+    const noToken = await request('group-members', { key: 'group:20015', token: '' });
     assert.equal(noToken.status, 403, `无令牌也不得枚举非白名单群：${JSON.stringify(noToken.data)}`);
   });
 });
@@ -124,7 +124,7 @@ await test('closed-agent（管理员私聊，无令牌）仍能查白名单群�
     assert.ok(ok.data.members.length > 0);
     const denied = await new Promise((resolve, reject) => {
       const req = http.request({ hostname: '127.0.0.1', port: server.address().port,
-        path: '/api/socialV2/group-members?key=group%3A60009', method: 'GET',
+        path: '/api/socialV2/group-members?key=group%3A20015', method: 'GET',
         headers: { 'x-console-token': 'fixture-console-token' } }, (res) => {
         let data = ''; res.setEncoding('utf8');
         res.on('data', (c) => { data += c; });

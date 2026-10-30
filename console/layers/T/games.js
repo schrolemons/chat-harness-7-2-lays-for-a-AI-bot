@@ -9,16 +9,18 @@ function renderGames(games) {
   if (!host) return;
   if (!games?.length) { host.innerHTML = '<div class="meta">暂无游戏。</div>'; return; }
   host.innerHTML = games.map(game => {
+    if(game.id==='spark'&&!game.parameterSchema?.bodyPart)return '<article class="games-card" data-game-card="spark"><div class="games-card-head"><h3>轻微电流</h3></div><p class="meta" data-game-pending>后端尚未载入新玩法；联合启用并刷新 Games MCP 后即可配置。</p></article>';
     const params = game.custom ? '' : Object.entries(game.parameters || {}).map(([key, value]) => {
-      const [label, min, max] = gamesParameterLabels[key] || [key, 0, 100];
-      return `<label class="games-param">${esc(label)}<input type="number" data-game-param="${esc(key)}" min="${min}" max="${max}" step="1" value="${Number(value)}"></label>`;
+      const schema=game.parameterSchema?.[key]||{},[fallbackLabel,min,max]=gamesParameterLabels?.[key]||[key,0,100],label=schema.title||fallbackLabel;
+      const control=schema.enum?'<select data-game-param="'+esc(key)+'">'+schema.enum.map((option,index)=>'<option value="'+esc(option)+'" '+(option===value?'selected':'')+'>'+esc(schema.enumLabels?.[index]||option)+'</option>').join('')+'</select>':'<input type="number" data-game-param="'+esc(key)+'" min="'+(schema.minimum??min)+'" max="'+(schema.maximum??max)+'" step="1" value="'+Number(value)+'">';
+      return '<label class="games-param">'+esc(label)+control+(schema.example?'<small class="parameter-example">例：'+esc(schema.example)+'</small>':'')+'</label>';
     }).join('');
     return `<article class="games-card" data-game-card="${esc(game.id)}">
       <div class="games-card-head"><div><h3>${esc(game.name)}${game.custom ? ' <span class="meta">自定义</span>' : ''}</h3><div class="meta">${esc(game.id)} · ${esc(game.summary)}</div></div>
       <label class="games-toggle"><input type="checkbox" data-game-enabled ${game.enabled ? 'checked' : ''}> 启用</label></div>
       <p class="games-rules"><strong>规则：</strong>${esc(game.rules)}</p>
       ${params ? `<div class="games-params">${params}</div>` : '<div class="meta">参数通过 adapter 的初始状态和合法动作定义。</div>'}
-      <div class="row"><button class="small" data-game-save>保存设置</button>${game.custom ? '<button class="small danger" data-game-delete>删除游戏</button>' : ''}<span class="meta" data-game-message role="status"></span></div>
+      <div class="row"><button class="small primary" data-game-save data-save-action>保存${esc(game.name)}设置</button>${game.custom ? '<button class="small danger" data-game-delete>删除游戏</button>' : ''}<span class="meta" data-game-message role="status"></span></div>
     </article>`;
   }).join('');
 }
@@ -32,7 +34,7 @@ async function loadGames() {
 async function saveGameCard(card) {
   const id = card.dataset.gameCard;
   const message = card.querySelector('[data-game-message]');
-  const parameters = Object.fromEntries([...card.querySelectorAll('[data-game-param]')].map(input => [input.dataset.gameParam, Number(input.value)]));
+  const parameters = Object.fromEntries([...card.querySelectorAll('[data-game-param]')].map(input => [input.dataset.gameParam,input.tagName==='SELECT'?input.value:Number(input.value)]));
   try {
     const result = await api('/api/games/config', 'POST', { id, enabled: card.querySelector('[data-game-enabled]').checked, parameters });
     if (!result.ok) throw new Error(result.error || '保存失败');
@@ -44,10 +46,6 @@ let gamesRegistry;
 
 export function initialize() {
 gamesParameterLabels = {
-  minSparks: ['最少虚构火花', 1, 5], maxSparks: ['最多虚构火花', 1, 5],
-  minGlowLevel: ['最低虚构亮度等级', 1, 3], maxGlowLevel: ['最高虚构亮度等级', 1, 3],
-  minCadenceMs: ['最短叙述间隔（毫秒）', 250, 5000], maxCadenceMs: ['最长叙述间隔（毫秒）', 250, 5000],
-  minDurationSec: ['最短特效时长（秒）', 1, 5], maxDurationSec: ['最长特效时长（秒）', 1, 5],
   sides: ['骰子面数', 2, 20], maxAttempts: ['最大作答次数', 1, 10]
 };
 gamesRegistry = document.getElementById('gamesRegistry');

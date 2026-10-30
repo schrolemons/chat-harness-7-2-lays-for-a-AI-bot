@@ -2,7 +2,7 @@
 <h2>心情与表情</h2>
 <details class="settings-group" open><summary>心情管理</summary><div class="settings-content">
 <div data-component-slot="ctx-user-mood"></div>
-<div class="policy-facts"><b>固定结算规则</b><p>每个主动回合到期未获回应扣 10 分；上海时间每日首次人类文本或图片把分数至少恢复到 60。心情不随时间自动回升。</p><p>分数 ≥ 形态阈值采用普通形态；低于阈值采用临界形态。行为规则由 AI 结合语境判断，不是关键词自动触发。</p><p>被叫回后的热情回应仅影响同一发送计划的闲聊选择，不另设条数。冷却 0 分钟表示无冷却，仍保留待回复的 5 分钟安全窗口。</p></div>
+<div class="policy-facts"><b>启用后的结算规则</b><p>每个主动回合到期未获回应扣 10 分；上海时间每日凌晨 4 点保底恢复：低于 60 升到 60，高于 60 保持；停机错过时启动后补做，同一周期只执行一次。会话重建、当天首次发言不额外刷新。其余时间不自动回升。</p><p>分数 ≥ 形态阈值采用普通形态；低于阈值采用临界形态。行为规则由 AI 结合语境判断，不是关键词自动触发。</p><p>被叫回后的热情回应仅影响同一发送计划的闲聊选择，不另设条数。冷却 0 分钟表示无冷却，仍保留待回复的 5 分钟安全窗口。</p></div>
 <div class="mood-live-head"><span class="mood-live-title">各会话实际心情与历史</span><span id="v2MoodUpdated" class="mood-live-stamp"></span><button id="v2MoodRefresh" class="small" type="button">刷新当前心情</button></div>
 <div id="v2MoodCurrent" class="mood-live-grid" aria-live="polite">读取中…</div>
 </div></details>

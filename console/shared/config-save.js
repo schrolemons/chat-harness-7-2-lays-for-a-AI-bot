@@ -16,7 +16,7 @@ async function persistPageConfig(btn) {
   const r = await api('/api/socialV2/config', 'POST', body);
   const msg = (btn && btn.closest && btn.closest('section')?.querySelector('.v2-save-msg')) || document.getElementById('lifecycleActionMessage');
   msg.textContent = r.ok ? '✅ 已保存' : ('❌ ' + (r.error || '失败'));
-  msg.className = r.ok ? 'meta ok' : 'meta err';
+  msg.classList.remove('ok','err');msg.classList.add('meta',r.ok?'ok':'err');
   if (r.ok) {
     const slots = [...(btn?.closest('section')?.querySelectorAll('.inline-component-settings[data-defer-save="1"]') || [])];
     try {
@@ -36,7 +36,7 @@ async function persistPageConfig(btn) {
 async function saveV2Config(button){
   if(button?.disabled)return;
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
-  try{await persistPageConfig(button);}catch(error){const msg=button?.closest('section')?.querySelector('.v2-save-msg');if(msg){msg.textContent='保存失败：'+error.message;msg.className='meta err';}}
+  try{await persistPageConfig(button);}catch(error){const msg=button?.closest('section')?.querySelector('.v2-save-msg');if(msg){msg.textContent='保存失败：'+error.message;msg.classList.remove('ok');msg.classList.add('meta','err');}}
   finally{if(button){button.disabled=false;button.removeAttribute('aria-busy');}}
 }
 export function initialize() {

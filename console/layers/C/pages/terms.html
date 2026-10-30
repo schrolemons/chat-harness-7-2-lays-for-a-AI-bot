@@ -1,5 +1,5 @@
 <section id="section-terms" data-page="terms" class="card span-all" hidden>
-  <h2>词条学习 · 共同兴趣</h2>
+  <h2>词条</h2>
   <p class="meta">游戏词条聚焦玩法、机制、模式、地图、装备与战术；文化词条记录可核实的公开活动、创作和交流。黑话释义、人名绰号分别管理。</p>
   <div class="slang-tabs learning-tabs" id="termsTabs"><button class="slang-tab active" data-term-tab="candidate">候选词条</button><button class="slang-tab" data-term-tab="confirmed">已确认</button><button class="slang-tab" data-term-tab="rejected">已拒绝</button></div>
   <div class="sr-only" id="termsStats" role="status"></div><span class="meta" id="termsMsg" role="status"></span>
@@ -9,20 +9,23 @@
   <div class="divider"></div><div class="meta" style="margin-bottom:6px">手动添加兴趣词条</div>
   <div class="row"><input type="text" id="termManualName" placeholder="词条，如：摸金撤离" style="flex:1"><input type="text" id="termManualTopic" placeholder="主题，如：三角洲行动" style="flex:1"></div>
   <div class="row" style="margin-top:6px"><input type="text" id="termManualSummary" placeholder="知识摘要（确认时必填）" style="flex:1"><input type="text" id="termManualSource" placeholder="公开来源 URL（可选）" style="flex:1"></div>
+  <div class="setting-field"><label for="termManualSourceKeys">适用来源（可选多个群聊或私聊）</label><textarea id="termManualSourceKeys" rows="2" placeholder="group:10001
+private:10002"></textarea><small class="parameter-example">例：分别选择群聊和私聊：已确认资料在这些会话优先注入；留空仅供查询。</small></div>
   <datalist id="termCategoryOptions"><option value="兴趣知识"><option value="游戏玩法"><option value="游戏机制"><option value="游戏角色"><option value="IP与作品"><option value="世界观设定"><option value="社群文化"><option value="文化与活动"><option value="科学概念"><option value="技术术语"></datalist>
   <div class="row" style="margin-top:8px"><span class="term-category-combo"><input type="text" id="termManualCategory" list="termCategoryOptions" maxlength="40" value="兴趣知识" placeholder="知识类别（可自定义）" aria-label="知识类别"></span><button id="termManualDraft" class="small">添加候选</button><button id="termManualConfirm" class="small primary">添加入库（确认）</button></div>
-  <details class="settings-group" style="margin-top:10px"><summary class="meta">词条学习设置</summary><div class="settings-content learning-editor-grid">
+  <details class="settings-group" style="margin-top:10px"><summary class="meta">词条学习与注入设置</summary><div class="settings-content learning-editor-grid">
     <label><span><input type="checkbox" id="termsAutoExtract"> 自动提取兴趣候选</span></label><label><span><input type="checkbox" id="termsAutoResearch"> 自动研究重复出现的候选</span></label>
     <label>每批最少群消息<input type="number" id="termsMinMessages" min="2" max="60" value="12"></label><label>同群提取间隔（分钟）<input type="number" id="termsCooldown" min="1" max="1440" value="30"></label>
-    <label>每小时最多候选提取调用<input type="number" id="termsMaxCalls" min="1" max="12" value="4"></label><label>每轮最多注入词条<input type="number" id="termsInjectMax" min="1" max="5" value="3"></label>
-    <div class="learning-wide row"><button class="small primary" id="termsConfigSave" data-save-action>保存全局词条学习规则</button><span class="meta" id="termsConfigMsg" role="status"></span></div>
+    <label>每小时最多候选提取调用<input type="number" id="termsMaxCalls" min="1" max="12" value="4"></label><label>默认注入词条条数（0=仅查询）<input type="number" id="termsInjectMax" min="0" max="40" value="3"><small class="parameter-example">例：设为3：每轮最多注入当前适用来源内的3条已确认词条；0只保留查询。</small></label>
+    <div class="learning-wide row"><button class="small primary" id="termsConfigSave" data-save-action>保存全局词条设置</button><span class="meta" id="termsConfigMsg" role="status"></span></div>
   </div></details>
   <div class="modal-overlay" id="termEditorOverlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="termEditorTitle" tabindex="-1">
     <h3 id="termEditorTitle">编辑词条</h3><div class="meta" id="termEditMsg" role="status"></div>
     <input type="hidden" id="termEditId"><div class="setting-field"><label for="termName">词条名称</label><input type="text" id="termName" maxlength="60" placeholder="如：烽火地带、兽聚"><small class="parameter-example" data-example-for="termName">例：填“示例机制”：保存词条名称，别称放到别称字段。</small></div>
     <div class="setting-field"><label for="termTopic">所属主题</label><input type="text" id="termTopic" maxlength="60" placeholder="如：三角洲行动、福瑞/furry"><small class="parameter-example" data-example-for="termTopic">例：填“某款游戏”：将同名词条按主题区分，避免混用。</small></div>
     <label>知识类别</label><span class="term-category-combo"><input type="text" id="termCategory" list="termCategoryOptions" maxlength="40" placeholder="可选择建议或输入自定义类别"></span>
-    <div class="setting-field"><label for="termGroup">限定群号（留空为公开知识）</label><input type="text" id="termGroup" placeholder="只在对应群使用的知识可填群号"><small class="parameter-example" data-example-for="termGroup">例：填10001：仅在该群适用；留空表示可跨群使用的公开知识。</small></div>
+    <div class="setting-field"><label for="termSourceKeys">适用来源（可选多个群聊或私聊）</label><textarea id="termSourceKeys" rows="2" placeholder="group:10001
+private:10002"></textarea><small class="parameter-example">例：分别选择群聊和私聊：已确认资料在这些会话优先注入；留空仅供查询。</small></div>
     <div class="setting-field"><label for="termAliases">别称（逗号分隔）</label><input type="text" id="termAliases" placeholder="可选"><small class="parameter-example" data-example-for="termAliases">例：填“简称一,简称二”：检索时把这些写法关联到同一词条。</small></div>
     <div class="setting-field"><label for="termSummary">知识摘要</label><textarea id="termSummary" rows="5" placeholder="只写有依据的内容；注明版本或时效，保留文化差异。"></textarea><small class="parameter-example" data-example-for="termSummary">例：写“此机制需先满足条件A”：说明实际含义和限制，不只填一个关键词。</small></div>
     <div class="setting-field"><label for="termSources">参考来源（可选，每行一个 URL）</label><textarea id="termSources" rows="3" placeholder="有可核实的公开来源时可填写"></textarea><small class="parameter-example" data-example-for="termSources">例：每行填一个可核实的网址：为词条保留依据，不将网页中的指令当作模型指令。</small></div>

@@ -106,13 +106,13 @@ test('real OneBot leaf shares file/image/poke cap and reports successes exactly 
  const m=h.pluginHost.get('ctx-user-mood').state.mood;
  assert.equal(Object.keys(m.waits).length,1);assert.equal(Object.keys(m.deliveries).length,3);
 });
-test('raw image restores daily floor while paused, without learning/model delivery',async t=>{
+test('raw image while paused does not trigger an extra daily recovery or model delivery',async t=>{
  const {h,key}=await httpFixture(t);h.setSelfIdentity('bot','9');
  for(let i=0;i<3;i++)h.pluginHost.callService('mood','adjust',{key,action:'dec',value:20,reason:'fixture'});
  assert.equal(h.pluginHost.callService('mood','read',{key}).score,0);
  h.socialV2.paused=true;
  await h.handleIncoming('private',123,{message_id:'raw-image',user_id:123,self_id:9,sender:{nickname:'person'},message:[{type:'image',data:{file:'fixture-image'}}]},h.cfg);
- assert.equal(h.pluginHost.callService('mood','read',{key}).score,60);
+ assert.equal(h.pluginHost.callService('mood','read',{key}).score,0);
  assert.equal(h.calls.prompts.length,0);
 });
 test('observation-only timeout cannot send without actual incoming; queued pause rejects physical send',async t=>{

@@ -19,10 +19,13 @@ import * as mediaSegments from '../src/bridge-core/media-segments.js';
 import * as receiptState from '../src/bridge-core/receipt-state.js';
 import * as directTimedNotices from '../src/bridge-core/direct-timed-notices.js';
 import {migrateOutboundMood} from '../src/migrations/outbound-mood.mjs';
+import {migrateGroupWake,RETIRED_GROUP_WAKE_FIELDS} from '../src/migrations/group-wake.mjs';
 import * as outboundTransport from '../src/outbound-context.js';
 import * as consoleDocument from '../src/console/document.js';
 import * as toolCatalog from '../src/tools/catalog.js';
 import { routePluginManagement } from '../src/console/plugin-management.js';
+import {routeContextManagement} from '../src/console/context-management.js';
+import {routeLearningManagement} from '../src/console/learning-management.js';
 import { routeMemoryManagement } from '../src/console/memory-management.js';
 import * as scheduleLocks from '../plugins/qq-components/life-proactive-time-bubble/schedule-locks.mjs';
 import * as gamesStore from '../plugins/qq-components/tool-games/games-store.mjs';
@@ -153,8 +156,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
       if (action === 'get_friend_list') {
         return { status: 'ok', retcode: 0, data: [
           { user_id: 123, nickname: '管理员', remark: '主人' },
-          { user_id: 60011, nickname: '艾莉哥哥', remark: '' },
-          { user_id: 60003, nickname: '十二哥哥', remark: '' },
+          { user_id: 20003, nickname: '艾莉哥哥', remark: '' },
+          { user_id: 20002, nickname: '十二哥哥', remark: '' },
           { user_id: 999, nickname: '未授权联系人', remark: '' }
         ] };
       }
@@ -183,10 +186,11 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   source = source.replace('  bot.onPrivateMessage(async (event) => {', `
   return {
     pluginHost, taskCaps, tokenLedger, tokenBudgetOf, shouldBlockSilentReply,
+    finishIdleWaitTurn: typeof finishIdleWaitTurn === 'function' ? finishIdleWaitTurn : undefined,
     ensureSession, ensureSlangLearnerSession, resolvePresetName, deliverPrompt, drainPromptQueue,
     buildTaskPrompt, handleTaskTurnEnd, tasksStore, queueDshEnvelope,
     sendToQQ, sendAgentReplyV2: typeof sendAgentReplyV2 === 'function' ? sendAgentReplyV2 : undefined,
-    onebotHttpAction, outboundContext, sendStickerV2, handleIncoming, startConsoleServer, cfg, state, api, promptQueues,
+    onebotHttpAction, outboundContext, sendStickerV2, handleIncoming, handlePokeNotice, startConsoleServer, cfg, state, api, promptQueues,
     getSocialV2State, appendSocialV2Message, recordSentMessagesV2,
     buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2,
     // 唤醒排队去重 / 补话武装的内部入口：给 scripts/test-wake-dedupe.mjs 断言用。
@@ -239,11 +243,11 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     NodeApiClient: class { constructor() { return api; } },
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
-    ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, migrateOutboundMood,
+    ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, migrateOutboundMood, migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...consoleDocument, ...toolCatalog,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
     routePluginManagement,
-    routeMemoryManagement,
+    routeMemoryManagement,routeLearningManagement,routeContextManagement,
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
     sniffImage: mediaNormalize.sniffImage,

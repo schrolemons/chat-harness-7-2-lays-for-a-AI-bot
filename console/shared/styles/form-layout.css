@@ -44,13 +44,12 @@
   .setting-field { flex-basis: auto; width: 100%; }
 }
 
-.session-state-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:10px 0;border-bottom:1px solid var(--border-subtle)}.session-state-row span{font-size:12px;color:var(--text-secondary)}.session-state-raw{margin-top:12px}.session-state-raw pre{max-height:280px;overflow:auto}
 
 .parameter-example{display:block;grid-column:2;max-width:56ch;color:var(--text-secondary);font-size:12px;line-height:1.6;margin-top:4px}.comp-field.mood-rules>.parameter-example{max-width:76ch}.comp-field:has(textarea)>.parameter-example{grid-column:auto}@media(max-width:640px){.parameter-example{grid-column:1}}
 
 .setting-field:has(>input[type=checkbox]){flex-wrap:wrap;flex-basis:320px}.setting-field:has(>input[type=checkbox])>.parameter-example{flex-basis:100%;grid-column:1/-1}.setting-field:has(>input[type=checkbox])>label{max-width:calc(100% - 30px)}.settings-content>.row{margin:8px 0;padding:8px 0}.row:has(>.setting-field):has(>button){align-items:flex-start}.row:has(>.setting-field)>button{margin-top:26px;min-height:40px}.row:has(>.setting-field)>[role=status]{align-self:center}.comp-ack-group>.parameter-example,.mood-rules>.parameter-example{grid-column:1/-1}
 
-.dsh-effort-field{flex-basis:440px}.form-control-row{display:flex;align-items:center;gap:10px;width:100%;min-width:0}.form-control-row>select{min-width:0;flex:1 1 auto!important}.form-control-row>button{box-sizing:border-box;height:40px;flex:none;margin:0}
+.form-control-row{display:flex;align-items:center;gap:10px;width:100%;min-width:0}.form-control-row>select{min-width:0;flex:1 1 auto!important}.form-control-row>button{box-sizing:border-box;height:40px;flex:none;margin:0}
 
 .setting-range{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%}.setting-range>input{min-width:0}.setting-range>span{color:var(--text-secondary)}
 
@@ -63,3 +62,5 @@ button[data-save-action],button.comp-save{font-weight:650;min-height:40px;paddin
 .card>h2,.component-heading h2{font-size:19px!important;line-height:1.45;font-weight:700;color:var(--text-strong)}.settings-group+.settings-group{margin-top:22px}.settings-group>summary{font-size:14px;font-weight:650;color:var(--text-strong)}.card+.card{margin-top:8px}.owned-component+.owned-component{margin-top:22px}.comp-body>.row:has(>.comp-save){padding-block:14px 4px!important}
 
 .parameter-scope{font-size:12px;line-height:1.6;color:var(--muted,#65738a);margin:8px 0 12px;overflow-wrap:anywhere}.parameter-scope b{font-weight:650;color:var(--text,#26364d)}
+
+.setting-field>.preset-more{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:400;margin-top:6px}.preset-more input{width:auto!important}

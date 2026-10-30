@@ -7,7 +7,7 @@ async function page(t, options = {}) {
   const nodes = new Map(), requests = [], opened = [];
   const roots = [], timers = new Set(), resizeListeners = new Set();
   let status = { light: 'red', starting: false, checks: {} }, api;
-  let settings = { configured: !options.unconfigured, botUin: options.unconfigured ? '' : '60000', ownerQQ: 234567890,
+  let settings = { configured: !options.unconfigured, botUin: options.unconfigured ? '' : '20009', ownerQQ: 234567890,
     allow: { private: [345678901], groups: [456789012] }, revision: 'fixture' };
   const element = () => ({ style: {}, dataset: {}, handlers: {}, isConnected: true,
     children: [],
@@ -88,7 +88,7 @@ test('引导表单空值不能启动；填写后保存真实数据并继续启�
   await p.click('qq-launcher-button');
   await p.submit();
   assert.equal(p.requests.length, 0);
-  p.nodes.get('qq-launcher-bot-qq').value = '60000';
+  p.nodes.get('qq-launcher-bot-qq').value = '20009';
   await p.submit();
   assert.deepEqual(p.requests.map(url => url.split('/').at(-1)), ['config', 'start']);
 });

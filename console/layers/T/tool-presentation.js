@@ -1,5 +1,8 @@
 // Labels and visual grouping only. Registration remains owned by src/tools/flags.js.
 export const TOOL_PRESENTATION={
+ learningSources:{group:'记忆、心情与排程',label:'调整知识适用来源',example:'例：高频用到某条确认资料时，把当前会话加入默认注入名单；不确认候选。'},
+ aliasQuery:{group:'知识与反馈',label:'查询成员绰号',example:'例：按完整QQ号查询已确认称呼；跨来源不返回原始聊天证据。'},
+ aliasSubmit:{group:'知识与反馈',label:'提交绰号候选',example:'例：发现新称呼后提交候选，仍由管理员确认。'},
   "status": {
     "group": "读取与状态",
     "label": "连接状态",
@@ -57,8 +60,8 @@ export const TOOL_PRESENTATION={
   },
   "waitMessages": {
     "group": "回复、等待与收尾",
-    "label": "等待新消息",
-    "example": "例：开启并保存后，可观察用户补充或等待后续来信；仍受会话权限与额度约束。"
+    "label": "等待新消息与确认说完",
+    "example": "例：开启并保存后，可分别使用等新消息、等对方说完两个工具；仍受会话权限与额度约束。"
   },
   "markRead": {
     "group": "回复、等待与收尾",

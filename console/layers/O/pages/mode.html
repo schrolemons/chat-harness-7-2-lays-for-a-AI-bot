@@ -7,7 +7,8 @@
         <button data-mode="reserved2" aria-pressed="false"><span class="mode-indicator" aria-hidden="true"></span><strong>二代仿真</strong><small>自主阅读、发言与潜水</small></button>
       </div>
       <div class="row" style="margin-top:12px">
-        <div class="setting-field"><label style="flex:1;margin:0" for="closedPreset">封闭 Agent 使用的 DSH 预设</label><select id="closedPreset" style="max-width:260px"><option value="">（DSH 默认 preset）</option></select><small class="parameter-example" data-example-for="closedPreset">例：选择一个预设：封闭Agent模式使用它；不会更换普通群聊的预设。</small></div>
+        <div class="setting-field"><label for="closedPreset">管理员助手预设</label><select id="closedPreset" aria-describedby="closedPresetHelp closedPresetScope"><option value="">跟随 DSH 默认（推荐）</option></select><small id="closedPresetHelp" class="parameter-example" data-example-for="closedPreset">使用 DSH 当前声明的默认预设，通常无需另选。</small><label class="preset-more"><input id="showAllPresets" type="checkbox"> 显示全部预设（含仿真、后台专用）</label></div>
       </div>
+      <p id="closedPresetScope" class="parameter-scope">作用范围：仅封闭 Agent 模式；聊天与仿真模式由桥接自动选择预设。</p>
       <div class="meta">切换后即时保存。二代参数由“发送与等待”等组件设置；封闭 Agent 仅允许管理员私聊。</div>
     </section>

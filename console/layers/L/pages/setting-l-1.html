@@ -1,31 +1,39 @@
 <section id="section-setting-l-1" data-page="setting-l-1" class="card span-all commercial-component" hidden>
 <h2>发送与等待</h2>
+<p class="meta">聊天意愿看用户是否有空、是否有精力；心情值看 bot 主观上是否想与对方聊天。两者影响主动概率、条数和深度，只有心情影响说话风格。缩放系数 F = (0.2 + 0.8×心情/100) × (0.2 + 0.8×聊天意愿/100)。</p>
 <details open class="settings-group"><summary>什么时候主动</summary><div class="settings-content">
 <div class="meta">静默阶段统一判定主动机会；最大静默是公共门槛允许时的兜底，仍受宵禁、免打扰和预算约束。</div>
-<div data-component-slot="life-wake-reasons"></div>
+<div data-component-slot="life-wake-reasons" data-inline-fields="disabledReasons,proactiveEnabled,silenceMinutes,initialProbability,probabilityStep,probabilityMax,checkMinMinutes,checkMaxMinutes,intervalStepMinutes,checkFloorMinutes,minActiveGapMinutes,maxSilenceMinutes,initialWillingness,curfewEnabled,curfewStartHour,curfewEndHour" data-save-label="保存静默主动概率与间隔"></div>
 <div class="mood-live-head"><b>各会话实际判定</b><button id="proactivePreviewRefresh" class="small" type="button">刷新判定</button></div>
 <div id="proactivePreview" class="runtime-preview-grid" aria-live="polite">读取中…</div>
 </div></details>
 <details open class="settings-group"><summary>发多少与多快</summary><div class="settings-content">
 <div class="meta">唯一发送计划统一约束每轮条数、每分钟与每小时上限、单条字数和条间间隔。关闭此组件将停止发送。</div>
 <div data-component-slot="ctx-chat-reply-shape"></div>
-<details class="parameter-block"><summary>调整接收新消息时的等待</summary>
+<details class="parameter-block"><summary>等新消息与等对方说完</summary>
+      <h3>无人回复时收尾</h3>
+      <p class="meta">超时无人回复时按 p 判定结束，未结束则增加 q；新来信重置。私聊、群聊共用。</p>
+      <div data-component-slot="life-conversation-wait" data-hide-toggle="1"></div>
+      <p class="meta">1000 毫秒 = 1 秒。</p>
+      <h3>等新消息</h3>
+      <p class="meta">收到新消息即返回；这些时长不是固定回复延迟，也限制静默工具的等待预算。</p>
       <div class="row">
-        <div class="setting-field"><label for="v2WaitDefaultMs">默认等待（毫秒）</label><input type="number" id="v2WaitDefaultMs" min="100" style="width:90px"><small class="parameter-example" data-example-for="v2WaitDefaultMs">例：设为30000：未指定时按30秒等待预算处理，不等于所有来信都强制拖30秒。</small></div>
-        <div class="setting-field"><label for="v2WaitMinMs">最小等待（毫秒）</label><input type="number" id="v2WaitMinMs" min="100" style="width:90px"><small class="parameter-example" data-example-for="v2WaitMinMs">例：设为5000：一般等待参数不能低于5秒，具体立即返回条件仍由工具判定。</small></div>
-        <div class="setting-field"><label for="v2WaitMaxMs">最大等待（毫秒）</label><input type="number" id="v2WaitMaxMs" min="100" style="width:90px"><small class="parameter-example" data-example-for="v2WaitMaxMs">例：设为600000：单次等待最长10分钟，不让工具无限占住一个回合。</small></div>
+        <div class="setting-field"><label for="v2WaitDefaultMs">默认等新消息（毫秒）</label><input type="number" id="v2WaitDefaultMs" min="100" style="width:90px"><small class="parameter-example" data-example-for="v2WaitDefaultMs">AI 未指定时使用；20000 = 20 秒。</small></div>
+        <div class="setting-field"><label for="v2WaitMinMs">等待下限（毫秒）</label><input type="number" id="v2WaitMinMs" min="100" style="width:90px"><small class="parameter-example" data-example-for="v2WaitMinMs">限制可选时长，满足返回条件可提前结束。</small></div>
+        <div class="setting-field"><label for="v2WaitMaxMs">等待上限（毫秒）</label><input type="number" id="v2WaitMaxMs" min="100" style="width:90px"><small class="parameter-example" data-example-for="v2WaitMaxMs">单次等待上限；600000 = 10 分钟。</small></div>
       </div>
+      <h3>等对方说完</h3>
+      <p class="meta">从最后一条来信计时，新来信重新计时；已安静的时间也算。</p>
       <div class="row">
-        <div class="setting-field"><label for="v2WaitDefaultQuietMs">默认静默窗口（毫秒）</label><input type="number" id="v2WaitDefaultQuietMs" min="0" style="width:90px"><small class="parameter-example" data-example-for="v2WaitDefaultQuietMs">例：设为8000：用于观察用户是否补充完毕的短静默窗口为8秒。</small></div>
-        <div class="setting-field"><label for="v2MinQuietAfterNewMs">收到新消息后最小静默（毫秒）</label><input type="number" id="v2MinQuietAfterNewMs" min="0" style="width:90px"><small class="parameter-example" data-example-for="v2MinQuietAfterNewMs">例：设为10000：收到新消息后重新观察至少10秒静默，已有静默时间也参与判定。</small></div>
-        <span class="meta" style="flex:2">收到新消息后至少再等这么久（默认 10000ms=10 秒），防止抢话。</span>
-      </div>
-      <div class="row">
-        <div class="setting-field"><label for="v2AutoReplyCheckSec">回复检查延迟（秒）</label><input type="number" id="v2AutoReplyCheckSec" min="1" style="width:90px"><small class="parameter-example" data-example-for="v2AutoReplyCheckSec">例：设为30：发言后约30秒检查是否有真实新来信；无人回复时不因此授予主动发送权限。</small></div>
-        <span class="meta" style="flex:2">只观察真实新来信；没有新消息时不授予主动发送权限。</span>
-      </div>
+        <div class="setting-field"><label for="v2WaitDefaultQuietMs">通常安静多久（毫秒）</label><input type="number" id="v2WaitDefaultQuietMs" min="0" style="width:90px"><small class="parameter-example" data-example-for="v2WaitDefaultQuietMs">AI 可调整；明显没说完时会建议更久。</small></div>
+        <div class="setting-field"><label for="v2MinQuietAfterNewMs">至少安静多久（毫秒）</label><input type="number" id="v2MinQuietAfterNewMs" min="0" style="width:90px"><small class="parameter-example" data-example-for="v2MinQuietAfterNewMs">AI 不能设得更短；2000 = 2 秒。</small></div>
 
+      </div>
+      <h3>发言后检查</h3>
+      <div class="row">
+        <div class="setting-field"><label for="v2AutoReplyCheckSec">检查延迟（秒）</label><input type="number" id="v2AutoReplyCheckSec" min="1" style="width:90px"><small class="parameter-example" data-example-for="v2AutoReplyCheckSec">发言后检查新回复，不会自动追发。</small></div>
 
+      </div>
 <div class="row"><button class="small primary v2-save" type="button" data-save-action>保存全局等待规则</button><span class="meta v2-save-msg" role="status"></span></div>
 </details>
 </div></details>

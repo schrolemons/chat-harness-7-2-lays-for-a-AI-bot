@@ -1,0 +1,24 @@
+/* T layer: shared geometry for tool groups and the existing video settings. */
+#section-v2-t .tool-switch-content{padding:0;margin-top:20px;display:grid;gap:18px}
+#section-v2-t #v2Tools{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin:0}
+#section-v2-t .tool-switch-group{margin:0;padding:0;border:1px solid var(--border-subtle);border-radius:11px;background:var(--surface);overflow:hidden}
+#section-v2-t .tool-switch-group>summary{display:flex;align-items:center;gap:10px;min-height:52px;box-sizing:border-box;list-style:none;padding:14px 16px;font-size:14px;font-weight:700;line-height:1.5;color:var(--text-strong);cursor:pointer}
+#section-v2-t .tool-switch-group>summary::-webkit-details-marker{display:none}
+#section-v2-t .tool-switch-group>summary::before{content:'';width:7px;height:7px;flex:none;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(-45deg);margin-right:3px;transition:transform .15s ease}
+#section-v2-t .tool-switch-group[open]>summary{border-bottom:1px solid var(--border-subtle);background:var(--surface-open)}
+#section-v2-t .tool-switch-group[open]>summary::before{transform:rotate(45deg)}
+#section-v2-t .tool-switch-group>summary::after{content:none}
+#section-v2-t .tool-switch-group>summary [data-tool-group-count]{margin-left:auto;font-size:12px;font-weight:400;white-space:nowrap}
+#section-v2-t .tool-parameter-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px 16px}
+#section-v2-t .v2-tool-item{height:100%;box-sizing:border-box;gap:10px;padding:12px;align-items:flex-start}
+#section-v2-t .v2-tool-item>span{min-width:0;flex:1}
+#section-v2-t .v2-tool-item b{font-family:inherit;font-size:13px;font-weight:650;color:var(--text-strong);line-height:1.5}
+#section-v2-t .v2-tool-item input{flex:none;width:16px;height:16px;margin:2px 0 0}
+#section-v2-t .tool-call-names{overflow-wrap:anywhere;font-family:Consolas,monospace;font-size:11px;line-height:1.5}
+#section-v2-t .parameter-example{max-width:none;margin-top:8px}
+#section-v2-t #toolSwitchExtras{margin:0;font-size:12px;line-height:1.7}
+#section-v2-t .tool-switch-actions{margin-top:22px;padding-top:16px;border-top:1px solid var(--border-subtle);align-items:center;gap:12px}
+#section-v2-t #balanceToolControl{display:flex;flex-direction:column;min-width:0}
+#section-v2-t #balanceToolControl .v2-tool-item{flex:1}
+#section-v2-t #balanceToolControl [role=status]:empty{display:none}
+@media(max-width:760px){#section-v2-t .tool-parameter-options{grid-template-columns:1fr}#section-v2-t .tool-switch-group>summary{padding:13px 12px}#section-v2-t .tool-parameter-options{padding:12px}#section-v2-t .tool-switch-group>summary [data-tool-group-count]{font-size:11px}}

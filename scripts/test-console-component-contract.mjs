@@ -1,5 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+test('preset choices explain their purpose and preserve custom or already selected entries',async()=>{
+ const {presetChoices,presetInfo}=await import('../console/layers/O/preset-catalog.js');
+ const presets=['standard','ptc','qq-chat-dev','qq-chat-v2','qq-learning','custom-agent'].map(id=>({id}));
+ assert.deepEqual(presetChoices(presets).map(p=>p.id),['standard','qq-chat-dev','custom-agent']);
+ assert(presetChoices(presets,false,'qq-learning').some(p=>p.id==='qq-learning'));
+ assert.equal(presetChoices(presets,true).length,6);
+ assert.equal(presetInfo('qq-learning').group,'后台专用');
+ assert.match(presetInfo('qq-chat-v2').description,/二代仿真/);
+ assert(presetChoices([],false,'temporarily-unavailable').some(p=>p.id==='temporarily-unavailable'));
+});
 test('configuration saves distinguish bot-wide rules from machine settings and scoped data',async()=>{
  const {componentScope}=await import('../console/shared/components/scope.js');
  assert.equal(componentScope('ctx-user-mood','保存心情与双形态').saveLabel,'保存全局心情与双形态');

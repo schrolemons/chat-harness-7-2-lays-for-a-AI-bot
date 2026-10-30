@@ -2,10 +2,11 @@ import { api, esc } from '../../../shared/api.js';
 export async function mountImageGeneration({id,body,p,el,form}) {
           body.insertAdjacentHTML('beforeend', '<div class="quota-console image-generation-console"><div class="quota-console-head"><div><b>本地 API 密钥</b><div class="meta">密钥不会写入组件配置，状态查询也不会返回密钥内容。</div></div><span class="meta image-secret-state" role="status">正在读取保存状态…</span></div><div class="row" style="gap:8px;margin-top:10px"><input type="password" class="image-secret-input comp-form-text" autocomplete="new-password" aria-label="图片生成 API 密钥" placeholder="输入新密钥" style="flex:1;min-width:180px;max-width:420px"><button type="button" class="small primary image-secret-set" data-save-action>保存本机 API 密钥</button><button type="button" class="small danger image-secret-clear">清除密钥</button></div><div class="meta image-secret-message" aria-live="polite"></div><div class="quota-console-head" style="margin-top:18px"><div><b>今日图片生成用量</b><div class="meta">按上海时间统计请求次数。</div></div><button type="button" class="small image-usage-refresh">刷新用量</button></div><div class="meta image-usage-result" aria-live="polite">正在读取…</div></div>');
           const panel = body.querySelector('.image-generation-console');
-          const imageProvider = p.config?.provider === 'ark' ? 'ark' : 'openai';
-          panel.querySelector('.quota-console-head b').textContent = imageProvider === 'ark' ? '火山方舟 API 密钥' : 'OpenAI API 密钥';
+          panel.querySelector('.quota-console-head b').textContent = 'OpenAI API 密钥';
           const secretInput = panel.querySelector('.image-secret-input');
-          secretInput.setAttribute('aria-label', imageProvider === 'ark' ? '火山方舟 API 密钥' : 'OpenAI API 密钥');
+          secretInput.setAttribute('aria-label', 'OpenAI API 密钥');
+          secretInput.placeholder = '输入用于图片生成的 OpenAI API 密钥';
+          panel.querySelector('.image-secret-set').textContent = '保存本机 OpenAI 密钥';
           const secretState = panel.querySelector('.image-secret-state');
           const secretMessage = panel.querySelector('.image-secret-message');
           const usageResult = panel.querySelector('.image-usage-result');
@@ -15,7 +16,7 @@ export async function mountImageGeneration({id,body,p,el,form}) {
             if (result.ok !== true) throw Error('密钥操作失败');
             return result;
           };
-          const showSecretState = configured => { const ready = imageProvider === 'ark' ? p.config?.arkApiBase && p.config?.arkModel : p.config?.apiBase && p.config?.model; secretState.textContent = configured ? (ready ? '已启用' : '密钥已保存；请配置接口地址和模型') : '未配置密钥'; };
+          const showSecretState = configured => { const ready = p.config?.apiBase && p.config?.model; secretState.textContent = configured ? (ready ? 'OpenAI 密钥已保存' : '密钥已保存；请配置 OpenAI 接口地址和模型') : '未配置 OpenAI 密钥'; };
           const refreshSecret = async () => {
             try { showSecretState((await secretCall({ op: 'status' })).configured === true); }
             catch { secretState.textContent = '状态读取失败'; }

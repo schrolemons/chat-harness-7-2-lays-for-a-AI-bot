@@ -48,29 +48,20 @@ test('provider 429 preserves safe error code for quota diagnosis',async()=>{
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
-test('Ark keeps a separate secret and sends text and reference images through generations',async()=>{
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'meme-ark-'));const calls=[];
- const arkConfig={...config,provider:'ark',arkApiBase:'https://ark.cn-beijing.volces.com/api/v3',arkModel:'doubao-seedream-5-0-lite-260128',arkSize:'2K',dailyGlobalLimit:5,dailySessionLimit:5};
+test('retired provider settings and Ark credentials cannot activate an OpenAI request',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'meme-openai-only-'));
  try{
-  const openai=createImageEngine({root,config});openai.secret({op:'set',apiKey:'openai-only-test-key'});
-  const ark=createImageEngine({root,config:arkConfig,fetchImpl:async(url,opt)=>{
-   calls.push({url,body:JSON.parse(opt.body),authorization:opt.headers.authorization});
-   return new Response(JSON.stringify({data:[{b64_json:png.toString('base64')}]}),{headers:{'content-type':'application/json'}});
-  },readReferences:async()=>[{data:png.toString('base64'),mimeType:'image/png'}]});
-  assert.equal(ark.secret({op:'status'}).configured,false);
-  assert.equal(ark.status().configured,false);
-  ark.secret({op:'set',apiKey:'ark-only-test-key'});
-  assert.equal(openai.secret({op:'status'}).configured,true);
-  const first=await ark.create({key:'private:10001',requestId:'ark-text',prompt:'海边梗图'});
-  assert.equal((await sleep(()=>ark.get({key:'private:10001',jobId:first.jobId}))).status,'ready');
-  const second=await ark.create({key:'private:10001',requestId:'ark-ref',prompt:'给参考图加字',referenceMessageId:'123'});
-  assert.equal((await sleep(()=>ark.get({key:'private:10001',jobId:second.jobId}))).status,'ready');
-  assert.equal(calls.length,2);
-  for(const call of calls){assert.equal(call.url,'https://ark.cn-beijing.volces.com/api/v3/images/generations');assert.equal(call.authorization,'Bearer ark-only-test-key');assert.equal(call.body.model,arkConfig.arkModel);assert.equal(call.body.size,'2K');assert.equal(call.body.response_format,'b64_json');assert.equal('quality' in call.body,false);assert.equal('n' in call.body,false);}
-  assert.equal('image' in calls[0].body,false);
-  assert.equal(calls[1].body.image,`data:image/png;base64,${png.toString('base64')}`);
-  ark.secret({op:'clear'});
-  assert.equal(ark.secret({op:'status'}).configured,false);
-  assert.equal(openai.secret({op:'status'}).configured,true);
+  fs.mkdirSync(path.join(root,'state/image-generation'),{recursive:true});
+  fs.writeFileSync(path.join(root,'state/image-generation/secret.json'),JSON.stringify({arkApiKey:'retired-provider-key'}));
+  const engine=createImageEngine({root,config:{...config,provider:'ark',arkApiBase:'https://ark.cn-beijing.volces.com/api/v3',arkModel:'retired-model'},fetchImpl:async()=>{throw Error('must not call any provider');}});
+  assert.equal(engine.secret({op:'status'}).configured,false);
+  assert.equal((await engine.create({key:'private:10001',requestId:'no-openai-key',prompt:'图片'})).error,'API_NOT_CONFIGURED');
+  engine.secret({op:'set',apiKey:'openai-only-test-key'});
+  assert.deepEqual(engine.secret({op:'status'}),{ok:true,provider:'openai',configured:true});
  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('image configuration declares only one set of OpenAI connection fields',()=>{
+ const manifest=JSON.parse(fs.readFileSync(new URL('../plugins/qq-components/exec-image-generation/plugin.json',import.meta.url),'utf8'));
+ assert.equal(Object.keys(manifest.config).some(k=>k==='provider'||k.startsWith('ark')),false);
+ assert.equal(Object.keys(manifest.configSchema).some(k=>k==='provider'||k.startsWith('ark')),false);
 });

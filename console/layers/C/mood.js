@@ -3,7 +3,7 @@ const time = value => value ? new Date(value).toLocaleString('zh-CN', {hour12:fa
 function historyItem(item) {
   const corrected = item.voided === true;
   return '<li class="mood-history-item' + (corrected ? ' is-corrected' : '') + '">'
-    + '<div><b>' + esc(corrected ? '已核实回应，原未答判定已更正' : item.source || '未知来源') + '</b><time>' + esc(time(item.effectiveAt ?? item.at)) + '</time></div>'
+    + '<div><b>' + esc(corrected ? '已核实回应，原未答判定已更正' : ({'daily-recovery':'每日04:00保底恢复','daily-first':'历史首次发言恢复','model-adjustment':'AI加减分','unanswered':'主动未回应扣分'}[item.source]||item.source||'未知来源')) + '</b><time>' + esc(time(item.effectiveAt ?? item.at)) + '</time></div>'
     + '<p>' + esc(item.reason || '未提供原因') + '</p>'
     + '<span>' + esc(item.before ?? '—') + ' → ' + esc(item.after ?? '—') + '（变化 ' + esc(item.delta ?? '—') + '）</span>'
     + (corrected ? '<small>原记录：' + esc(item.source) + '；原扣分 ' + esc(item.originalPenalty ?? '—') + '；记录于 ' + esc(time(item.recordedAt)) + '<br>更正依据：' + esc(typeof item.correction === 'string' ? item.correction : JSON.stringify(item.correction || {})) + '</small>' : '') + '</li>';

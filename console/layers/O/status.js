@@ -1,6 +1,28 @@
 
 import { api } from '../../shared/api.js';
 import { updateOverview, setConnectionError } from '../../shared/navigation.js';
+import {presetChoices,presetInfo} from './preset-catalog.js';
+let presetRows=[];
+function renderPresetChoices(selected) {
+  const select=document.getElementById('closedPreset');
+  if(!select)return;
+  select.replaceChildren(new Option('跟随 DSH 默认（推荐）',''));
+  const groups=new Map();
+  for(const p of presetChoices(presetRows,document.getElementById('showAllPresets')?.checked,selected)){
+    if(!groups.has(p.group)){const group=document.createElement('optgroup');group.label=p.group;groups.set(p.group,group);select.append(group);}
+    const option=new Option(p.label+' · '+p.id,p.id);option.title=p.description;groups.get(p.group).append(option);
+  }
+  select.value=selected;
+  updatePresetHelp();
+}
+function updatePresetHelp(mode) {
+  const select=document.getElementById('closedPreset'),help=document.getElementById('closedPresetHelp');
+  if(!select||!help)return;
+  const p=presetRows.find(p=>p.id===select.value)||{id:select.value};
+  help.textContent=select.value?presetInfo(p).description:'使用 DSH 当前声明的默认预设，通常无需另选。';
+  const scope=document.getElementById('closedPresetScope');
+  if(scope&&mode)scope.textContent=mode==='closed-agent'?'作用范围：当前管理员封闭 Agent 模式。切换选项后立即保存。':'作用范围：仅封闭 Agent 模式；当前聊天或仿真模式的预设由桥接自动选择。';
+}
 // layers/O/status: explicit imports; initialize is called in the application startup order.
 
 
@@ -65,26 +87,16 @@ async function refresh() {
     updateOverview(s, modeLabel);
     document.getElementById('activity').textContent = s.activity || '（空）';
     const presetSel = document.getElementById('closedPreset');
-    if (presetSel && document.activeElement !== presetSel) presetSel.value = s.closedAgentPreset || '';
+    if (presetSel && document.activeElement !== presetSel) renderPresetChoices(s.closedAgentPreset || '');
+    updatePresetHelp(s.mode);
   } catch (e) { document.getElementById('statusText').textContent = '连接中断 · 请检查桥接服务'; setConnectionError(e); }
 }
 
 async function refreshPresets() {
   try {
     const r = await api('/api/presets');
-    const sel = document.getElementById('closedPreset');
-    sel.innerHTML = '';
-    // 空值 = 使用 DSH 自己声明的默认 preset（closed-agent 的推荐选择）
-    const defOpt = document.createElement('option');
-    defOpt.value = '';
-    defOpt.textContent = '（DSH 默认 preset）';
-    sel.appendChild(defOpt);
-    for (const p of r.presets) {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.id + (p.trust === 'user' ? '（用户）' : '');
-      sel.appendChild(opt);
-    }
+    presetRows=r.presets||[];
+    renderPresetChoices(document.getElementById('closedPreset').value);
     refresh();
   } catch {}
 }
@@ -108,6 +120,7 @@ async function saveMode(mode) {
 }
 
 export function initialize() {
-
+  document.getElementById('showAllPresets')?.addEventListener('change',()=>renderPresetChoices(document.getElementById('closedPreset').value));
+  document.getElementById('closedPreset')?.addEventListener('change',()=>updatePresetHelp());
 }
 export { fmtAgoMs, renderSnowlumaHealth, refresh, refreshPresets, saveMode };

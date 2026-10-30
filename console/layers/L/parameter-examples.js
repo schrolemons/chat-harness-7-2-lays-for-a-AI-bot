@@ -32,11 +32,11 @@ export default {
     "maxPromptItems": "设为5：一次提醒回合最多给模型5项，避免把整个日历塞进提示词。"
   },
   "life-scheduler": {
-    "maxJobs": "设为1000：统一排程最多容纳1000个登记任务，达到容量后不能继续无限追加。"
+    "maxJobs": "1000 表示所有会话合计最多登记1000项。满后拒绝新增，已有任务保留。"
   },
   "life-task-session": {
-    "maxConcurrentTasks": "设为2：独立任务最多同时运行2个，避免所有任务挤占模型通道。",
-    "maxTasks": "设为100：任务注册表按100项容量管理；不改变普通聊天的每轮回复条数。"
+    "maxConcurrentTasks": "设为3时，执行中和等待补充信息的任务合计最多3个。",
+    "maxTasks": "设为20时，新建任务优先清理最旧的已结束记录，进行中的任务保留。"
   },
   "life-token-budget": {
     "sessions": "为某个private或group会话设置单独花费阈值，只影响该会话预算。",

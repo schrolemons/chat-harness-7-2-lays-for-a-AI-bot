@@ -69,7 +69,7 @@ function mockTransport(t, scripts) {
 test('sensitive audit catches UNC paths and quoted JSON credentials', () => {
   for (const value of [
     String.raw`\\server\share\private.txt`,
-    String.raw`C:\ExampleUser\config.json`,
+    String.raw`C:\Example\config.json`,
     '/root/.ssh/id_rsa',
     '{"token":"fixture-only-token"}',
     '{"accessToken": "fixture-only-token"}',

@@ -31,13 +31,13 @@ export function moodPolicy(config = {}) {
   const used = new Set();
   return {
     enabled: config.enabled !== false,
-    initial: validScore(config.initial) ? config.initial : 60,
+    initial: DAILY_FLOOR,
     noReplyAfterMinutes: typeof config.noReplyAfterMinutes === 'number' && Number.isFinite(config.noReplyAfterMinutes) && config.noReplyAfterMinutes >= 1 && config.noReplyAfterMinutes <= 1440 ? config.noReplyAfterMinutes : 20,
     modeThreshold: validScore(config.modeThreshold) ? config.modeThreshold : 40,
     normalName: shortText(config.normalName, '正太', 40),
     criticalName: shortText(config.criticalName, 'AI', 40),
-    normalStyle: shortText(config.normalStyle, normalDefaultStyle),
-    criticalStyle: shortText(config.criticalStyle, criticalDefaultStyle),
+    normalStyle: shortText(config.normalStyle, normalDefaultStyle, 2400),
+    criticalStyle: shortText(config.criticalStyle, criticalDefaultStyle, 2400),
     burstEnabled: config.burstEnabled !== false,
     recoverMinutes: typeof config.recoverMinutes === 'number' && Number.isFinite(config.recoverMinutes) && config.recoverMinutes >= 0 && config.recoverMinutes <= 1440 ? config.recoverMinutes : 20,
     maxAdjustment: typeof config.maxAdjustment === 'number' && Number.isFinite(config.maxAdjustment) && config.maxAdjustment >= 1 && config.maxAdjustment <= 100 ? config.maxAdjustment : 20,
@@ -74,6 +74,7 @@ export function moodSnapshot(entry, policy, now = Date.now()) {
 
 export function validateMoodConfig(raw={}) {
   const errors=[],ids=new Set();
+  for(const field of ['normalStyle','criticalStyle'])if(raw[field]!==undefined&&(typeof raw[field]!=='string'||raw[field].length>2400))errors.push(field+' 必须为不超过2400字的文本');
   for(const [field,sign] of [['positiveRules',1],['negativeRules',-1]]) {
     if(!Array.isArray(raw[field])){errors.push(field+' 必须为规则数组');continue;}
     for(const rule of raw[field]) {

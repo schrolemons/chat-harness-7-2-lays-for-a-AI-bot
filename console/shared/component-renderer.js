@@ -21,6 +21,8 @@ import { COMPONENT_FORMS } from './components/forms.js';
 
 
 export function initialize() {
+  const pluginsReady=api('/api/plugins');
+  void renderToolInventory(pluginsReady).catch(error=>{document.getElementById('toolSwitchStatus').textContent='工具开关加载失败：'+error.message;});
 (() => {
 
   const COMP_LAYERS = [
@@ -63,7 +65,7 @@ export function initialize() {
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return;
     const items = compCache.filter((p) => !isInternalPromptComponent(p) && (ids || []).includes(p.id));
-    root.innerHTML = items.length ? items.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${['ctx-memory-profile-store', 'life-campus-watch', 'exec-image-generation'].includes(p.id) ? '1' : '0'}" data-toggle-label="${p.id === 'exec-browser-manager' ? '启用 DOM 操作' : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || '')}"><div class="comp-body">加载设置…</div></div>`).join('') : '';
+    root.innerHTML = items.length ? items.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${root.dataset.hideToggle === '1' || ['ctx-memory-profile-store', 'life-campus-watch', 'exec-image-generation'].includes(p.id) ? '1' : '0'}" data-save-label="${esc(root.dataset.saveLabel || '')}" data-toggle-label="${p.id === 'exec-browser-manager' ? '启用 DOM 操作' : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || '')}"><div class="comp-body">加载设置…</div></div>`).join('') : '';
     await Promise.all([...root.querySelectorAll('.comp-card')].map((d) => loadComponentDetail(d.dataset.id, d)));
   };
 
@@ -87,7 +89,7 @@ export function initialize() {
 
   // 每个组件按实际效果进入已有功能页，不再出现“本层组件”汇总框。
   componentUI.mount = async () => {
-    const data = await api('/api/plugins');
+    const data = await pluginsReady;
     compCache = data.plugins || [];
     // 已有主设置的功能只把独有参数放回对应栏目，避免重复的组件开关和说明卡。
     const inlineSettings = [
@@ -95,8 +97,8 @@ export function initialize() {
       ['life-schedule-reminder', 'v2ScheduleRefresh', 'enabled,advanceMinutes,intervalMinutes,lateMinutes,horizonDays,maxItems,maxPromptItems'],
       ['ctx-media-sticker-pick', 'v2StickerEnabled'],
       ['ctx-memory-profile-facts', 'v2PmEnabled'],
-      ['ctx-memory-context', 'v2ContextRecentLimit'],
-      ['ctx-chat-topic-drive', 'v2FollowupGlobalAnchor', 'privateFollowupEnabled,minIntervalMinutes,dailyLimit,followUpCooldownMinutes,newTopicCooldownMinutes,newTopicMaxPerHour'],
+      ['ctx-memory-context', 'v2ContextRecentLimit', 'maxChars'],
+      ['ctx-chat-topic-drive', 'v2FollowupGlobalAnchor', 'privateFollowupEnabled,minIntervalMinutes,dailyLimit,followUpCooldownMinutes,newTopicCooldownMinutes,newTopicMaxPerHour,followupWeight,newTopicWeight'],
       ['life-daily-worklog', 'v2DdEnabled'],
       ['ctx-memory-store', 'v2DdEnabled', 'diaryArchive']
     ];
@@ -118,7 +120,7 @@ export function initialize() {
       else target.append(slot);
       loadComponentDetail(id, slot);
     }
-    await renderToolInventory(data, compCache);
+
     const main = document.getElementById('mainContent');
     const grid = main.querySelector(':scope > .grid');
     for (const slot of main.querySelectorAll('[data-component-slot]')) {

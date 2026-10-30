@@ -1,10 +1,7 @@
+import {renderCurrentEffect} from './current-effect.mjs';
 import { randomInt as cryptoRandomInt, randomUUID as cryptoRandomUUID } from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { listGames, getBuiltInGameDefinitions } from './games-store.mjs';
 
-const DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFINITIONS = getBuiltInGameDefinitions();
 export const GAMES_TOOL_DESCRIPTIONS = Object.freeze({
   ...DEFINITIONS.toolDescriptions,
@@ -63,15 +60,12 @@ export function createGamesRuntime(options = {}) {
     };
   }
 
-  function start({ gameId, consentConfirmed = false } = {}) {
+  function start({ gameId } = {}) {
     purgeExpired();
     const game = listGames(registryFile).find(item => item.id === String(gameId ?? ''));
     if (!game) return error('UNKNOWN_GAME', '没有这个小游戏。');
     if (!game.enabled) return error('GAME_DISABLED', '这个游戏目前已在 console 中停用。');
     if (sessions.size >= maxSessions) return error('SESSION_LIMIT', '当前互动较多，请稍后再开新局。');
-    if (game.id === 'spark' && consentConfirmed !== true) {
-      return error('CONSENT_REQUIRED', '放电互动需要参与者本人明确表示愿意；第三人不能代替同意。');
-    }
 
     const id = String(randomUUID());
     if (sessions.has(id)) return error('SESSION_ID_COLLISION', '无法创建独立游戏会话，请重试。');
@@ -88,7 +82,7 @@ export function createGamesRuntime(options = {}) {
     };
     sessions.set(id, session);
     const message = game.id === 'spark'
-      ? '好呀，只让一颗虚构的小火花在空气里啪地亮一下——纯文字玩具效果。'
+      ? '轻微电流互动已开始；可选择部位、持续时间、强度与波形。'
       : game.id === 'dice'
         ? `骰子对决开始啦，输入 roll 掷一颗 ${game.parameters.sides} 面骰；没有筹码，也没有输赢惩罚。`
         : game.id === 'riddle'
@@ -109,17 +103,10 @@ export function createGamesRuntime(options = {}) {
     if (session.moves >= 100) return error('MOVE_LIMIT', '单局动作达到上限，请结束后重新开始。');
     const actionValue = String(actionName ?? '');
 
-    if (session.gameId === 'spark') {
-      if (actionValue !== 'spark') return error('ACTION_NOT_ALLOWED', '小火花只接受 spark 操作；拒绝或停止时请结束游戏。');
-      session.moves++;
-      const p = session.game.parameters;
-      const sparks = randomInt(p.minSparks, p.maxSparks + 1);
-      const glowLevel = randomInt(p.minGlowLevel, p.maxGlowLevel + 1);
-      const cadenceMs = randomInt(p.minCadenceMs, p.maxCadenceMs + 1);
-      const durationSec = randomInt(p.minDurationSec, p.maxDurationSec + 1);
-      const cadence = cadenceMs < 700 ? '轻快地' : cadenceMs > 1300 ? '慢悠悠地' : '一闪一闪地';
-      const glow = ['柔柔的微光', '明亮的闪光', '星芒般的亮闪'][glowLevel - 1];
-      return { ok: true, ...publicSession(session), fictionalEffect: { sparks, glowLevel, cadenceMs, durationSec }, message: `啪——${sparks} 颗虚构小火花带着${glow}${cadence}在空气里闪了约 ${durationSec} 秒，像玩具特效一样散开。` };
+    if(session.gameId==='spark'){
+      if(actionValue!=='spark')return error('ACTION_NOT_ALLOWED','轻微电流仅接受spark动作；停止时请结束游戏。');
+      let effect;try{effect=renderCurrentEffect(payload,session.game);}catch(cause){return error('INVALID_ACTION',cause.message);}
+      session.moves++;return {ok:true,...publicSession(session),...effect};
     }
     if (session.gameId === 'dice') {
       if (actionValue !== 'roll') return error('ACTION_NOT_ALLOWED', '骰子对决只接受 roll 操作。');

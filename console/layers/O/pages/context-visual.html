@@ -1,0 +1,30 @@
+<section class="card span-all context-console" id="contextConsole" data-page="context-visual">
+  <h2>可视化 context</h2>
+  <p class="meta">context 是本次调用 AI 时附带的背景信息。这里决定哪些信息可以发给 AI，以及先后顺序；各组件的功能开关和工具权限仍由原来的页面管理。</p>
+  <div class="context-toolbar">
+    <label>选择会话（只影响预览）<select id="contextSession"><option value="">选择要查看的私聊或群聊…</option></select></label>
+    <button type="button" id="contextRefresh">刷新已有记录</button>
+    <button type="button" class="primary" id="contextSave">保存所有会话的上下文设置</button>
+    <button type="button" id="contextReset">撤销本页未保存的修改</button>
+  </div>
+  <p class="meta"><strong>所有私聊和群聊共用这套设置。</strong>例：预览私聊 A 时关闭“黑话”并保存，其他会话也不再自动附带这张卡片中的文字；黑话学习和查询工具仍可使用。</p>
+  <details class="context-help"><summary>分组规则与操作示例</summary>
+  <p class="meta">拖动 ⠿ 或点 ↑ ↓ 调整顺序。例：把“心情”移到“黑话”前面，AI 就会先看到心情说明。角色设定进入系统设定；其余模块按策略进入用户附加资料，DSH自身规则保留。39个模块按完整顺序连续编号；没有内容也保留空框。36号拆为关联启停的收件状态和新增聊天原文；39号完整保留为任务说明。实际发送按系统设定、本轮背景、本轮任务和新消息三张卡展示；对话消息、工具调用与返回记录、工具清单另分区。</p>
+  </details>
+  <p id="contextNotice" role="status" aria-live="polite">正在读取已有记录，不会调用 AI…</p>
+  <div class="context-tabs" role="group" aria-label="上下文查看方式">
+    <button type="button" id="contextDraftTab" aria-pressed="true">设置效果预览</button>
+    <button type="button" id="contextActualTab" aria-pressed="false">本轮请求对比</button>
+  </div>
+
+<div id="contextRequestPicker" class="context-request-picker" hidden><label>选择真实请求<select id="contextRequestSelect"></select></label><p class="meta">同一轮已有4次调用时，显示第1、3、4次；初始请求固定保留，新一轮重置。未采集的位置保持空缺。</p></div><div id="contextRequestDiff" class="context-request-diff" hidden></div>
+  <div id="contextMetrics" class="context-metrics"></div>
+  <div id="contextModules" class="context-modules"></div>
+  <details class="context-options"><summary>减少历史重复内容，以及设置何时生效</summary>
+    <label><input id="contextCompactHistory" type="checkbox">去掉旧记录里重复附带的规则和消息快照</label>
+    <p class="meta">例：旧程序每轮都附带“回复尽量简短”。聊了 10 轮后，下一次调用可能带着 10 份重复规则。开启后，每次调用只保留一份当前有效的规则，不再反复附带历史副本。</p>
+    <p class="meta">消息快照是程序额外附带的“一批近期聊天记录”。同一批记录也会去掉重复副本；你和 bot 真正说过的话、工具调用及结果、完整原始记录仍然保留。</p>
+    <p class="meta"><strong>全局设置，适用于所有私聊和群聊。所选会话仅用于预览。保存后，从各会话的下一次唤醒开始生效。</strong>例：下一次用户来信或定时冒泡触发 bot 时使用新设置；正在生成的回复保持原样。</p>
+    <p class="meta">token 是模型计量文字的单位。这里根据字符数粗略估算，不能直接当作费用；实际用量与花费请看“令牌与花费”。</p>
+  </details>
+</section>

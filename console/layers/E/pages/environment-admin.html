@@ -1,0 +1,24 @@
+<section id="section-environment-admin" data-page="environment-admin" class="card span-all environment-page">
+  <h2>管理员环境</h2>
+  <p class="meta">管理员私聊的开发模式与预设。</p>
+      <div class="comp-card env-card">
+        <div class="env-card-heading"><h3>管理员私聊开发</h3><span class="meta">开发开关与预设</span></div>
+        <div class="env-card-body" id="envAdminControls">
+          <p class="meta">用于二代仿真中的管理员私聊，其他私聊和群聊保持原设置。</p>
+          <div class="env-admin-fields">
+            <div class="env-admin-field">
+              <span class="env-admin-label" id="envAdminModeLabel">开发模式</span>
+              <label class="env-admin-switch" for="v2AdminDevEnabled"><input type="checkbox" id="v2AdminDevEnabled" aria-labelledby="envAdminModeLabel" aria-describedby="envAdminEnabledExample"><span>启用</span></label>
+              <small class="parameter-example" id="envAdminEnabledExample" data-example-for="v2AdminDevEnabled">例：开启后使用所选开发预设；关闭后回到当前聊天模式的预设。</small>
+            </div>
+            <div class="env-admin-field">
+              <label for="v2AdminDevPreset">开发预设名称</label>
+              <input type="text" id="v2AdminDevPreset" maxlength="64" placeholder="qq-chat-dev" aria-describedby="envAdminPresetExample">
+              <small class="parameter-example" id="envAdminPresetExample" data-example-for="v2AdminDevPreset">例：qq-chat-dev 是管理员开发预设，决定可用工具与提示词。没有自定义需求时保持原值。</small>
+            </div>
+          </div>
+          <p class="meta env-admin-apply"><b>生效方式：</b>保存后，如果所用预设发生变化，管理员私聊会在下一条消息到来时重建会话并使用新预设。</p>
+          <div class="env-admin-actions"><button class="small primary v2-save" type="button" data-save-action>保存管理员开发设置</button><span class="meta v2-save-msg" role="status"></span></div>
+        </div>
+      </div>
+</section>

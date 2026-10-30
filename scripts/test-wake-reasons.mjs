@@ -21,17 +21,17 @@ const check = (name, ok, detail) => {
 };
 
 const plugin = createPlugin(mkCtx());
-const base = { key: 'private:60004', preSleepMs: 300000, triggeredLine: '' };
+const base = { key: 'private:20001', preSleepMs: 300000, triggeredLine: '' };
 const tail = (reason, extra = {}) => plugin.hooks.wakeTail({ ...base, reason, ...extra }) || '';
 
 check('bootstrap', tail('bootstrap').includes('引导唤醒'));
-check('timeout', tail('timeout').includes('有限潜水时间已到'));
-check('replyCheck', tail('replyCheck').includes('回复检查') && tail('replyCheck').includes('timeoutMs=300000'));
+check('timeout', tail('timeout').includes('明确约定的到时唤醒时间已到'));
+check('replyCheck', tail('replyCheck').includes('回复检查') && tail('replyCheck').includes('endRound'));
 check('careCheck', tail('careCheck').includes('主动关心'));
 const biliShareTail = tail('newsShare', {
   maxItems: 2,
   biliShareKeywords: ['海洋纪录片', '鲸鱼'],
-  biliPreferredUploader: '示例海洋记录员',
+  biliPreferredUploader: '正太肥鱼与龙少的日常',
   biliShareItems: [{
     bvid: 'BV1ab411c7mD',
     title: '鲸鱼纪录片',
@@ -56,8 +56,8 @@ const opt = tail('selfOptimize', { history: '【最新优化记录】\n历史记
 check('selfOptimize 带历史', opt.includes('历史记录内容') && opt.includes('自我迭代'));
 check('selfReview', tail('selfReview').includes('功能与代码自查'));
 check('memoryWrite', tail('memoryWrite').includes('记忆更新'));
-check('newFriend 带 peer', tail('newFriend', { peer: '60002' }).includes('QQ 60002'));
-check('新好友使用正太小鲸鱼身份', tail('newFriend', { peer: '60002' }).includes('正太小肥鱼') && !/鲸鱼娘|爱吃白饭|吃 token/.test(tail('newFriend', { peer: '60002' })));
+check('newFriend 带 peer', tail('newFriend', { peer: '20011' }).includes('QQ 20011'));
+check('新好友使用正太小鲸鱼身份', tail('newFriend', { peer: '20011' }).includes('正太小肥鱼') && !/鲸鱼娘|爱吃白饭|吃 token/.test(tail('newFriend', { peer: '20011' })));
 check('主动唤醒遵循新卡', ['newsShare', 'reminder', 'poke'].every((reason) => !/大肥鱼的口吻|大肥鱼味|傲娇装烦/.test(tail(reason))));
 check('timeBubble', tail('timeBubble').includes('时间冒泡'));
 check('startupGreeting', tail('startupGreeting').includes('开机起床'));
@@ -68,7 +68,7 @@ check('reminder 带条目', rem.includes('日程｜2026-10-25 23:00｜开会'));
 check('proactiveCheck', tail('proactiveCheck').includes('主动机会'));
 check('poke', tail('poke').includes('拍一拍'));
 const plain = tail('private', { triggeredLine: '（触发这条是 1 分钟前发的）' });
-check('普通唤醒走默认尾巴', plain.includes('【唤醒】private:60004') && plain.includes('原因：private') && plain.includes('1 分钟前'));
+check('普通唤醒走默认尾巴', plain.includes('【唤醒】private:20001') && plain.includes('原因：private') && plain.includes('1 分钟前'));
 check('未知 reason 也走默认尾巴', tail('someNewReason').includes('原因：someNewReason'));
 
 // 配置禁用某个 reason：返回空，让桥接走兜底
@@ -81,7 +81,7 @@ const summary = await host.loadAll();
 check('插件宿主加载（至少 27 个）', summary.count >= 27, 'count=' + summary.count);
 check('宿主加载无警告', summary.warnings.length === 0, JSON.stringify(summary.warnings));
 const hostTail = host.collectWakeTails({ ...base, reason: 'replyCheck' });
-check('宿主 collectWakeTails 命中', hostTail.includes('回复检查') && hostTail.includes('timeoutMs=300000'));
+check('宿主 collectWakeTails 命中', hostTail.includes('回复检查') && hostTail.includes('endRound'));
 
 // 回归：bridge.js 里不应再出现这些内联 reason 分支
 const bridge = fs.readFileSync('src/bridge.js', 'utf8');
@@ -105,7 +105,7 @@ for (const marker of tailMarkers) {
 // 回归：桥接必须真的调用组件钩子，并保留兜底
 check('bridge 调用 collectWakeTails', bridge.includes('pluginHost.collectWakeTails('));
 check('B站推荐唤醒禁止退回普通新闻', bridge.includes('禁止调用 web_search / web_fetch，禁止发送普通新闻或热点'));
-check('bridge 保留唤醒兜底尾巴', bridge.includes('先看消息，判断是否要接话；决定潜水前按上面的【沉睡前强制等待】完成观察。'));
+check('bridge 保留唤醒兜底尾巴', bridge.includes('先看消息，按当前等待工具返回的结果继续处理或收尾。'));
 
 if (failed) { console.error(`\n${failed} 项失败`); process.exit(1); }
 console.log('\n唤醒原因尾巴组件测试通过');

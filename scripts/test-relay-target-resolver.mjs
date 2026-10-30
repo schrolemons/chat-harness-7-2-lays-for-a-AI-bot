@@ -6,7 +6,7 @@ import { parseRelayCommand } from '../src/relay-intent.js';
 const h = await bridgeHarness({
   config: {
     ownerQQ: 123,
-    allow: { private: ['123', '60011'], groups: ['456'] },
+    allow: { private: ['123', '20003'], groups: ['456'] },
     socialV2: { relayAliases: {} },
   },
 });
@@ -19,12 +19,12 @@ try {
   h.setMode('reserved2');
   assert.equal(h.taskCaps.isRelayAliasLinked('艾莉'), false, 'an unconfirmed nickname must not resolve as a linked alias');
   const contacts = await h.taskCaps.searchRelayContacts('艾莉');
-  assert.ok(contacts.some((contact) => contact.userId === '60011' && contact.nickname === '艾莉哥哥'), 'contact search returns exact QQ identity for review');
+  assert.ok(contacts.some((contact) => contact.userId === '20003' && contact.nickname === '艾莉哥哥'), 'contact search returns exact QQ identity for review');
   assert.ok(!contacts.some((contact) => contact.userId === '999'), 'contact search excludes contacts outside the allow list');
-  const linked = await h.taskCaps.linkRelayAlias({ alias: '艾莉', targetKey: 'private:60011' });
+  const linked = await h.taskCaps.linkRelayAlias({ alias: '艾莉', targetKey: 'private:20003' });
   assert.equal(linked.ok, true, JSON.stringify(linked));
   assert.equal(h.taskCaps.isRelayAliasLinked('艾莉'), true, 'owner-confirmed alias is persisted as linked');
-  assert.equal(h.taskCaps.resolveRelayTarget('艾莉'), 'private:60011', 'confirmed nickname alias resolves to the contact');
+  assert.equal(h.taskCaps.resolveRelayTarget('艾莉'), 'private:20003', 'confirmed nickname alias resolves to the contact');
 
   const parsed = parseRelayCommand('问问成杉醒没醒', {
     resolve: (name) => !!h.taskCaps.resolveRelayTarget(name),

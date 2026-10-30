@@ -1,8 +1,8 @@
 {
   "id": "ctx-user-mood",
   "name": "心情管理",
-  "version": "0.2.0",
-  "description": "统一保存会话心情、每日首次恢复与主动未答账本，保留分用户观察；心情不随时间回升。",
+  "version": "0.3.0",
+  "description": "按会话保存心情与未答账本；上海时间每日04:00保底到60，停机错过时恢复后补做。",
   "category": "上下文与记忆",
   "layer": "C",
   "order": 21,
@@ -21,7 +21,6 @@
   },
   "config": {
     "enabled": true,
-    "initial": 60,
     "noReplyAfterMinutes": 20,
     "modeThreshold": 40,
     "normalName": "正太",
@@ -78,13 +77,6 @@
       "label": "启用心情",
       "example": "关闭后不再按心情调整聊天形态与频率；账户额度等独立限制仍然有效。"
     },
-    "initial": {
-      "type": "number",
-      "min": 0,
-      "max": 100,
-      "label": "初始心情",
-      "example": "新会话初始设为60时，从60分开始；不会每小时自动回到60。"
-    },
     "noReplyAfterMinutes": {
       "type": "number",
       "min": 1,
@@ -111,13 +103,15 @@
     },
     "normalStyle": {
       "type": "string",
-      "label": "普通形态风格",
-      "example": "填“呆萌、调皮但不刷屏”：普通形态按此描述表达，并结合真实对话收敛。"
+      "label": "普通形态：语言风格与对话示例",
+      "example": "写“熟悉时轻快，陌生时克制；用户：回来了。角色：今天有什么新鲜事呀？”：仅普通形态使用，不叠加临界形态台词。",
+      "maxLength": 2400
     },
     "criticalStyle": {
       "type": "string",
-      "label": "临界形态风格",
-      "example": "填“克制、沉浸、哲思”：临界形态不再沿用固定卖萌话术。"
+      "label": "临界形态：语言风格与对话示例",
+      "example": "写“声音放轻，沿原话题思考；用户：你在吗？角色：在。刚才那个问题，我还没想明白。”：仅临界形态使用。",
+      "maxLength": 2400
     },
     "maxAdjustment": {
       "type": "number",

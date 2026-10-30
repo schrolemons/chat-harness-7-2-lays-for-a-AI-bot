@@ -34,7 +34,7 @@ const ctx = {
     set: (patch) => { store = { ...store, ...patch }; fs.writeFileSync(stateFile, JSON.stringify(store)); }
   },
   capabilities: {
-    isConsoleConversationExcluded: key => key === 'group:60010',
+    isConsoleConversationExcluded: key => key === 'group:20016',
     memoryConfig: () => cfg,
     listConversationKeys: () => ['private:1'],
     requestMemoryWrite: (key) => { wakes.push(key); return true; },
@@ -121,11 +121,11 @@ check('发送成功后立即在日记归档标记发送时间', writtenArchive.i
 await plugin.hooks.onTick({ now: t0 + 90_000 });
 check('同一日期同一会话只归档一次', fs.readFileSync(todayFile, 'utf8') === writtenArchive);
 
-fs.appendFileSync(todayFile, '\n## group:60010 · 22:00\nEXCLUDED_GROUP_DIARY\n');
+fs.appendFileSync(todayFile, '\n## group:20016 · 22:00\nEXCLUDED_GROUP_DIARY\n');
 const diaryHistory = await registeredTools.get('diary_history')?.handler({ limit: 10 });
 const diaryRead = await registeredTools.get('diary_read')?.handler({ date: today });
 check('日记历史左侧统计排除隐藏会话', diaryHistory?.ok === true && diaryHistory.dates.find(x => x.date === today)?.count === 1);
-check('日记历史预览只保留可见会话内容', diaryRead?.ok === true && diaryRead.text.includes('刷新后的日记') && !diaryRead.text.includes('EXCLUDED_GROUP_DIARY') && !diaryRead.text.includes('group:60010'));
+check('日记历史预览只保留可见会话内容', diaryRead?.ok === true && diaryRead.text.includes('刷新后的日记') && !diaryRead.text.includes('EXCLUDED_GROUP_DIARY') && !diaryRead.text.includes('group:20016'));
 
 const listed = await registeredTools.get('diary_history')?.handler({ limit: 30 });
 check('归档列表含 date/count/keys/chars', listed.ok === true && listed.dates.length === 2
@@ -216,19 +216,19 @@ const hiddenRoot = fs.mkdtempSync(path.join(process.cwd(), '_tmp-memory-hidden-'
 fs.mkdirSync(path.join(hiddenRoot, 'state', 'plugins'), { recursive: true });
 fs.mkdirSync(path.join(hiddenRoot, 'state', 'memory', 'diary'), { recursive: true });
 fs.writeFileSync(path.join(hiddenRoot, 'state', 'memory', 'diary', today + '.md'),
-  '# ' + today + ' 日记\n\n## group:60010 · 08:00\nHIDDEN_GROUP_DIARY\n\n## private:1 · 09:00\nVISIBLE_PRIVATE_DIARY\n');
+  '# ' + today + ' 日记\n\n## group:20016 · 08:00\nHIDDEN_GROUP_DIARY\n\n## private:1 · 09:00\nVISIBLE_PRIVATE_DIARY\n');
 const hiddenTools = {};
 createPlugin({
   root: hiddenRoot, config: {}, log: () => {}, warn: () => {}, state: { get: () => ({}), set: () => {} },
-  capabilities: { memoryConfig: () => ({}), isConsoleConversationExcluded: (key) => key === 'group:60010',
+  capabilities: { memoryConfig: () => ({}), isConsoleConversationExcluded: (key) => key === 'group:20016',
     deliveryStatus: async () => ({ ok: true, status: 'sent', finishedAt: 1792990000000 }) },
   registerTool: (name, spec) => { hiddenTools[name] = spec; }
 });
 const visibleHistory = await hiddenTools.diary_history.handler({ limit: 10 });
 const visibleArchive = await hiddenTools.diary_read.handler({ date: today });
 check('控制台日记历史隐藏指定群并保留其他会话', visibleHistory.ok === true && visibleHistory.dates[0].keys.includes('private:1')
-  && !visibleHistory.dates[0].keys.includes('group:60010') && visibleHistory.dates[0].count === 1);
-check('控制台日记正文隐藏指定群内容', visibleArchive.ok === true && !visibleArchive.text.includes('60010')
+  && !visibleHistory.dates[0].keys.includes('group:20016') && visibleHistory.dates[0].count === 1);
+check('控制台日记正文隐藏指定群内容', visibleArchive.ok === true && !visibleArchive.text.includes('20016')
   && !visibleArchive.text.includes('HIDDEN_GROUP_DIARY') && visibleArchive.text.includes('VISIBLE_PRIVATE_DIARY'));
 check('日记历史显示成功回执时间戳', visibleHistory.dates[0].deliveries[0]?.status === 'sent'
   && visibleHistory.dates[0].deliveries[0]?.sentAt === 1792990000000);

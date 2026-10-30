@@ -21,7 +21,7 @@
   },
   "config": {
     "fastCheckMinutes": 1,
-    "fullCheckMinutes": 5,
+    "fullCheckMinutes": 30,
     "webWatchEnabled": false,
     "watchUrls": [],
     "watchUrlsConfigured": true,
@@ -34,6 +34,13 @@
     "lecturesLocation": "",
     "lecturesIntervalMinutes": 10,
     "lecturesPortalUrl": "",
-    "lecturesApi": ""
+    "lecturesApi": "",
+    "scriptDescriptions": {}
+  },
+  "configSchema": {
+    "scriptDescriptions": {
+      "editable": false,
+      "description": "开发者与 AI 维护的逐脚本执行/搜索约定，只读一行显示，不直接执行脚本"
+    }
   }
 }

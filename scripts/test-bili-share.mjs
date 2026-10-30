@@ -28,14 +28,14 @@ test('topic draw uses one base weight plus the sum of related uploader weights',
 });
 
 test('topic related uploader list uses weighted targeting, while keeping broad search possible', () => {
-  const ups = normalizeTopicUploaders('鲸鱼 | 示例海洋记录员 | 2\n海洋 | 其他UP | 1', ['鲸鱼', '海洋']);
+  const ups = normalizeTopicUploaders('鲸鱼 | 正太肥鱼与龙少的日常 | 2\n海洋 | 其他UP | 1', ['鲸鱼', '海洋']);
   assert.deepEqual(ups, [
-    { topic: '鲸鱼', uploader: '示例海洋记录员', weight: 2 },
+    { topic: '鲸鱼', uploader: '正太肥鱼与龙少的日常', weight: 2 },
     { topic: '海洋', uploader: '其他UP', weight: 1 }
   ]);
   assert.equal(chooseTopicUploader('鲸鱼', ups, () => 0), '');
-  assert.equal(chooseTopicUploader('鲸鱼', ups, () => 0.34), '示例海洋记录员');
-  assert.equal(chooseTopicUploader('鲸鱼', ups, () => 0.99), '示例海洋记录员');
+  assert.equal(chooseTopicUploader('鲸鱼', ups, () => 0.34), '正太肥鱼与龙少的日常');
+  assert.equal(chooseTopicUploader('鲸鱼', ups, () => 0.99), '正太肥鱼与龙少的日常');
   const multi = [...ups, { topic: '鲸鱼', uploader: '另一位UP', weight: 1 }];
   assert.equal(chooseTopicUploader('鲸鱼', multi, () => 0.8), '另一位UP');
   assert.equal(chooseTopicUploader('少年', ups, () => 0), '');
@@ -50,11 +50,11 @@ test('normalizes both group/private delivery sessions', () => {
 test('share config exposes topic-associated uploader weights and delivery targets', () => {
   assert.deepEqual(resolveShareConfig({
     keywords: ['海洋', '鲸鱼'],
-    topicUploaders: [{ topic: '鲸鱼', uploader: '示例海洋记录员', weight: 2 }],
+    topicUploaders: [{ topic: '鲸鱼', uploader: '正太肥鱼与龙少的日常', weight: 2 }],
     sessionWhitelist: ['private:67890']
   }), {
     keywords: ['海洋', '鲸鱼'],
-    topicUploaders: [{ topic: '鲸鱼', uploader: '示例海洋记录员', weight: 2 }],
+    topicUploaders: [{ topic: '鲸鱼', uploader: '正太肥鱼与龙少的日常', weight: 2 }],
     sessionWhitelist: ['private:67890'],
     maxItems: 2
   });

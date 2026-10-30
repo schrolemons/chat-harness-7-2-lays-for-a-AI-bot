@@ -1,3 +1,4 @@
+import {readSourceKeys,sourceKeysText,sourceKeysMarkup,requireLearningScopes} from './source-keys.js';
 
 import { setSlangActiveTab, setSlangEntriesCache, setSlangModalId, setSlangModalMode, slangEntriesCache, slangSelected, slangActiveTab, slangModalId, slangModalMode } from './slang-state.js';
 import { api, esc } from '../../shared/api.js';
@@ -91,7 +92,7 @@ function renderSlangPanel() {
   const limit = getSlangLimit();
   const shown = filtered.slice(0, limit);
   let html = `<div class="meta" style="padding:6px 8px">共 ${filtered.length} 条，显示 ${shown.length} 条（可滚动查找）</div>`;
-  html += '<table><tr><th>选择</th><th>词条</th><th>次数</th><th>来源</th><th>含义 / 用法 / 示例</th><th>参考来源</th><th>语境证据</th><th>操作</th></tr>';
+  html += '<table><tr><th>选择</th><th>词条</th><th>次数</th><th>录入 / 适用来源</th><th>含义 / 用法 / 示例</th><th>参考来源</th><th>语境证据</th><th>操作</th></tr>';
   for (const e of shown) {
     const researchLabel=status==='candidate'?(Number(e.lastInferenceCount)>0?(Number(e.lastInferenceCount)<Number(e.count)?'有新语境，待复核':e.meaning?'已研究，待审核':'已研究，仍不确定'):e.meaning?'已有解释，待审核':String(e.risk||'').startsWith('研究未确定：')?'已研究，仍不确定':'待研究'):'';
     const meaning = e.meaning ? esc(e.meaning)+(status==='candidate'?'<br><span class="meta">'+researchLabel+'</span>':'') : (status === 'candidate' ? '<span class="meta">'+researchLabel+'</span>' : '<span class="meta">无</span>');
@@ -112,7 +113,7 @@ function renderSlangPanel() {
       <td><input type="checkbox" data-slang-select="${esc(e.id)}"${checked}></td>
       <td><b>${esc(e.content)}</b><br><span class="${slangStatusClass(status)}">${slangStatusLabel(status)}</span></td>
       <td>${esc(e.count)}</td>
-      <td>${esc(slangSourceLabel(e))}</td>
+      <td>${esc(slangSourceLabel(e))}<br>${sourceKeysMarkup(e)}</td>
       <td>${meaning}${e.usage ? '<br><span class="meta">用法：' + esc(e.usage) + '</span>' : ''}${e.example ? '<br><span class="meta">例：' + esc(e.example) + '</span>' : ''}${e.risk ? '<br><span class="meta">' + (String(e.risk).startsWith('研究未确定：') ? '研究备注：' + esc(String(e.risk).slice(6)) : '风险：' + esc(e.risk)) + '</span>' : ''}</td>
       <td>${slangSourcesHtml(e) || '<span class="meta">—</span>'}</td>
       <td>${slangEvidenceHtml(e)}</td>
@@ -172,6 +173,7 @@ function openSlangModal(id, mode) {
   document.getElementById('slangModalContent').textContent = mode === 'confirm'
     ? '你可以直接填写含义/用法并转正，也可以先送 DSH 深度联网研究，研究结果回来后在此处删改再确认。'
     : '修改后保存；候选不会转正，已确认仍保持已确认。';
+  document.getElementById('slangSourceKeys').value=sourceKeysText(e);
   document.getElementById('slangModalMeaning').value = e.meaning || '';
   document.getElementById('slangModalUsage').value = e.usage || '';
   document.getElementById('slangModalExample').value = e.example || '';
@@ -189,6 +191,7 @@ function closeSlangModal() {
 
 function readSlangModalPayload() {
   return {
+    sourceKeys:readSourceKeys('slangSourceKeys'),
     meaning: document.getElementById('slangModalMeaning').value.trim(),
     usage: document.getElementById('slangModalUsage').value.trim(),
     example: document.getElementById('slangModalExample').value.trim(),
@@ -324,7 +327,7 @@ document.getElementById('slangBatchRestore').addEventListener('click', async () 
 });
 document.getElementById('slangModalDirectConfirm').addEventListener('click', async () => {
   if (!slangModalId) return;
-  const payload = readSlangModalPayload();
+  let payload;try{await requireLearningScopes();payload=readSlangModalPayload();}catch(error){setSlangMsg(error.message,false);return;}
   if (!payload.meaning) { alert('请先填写含义，确认后才会注入 AI 上下文'); return; }
   const e = slangEntriesCache.find((x) => x.id === slangModalId);
   if (!e) return;
@@ -348,7 +351,8 @@ document.getElementById('slangAdd').addEventListener('click', async () => {
   const usage = document.getElementById('slangUsage').value.trim();
   const example = document.getElementById('slangExample').value.trim();
   if (!content) { alert('词条不能为空'); return; }
-  const r = await api('/api/slang', 'POST', { content, meaning, usage, example });
+  let scope;try{await requireLearningScopes();scope=readSourceKeys('slangManualSourceKeys');}catch(error){setSlangMsg(error.message,false);return;}
+  const r = await api('/api/slang', 'POST', { content, meaning, usage, example,sourceKeys:scope });
   document.getElementById('slangMsg').textContent = r.ok ? '✅ 已添加' : ('❌ ' + (r.error || '失败'));
   document.getElementById('slangMsg').className = r.ok ? 'meta ok' : 'meta err';
   if (r.ok) {
@@ -367,12 +371,13 @@ document.getElementById('slangResearch').addEventListener('click', async event =
   await researchSlangIds(slangEntriesCache.filter(e=>e.status==='candidate').map(e=>e.id),event.currentTarget);
 });
 document.getElementById('slangConfigSave').addEventListener('click', async () => {
+  try{await requireLearningScopes();}catch(error){setSlangMsg(error.message,false);return;}
   const r = await api('/api/slang/config', 'POST', {
     enabled: document.getElementById('slangEnabled').checked,
     extractMinMessages: Number(document.getElementById('slangExtractMin').value) || 10,
     extractCooldownMs: Number(document.getElementById('slangCooldown').value) || 300000,
     inferenceThresholds: document.getElementById('slangThresholds').value.split(/[,，\s]+/).map(Number).filter(Boolean),
-    injectMax: Number(document.getElementById('slangInjectMax').value) || 8,
+    injectMax: Number(document.getElementById('slangInjectMax').value),
     learnerPreset: document.getElementById('slangLearnerPreset').value.trim(),
     workspaceTitle: document.getElementById('slangWorkspaceTitle').value.trim(),
     autoResearch: document.getElementById('slangAutoResearch').checked

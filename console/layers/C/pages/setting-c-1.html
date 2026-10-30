@@ -3,7 +3,7 @@
 <p class="meta">窗口内的话题与印象、需要跟进的事务、会话事实分别维护；稳定人物资料在“会话背景”统一管理。</p>
 <details class="settings-group" open><summary><span class="layer-tag" data-layer="C">C</span>轻量记忆（话题 / 待说想法 / 当前小上下文窗口内对用户的行为印象）</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2MemoryKey" placeholder="group:60000" style="flex:1">
+        <input type="text" id="v2MemoryKey" placeholder="group:20009" style="flex:1">
         <button id="v2MemoryLoad" class="small">加载记忆</button>
         <button id="v2MemoryClearAll" class="small danger">清空此会话轻量记忆</button>
         <span class="meta" id="v2MemoryMsg"></span>
@@ -15,7 +15,7 @@
 <details class="settings-group"><summary><span class="layer-tag" data-layer="C">C</span>会话事实与今日画像</summary><div class="settings-content">
       <div class="row">
         <div class="setting-field"><label for="v2PmEnabled">启用自动更新</label><input type="checkbox" id="v2PmEnabled" style="width:auto"><small class="parameter-example" data-example-for="v2PmEnabled">例：关闭后停止这条自动更新流程，已有持久资料仍保留。</small></div>
-        <div class="setting-field"><label for="v2PmInterval">更新间隔（分）</label><input type="number" id="v2PmInterval" min="1" style="width:90px"><small class="parameter-example" data-example-for="v2PmInterval">例：设为30：自动维护按约30分钟间隔安排，不是每条来信都写档案。</small></div>
+        <div class="setting-field"><label for="v2PmInterval">后台会话记忆整理间隔（分钟）</label><input type="number" id="v2PmInterval" min="1" style="width:90px"><small class="parameter-example" data-example-for="v2PmInterval">例：设为30：自动维护按约30分钟间隔安排，不是每条来信都写档案。</small></div>
         <div class="setting-field"><label for="v2PmMaxChars">自动整理输出预算（字符）</label><input type="number" id="v2PmMaxChars" min="500" max="20000" style="width:100px"><small class="parameter-example" data-example-for="v2PmMaxChars">例：设为4000：限制自动整理的输出目标，不与下方聊天注入预算混用。</small></div>
         <span class="meta" style="flex:2">全局自动更新规则，适用于符合条件的会话。修改后点本页底部「保存全局记忆规则」。</span>
       </div>
@@ -32,10 +32,15 @@
       </div></details>
 <details class="settings-group"><summary><span class="layer-tag" data-layer="C">C</span>上下文读取范围与注入预算</summary><div class="settings-content">
       <div class="row">
-        <div class="setting-field"><label for="v2ContextRecentLimit">最近消息上限</label><input type="number" id="v2ContextRecentLimit" min="1" style="width:80px"><small class="parameter-example" data-example-for="v2ContextRecentLimit">例：设为100：最近消息材料最多取100条，不等于每轮都必须读满。</small></div>
-        <div class="setting-field"><label for="v2ContextUnreadLimit">未读上限</label><input type="number" id="v2ContextUnreadLimit" min="1" style="width:80px"><small class="parameter-example" data-example-for="v2ContextUnreadLimit">例：设为30：一轮未读材料按30条上限组织，未被处理的消息不能假标已回复。</small></div>
-        <div class="setting-field"><label for="v2ContextWindow">上下文窗口</label><input type="number" id="v2ContextWindow" min="1" style="width:80px"><small class="parameter-example" data-example-for="v2ContextWindow">例：设为20：按20条消息的上下文范围组织对应材料，不是20分钟。</small></div>
+        <div class="setting-field"><label for="v2ContextRecentLimit">最近消息保留上限（条）</label><input type="number" id="v2ContextRecentLimit" min="1" style="width:80px"><small class="parameter-example" data-example-for="v2ContextRecentLimit">例：设为100：每个会话保留最近100条消息供回查，含 bot 发言；超出时淘汰较早缓存，不代表模型每轮读取100条。</small></div>
+        <div class="setting-field"><label for="v2ContextUnreadLimit">未读队列保留上限（条）</label><input type="number" id="v2ContextUnreadLimit" min="1" style="width:80px"><small class="parameter-example" data-example-for="v2ContextUnreadLimit">例：设为30：未读队列最多保留最近30条，超出时较早消息移出队列；移出不代表已回复，仍可能在最近消息中回查。</small></div>
+        <div class="setting-field"><label for="v2ContextWindow">临时行为印象窗口（条）</label><input type="number" id="v2ContextWindow" min="1" style="width:80px"><small class="parameter-example" data-example-for="v2ContextWindow">例：设为20：按最近20条消息中的发言者和印象更新时间，筛选本轮临时行为印象；不限制模型的全部聊天历史。</small></div>
       </div>
+      <div class="affairs-budget-row">
+        <label for="v2AffairsBudget">事务预算（字符）</label><input type="number" id="v2AffairsBudget" min="200" max="10000" step="1" required disabled aria-describedby="v2AffairsBudgetHelp">
+        <button class="small primary" type="button" id="v2AffairsBudgetSave" data-save-action disabled>保存全局事务预算</button><span class="meta" id="v2AffairsBudgetMsg" role="status"></span>
+      </div>
+      <small class="parameter-example" id="v2AffairsBudgetHelp" data-example-for="v2AffairsBudget">例：设为4000：各会话每轮最多按4000字符选取完整事务；只影响注入，不修改已保存的事务正文。</small>
 
       </div></details>
 <div class="row"><button class="small primary v2-save" type="button" data-save-action>保存全局记忆规则</button><span class="meta v2-save-msg" role="status"></span></div>

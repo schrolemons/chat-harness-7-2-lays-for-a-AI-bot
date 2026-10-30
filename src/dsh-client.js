@@ -1,3 +1,4 @@
+import {repairPromptUnicode} from './prompt-unicode.js';
 // Node 环境的 DSH Web API 客户端。
 // 兼容 DSH 0.1.2-alpha.1 引入、并在 0.1.5-rc.1 上复核通过的协议：
 // 1. RPC 方法从点号改为斜杠（host.describe -> host/describe 等）；
@@ -269,6 +270,10 @@ export function controlBaselineInboxItems(frame, sessionId) {
 function wrapArgs(method, payload) {
   const endpoint = endpointOf(method);
   let body = payload ?? {};
+  if (endpoint === 'session/prompt' && Array.isArray(body.content)) {
+    body = { ...body, content: body.content.map(block => block?.type === 'text' && typeof block.text === 'string'
+      ? { ...block, text: repairPromptUnicode(block.text) } : block) };
+  }
   // 新版 SessionPromptRequest 强制要求 requestId。
   if (endpoint === 'session/prompt' && typeof body.requestId !== 'string') {
     body = { ...body, requestId: randomUUID() };

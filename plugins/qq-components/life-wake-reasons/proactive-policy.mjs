@@ -1,15 +1,19 @@
+const engagementURL=new URL('../ctx-chat-reply-shape/engagement.mjs',import.meta.url);engagementURL.search=new URL(import.meta.url).search;
+const {engagementFactors}=await import(engagementURL.href);
+const groupWakeUrl=new URL('./group-wake.mjs',import.meta.url);groupWakeUrl.search=new URL(import.meta.url).search;
+const {GROUP_WAKE_DEFAULTS,validateGroupWake}=await import(groupWakeUrl.href);
 export const DEFAULT_PROACTIVE_POLICY = Object.freeze({
-  proactiveEnabled: true, silenceMinutes: 20, initialProbability: .15, probabilityStep: .10,
+  ...GROUP_WAKE_DEFAULTS, proactiveEnabled: true, silenceMinutes: 20, initialProbability: .15, probabilityStep: .10,
   probabilityMax: .85, checkMinMinutes: 15, checkMaxMinutes: 30, intervalStepMinutes: -1,
   checkFloorMinutes: 1, minActiveGapMinutes: 30, maxSilenceMinutes: 180,
-  initialWillingness: 60, activityWillingnessDelta: 10, purposeWillingnessDelta: -10,
+  initialWillingness: 60,
   curfewEnabled: true, curfewStartHour: 23, curfewEndHour: 8
 });
 const ranges = {
   silenceMinutes: [0, 10080], initialProbability: [0, 1], probabilityStep: [0, 1], probabilityMax: [0, 1],
   checkMinMinutes: [1, 10080], checkMaxMinutes: [1, 10080], intervalStepMinutes: [-10080, 10080],
   checkFloorMinutes: [1, 10080], minActiveGapMinutes: [0, 10080], maxSilenceMinutes: [1, 10080],
-  initialWillingness: [0, 100], activityWillingnessDelta: [-100, 100], purposeWillingnessDelta: [-100, 100],
+  initialWillingness: [0, 100],
   curfewStartHour: [0, 23], curfewEndHour: [0, 23]
 };
 export function validateProactivePolicy(raw = {}) {
@@ -23,12 +27,15 @@ export function validateProactivePolicy(raw = {}) {
   if (p.checkFloorMinutes > p.checkMinMinutes) errors.push('checkFloorMinutes must not exceed checkMinMinutes');
   if (p.initialProbability > p.probabilityMax) errors.push('initialProbability must not exceed probabilityMax');
   if (p.maxSilenceMinutes < p.silenceMinutes || p.maxSilenceMinutes < p.minActiveGapMinutes) errors.push('maxSilenceMinutes must cover silenceMinutes and minActiveGapMinutes');
+  errors.push(...validateGroupWake(raw));
   return { ok: errors.length === 0, errors };
 }
 export function normalizeProactivePolicy(raw = {}) {
   const p = { ...DEFAULT_PROACTIVE_POLICY };
   for (const key of Object.keys(p)) {
-    if (typeof p[key] === 'boolean') { if (typeof raw[key] === 'boolean') p[key] = raw[key]; }
+    if(key==='groupNames'){if(typeof raw[key]==='string')p[key]=raw[key];}
+    else if(key.startsWith('group')){if(typeof raw[key]==='number'&&Number.isFinite(raw[key])&&raw[key]>=0&&raw[key]<=1)p[key]=raw[key];}
+    else if (typeof p[key] === 'boolean') { if (typeof raw[key] === 'boolean') p[key] = raw[key]; }
     else if (typeof raw[key] === 'number' && Number.isFinite(raw[key]) && raw[key] >= ranges[key][0] && raw[key] <= ranges[key][1]
       && (!key.endsWith('Hour') || Number.isInteger(raw[key]))) p[key] = raw[key];
   }
@@ -36,10 +43,8 @@ export function normalizeProactivePolicy(raw = {}) {
   return { ...p, disabledReasons: Array.isArray(raw.disabledReasons) ? raw.disabledReasons.map(String) : [] };
 }
 export function effectiveProactiveStage(p, stage = 0, willingness = p.initialWillingness, mood = {}) {
-  const m = mood.enabled === false ? 1 : Number.isFinite(mood.frequencyFactor) ? Math.max(.2, Math.min(1, mood.frequencyFactor))
-    : Number.isFinite(mood.score) ? .2 + .8 * Math.max(0, Math.min(100, mood.score)) / 100 : 1;
-  const e = m * (.2 + .8 * Math.max(0, Math.min(100, willingness)) / 100), n = Math.max(0, Math.floor(stage));
-  return { effectiveProbability: Math.min(p.probabilityMax, (p.initialProbability + n * p.probabilityStep) * e),
+  const e = engagementFactors(mood,willingness).factor, n = Math.max(0, Math.floor(stage));
+  return { effectiveProbability: Math.min(p.probabilityMax, p.initialProbability + n * p.probabilityStep) * e,
     effectiveInterval: { minMinutes: Math.max(p.checkFloorMinutes, (p.checkMinMinutes + n * p.intervalStepMinutes) * (2 - e)),
       maxMinutes: Math.max(p.checkFloorMinutes, (p.checkMaxMinutes + n * p.intervalStepMinutes) * (2 - e)) } };
 }

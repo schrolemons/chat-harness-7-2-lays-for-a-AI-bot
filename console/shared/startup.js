@@ -2,7 +2,6 @@
 import { refresh, refreshPresets } from '../layers/O/status.js';
 import { refreshRoles } from '../layers/C/persona.js';
 import { refreshSimPrompt } from '../layers/C/preset-prompt.js';
-import { refreshDshModel } from '../layers/O/model-status.js';
 import { refreshWhitelist } from '../layers/G/access.js';
 import { refreshSessions, refreshPending } from '../layers/E/sessions.js';
 import { loadV2Config } from './config-load.js';
@@ -46,7 +45,6 @@ refreshSlang();
 loadSlangConfig();
 loadSecurity();
 refreshSimPrompt();
-refreshDshModel();
 setInterval(() => { refresh(); refreshSessions(); refreshPending(); refreshSocialStatus(); refreshSlang(); }, 3000);
 setInterval(() => { if (currentConsolePage !== 'usage') return; void refreshUsageDashboard(); }, 3000);
 }

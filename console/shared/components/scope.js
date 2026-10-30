@@ -15,7 +15,7 @@ export function componentScope(id, label) {
   const prefix = LOCAL.has(id) ? '本机' : '全局';
   const action = label || '保存功能设置';
   return { label: prefix === '本机' ? '本机配置' : '全局规则',
-    description: NOTES[id] || (prefix === '本机' ? '配置保存在本机，供此 bot 的相关功能使用。' : '适用于此 bot 符合条件的会话；不修改下方单个会话或人物的内容。'),
+    description: id==='life-campus-watch'&&action.includes('脚本')?'本机脚本地址与逐项启停；执行和搜索细节按开发者与 AI 的约定处理。':id==='life-campus-watch'?'本机网页监控配置；通知发送到配置的目标会话。':NOTES[id] || (prefix === '本机' ? '配置保存在本机，供此 bot 的相关功能使用。' : '适用于此 bot 符合条件的会话；不修改下方单个会话或人物的内容。'),
     saveLabel: action.includes(prefix) ? action : action.replace(/^保存/, '保存' + prefix)
   };
 }

@@ -105,3 +105,10 @@
         thresholdChars: 16000
         headChars: 12000
         tailChars: 2000
+
+
+
+# O 层最终 context 编排；使用正式 admission 钩子，不改工具权限。
+- id: qq-context-composer
+  name: qq-agent-presets/context-composer.mjs
+  config: {}

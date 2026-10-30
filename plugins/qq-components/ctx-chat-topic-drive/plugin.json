@@ -1,8 +1,8 @@
 {
   "id": "ctx-chat-topic-drive",
-  "name": "会话推进（追问 / 起话题）",
+  "name": "话题发起与跟进",
   "version": "0.1.0",
-  "description": "私聊内与群聊内由模型判断是否自然追问；另提供群聊后跨私聊的关系校验与限频发送能力。",
+  "description": "无人回复且本轮继续时，按权重追问旧话题、开启新话题或继续等待；群聊转私聊跟进独立限频。",
   "category": "生命周期与编排",
   "order": 10,
   "tags": [
@@ -24,7 +24,23 @@
     "sessionLimits": {},
     "followUpCooldownMinutes": 8,
     "newTopicCooldownMinutes": 45,
-    "newTopicMaxPerHour": 2
+    "newTopicMaxPerHour": 2,
+    "followupWeight": 0.5,
+    "newTopicWeight": 0.2
   },
-  "layer": "L"
+  "layer": "L",
+  "configSchema": {
+    "followupWeight": {
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "label": "旧话题追问权重 a"
+    },
+    "newTopicWeight": {
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "label": "新话题权重 b"
+    }
+  }
 }
