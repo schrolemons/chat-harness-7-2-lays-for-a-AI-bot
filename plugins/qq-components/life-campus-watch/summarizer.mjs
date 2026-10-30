@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { NodeApiClient, unwrap } from '../../../src/dsh-client.js';
 import { SUMMARY_PROMPT } from './summary-policy.mjs';
+import {readCostPolicy,selectCostPolicy} from '../obs-cost-policy/policy.mjs';
 
 /** 独立定时脚本也必须服从桥接的全局额度；状态不可读时不启动模型回合。 */
 export async function assertGlobalBudgetAllowsModel(root, { fetchImpl = fetch } = {}) {
@@ -28,9 +29,10 @@ export async function assertGlobalBudgetAllowsModel(root, { fetchImpl = fetch } 
 }
 
 /** One short, fresh, tool-free DSH turn for the whole change batch. Never sends to QQ. */
-export async function generateWebSummary(payload, { root, timeoutMs = 35000, provider = 'deepseek-official', model = 'deepseek-flash' } = {}) {
+export async function generateWebSummary(payload, { root, timeoutMs = 35000 } = {}) {
   await assertGlobalBudgetAllowsModel(root);
   const cfg = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
+  const tier=selectCostPolicy(readCostPolicy(root),{reason:'webSummary'}),provider=String(cfg.dsh?.provider||'deepseek-official');
   const api = new NodeApiClient(cfg.dsh.baseUrl, 8000, cfg.dsh.authToken ? { token: cfg.dsh.authToken } : {});
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(Error('网页整理超时')), Math.max(1000, Math.min(timeoutMs, 60000)));
@@ -43,7 +45,7 @@ export async function generateWebSummary(payload, { root, timeoutMs = 35000, pro
     fs.mkdirSync(cwd, { recursive: true });
     const created = unwrap(await api.sessions.create({ cwd, agentPreset: 'campus-summary' }, signal), 'session.create');
     sessionId = created.sessionId;
-    await api.sessions.selectModel({ sessionId, provider, model, reasoningEffort: 'low' }, signal);
+    unwrap(await api.sessions.selectModel({sessionId,provider,model:tier.model,reasoningEffort:tier.reasoningEffort},signal),'summary session.selectModel');
     const url = new URL('/api/remote.mux', cfg.dsh.baseUrl);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     const answer = await new Promise((resolve, reject) => {

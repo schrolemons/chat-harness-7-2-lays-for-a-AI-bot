@@ -22,7 +22,7 @@ test('multi-message prompt requires one explicit qq_reply for each replied-to me
   assert.match(bridge, /taskCaps\.sendPrivateFollowup\s*=\s*async/);
   assert.match(bridge, /pluginHost\.emitSent\(\{ key, success: true/);
   assert.doesNotMatch(bridge, /用 qq_send_message 的 messages 数组/);
-  const wakeRules = fs.readFileSync(new URL('../plugins/qq-components/life-wake-reasons/index.js', import.meta.url), 'utf8');
+  const wakeRules = fs.readFileSync(new URL('../plugins/qq-components/life-wake-reasons/index.js', import.meta.url), 'utf8')+fs.readFileSync(new URL('../plugins/qq-components/life-wake-reasons/chat-entry-guidance.mjs', import.meta.url), 'utf8');
   assert.match(wakeRules, /本质含义相同.*qq_send_message/s);
   assert.match(wakeRules, /语义不同.*qq_reply/s);
   const topicDrive = fs.readFileSync(new URL('../plugins/qq-components/ctx-chat-topic-drive/index.js', import.meta.url), 'utf8');

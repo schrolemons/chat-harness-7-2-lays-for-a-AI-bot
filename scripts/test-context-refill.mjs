@@ -7,7 +7,13 @@ import {prioritizeChatExpression} from '../plugins/qq-components/obs-context-ass
 import {createPlugin} from '../plugins/qq-components/obs-context-assembly/index.js';
 import {encodePacket,decodePacket} from '../plugins/qq-components/obs-context-assembly/packet.mjs';
 import {secretFor,readEvidence} from '../plugins/qq-components/obs-context-assembly/store.mjs';
-import {contextParts} from '../plugins/qq-components/obs-context-assembly/refill.mjs';
+import {contextParts,retireDialogueTasks} from '../plugins/qq-components/obs-context-assembly/refill.mjs';
+test('owned historical bridge task is removed from the projection, never from raw log or arbitrary user text',()=>{
+ const text='【QQ 回合 private】\n历史桥接指令\n【新增 QQ 消息数据】\n[{"seq":1,"text":"用户原文"}]';
+ const entries=[{seq:1,type:'user/message',data:{id:'owned',source:{kind:'qq-context-dialogue',seqs:[1]},content:[{type:'text',text}]}},{seq:2,type:'user/message',data:{id:'ordinary',source:{kind:'user'},content:[{type:'text',text}]}}],before=JSON.stringify(entries),changes=[];
+ const session={surface:{nodes:[1,2]},eventAt:seq=>entries.find(row=>row.seq===seq)};retireDialogueTasks(session,{},(_session,seq,message)=>changes.push({seq,message}));
+ assert.equal(changes.length,1);assert.equal(changes[0].seq,1);assert(!changes[0].message.content[0].text.includes('历史桥接指令'));assert(changes[0].message.content[0].text.includes('用户原文'));assert.equal(JSON.stringify(entries),before);
+});
 
 const rows=(mood='60',schedule='周五写报告')=>[
  {id:'role-card',text:'原始角色卡'},
@@ -18,9 +24,9 @@ const rows=(mood='60',schedule='周五写报告')=>[
  {id:'message-snapshot',text:JSON.stringify({messages:[{seq:1,text:'原始来信'}],recent:[]})},
 ];
 
-test('refill keeps session identity/token stable and never repeats bootstrap background during refresh',()=>{
+test('refill keeps identity stable and credentials current without repeating bootstrap background',()=>{
  const split=contextParts({id:'ctx-context-session',text:'【你的身份】小鲸鱼\n\n【会话令牌】local-token\n\n【此刻状态】未读2条'});
- assert.match(split.stable,/你的身份/);assert.match(split.stable,/会话令牌/);assert(!split.current.includes('local-token'));assert.match(split.current,/未读2条/);
+ assert.match(split.stable,/你的身份/);assert(!split.stable.includes('local-token'));assert.match(split.current,/会话令牌.*local-token/);assert.match(split.current,/未读2条/);
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'qq-bootstrap-refill-'));try{
   const owner=createPlugin({root,config:{},capabilities:{refreshContextModules:()=>({modules:[{id:'ctx-context-session',text:'【你的身份】小鲸鱼\n\n稳定用户背景\n\n【此刻状态】未读2条'}]})}}).services.contextAssembly;
   owner.compose({key:'private:1',sessionId:'s1',scene:'bootstrap',modules:rows(),fallback:''});const capture=readEvidence(root,'private:1');
@@ -56,21 +62,32 @@ test('refill keeps current mood out of system, unwinds old voice promotion, and 
  assert.equal(compileModules(rows()).selected.find(r=>r.id==='session-background').placement,'stable');
 });
 
-test('refill appends only changed state after tool results, without moving calls or duplicating messages',async()=>{
- let current=rows();let f;f=fixture(async()=>({modules:current}));try{
+test('latest state appears once at the tail; superseded state stays only in the durable log',async()=>{
+ let current=rows();const f=fixture(async()=>({modules:current}));try{
   await f.admit(f.envelope());
-  const first=f.messages();assert.equal(first[0].source.kind,'qq-context-stable');
-  assert.match(first[0].content[0].text,/稳定用户背景/);assert(!first[0].content[0].text.includes('当前心情'));
-  const original=JSON.stringify(first);await f.admit();assert.equal(JSON.stringify(f.messages()),original,'unchanged context is append-free');
-  f.session.append('assistant/message',{id:'call',role:'assistant',content:[{type:'tool-call',id:'c1',name:'qq_mood'}]},{surfaceOp:'append'});
-  f.session.append('tool/result',{id:'result',content:[{type:'tool-result',toolCallId:'c1'}]},{surfaceOp:'append'});
-  const calls=JSON.stringify(f.session.snapshotEvents().filter(e=>e.type!=='user/message'));
+  assert.equal(f.messages()[0].source.kind,'qq-context-stable');
+  await f.admit();assert.equal(f.messages().filter(m=>m.source.kind==='qq-context-latest').length,1);
+  const call=f.session.append('assistant/message',{id:'call',role:'assistant',content:[{type:'tool-call',id:'c1',name:'qq_mood'}]},{surfaceOp:'append'});
+  const result=f.session.append('tool/result',{id:'result',content:[{type:'tool-result',toolCallId:'c1'}]},{surfaceOp:'append'});
   current=rows('80');await f.admit();
-  const changed=f.messages().at(-1);assert.equal(changed.source.kind,'qq-context-update');assert.match(changed.content[0].text,/80/);assert(!changed.content[0].text.includes('周五写报告'));
-  assert.equal(f.messages().flatMap(m=>m.content).filter(b=>b.text?.includes('原始来信')).length,1);
-  assert(f.session.surface.nodes.indexOf(f.session.snapshotEvents().find(e=>e.data.id==='result').seq)<f.session.surface.nodes.at(-1));
-  assert.equal(JSON.stringify(f.session.snapshotEvents().filter(e=>e.type!=='user/message'&&e.type!=='step/start')),JSON.stringify(JSON.parse(calls).filter(e=>e.type!=='step/start')));
-  current=rows('80','');await f.admit();assert.match(f.messages().at(-1).content[0].text,/life-schedule-reminder[\s\S]*撤回/);
+  const visible=f.messages(),tail=visible.at(-1);assert.equal(tail.source.kind,'qq-context-latest');
+  assert.match(tail.content[0].text,/当前心情=80/);assert.match(tail.content[0].text,/周五写报告/);
+  assert(!JSON.stringify(visible).includes('当前心情=60'));
+  assert.equal(visible.filter(m=>m.source.kind==='qq-context-latest').length,1);
+  assert.equal(visible.flatMap(m=>m.content).filter(b=>b.text?.includes('原始来信')).length,1);
+  assert(f.session.surface.nodes.includes(call.seq));assert(f.session.surface.nodes.includes(result.seq));assert(f.session.surface.nodes.indexOf(result.seq)<f.session.surface.nodes.at(-1));
+  assert(f.session.snapshotEvents().some(e=>e.data.content?.some(b=>b.text?.includes('当前心情=60'))),'old mood remains in original events');
+  current=rows('80','');await f.admit();assert(!f.messages().at(-1).content[0].text.includes('life-schedule-reminder'));
+ }finally{f.close();}
+});
+test('bridge task occupies one replaceable slot while QQ and native tools remain durable',async()=>{
+ const f=fixture(async()=>({modules:rows()}));try{
+  await f.admit(f.envelope());let visible=f.messages();assert.equal(visible.filter(message=>message.source.kind==='qq-context-task').length,1);
+  const dialogue=visible.find(message=>message.source.kind==='qq-context-dialogue'||message.source.baseSource?.kind==='qq-context-dialogue');assert(dialogue);assert(!dialogue.content.some(block=>block.text?.includes('处理来信')));
+  const call=f.session.append('assistant/message',{id:'task-test-call',role:'assistant',content:[{type:'tool-call',id:'keep-call',name:'fixture'}]},{surfaceOp:'append'});
+  const result=f.session.append('tool/result',{id:'task-test-result',role:'tool',toolCallId:'keep-call',content:[{type:'text',text:'工具原始返回'}]},{surfaceOp:'append'});
+  await f.admit();visible=f.messages();assert.equal(visible.filter(message=>message.source.kind==='qq-context-task').length,1);assert.equal(visible.filter(message=>message.source.kind==='qq-context-latest').length,1);assert(f.session.surface.nodes.includes(call.seq));assert(f.session.surface.nodes.includes(result.seq));
+  assert.equal(visible.reduce((count,message)=>count+message.content.filter(block=>block.text?.includes('处理来信')).length,0),1);assert(f.session.snapshotEvents().filter(event=>event.data.source?.kind==='qq-context-task').length>=2);
  }finally{f.close();}
 });
 
@@ -93,4 +110,17 @@ test('refill refresh requires the current signed session packet and only returns
   const output=owner.refresh({sessionId:'s1',envelope:signed});assert.equal(output.ok,true);assert.equal(reads,1);
   const packet=decodePacket(output.envelope,secretFor(root),'s1');assert.equal(packet.nonce,capture.nonce);assert.equal(packet.modules.find(r=>r.id==='ctx-context-dynamics').text,'新心情');
  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+
+test('each idle-to-active turn refreshes the token at the tail and refresh failure withdraws it',async()=>{
+ let token='first-token',offline=false;const current=()=>[...rows(),{id:'ctx-context-session',text:'【你的身份】QQ助手\n\n【会话令牌】'+token+'\n\n【此刻状态】当前回合'}];
+ const f=fixture(async()=>{if(offline)throw Error('refresh offline');return {modules:current()};});try{
+  await f.admit(f.envelope(current()));assert.match(f.messages().at(-1).content[0].text,/first-token/);
+  token='second-token';await f.admit(f.envelope(current(),'n2'));
+  assert.doesNotMatch(JSON.stringify(f.messages()),/first-token/);assert.match(f.messages().at(-1).content[0].text,/second-token/);
+  offline=true;await f.admit();assert.doesNotMatch(JSON.stringify(f.messages()),/first-token|second-token/);
+  token='third-token';offline=false;await f.admit();assert.match(f.messages().at(-1).content[0].text,/third-token/);
+  assert.doesNotMatch(JSON.stringify(f.messages()),/first-token|second-token/);
+ }finally{f.close();}
 });

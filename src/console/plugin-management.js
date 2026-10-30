@@ -1,5 +1,5 @@
 // Called after bridge Host/auth/agent/CSRF gates; session-tool execution stays in its transport layer.
-export async function routePluginManagement({req,url,pluginHost,readBody,sendJson}) {
+export async function routePluginManagement({req,url,pluginHost,readBody,sendJson,synchronizeCostPolicy}) {
 if (req.method === 'GET' && url.pathname === '/api/plugins') {
           sendJson({ ok: true, ...pluginHost.summary(), tools: pluginHost.listTools() });
           return true;
@@ -30,7 +30,12 @@ if (req.method === 'POST' && url.pathname === '/api/plugins/reload') {
         }
 if (req.method === 'POST' && url.pathname === '/api/plugins/config') {
           const body=await readBody();const out=pluginHost.setConfig(body.id,body.config);
-          if(out.ok)await pluginHost.reload(body.id);sendJson(out,out.ok?200:400);return true;
+          if(out.ok)await pluginHost.reload(body.id);
+          if(out.ok&&body.id==='obs-cost-policy'){
+            const sync=typeof synchronizeCostPolicy==='function'?await synchronizeCostPolicy():await pluginHost.callService('cost-policy','sync',{});
+            const ok=sync?.ok===true;sendJson({...out,ok,sync,error:ok?undefined:'调用策略已保存，但部分会话同步失败：'+(sync?.error||'请检查同步结果并重试')},ok?200:409);return true;
+          }
+          sendJson(out,out.ok?200:400);return true;
         }
 if (req.method === 'POST' && url.pathname === '/api/plugins/harnessify') {
           const body=await readBody();const out=await pluginHost.harnessify(body.id,{layer:body.layer});

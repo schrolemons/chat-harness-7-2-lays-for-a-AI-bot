@@ -24,10 +24,10 @@ test('longer exact ranges win over nested matches; identical owners stay visible
  assert.equal(attributeText('无依据',modules,modules)[0].owners.length,0);
 });
 test('message labels distinguish bot generation, tool actions, QQ input, runtime and summary',()=>{
- assert.match(messageLabel({role:'assistant'}),/bot 生成/);
+ assert.match(messageLabel({role:'assistant'}),/bot 内部/);
  assert.match(messageLabel({role:'assistant',toolCalls:[{name:'qq_send_message'}]}),/工具调用/);
  assert.match(messageLabel({role:'tool'}),/工具返回/);
- assert.match(messageLabel({role:'user',source:'qq-context-dialogue'}),/QQ 来信/);
+ assert.match(messageLabel({role:'user',source:'qq-context-dialogue'}),/QQ 消息/);
  assert.match(messageLabel({role:'user',source:'compact-checkpoint'}),/压缩摘要/);
  assert.match(messageLabel({role:'user',source:'runtime-context'}),/运行环境/);
 });

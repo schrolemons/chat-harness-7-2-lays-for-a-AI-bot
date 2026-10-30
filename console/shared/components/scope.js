@@ -1,6 +1,8 @@
 // These are plugin configuration scopes, not the scope of the data editors below them.
 const LOCAL = new Set(['exec-browser-manager','exec-image-generation','life-campus-watch','tool-user-checking','tool-codex-chat']);
 const NOTES = {
+  'tool-user-checking':'所有会话共用这一份桌面txt，不按群拆分，也不把内容发送到QQ。',
+  'obs-session-recovery':'失败次数、冷却和24小时上限按群分别记录。仅归档并重建故障群的模型会话，记忆、心情、日程与消息收据保留。',
   'ctx-user-mood':'心情分数、每日恢复和回应等待按会话分别记录。',
   'ctx-memory-profile-store':'下方档案正文按 QQ 号单独保存。',
   'ctx-knowledge-quota':'实际用量按设定的会话或发言人分别累计。',
@@ -9,7 +11,7 @@ const NOTES = {
   'life-schedule-reminder':'单条日程的收件会话和覆盖值单独保存。',
   'life-campus-watch':'本机监控与脚本配置；消息只投递到配置中的目标会话。',
   'exec-image-generation':'本机 API 服务、额度与密钥；密钥单独保存，普通参数按钮不修改密钥。',
-  'obs-cost-policy':'小鲸鱼全局调用规则；不改写 DSH 的全局默认模型设置。'
+  'obs-cost-policy':'小鲸鱼会话、主动处理及独立任务共用的唯一调用策略。保存后同步已有会话与未完成任务；正在生成的请求不追溯切换，后续请求使用新档位。复杂或明确指定的任务按本面板升级规则执行。DSH 自动上下文压缩摘要保持独立档位。'
 };
 export function componentScope(id, label) {
   const prefix = LOCAL.has(id) ? '本机' : '全局';

@@ -1,8 +1,8 @@
 {
   "id": "tool-user-checking",
   "name": "自查与桌面便签",
-  "version": "0.1.0",
-  "description": "机器主授权的一点点本机权限：通过一个组件总开关控制本机状态查询与桌面便签追加；便签自动附加时间戳。不能改文件、不能读别人文件、不能发出去。",
+  "version": "0.2.0",
+  "description": "同一开关管理只读状态、悄悄话与故障便签。持续模型故障和自动恢复失败直接追加到桌面，去重并保留恢复进展；不依赖LLM，不覆盖原文件。",
   "category": "工具",
   "order": 41,
   "tags": [
@@ -13,8 +13,9 @@
   "main": "index.js",
   "enabled": true,
   "hooks": [
-    "beforePrompt"
+    "beforePrompt", "onTick"
   ],
+  "schedule":{"everyMs":60000},
   "config": {
     "noteFileName": "小鲸鱼想说的话.txt",
     "maxNoteChars": 500

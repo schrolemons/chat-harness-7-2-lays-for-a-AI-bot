@@ -9,4 +9,23 @@ test('1200-unit plugin chunks never split an emoji into isolated surrogates',()=
 test('8000-unit total cap drops a partial code point rather than leaving a broken surrogate',()=>withPrompt('a'.repeat(7999)+'🥢',host=>{const m=host.collectPromptModules({});assert.ok(m[0].text.isWellFormed());assert.ok(m[0].text.length<=8000);}));
 test('literal malformed source characters cannot reach the assembled prompt',()=>withPrompt('prefix\ud83e suffix',host=>{assert.ok(host.collectPromptBlocks({}).join('\n\n').isWellFormed());}));
 import { NodeApiClient } from '../src/dsh-client.js';
+import {slicePromptUnicode,splitPromptUnicode} from '../src/prompt-unicode.js';
+test('caps keep joined emoji, modifiers and combining marks together',()=>{
+ for(const glyph of ['👩🏽‍💻','👨‍👩‍👧‍👦','🇨🇳','e\u0301','1️⃣']){
+  const text='ab'+glyph+'z';
+  for(let limit=3;limit<2+glyph.length;limit++)assert.equal(slicePromptUnicode(text,limit),'ab');
+  assert.equal(slicePromptUnicode(text,2+glyph.length),'ab'+glyph);
+ }
+});
+test('chunks preserve complete graphemes, even when one exceeds the preferred chunk size',()=>{
+ const text='ab👩🏽‍💻🇨🇳e\u0301z';
+ assert.deepEqual(splitPromptUnicode(text,3,100),['ab','👩🏽‍💻','🇨🇳','e\u0301z']);
+ assert.equal(splitPromptUnicode(text,3,100).join(''),text);
+ assert.deepEqual(splitPromptUnicode('👩🏽‍💻x',3,4),[]);
+});
+test('truncate text values before JSON encoding; retain valid escaped JSON',()=>{
+ const value={text:slicePromptUnicode('hi👩🏽‍💻\\\"\n',5),other:'\\uD83D\\uDE00'};
+ const wire=JSON.stringify(value);assert.deepEqual(JSON.parse(wire),value);
+ assert.equal(value.text,'hi');assert.equal(value.other,'\\uD83D\\uDE00');
+});
 test('the DSH prompt boundary repairs old split pairs without mutating caller input',async()=>{const client=new NodeApiClient('http://127.0.0.1:1',1000,{});let body;client.postJson=async(_url,envelope)=>{body=envelope.payload.args.request;return {json:async()=>({type:'server-response',rpcId:envelope.rpcId,result:{ok:true,value:{}}})};};const text='before\ud83e\n\n\udd62 after';const original={sessionId:'fixture',content:[{type:'text',text}]};await client.callUnary('session/prompt',original);assert.equal(original.content[0].text,text);assert.equal(body.content[0].text,'before🥢 after');});

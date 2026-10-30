@@ -11,6 +11,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+const incidentModule=new URL('./incidents.mjs',import.meta.url);incidentModule.search=new URL(import.meta.url).search;
+const {createIncidentNotebook}=await import(incidentModule.href);
 
 const MAX_STATUS_CHARS = 1200;
 
@@ -81,6 +83,7 @@ export function createPlugin(ctx) {
   const conf = () => (ctx.config && typeof ctx.config === 'object' ? ctx.config : {});
 
   function appendNote(rawText) {
+    if(ctx.signal?.aborted || ctx.isActive?.()===false)return {ok:false,error:'桌面便签组件已停用'};
     const c = conf();
     const text = String(rawText == null ? '' : rawText).replace(/\r\n?/g, '\n').trim();
     if (!text) return { ok: false, error: '要写的话不能为空' };
@@ -98,8 +101,10 @@ export function createPlugin(ctx) {
     }
   }
 
+  const notebook=createIncidentNotebook(ctx,appendNote);
+
   ctx.registerTool('user_checking', {
-    description: '自查与桌面便签（机主已授权，不用再讨许可）。action=status 读本机运行状态（只读：负载/内存/磁盘/进程），action=note 往桌面指定 txt 追加一条带时间戳的便签（只追加，不覆盖不删）。控制台关闭此组件后，工具和提示词都会停用。',
+    description: '自查与管理员桌面便签。action=status 只读本机状态；action=note 追加悄悄话或难缠故障摘要，尤其是无法发消息、工具鉴权失败、自动恢复无效的问题，写明影响、错误事实和排查方向。只追加，不覆盖不删除；不得写入令牌、密钥或用户聊天原文。组件关闭后全部停用。',
     schema: {
       type: 'object',
       properties: {
@@ -122,14 +127,18 @@ export function createPlugin(ctx) {
   });
 
   return {
+    services:{desktopNotes:{reportIssue:input=>notebook.report(input)}},
     hooks: {
+      onTick(){notebook.flush();},
       beforePrompt() {
         const c = conf();
         const name = safeFileName(c.noteFileName, '小鲸鱼想说的话.txt');
         return '【自查与桌面便签】机主开了 user_checking 这个工具，不用每次讨授权就能用：\n'
           + '- 想知道机器/桥接状态好不好（卡不卡、内存紧不紧、跑了多久），直接调用 user_checking(action="status")，它只读指标，不扫进程、不看文件、不碰网络。\n'
-          + '- 有想对哥哥说、又不适合当场刷屏的话，可以 user_checking(action="note", text="…") 追加到桌面的「' + name + '」里，自动带时间戳，只追加一行，不覆盖、不删除。\n'
-          + '- 边界：不能改任何文件、不能读别人文件、不能把便签内容或本机路径发到群里；别把机器指标一股脑念出来，挑一两个真的有关的说。';
+          + '- 有想对哥哥说、又不适合当场刷屏的话，可以 user_checking(action="note", text="…") 追加到桌面的「' + name + '」里，自动带时间戳，只追加一条，不覆盖、不删除。\n'
+          + '- 遇到难缠的 bug，特别是模型持续失败、工具鉴权异常、无法发出消息或恢复无效时，也建议写一条故障便签：影响谁、确认了什么错误、试过什么、下一步查哪里。确认恢复后再追加恢复进展，不把猜测写成已修复。限额、正常等待和正常静默不是 bug，不要每次写；同一问题不要反复追加。\n'
+          + '- 程序会自动记录已确认的持续模型请求故障与自动恢复失败，不依赖模型成功调用工具；这些条目已存在时不要再抄一份。故障便签不含令牌、密钥、cookie或整段用户聊天。\n'
+          + '- 边界：除追加这份便签，不能改其他文件、不能读别人文件、不能把便签内容或本机路径发到群里；别把机器指标一股脑念出来，挑一两个真的有关的说。';
       }
     }
   };

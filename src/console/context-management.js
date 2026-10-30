@@ -16,7 +16,7 @@ export async function routeContextManagement({req,url,pluginHost,readBody,sendJs
    const policy=normalizePolicy(body.policy);
    const out=pluginHost.setConfig('obs-context-assembly',policy);
    if(out.ok)await pluginHost.reload('obs-context-assembly');
-   sendJson({...out,scope:'global-context',applies:'next-wake'},out.ok?200:400);return true;
+   sendJson({...out,scope:'global-context',applies:'next-request'},out.ok?200:400);return true;
   }
   sendJson({ok:false,error:'方法不支持'},405);
  }catch(error){sendJson({ok:false,error:error.message},400);}

@@ -1,5 +1,5 @@
 {
-  "build": "14a951eed92645f5",
+  "build": "1f2f6e3cf16d8c69",
   "inputs": [
     "console/app.js",
     "console/layers/C/affairs-budget.js",
@@ -82,13 +82,17 @@
     "console/layers/L/time-bubbles.js",
     "console/layers/O/components/obs-cost-policy.js",
     "console/layers/O/components/obs-health-monitor.js",
+    "console/layers/O/components/obs-session-recovery.js",
     "console/layers/O/config-load.js",
     "console/layers/O/config-save.js",
     "console/layers/O/context-attribution.js",
     "console/layers/O/context-inspector.js",
     "console/layers/O/context-knowledge.js",
+    "console/layers/O/context-processing.js",
+    "console/layers/O/context-records.js",
     "console/layers/O/context-request-diff.js",
     "console/layers/O/context-request-stages.js",
+    "console/layers/O/context-timeline.js",
     "console/layers/O/context-visual.css",
     "console/layers/O/context-visual.js",
     "console/layers/O/control-actions.js",
@@ -163,6 +167,7 @@
     "console/shared/theme-init.js",
     "console/shared/theme.js",
     "console/styles.css",
+    "src/bridge-core/context-limits.mjs",
     "src/tools/flags.js"
   ]
 }

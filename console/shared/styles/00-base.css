@@ -727,7 +727,7 @@ pre {
   font-weight:500;
   cursor:pointer
 }
-.settings-group[open] summary {
+.settings-group[open]>summary {
   border-bottom:1px solid var(--card-border);
   background:var(--surface-open);
   border-radius:11px 11px 0 0

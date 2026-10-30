@@ -359,7 +359,7 @@ document.getElementById('usageBudgets').addEventListener('click', async (event) 
 });
 document.getElementById('usageRecoverySave').addEventListener('click', async (event) => {
   const button = event.currentTarget;
-  const msg = document.getElementById('usageBudgetMsg');
+    const msg = document.getElementById('contextBudgetWindowsMsg');
   button.disabled = true;
   try {
     await api('/api/tokens/budgets/recovery-windows', 'POST', {
@@ -367,7 +367,7 @@ document.getElementById('usageRecoverySave').addEventListener('click', async (ev
       groupMessages: Number(document.getElementById('usageRecoveryGroup').value),
       groupAtMessages: Number(document.getElementById('usageRecoveryGroupAt').value)
     });
-    msg.textContent = '全局恢复窗口已保存'; msg.className = 'meta ok';
+    msg.textContent = '预算受限消息窗口已保存'; msg.className = 'meta ok';
     button.blur();
     await refreshUsageBudgets();
   } catch (error) { msg.textContent = '保存失败：' + error.message; msg.className = 'meta err'; }

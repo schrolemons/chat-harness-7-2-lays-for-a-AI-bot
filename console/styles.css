@@ -20,3 +20,5 @@
 @import './layers/O/diary-reports.css';
 
 @import './layers/S/disclosures.css';
+
+.context-limits-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:18px 24px;margin:18px 0}.context-limits-grid small{display:block;margin-top:8px;line-height:1.7;opacity:.8}

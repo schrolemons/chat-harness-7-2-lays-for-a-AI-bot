@@ -1,3 +1,5 @@
+import * as dialogueSequence from '../src/bridge-core/dialogue-sequence.mjs';
+import * as receiptIndex from '../src/bridge-core/receipt-index.mjs';
 // Execute the real bridge initialization/functions against temporary files and fake peers.
 // No production config, QQ connection, DSH process, or persistent home is accessed.
 import fs from 'node:fs';
@@ -17,6 +19,9 @@ import * as replyPolicy from '../src/qq-reply-policy.js';
 import * as modeSettings from '../src/bridge-core/mode-settings.js';
 import * as mediaSegments from '../src/bridge-core/media-segments.js';
 import * as receiptState from '../src/bridge-core/receipt-state.js';
+import * as contextLimits from '../src/bridge-core/context-limits.mjs';
+import * as sessionRecovery from '../src/bridge-core/session-recovery.mjs';
+import * as costPolicy from '../plugins/qq-components/obs-cost-policy/policy.mjs';
 import * as directTimedNotices from '../src/bridge-core/direct-timed-notices.js';
 import {migrateOutboundMood} from '../src/migrations/outbound-mood.mjs';
 import {migrateGroupWake,RETIRED_GROUP_WAKE_FIELDS} from '../src/migrations/group-wake.mjs';
@@ -244,7 +249,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, migrateOutboundMood, migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS,
-    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...consoleDocument, ...toolCatalog,
+    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...contextLimits, ...dialogueSequence, ...receiptIndex, ...costPolicy, ...consoleDocument, ...toolCatalog,
+    ...sessionRecovery,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
     routePluginManagement,
     routeMemoryManagement,routeLearningManagement,routeContextManagement,
@@ -282,6 +288,9 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   vm.runInContext(source + '\nglobalThis.auditReady = main();', context);
   const bridge = await context.auditReady;
   await bridge.pluginHost.loadAll();
+  // The real note writer targets the owner's Desktop; simulated faults must not write there.
+  // Desktop-note tests supply their own temporary home and exercise the writer separately.
+  bridge.pluginHost.setEnabled('tool-user-checking',false);
   bridge.setPresets(['standard', 'qq-chat', 'qq-chat-v2']);
   bridge.setReady(true);
   return { ...bridge, calls, temp, async close() {

@@ -4,7 +4,7 @@ const DEFAULT_FALSE_FIELDS = new Set([
   'quoteTargetIsSelf', 'isOwner', 'isSelf', 'hasMedia', 'hasForward', 'awaitingReply'
 ]);
 const OPTIONAL_FIELDS = new Set([
-  'seq', 'messageId', 'sender', 'userId', 'text', 'plain', 'tail', 'kind',
+  'seq', 'dialogueSeq', 'dialogueSeqRecovered', 'messageId', 'sender', 'userId', 'text', 'plain', 'tail', 'kind',
   'ownerLabel', 'media', 'forwardIds', 'nestedForwardIds'
 ]);
 

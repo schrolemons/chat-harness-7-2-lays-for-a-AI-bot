@@ -23,7 +23,7 @@ export function renderComponentForm(p, selectedKeys, showTitle = true, expandGro
         html = html.replace('<div class="meta">' + esc(f.label) + '</div>', '<label class="meta" for="' + id + '">' + esc(f.label) + '</label>');
       }
       let heading='';
-      if(f.group){heading=(grouped?'</div></details>':'')+'<details class="parameter-group"'+(groupCount++===0||expandGroups?' open':'')+'><summary>'+esc(f.group)+'</summary><div class="component-fields">';grouped=true;}
+      if(f.group){const open=expandGroups||groupCount===0&&f.collapsed!==true;groupCount++;heading=(grouped?'</div></details>':'')+'<details class="parameter-group"'+(open?' open':'')+'><summary>'+esc(f.group)+'</summary><div class="component-fields">';grouped=true;}
       return heading+html;
     }).join('')+(grouped?'</div></details>':'');
     // 独立卡片上方已经有组件名 h2，再重复一行表单标题就显得啰嗦；只有并进别的设置框的

@@ -104,7 +104,7 @@ for (const marker of tailMarkers) {
 }
 // 回归：桥接必须真的调用组件钩子，并保留兜底
 check('bridge 调用 collectWakeTails', bridge.includes('pluginHost.collectWakeTails('));
-check('B站推荐唤醒禁止退回普通新闻', bridge.includes('禁止调用 web_search / web_fetch，禁止发送普通新闻或热点'));
+check('B站推荐由组件约束且禁止退回普通新闻', biliShareTail.includes('禁止调用 web_search / web_fetch，禁止发送普通新闻或热点'));
 check('bridge 保留唤醒兜底尾巴', bridge.includes('先看消息，按当前等待工具返回的结果继续处理或收尾。'));
 
 if (failed) { console.error(`\n${failed} 项失败`); process.exit(1); }

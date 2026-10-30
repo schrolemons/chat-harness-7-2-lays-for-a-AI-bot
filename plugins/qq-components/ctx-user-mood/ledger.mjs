@@ -220,15 +220,24 @@ export function createMoodLedger(ctx, getPolicy) {
           answered++;
         }
         deriveStreak(ledger, key);
-        if (entry.welcomeBurstPending && at >= entry.activeUntil) entry.welcomeBurstPending = false;
         const cooldownReady = entry.lastBurstAt == null || at >= entry.lastBurstAt + policy.recoverMinutes * 60000;
         if (reengaged === true && policy.burstEnabled && entry.score >= policy.modeThreshold && at >= entry.humanAt && cooldownReady && !entry.welcomeBurstPending) {
           entry.lastBurstAt = at;
           entry.welcomeBurstPending = true;
-          entry.activeUntil = at + (policy.recoverMinutes > 0 ? policy.recoverMinutes : 5) * 60000;
+          delete entry.activeUntil;
         }
         entry.updatedAt = Math.max(entry.updatedAt ?? 0, at);
         return { changed: true, value: { ok: true, accepted: true, floored, settled, answered, ...moodSnapshot(entry, policy, at) } };
+      });
+    },
+    cancelWelcome({ key, now = Date.now() } = {}) {
+      if (!validKey(key) || !timestamp(now)) return { ok: false };
+      return transact(ledger => {
+        const entry = ledger.conversations[key];
+        if (!entry?.welcomeBurstPending) return { value: { ok: true, cancelled: false } };
+        entry.welcomeBurstPending = false;
+        entry.welcomeCancelledAt = now;
+        return { changed: true, value: { ok: true, cancelled: true } };
       });
     },
     settle({ now = Date.now() } = {}) {

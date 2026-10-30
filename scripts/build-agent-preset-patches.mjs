@@ -40,7 +40,7 @@ export function presetRowId(name) {
  * `<bundle 包名>/<子路径>`：profile package.json 以 link: 依赖声明该包，
  * node_modules junction 由 setup-dsh.mjs 或 dev_heal_links 维护。
  */
-export const GUARD_SPECIFIER = 'qq-agent-presets/qq-tool-restrict-phi.mjs';
+export const GUARD_SPECIFIER = 'qq-agent-presets/qq-tool-restrict.mjs';
 
 /** 源里允许出现的相对行名 → 新机制下的等价引用。其它相对名一律报错（避免静默装不上）。 */
 const RELATIVE_ROW_REWRITES = new Map([

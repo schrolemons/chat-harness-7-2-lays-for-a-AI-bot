@@ -24,6 +24,7 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
     for(const [service,method,payload] of [
       ['proactive','observe',{...fact,isProactive:active,at:fact.sentAt,kind:'sent',reason:fact.wakeReason,eventId:'sent:'+fact.deliveryId,episodeId:drive?.episodeId||fact.proactiveId}],
       ['mood','sent',fact],
+      ['biliRecommendations','sent',fact],
       ['proactive','refresh',{key:fact.key,now:fact.sentAt}]
     ])try{call(service,method,payload);}catch(error){log('outbound fact '+service+': '+error.message);}
   }
@@ -38,6 +39,12 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
   async function performNow({key,context,kind='text',text='',send,assertAllowed,requestedDelay,targetUserId}={}) {
     const c=context||outboundScope.getStore()||capture({key});
     const operationId=randomUUID();
+    const assertRecommendation=()=>{
+      if(String(c.reason||'').split(':')[0]!=='newsShare')return;
+      const checked=call('biliRecommendations','validateOutbound',{key,sourceKey:c.sourceKey,reason:c.reason,kind,text,planId:c.envelope?.biliPlanId});
+      if(checked?.ok!==true){const error=Error('视频推荐校验拒绝：'+(checked?.reason||'service_unavailable'));error.knownFailed=true;throw error;}
+    };
+    assertRecommendation();
     const scope=c.envelope?.sessionId && c.envelope?.turn!=null ? c.envelope.sessionId+':'+c.envelope.turn : undefined;
     const topicLease=call('conversationDrive','reserve',{key,scope,operationId,kind:c.conversationIntent,topicId:c.topicId,text,episodeId:c.actionId,originReason:c.reason,now:clock()});
     if(topicLease?.ok===false){const e=Error('话题动作拒绝：'+topicLease.reason);e.knownFailed=true;throw e;}
@@ -50,6 +57,7 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
     try {
       if(reservation.waitMs>0)await sleep(reservation.waitMs);
       assertGuard();
+      assertRecommendation();
       if(call('conversationDrive','authorize',{key,lease:topicLease})?.ok===false){const e=Error('话题动作已因新来信失效');e.knownFailed=true;throw e;}
       started=true;result=await send();
       if(result?.status==='failed'||(result?.retcode!=null&&result.retcode!==0)){const e=Error('网关拒绝发送');e.knownFailed=true;throw e;}
@@ -67,7 +75,7 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
     reportDelivered({key,sourceKey:c.sourceKey,operationId,deliveryId,gatewayMessageId,kind,text,sentAt,success:true,
       origin:c.origin,originReason:c.reason,wakeReason,proactiveId:c.actionId,episodeId:c.actionId,
       expectsReply:conversational&&c.origin!=='operator',targetUserId:targetUserId ?? c.targetUserId ?? c.envelope?.targetUserId,
-      mode:c.mode,topicLease,conversationIntent:topicLease?.kind||c.conversationIntent,topicId:topicLease?.topicId||c.topicId});
+      mode:c.mode,topicLease,conversationIntent:topicLease?.kind||c.conversationIntent,topicId:topicLease?.topicId||c.topicId,recommendationPlanId:c.envelope?.biliPlanId});
     return result;
   }
   return {capture,perform,reportDelivered};

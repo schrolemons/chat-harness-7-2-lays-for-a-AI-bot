@@ -1,4 +1,6 @@
 import { createBiliRuntime } from './lib/bili-runtime.mjs';
+const recommendationURL=new URL('./lib/recommendations.mjs',import.meta.url);recommendationURL.search=new URL(import.meta.url).search;
+const {createRecommendationService}=await import(recommendationURL.href);
 
 export const BILI_TOOL_SCHEMAS = {
   bili_search: {
@@ -90,5 +92,5 @@ export function createPlugin(ctx, dependencies = {}) {
       }
     });
   }
-  return { dispose: () => runtime.dispose() };
+  return { services:{biliRecommendations:createRecommendationService(ctx,{search:runtime.handlers.search,random:dependencies.random,now:dependencies.now})},dispose: () => runtime.dispose() };
 }

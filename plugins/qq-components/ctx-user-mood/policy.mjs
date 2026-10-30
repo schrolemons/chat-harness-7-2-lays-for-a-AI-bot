@@ -66,8 +66,7 @@ export function moodSnapshot(entry, policy, now = Date.now()) {
     frequencyFactor: policy.enabled ? 0.2 + 0.8 * score / 100 : 1,
     replyCeiling: expanded ? 3 : normal || pleading ? 2 : 1,
     detailLevel: pleading ? 'gentle-fragments' : expanded ? 'expanded' : normal ? 'balanced' : 'concise',
-    welcomeBurstActive: policy.enabled && policy.burstEnabled && normal && entry?.welcomeBurstPending === true && now >= entry.lastBurstAt && now < entry.activeUntil,
-    welcomeBurstUntil: entry?.activeUntil ?? null,
+    welcomeBurstActive: policy.enabled && policy.burstEnabled && normal && entry?.welcomeBurstPending === true && now >= entry.lastBurstAt,
     cooldownUntil: entry?.lastBurstAt == null ? null : entry.lastBurstAt + policy.recoverMinutes * 60000
   };
 }

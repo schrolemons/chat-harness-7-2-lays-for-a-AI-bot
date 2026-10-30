@@ -283,7 +283,7 @@ test('review1: actual wake prompt renders reason tail and daily Bilibili branch 
  const tail=h.buildWakePromptV2(key,'replyCheck');assert.match(tail,/【回复检查】/);assert.match(tail,/你刚刚发送过消息/);
  h.cfg.socialV2.dailyNews={...h.cfg.socialV2.dailyNews,keywords:['fixture科学'],maxItems:1};
  st.pendingBiliShare={items:[{bvid:'BV1xx411c7mD',title:'fixture视频',uploader:'fixture作者',description:'fixture简介'}]};
- const news=h.buildWakePromptV2(key,'newsShare');assert.match(news,/【每日 B 站视频推荐】/);assert.match(news,/fixture视频/);assert.match(news,/fixture作者/);assert.match(news,/BV1xx411c7mD/);assert.match(news,/fixture科学/);assert.match(news,/找 1 条真实/);
+ const news=h.buildWakePromptV2(key,'newsShare');assert.match(news,/【每日 B 站视频推荐】/);assert.match(news,/fixture视频/);assert.match(news,/fixture作者/);assert.match(news,/BV1xx411c7mD/);assert.match(news,/每个推荐名额已独立抽签/);assert.doesNotMatch(news,/必须调用 bili_search|本轮唯一任务：哔站/);
  const collect=h.pluginHost.collectWakeTails;h.pluginHost.collectWakeTails=()=>{throw Error('fixture wake assembly error');};
  try{assert.doesNotThrow(()=>h.buildWakePromptV2(key,'replyCheck'));}finally{h.pluginHost.collectWakeTails=collect;}
  assert.match(fs.readFileSync(path.join(h.temp,'state/bridge.log'),'utf8'),/唤醒尾巴装配失败.*fixture wake assembly error/);

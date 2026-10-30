@@ -1,0 +1,13 @@
+{
+ "id":"obs-session-recovery","name":"群聊会话自动恢复","version":"0.1.0",
+ "description":"只恢复持续请求失败且未受额度等限制的单个群聊会话；旧会话归档保留，恢复无效时停手告警。",
+ "category":"可观测性与运维","layer":"O","order":63,"main":"index.js","enabled":true,
+ "hooks":["onTick"],"schedule":{"everyMs":30000},
+ "config":{"consecutiveFailures":3,"minFailureSeconds":120,"cooldownMinutes":30,"maxRecoveriesPerDay":2},
+ "configSchema":{
+  "consecutiveFailures":{"type":"integer","min":3,"max":10},
+  "minFailureSeconds":{"type":"integer","min":120,"max":1800},
+  "cooldownMinutes":{"type":"integer","min":30,"max":1440},
+  "maxRecoveriesPerDay":{"type":"integer","min":1,"max":2}
+ }
+}

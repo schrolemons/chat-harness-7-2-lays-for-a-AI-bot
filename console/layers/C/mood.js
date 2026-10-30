@@ -23,7 +23,7 @@ export async function refreshV2Mood() {
       return '<div class="mood-card" data-state="' + (state.mode === 'critical' ? 'low' : 'normal') + '">'
         + '<div class="mood-card-head"><b>' + esc(conversation.key) + '</b><span>' + esc(state.modeName ?? '—') + ' · ' + (state.mode === 'critical' ? '临界形态' : '普通形态') + '</span></div>'
         + '<div class="mood-card-body"><span class="mood-value">' + esc(state.score ?? '—') + '</span><span>连续未答 ' + esc(state.unansweredStreak ?? '—') + ' 回合</span></div>'
-        + '<dl class="runtime-facts"><dt>被叫回后的热情回应</dt><dd>' + (state.welcomeBurstActive ? '生效中，至 ' + esc(time(state.welcomeBurstUntil)) : '未激活') + '</dd><dt>冷却截止</dt><dd>' + esc(time(state.cooldownUntil)) + '</dd></dl>'
+        + '<dl class="runtime-facts"><dt>被叫回后的热情回应</dt><dd>' + (state.welcomeBurstActive ? '待首条成功回复使用' : '未激活') + '</dd><dt>再次触发冷却截止</dt><dd>' + esc(time(state.cooldownUntil)) + '</dd></dl>'
         + '<details class="mood-history"><summary>实际变动历史（最近 ' + history.length + ' 条）</summary>' + (history.length ? '<ol>' + history.map(historyItem).join('') + '</ol>' : '<p class="meta">暂无实际变动记录</p>') + '</details></div>';
     }).join('') || '<div class="mood-empty">暂无会话</div>';
     if (stamp) stamp.textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});

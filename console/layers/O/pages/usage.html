@@ -36,9 +36,9 @@
       <div class="meta" id="usageChartNote" style="margin-top:6px"></div>
       <h3 class="usage-h3">按会话（群 / 私聊）</h3>
       <div class="tool-log-table" id="usageConversations">加载中…</div>
-      <details class="settings-group"><summary>小鲸鱼调用档位与成本策略</summary><div class="settings-content"><div data-component-slot="obs-cost-policy"></div></div></details>
+      <details class="settings-group"><summary>小鲸鱼调用档位与成本策略</summary><div class="settings-content"><div data-component-slot="obs-cost-policy" data-hide-toggle="1"></div></div></details>
 <h3 class="usage-h3">会话花费阈值</h3>
-      <div class="row usage-controls"><strong>全局恢复窗口</strong><label>私聊 N（条）<input id="usageRecoveryPrivate" type="number" min="1" max="30" value="5" style="width:70px"></label><label>群聊普通 B（条，不含 @）<input id="usageRecoveryGroup" type="number" min="1" max="30" value="5" style="width:70px"></label><label>群聊 @ C（条）<input id="usageRecoveryGroupAt" type="number" min="1" max="30" value="5" style="width:70px"></label><button id="usageRecoverySave" class="small primary" data-save-action>保存全局恢复窗口</button></div>
+      <p class="meta">预算受限消息窗口已统一至 <a href="#setting-c-1">上下文与记忆 → QQ缓存与待处理窗口</a>。</p>
       <div class="meta">每晚 22:00（北京时间）重新计入新周期。金额按本周期可归属的调用计算；0 表示不启用对应阈值。达到冷漠阈值后会降低回复频率并缩短注入内容；达到上限后改用机械回复。恢复时每个会话只补处理最近窗口内的消息。</div>
       <div class="row usage-controls"><span>全部会话及后台任务本周期：<strong id="usageGlobalTurns">—</strong> 轮，花费 <strong id="usageGlobalCost">—</strong></span><label>统一花费上限（元） <input id="usageGlobalLimit" type="number" min="0" step="0.01" value="0" style="width:100px"></label><button id="usageGlobalSave" class="small primary" data-save-action>保存全局花费上限</button><span id="usageGlobalState" class="meta"></span></div>
       <div class="row"><label><input id="usageOwnerBudgetEnabled" type="checkbox" checked> 管理员 owner 受额度限制</label><button id="usageOwnerBudgetSave" class="small primary" data-save-action>保存管理员额度规则</button><span class="meta">关闭后，owner 私聊及其发起的任务不受个人、全局额度和低频限制；花费仍计入统计。</span></div>

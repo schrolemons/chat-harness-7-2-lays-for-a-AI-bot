@@ -33,18 +33,19 @@ test('O layer edits and saves both mechanical reply lists in a real browser', as
   } finally { await browser.close(); await fixture.close(); }
 });
 
-test('O layer saves and reloads all three recovery windows', async () => {
+test('context settings save and reload the three canonical budget windows', async () => {
   const fixture = await startConsoleFixture();
   const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
   try {
     const page = await browser.newPage();
     await page.goto(fixture.url);
-    await page.locator('[data-view="usage"]').first().click();
+    await page.locator('[data-view="setting-c-1"]').first().click();
+    await page.locator('[data-page="setting-c-1"] details').filter({has:page.locator('#usageRecoveryPrivate')}).locator('summary').click();
     for(const [id,value] of Object.entries({usageRecoveryPrivate:7,usageRecoveryGroup:8,usageRecoveryGroupAt:9}))await page.locator('#'+id).fill(String(value));
     await page.locator('#usageRecoverySave').click();
-    await page.waitForFunction(() => document.getElementById('usageBudgetMsg')?.textContent.includes('全局恢复窗口已保存'));
+    await page.waitForFunction(() => document.getElementById('contextBudgetWindowsMsg')?.textContent.includes('已保存'));
     assert.deepEqual(fixture.state.recoveryWindows,{privateMessages:7,groupMessages:8,groupAtMessages:9});
-    await page.reload();await page.locator('[data-view="usage"]').first().click();
+    await page.reload();await page.locator('[data-view="setting-c-1"]').first().click();
     await page.waitForFunction(()=>document.getElementById('usageRecoveryPrivate')?.value==='7');
     assert.equal(await page.locator('#usageRecoveryGroup').inputValue(),'8');
     assert.equal(await page.locator('#usageRecoveryGroupAt').inputValue(),'9');

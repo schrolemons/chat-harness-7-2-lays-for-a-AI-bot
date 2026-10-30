@@ -346,20 +346,20 @@ test('only trusted reengagement creates a pending welcome; ordinary activity doe
   f.incoming({ messageId: 'm2', at: T + 2 * minute, reengaged: true });
   const view = f.read(key, T + 2 * minute);
   assert.equal(view.welcomeBurstActive, true);
-  assert.ok(view.welcomeBurstUntil > T + 2 * minute);
+  assert.equal(Object.hasOwn(view, 'welcomeBurstUntil'), false);
   assert.equal(view.cooldownUntil, T + 22 * minute);
   assert.equal(view.score, 60);
 });
 
-test('welcome survives restart but repeated reengagement cannot extend its cooldown or active period', async t => {
+test('welcome survives restart and cooldown passage without extending the cooldown', async t => {
   const f = await fixture(t);
   f.incoming({ reengaged: true });
   const first = f.read(key, T + minute);
   await f.restart();
   f.incoming({ messageId: 'm2', at: T + 2 * minute, reengaged: true });
   const second = f.read(key, T + 2 * minute);
-  assert.deepEqual([second.welcomeBurstUntil, second.cooldownUntil, second.welcomeBurstActive], [first.welcomeBurstUntil, first.cooldownUntil, true]);
-  assert.equal(f.read(key, first.welcomeBurstUntil + 1).welcomeBurstActive, false);
+  assert.deepEqual([second.cooldownUntil, second.welcomeBurstActive], [first.cooldownUntil, true]);
+  assert.equal(f.read(key, first.cooldownUntil + 1).welcomeBurstActive, true);
   assert.equal(f.read(key, T + 20 * minute).score, 60);
 });
 
@@ -405,7 +405,7 @@ test('critical mood and explicitly disabled welcome cannot activate a welcome bu
   assert.equal(disabled.read(key, T + minute).welcomeBurstActive, false);
 });
 
-test('consumption preserves cooldown and expiry cannot be mistaken for a successful welcome delivery', async t => {
+test('consumption preserves cooldown and a reply after cooldown still consumes its pending welcome', async t => {
   const f = await fixture(t);
   f.incoming({ reengaged: true });
   const first = f.read(key, T + minute);
@@ -415,9 +415,26 @@ test('consumption preserves cooldown and expiry cannot be mistaken for a success
   f.incoming({ messageId: 'm3', at: first.cooldownUntil, reengaged: true });
   const next = f.read(key, first.cooldownUntil);
   assert.equal(next.welcomeBurstActive, true);
-  const late = f.call('sent', { key, deliveryId: 'late', wakeReason: 'message', sentAt: next.welcomeBurstUntil + 1, success: true });
-  assert.equal(late.welcomeConsumed, false);
-  assert.equal(f.read(key, next.welcomeBurstUntil + 1).welcomeBurstActive, false);
+  const late = f.call('sent', { key, deliveryId: 'late', wakeReason: 'message', sentAt: next.cooldownUntil + 1, success: true });
+  assert.equal(late.welcomeConsumed, true);
+  assert.equal(f.read(key, next.cooldownUntil + 1).welcomeBurstActive, false);
+});
+
+test('existing scheduler clears an unused welcome only after the conversation is confirmed idle', async () => {
+  const {createPlugin}=await import('../plugins/qq-components/ctx-user-mood/index.js');
+  let state={},facts={busy:true,conversationAwake:true};
+  const plugin=createPlugin({config:{},state:{get:()=>structuredClone(state),set:patch=>{state={...state,...structuredClone(patch)};}},capabilities:{getProactiveFacts:()=>facts}});
+  const mood=plugin.services.mood;
+  mood.incoming({key,messageId:'welcome',userId:'123',at:T,hasText:true,reengaged:true});
+  plugin.hooks.onTick({now:T+30*minute});
+  assert.equal(mood.read({key,now:T+30*minute}).welcomeBurstActive,true,'cooldown must not expire an ongoing welcome');
+  facts=undefined;plugin.hooks.onTick({now:T+30*minute});
+  assert.equal(mood.read({key,now:T+30*minute}).welcomeBurstActive,true,'missing lifecycle evidence must not cancel a welcome');
+  facts={busy:false,conversationAwake:false};plugin.hooks.onTick({now:T+31*minute});
+  const result=mood.read({key,now:T+31*minute});
+  assert.equal(result.welcomeBurstActive,false);assert.equal(result.cooldownUntil,T+20*minute);assert.equal(result.score,60);
+  assert.equal(state.mood.conversations[key].welcomeConsumedAt,undefined,'cancellation is not a successful delivery');
+  assert.equal(mood.sent({key,deliveryId:'after-idle',wakeReason:'message',sentAt:T+32*minute,success:true}).welcomeConsumed,false);
 });
 
 test('late response yields the same penalty with receipt-first or delayed confirmation across restart', async t => {

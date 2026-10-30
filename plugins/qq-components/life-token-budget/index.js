@@ -1,3 +1,4 @@
+import {messageFullyProcessedV2} from '../../../src/bridge-core/receipt-state.js';
 import { DEFAULT_PRIVATE_REPLIES, DEFAULT_GROUP_REPLIES } from './default-replies.js';
 
 const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -43,7 +44,7 @@ export function createPlugin(ctx) {
     return { privateMessages: windowFor('privateMessages'), groupMessages: windowFor('groupMessages'), groupAtMessages: windowFor('groupAtMessages') };
   }
   function selectWindow({ key = '', messages = [] } = {}) {
-    const input = (Array.isArray(messages) ? messages : []).filter(message => message && message.isSelf !== true);
+    const input = (Array.isArray(messages) ? messages : []).filter(message => message && message.isSelf !== true && !messageFullyProcessedV2(message));
     const sequenced = input.every(message => Number.isSafeInteger(message.seq));
     const ordered = input.map((message, index) => ({ message, index })).sort((a, b) => {
       const delta = sequenced ? a.message.seq - b.message.seq

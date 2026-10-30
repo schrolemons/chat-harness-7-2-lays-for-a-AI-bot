@@ -45,7 +45,7 @@
           </div>
         </div>
         <div class="v2-news-count-field">
-          <div class="setting-field"><label for="v2NewsMax">条数</label><input type="number" id="v2NewsMax" min="1" max="5"><small class="parameter-example" data-example-for="v2NewsMax">例：设为2：一次最多选择2个有可核实元数据的视频候选。</small></div>
+          <div class="setting-field"><label for="v2NewsMax">条数</label><input type="number" id="v2NewsMax" min="1" max="5"><small class="parameter-example" data-example-for="v2NewsMax">例：设为2：两个推荐名额分别抽主题和UP方向；主题可重复，视频BV不重复。没有合格视频的名额跳过，不重新抽签。</small></div>
         </div>
       </div>
       <div class="row">
@@ -57,8 +57,8 @@
       <div class="row">
         <div class="setting-field"><label for="v2NewsSessions">支持传达的 session 白名单</label><textarea id="v2NewsSessions" rows="3" maxlength="3000" style="flex:1;min-width:260px" placeholder="每行一个：group:群号 或 private:QQ号"></textarea><small class="parameter-example" data-example-for="v2NewsSessions">例：只填private:10001：每日推荐仅考虑此允许会话，不扩散到全部群。</small></div>
       </div>
-      <div class="meta">抽样规则：主题权重 = 基础权重 1 + 该主题关联 UP 权重总和；主题概率 = 该主题权重 / 全部主题权重之和。选中主题后，关联 UP 的抽中概率 = 该 UP 权重 /（基础权重 1 + 同主题关联 UP 权重总和）；抽中基础权重时搜索新的 UP 主。</div>
-      <div class="meta">视频规则：抽中关联 UP 后先按“主题 + UP 名”搜索；若找到与主题相关且信息可核实的视频，推荐中至少包含 1 条该 UP 视频。只有定向搜索没有合格结果时，才全部用其他 UP 补足；其余条数仍可选名单外更热门、更有意思或更贴题的视频。抽中基础权重时广泛搜索新 UP 主。</div>
+      <div class="meta">每个推荐名额独立抽签。主题权重 = 基础权重 1 + 该主题关联 UP 权重总和；主题概率 = 该主题权重 / 全部主题权重之和。选中主题后，关联 UP 的条件概率 = 该 UP 权重 /（基础权重 1 + 同主题关联 UP 权重总和）。</div>
+      <div class="meta">抽中基础权重时，搜索并过滤掉配置名单中的 UP。抽中关联 UP 时，后端先定向搜索，按返回的 UP 名、标题与简介关键词核验；有合格视频就选该 UP，仅在没有合格定向结果时广泛补选。接口失败则跳过该名额，不当成“没有结果”换 UP。发送只允许本批已核实的 BV 号。</div>
       <div class="meta">session 白名单支持 group:群号 和 private:QQ号。每条推荐按 URL 或 BV 号、视频内容介绍、主观感受三项发送；信息不全时不编造。</div>
 
       <div class="row"><button class="small primary v2-save" type="button" data-save-action>保存全局每日推荐规则</button><span class="meta v2-save-msg" role="status"></span></div>

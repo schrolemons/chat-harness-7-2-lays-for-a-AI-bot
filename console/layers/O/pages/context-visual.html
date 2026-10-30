@@ -1,5 +1,5 @@
 <section class="card span-all context-console" id="contextConsole" data-page="context-visual">
-  <header class="context-intro"><div><span class="context-eyebrow">CONTEXT INSPECTOR</span><h2>上下文检查器</h2><p class="meta">查看稳定前缀、聊天与工具记录，以及心情、日程等资料的最新状态。</p></div><span class="context-scope-badge">真实请求 · 只读查看</span></header>
+  <header class="context-intro"><div><span class="context-eyebrow">CONTEXT INSPECTOR</span><h2>上下文检查器</h2><p class="meta">按处理状态查看上下文与工具轨迹，或切换原始请求核对。</p></div><span class="context-scope-badge">真实请求 · 只读查看</span></header>
   <div class="context-toolbar">
     <label>选择会话（只影响预览）<select id="contextSession"><option value="">选择要查看的私聊或群聊…</option></select></label>
     <button type="button" id="contextRefresh">刷新已有记录</button>
@@ -9,7 +9,7 @@
   <p class="context-scope-note">查看不调用模型。要调整注入内容和顺序，请切换“组件设置”；保存后对所有私聊和群聊生效。</p>
   <details class="context-help"><summary>怎么看、怎么调整</summary>
   <p class="meta">拖动 ⠿ 或点 ↑ ↓ 调整各装填层内部的组件顺序，勾选决定是否附带组件文字。系统规则、稳定资料和动态更新分别装填，不能用拖动改变消息权限或工具调用顺序。</p>
-  <p class="meta">39 个组件保留完整编号和空位。36 号分为收件处理进度、新增聊天原文，两部分共用开关；39 号保留本轮任务。底色框标注组件来源，其他记录直接说明类型与用途。</p>
+  <p class="meta">40 个组件编号用于查来源，不是请求顺序号。36 号分为收件处理进度与新增聊天原文，39 号是本轮任务，40 号是按需注入的私人资料。可视化管理设施不发送给 AI，不列入排序。</p>
   </details>
   <p id="contextNotice" role="status" aria-live="polite">正在读取已有记录，不会调用 AI…</p>
   <div class="context-tabs" role="group" aria-label="上下文查看方式">
@@ -18,13 +18,11 @@
   </div>
 
 <div id="contextRequestPicker" class="context-request-picker" hidden><label>选择模型调用记录<select id="contextRequestSelect"></select></label><div><p id="contextRequestSummary" class="meta"></p><p class="meta">初始请求保留到这次持续处理结束；每次调用更新上一次与最新记录。同一条记录只列一次。</p></div></div><details id="contextRequestDiff" class="context-request-diff" hidden></details>
+  <p class="context-section-note"><a href="#setting-c-1">调整QQ缓存、自动附带条数/字数、预算受限窗口和行为印象范围</a></p>
   <div id="contextMetrics" class="context-metrics"></div>
   <div id="contextModules" class="context-modules"></div>
-  <details class="context-options"><summary>减少历史重复内容，以及设置何时生效</summary>
-    <label><input id="contextCompactHistory" type="checkbox">去掉旧记录里重复附带的规则和消息快照</label>
-    <p class="meta">例：旧程序每轮都附带“回复尽量简短”。聊了 10 轮后，下一次调用可能带着 10 份重复规则。开启后，每次调用只保留一份当前有效的规则，不再反复附带历史副本。</p>
-    <p class="meta">消息快照是程序额外附带的“一批近期聊天记录”。同一批记录也会去掉重复副本；你和 bot 真正说过的话、工具调用及结果、完整原始记录仍然保留。</p>
-    <p class="meta"><strong>全局设置，适用于所有私聊和群聊。所选会话仅用于预览。保存后，从各会话的下一次唤醒开始生效。</strong>例：下一次用户来信或定时冒泡触发 bot 时使用新设置；正在生成的回复保持原样。</p>
+  <details class="context-options"><summary>设置何时生效</summary>
+    <p class="meta"><strong>全局设置，适用于所有私聊和群聊。所选会话仅用于预览。保存后，从各会话后续模型请求开始生效。</strong>已发送给模型的请求保持原样，后续请求重新读取设置。</p>
     <p class="meta">token 是模型计量文字的单位。这里根据字符数粗略估算，不能直接当作费用；实际用量与花费请看“令牌与花费”。</p>
   </details>
 </section>

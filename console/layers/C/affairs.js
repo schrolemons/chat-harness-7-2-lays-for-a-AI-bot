@@ -1,3 +1,4 @@
+import {refreshUsageBudgets} from '../O/usage.js';
 import './affairs.css';
 import { api, esc } from '../../shared/api.js';
 import { registerPageLoader } from '../../shared/page-loaders.js';
@@ -80,5 +81,5 @@ export function initialize() {
   for (const id of ['v2AffairsKey', 'v2AffairsFilter']) el(id).addEventListener('change', () => { offset = 0; edit(null, false); el('v2AffairEditor').close(); void load(); });
   el('v2AffairsPrev').addEventListener('click', () => { offset = Math.max(0, offset - 20); void load(); });
   el('v2AffairsNext').addEventListener('click', () => { offset += 20; void load(); });
-  registerPageLoader('setting-c-1', () => Promise.all([loadKeys(), loadAffairsBudget()]));
+  registerPageLoader('setting-c-1', () => Promise.all([loadKeys(), loadAffairsBudget(), refreshUsageBudgets()]));
 }

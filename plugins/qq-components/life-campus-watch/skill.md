@@ -9,7 +9,7 @@ L 层「生命周期与编排」组件，负责 campus-watch 脚本的定时拉�
 - 原始差异保存在 `state/campus-watch-state.json` 的 `webChangeHistory`（最近80次）；未确认发送的变化留在 `pendingWebChanges`，摘要缓存命中时不重复调用模型。发送凭据使用原始diff的稳定ID，不随AI措辞改变。
 - 监控只用新建的临时标签页处理网页，结束后关闭；cookie 直接通过 BrowserContext 恢复，不初始化旧标签页。现存可见浏览器不移动、不关闭。
 - 本机安装：`node scripts/setup-web-summary.mjs desktop`。它只增补后台整理预设，保留其他预设和默认模型；DSH 可热加载，无须重启 bridge。
-- 可选组件配置：`aiWebSummary=false` 使用规则摘要；`summaryModel` 默认 `deepseek-flash`；`summaryTimeoutMs` 默认35000，最大60000。每次用新整理会话，结束后归档，工具清单为空且执行守卫拒绝全部工具。
+- 可选组件配置：`aiWebSummary=false` 使用规则摘要；模型与思考强度统一读取 O 层调用档位，旧 `summaryModel` 不再作为覆盖入口；`summaryTimeoutMs` 默认35000，最大60000。每次用新整理会话，结束后归档，工具清单为空且执行守卫拒绝全部工具。
 
 ## 职责
 - 每 1 分钟（schedule.everyMs）触发一次 onTick。

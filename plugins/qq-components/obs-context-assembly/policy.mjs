@@ -1,5 +1,5 @@
 // Final context policy only. Never changes another component or tool registration.
-export const DEFAULT_POLICY=Object.freeze({enabled:true,order:[],disabled:[],compactHistory:true});
+export const DEFAULT_POLICY=Object.freeze({enabled:true,order:[],disabled:[]});
 const protectedIds=new Set(['role-card','session-protocol','wake-action','delivery-rules','ctx-context-session','ctx-admin-dev','admin-boundary']);
 const fixedIds=new Set(['role-card']);
 const stableIds=new Set(['session-background','session-protocol','admin-boundary','relay-capability','delivery-rules','ctx-memory-profile-store']);
@@ -7,7 +7,7 @@ export function normalizePolicy(input={}) {
  if(!input||typeof input!=='object'||Array.isArray(input))throw Error('context 规则必须为对象');
  const out={...DEFAULT_POLICY,...input};
  for(const key of Object.keys(out))if(!Object.hasOwn(DEFAULT_POLICY,key))throw Error('未知 context 设置：'+key);
- for(const key of ['enabled','compactHistory'])if(typeof out[key]!=='boolean')throw Error(key+' 必须为开关');
+ if(typeof out.enabled!=='boolean')throw Error('enabled 必须为开关');
  for(const key of ['order','disabled']) {
   if(!Array.isArray(out[key])||out[key].length>200||out[key].some(x=>typeof x!=='string'||!/^[a-z0-9][a-z0-9._:-]{0,99}$/i.test(x)))throw Error(key+' 包含无效模块');
   if(out[key].some(id=>id.startsWith('message-snapshot:')))throw Error('36号两部分关联启停，请使用message-snapshot父模块开关');
@@ -30,7 +30,8 @@ export function compileModules(input,policy={},scene='message') {
   const chars=row.parts?.length?row.parts.reduce((n,part)=>n+String(part.text||'').length,0):Number.isSafeInteger(row.chars)&&row.chars>=0?row.chars:text.length;
   return {...row,text,index,protected:locked,placement,included:!reason,reason,chars,estimatedTokens:Math.ceil(chars/2)};
  });
- modules.sort((a,b)=>Number(b.placement==='fixed')-Number(a.placement==='fixed')
+ const layerRank={fixed:0,stable:1,current:2};
+ modules.sort((a,b)=>layerRank[a.placement]-layerRank[b.placement]
   ||(ranks.get(a.id)??(rules.order.length+a.index))-(ranks.get(b.id)??(rules.order.length+b.index)));
  const unique=new Map();
  for(const row of modules){if(!row.included)continue;const key=(row.placement==='fixed'?'system':'user')+'\n'+row.text.trim(),prior=unique.get(key);

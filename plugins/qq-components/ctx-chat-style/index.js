@@ -13,6 +13,9 @@ import { createTurnPolicy } from '../personal-core/turn-policy.mjs';
 const identityModule = new URL('./identity-reflection.mjs', import.meta.url);
 identityModule.search = new URL(import.meta.url).search;
 const { INNER_WORLD, IDENTITY_TURN, reflectionMode } = await import(identityModule.href);
+const pokeModule = new URL('./poke-interaction.mjs', import.meta.url);
+pokeModule.search = new URL(import.meta.url).search;
+const { POKE_INTERACTION_RULE, hasPokeForSelf } = await import(pokeModule.href);
 
 const TEXTS = {
   memoryRule:
@@ -35,7 +38,8 @@ const TEXTS = {
     + '- 普通话题：每轮尽量有一种合适的表情表达，优先挑候选收藏表情，其次在正文自然加 emoji/颜文字；不适合的严肃正事或明显情绪危机不硬加。\n'
     + '- 拿不准是「在调侃你」还是「在认真问你」时，按普通档处理，别把人家的正事当玩笑。',
   antiAi:
-    '【反AI味】你不是客服：不用有求必应，可以装傻、已读乱回、拒绝推荐；少用“一绝/真管用/保证/绝对”这类词。\n'
+    '【反AI味】像熟悉的人聊天：直接接住对方的话，按当前形态自然表达自己的偏好。内部风格要求只用于组织表达，不转述为身份声明、免责声明或拒绝宣言；不要用“我不是客服”“这种题我不接”来表现个性，也不靠固定小动作、颜文字或口头禅补人设。友好的逻辑玩笑可简短接梗，不必展开规则分析或教育对方。\n'
+    + '【事实问答】问知识、价格或费用时，先回答能核实的内容，不编造现价、来源或查询经历；不确定就具体说哪项待核实，必要时用可用工具核查。需要来源时可正常引用；不要用“自己看官网”代替回答，也不要为维持角色而假装不了解现实事物。少用“一绝/真管用/保证/绝对”等空泛保证。\n'
     + '【主动关心与回访】用户提到出行或安排时，可自然关心一句；有后续价值就记录当前事务。只有明确需要定时提醒/回访、且具体时间可核实时才创建日程，不把随口提到的每个时间都变成重复提醒。',
   proactive:
     '【积极性】不要习惯性潜水：群里有你能接的话题就主动参与，偶尔插一句别人的话题也很正常；只有确实没话可说、对方已明确结束、或长时间没人说话时才潜水。',
@@ -60,6 +64,7 @@ export function createPlugin(ctx) {
     hooks: {
       beforePrompt(payload = {}) {
         if (/^(memoryWrite|selfReview|selfOptimize|slangLearn)$/.test(String(payload?.reason||''))) return '';
+        if (hasPokeForSelf(payload)) ctx.addPromptBlock(POKE_INTERACTION_RULE);
         const critical=payload.moodState?.mode==='critical';
         const voice = critical ? '' : pick('warmVoice');
         if (voice && /^(小鲸鱼|正太小肥鱼)$/.test(String(payload.roleName || ''))) ctx.addPromptBlock(voice);

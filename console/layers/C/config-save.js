@@ -21,6 +21,12 @@ persistentMemory: {
       maxChars: Math.min(20000, Math.max(500, Math.round(Number(document.getElementById('v2PmMaxChars').value) || 4000)))
     },
 context: {
+      wakeRecentLimit: Number(document.getElementById('context-wakeRecentLimit').value),
+      wakeHistoryMessageMaxChars: Number(document.getElementById('context-wakeHistoryMessageMaxChars').value),
+      wakeMessageLimit: Number(document.getElementById('context-wakeMessageLimit').value),
+      wakePendingMessageMaxChars: Number(document.getElementById('context-wakePendingMessageMaxChars').value),
+      wakeMaxChars: Number(document.getElementById('context-wakeMaxChars').value),
+      weakWakeMaxChars: Number(document.getElementById('context-weakWakeMaxChars').value),
       recentLimit: Math.round(Number(document.getElementById('v2ContextRecentLimit').value) || 100),
       unreadLimit: Math.round(Number(document.getElementById('v2ContextUnreadLimit').value) || 30),
       contextWindow: Math.round(Number(document.getElementById('v2ContextWindow').value) || 20)

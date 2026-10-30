@@ -105,6 +105,7 @@ test('component generation reload refreshes its identity helper rather than reus
     fs.mkdirSync(style); fs.mkdirSync(core);
     fs.writeFileSync(path.join(root, 'package.json'), '{"type":"module"}');
     fs.copyFileSync(new URL('../plugins/qq-components/ctx-chat-style/index.js', import.meta.url), path.join(style, 'index.js'));
+    fs.copyFileSync(new URL('../plugins/qq-components/ctx-chat-style/poke-interaction.mjs', import.meta.url), path.join(style, 'poke-interaction.mjs'));
     // The policy dependency is not under test; avoid reading any live routing config.
     fs.writeFileSync(path.join(core, 'turn-policy.mjs'), "export const createTurnPolicy = () => () => ({ mode: 'off' });");
     const writeHelper = text => fs.writeFileSync(path.join(style, 'identity-reflection.mjs'),

@@ -7,7 +7,18 @@ export function createPlugin(ctx) {
     return Math.round(clamp(base));
   }
   const mood = createMoodLedger(ctx, () => moodPolicy(ctx.config));
-  return { validateConfig: validateMoodConfig, hooks: { onTick: payload => mood.settle(payload) }, services: { mood, 'mood-users': {
+  return { validateConfig: validateMoodConfig, hooks: { onTick(payload = {}) {
+    const result = mood.settle(payload);
+    if (mood.policy().enabled === false) return result;
+    for (const [key, entry] of Object.entries(ctx.state.get().mood?.conversations || {})) {
+      if (!entry.welcomeBurstPending) continue;
+      // Reuse the existing scheduler and read-only lifecycle facts. Unknown or
+      // busy conversations must not be cancelled by the cooldown clock.
+      let facts;try { facts = ctx.capabilities?.getProactiveFacts?.(key); } catch { continue; }
+      if (facts?.busy === false && facts.conversationAwake === false) mood.cancelWelcome({ key, now: payload.now ?? Date.now() });
+    }
+    return result;
+  } }, services: { mood, 'mood-users': {
     record({ key, userId, delta, initial = 60, now = Date.now() } = {}) {
       if (!validKey(key) || !validUser(userId) || !Number.isFinite(Number(delta)) || Number(delta) === 0) return { ok: false };
       const members = { ...(ctx.state.get().members || {}) };

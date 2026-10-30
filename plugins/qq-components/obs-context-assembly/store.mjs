@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {randomBytes,createHash} from 'node:crypto';
-import {normalizePolicy} from './policy.mjs';
+const policyModule=new URL('./policy.mjs',import.meta.url);policyModule.search=new URL(import.meta.url).search;const {normalizePolicy}=await import(policyModule.href);
 import {redact} from './packet.mjs';
 export const POLICY_ID='obs-context-assembly';
 export function readJson(file,fallback=null){try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch{return fallback;}}
 export function writeJson(file,data){fs.mkdirSync(path.dirname(file),{recursive:true});const tmp=file+'.'+process.pid+'.'+randomBytes(4).toString('hex')+'.tmp';try{fs.writeFileSync(tmp,JSON.stringify(data),{mode:0o600});fs.renameSync(tmp,file);}finally{if(fs.existsSync(tmp))fs.unlinkSync(tmp);}}
 export function policyFile(root){return path.join(root,'state/plugins/config',POLICY_ID+'.json');}
-export function readPolicy(root){const policy=normalizePolicy(readJson(policyFile(root),{})),registry=readJson(path.join(root,'state/plugins/registry.json'),{});return registry.disabled?.includes(POLICY_ID)?{...policy,enabled:false}:policy;}
+export function readPolicy(root){const stored=readJson(policyFile(root),{});delete stored.compactHistory;const policy=normalizePolicy(stored),registry=readJson(path.join(root,'state/plugins/registry.json'),{});return registry.disabled?.includes(POLICY_ID)?{...policy,enabled:false}:policy;}
 export function secretFor(root){const file=path.join(root,'state/context-assembly/packet.key');try{return fs.readFileSync(file,'utf8');}catch(error){if(error.code!=='ENOENT')throw error;fs.mkdirSync(path.dirname(file),{recursive:true});try{fs.writeFileSync(file,randomBytes(32).toString('hex'),{flag:'wx',mode:0o600});}catch(error){if(error.code!=='EEXIST')throw error;}return fs.readFileSync(file,'utf8');}}
 function stem(value){return createHash('sha256').update(String(value)).digest('hex').slice(0,32);}
 export function evidenceFile(root,key,kind='assembly'){if(!['assembly','request','consumer','packet','activity'].includes(kind))throw Error('无效 context 证据类型');return path.join(root,'state/context-assembly',kind,stem(key)+'.json');}

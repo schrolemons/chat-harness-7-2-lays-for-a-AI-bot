@@ -1,4 +1,5 @@
 // Read-only annotation: exact captured text only, never reconstruct model input.
+import {inputOrigin} from './context-records.js';
 export function attributeText(text='',modules=[],catalog=[]){
  const numbers=new Map(catalog.map((row,index)=>[row.id,index+1])),names=new Map(catalog.map(row=>[row.id,row.name])),patterns=new Map();
  for(const row of modules){
@@ -25,15 +26,18 @@ export function attributeText(text='',modules=[],catalog=[]){
 }
 
 export function messageLabel(row){
+ if(row.source==='repeat-tool-reminder')return '重复工具调用提醒';
+ if(row.source==='qq-context-task')return '本次处理要求';
  if(row.role==='tool'||row.toolResults?.length)return '工具返回数据';
  if(row.toolCalls?.length)return 'bot 发起的工具调用';
- if(row.role==='assistant')return 'bot 生成的文字（QQ 投递未核验）';
+ if(row.role==='assistant')return 'bot 内部输出（QQ 发送另看回执）';
  if(row.source==='compact-checkpoint')return '会话压缩摘要';
  if(row.source==='runtime-context')return '运行环境说明';
- if(row.source==='qq-context-dialogue')return '先前回合任务与 QQ 来信';
+ if(row.source==='qq-context-dialogue')return '桥接任务与 QQ 消息';
  if(row.source==='qq-context-current')return '先前回合背景快照';
  if(row.source==='qq-context-stable')return '稳定会话资料（user 前缀）';
- if(row.source==='qq-context-update')return '心情、日程与资料的状态更新';
+ if(row.source==='qq-context-update')return '组件状态快照';
+ if(row.source==='qq-context-latest')return '当前补充资料（仅最新状态）';
  return {system:'系统设定与角色要求',developer:'系统补充说明',user:'会话输入记录'}[row.role]||row.name||row.id;
 }
 
@@ -44,7 +48,10 @@ export function partLabel(part){
 }
 
 export function unmatchedLabel(message={}){
+ if(message.source==='repeat-tool-reminder')return {tag:'运行提醒',title:'重复工具调用提醒',description:'DSH 检测到相同工具与参数被重复调用，提醒先检查上次结果。'};
+ if(message.source==='qq-context-task')return {tag:'处理任务',title:'本次处理要求 · C39',description:'固定槽位，随当前任务更新。'};
  if(message.source==='qq-context-stable')return {tag:'稳定资料',title:'稳定会话资料与状态解释规则',description:'保存会话背景、会话协议及稳定规则；若此消息还包含早期聊天，聊天原文保留在资料之后。'};
+ if(message.source==='qq-context-latest')return {tag:'当前资料',title:'当前补充资料（本次请求有效）',description:'这是本次请求末尾唯一一份完整当前资料；旧状态只保存在运行日志，不再随模型请求重复携带。'};
  if(message.source==='qq-context-update')return {tag:'动态更新',title:'组件状态更新与撤回说明',description:'组件有变化时才追加；同组件最后一条更新生效，早先状态仍保留在历史中。'};
  if(message.role==='system')return {tag:'系统记录',title:'DSH 系统提示与框架规则',description:'提供运行身份、权限边界和系统约定；此段没有与组件采集原文完整匹配。'};
  if(message.role==='tool'||message.toolResults?.length)return {tag:'工具记录',title:'工具返回数据',description:'记录工具执行结果、查询数据或错误，供模型继续处理。'};
@@ -52,10 +59,11 @@ export function unmatchedLabel(message={}){
  if(message.role==='assistant')return {tag:'生成记录',title:'bot 生成文字',description:'保留模型的回复或内部处理文字；是否发送到 QQ 需要结合发送工具结果判断。'};
  if(message.source==='compact-checkpoint')return {tag:'会话记录',title:'DSH 会话压缩摘要',description:'在压缩较早对话时生成，保留后续处理所需的聊天经过和任务线索。'};
  if(message.source==='runtime-context')return {tag:'环境记录',title:'DSH 运行环境更新',description:'由运行时按需补充当前环境信息；具体状态以这条记录正文为准。'};
- if(message.source==='tool-registry')return {tag:'工具记录',title:'DSH 工具注册变更',description:'在可用工具发生变化时补充注册信息；非文本内容的完整载荷未被本次预览采集。'};
+ if(message.source==='tool-registry')return {tag:'工具定义',title:'DSH 工具定义新增与移除',description:'运行时对比前后工具清单而生成，记录工具名称变化；不是工具执行。新增定义引用原始 request/header，不重复粘贴整份 schema。'};
  if(message.source==='qq-context-dialogue')return {tag:'回合记录',title:'桥接回合说明与任务衔接',description:'说明本次唤醒原因、任务要求或回合衔接信息；能够验证的 QQ 来信会单独标为 C36。'};
  if(message.source==='qq-context-current')return {tag:'背景记录',title:'桥接补充背景资料',description:'由桥接随本轮背景提供；此段与保存的组件原文未完整匹配，保留供核对。'};
- if(message.role==='user'&&message.source==='user')return {tag:'会话记录',title:'会话输入记录（来源组件未记录）',description:'这是以 user 角色进入模型请求的文字；旧采集未说明它是聊天原文还是管理补充。'};
+ if(message.role==='user'&&message.source==='user'&&inputOrigin(message)?.title.startsWith('桥接收尾提醒'))return {tag:'桥接任务',title:'桥接收尾提醒正文（历史格式）',description:'按程序提醒格式识别；原始日志只记录 source=user，具体插件ID未保存。不能将这段当作群成员的QQ发言。'};
+ if(message.role==='user'&&message.source==='user')return {tag:'外部输入',title:'外部输入正文（具体提交方未记录）',description:'user 是协议角色，不足以证明这段来自QQ用户；保留原文和事件位置供核对，不猜测具体提交方。'};
  return {tag:'上下文记录',title:'其他上下文记录（来源组件未记录）',description:'按实际请求原样保留；当前只知道消息角色与来源字段，无法确认具体触发机制。'};
 }
 
@@ -81,7 +89,7 @@ const qqTime=value=>Number.isFinite(value)||typeof value==='string'&&/^(?:(?:0[1
 const qqRows=value=>Array.isArray(value)&&value.every(row=>record(row)&&(Number.isSafeInteger(row.seq)||((row.messageId!==undefined||row.id!==undefined)&&(row.userId!==undefined||row.senderId!==undefined))||(typeof row.sender==='string'&&typeof row.text==='string'&&qqTime(row.at))));
 export function attributeMessage(message={},modules=[],catalog=[]){
  const text=String(message.text||'');
- if(message.role==='user'&&message.source==='qq-context-update'&&message.contextSegments?.length){
+ if(message.role==='user'&&['qq-context-update','qq-context-latest'].includes(message.source)&&message.contextSegments?.length){
   const out=[];let cursor=0;
   for(const segment of message.contextSegments){
    if(!message.contextUpdates?.some(update=>update.id===segment.id)||!segment.text)continue;
@@ -89,7 +97,8 @@ export function attributeMessage(message={},modules=[],catalog=[]){
    out.push(...attributeText(text.slice(cursor,start),modules,catalog));
    const index=catalog.findIndex(slot=>slot.id===segment.id);
    const slotName=catalog[index]?.name,ownerName=slotName&&slotName!==segment.id?slotName:modules.find(row=>row.id===segment.id)?.name||segment.id;
-   out.push({text:segment.text,owners:[{id:segment.id,number:index<0?undefined:index+1,name:ownerName,evidence:message.effectiveComponents?.includes(segment.id)?'本次请求的当前状态':'历史状态更新'}]});
+   const known=Array.isArray(message.effectiveComponents),active=message.effectiveComponents?.includes(segment.id);
+   out.push({text:segment.text,owners:[{id:segment.id,number:index<0?undefined:index+1,name:ownerName,superseded:known&&!active,evidence:known?active?message.withdrawnComponents?.includes(segment.id)?'本轮停用旧状态的说明':'本次请求的最新版本':'已被后续更新取代':'当前有效性未核验'}]});
    cursor=start+segment.text.length;
   }
   out.push(...attributeText(text.slice(cursor),modules,catalog));return out;

@@ -2,7 +2,7 @@
 
 本组件唯一拥有按 `group:群号` / `private:QQ` 保存的会话总心情，范围0–100，默认60。除每日上海时间04:00保底恢复到max(当前值,60)外，不自然回升或回落，不读隐式夸骂词表。配置包括 `enabled`、`noReplyAfterMinutes`（默认20）、双形态阈值/名称/风格、行为规则与AI自主调整上限。每日04:00恢复下限60与未答扣10为固定规则，以policy的dailyFloor/noReplyPenalty只读返回，不接受配置覆盖。关闭时不建立新等待、不结算，调度频率因子为1，保留已有账本。
 
-服务 `mood.initialize({conversations:[{key,score}],now})` 只导入尚未拥有的有效旧分值，0同样有效；已有分值不被导入覆盖，启动时按每日04:00周期补做尚未执行的保底恢复。`mood.policy()` 返回唯一有效配置。`mood.read({key,now})` 返回 `enabled,score,mode,modeName,styleInstruction,band,unansweredStreak,frequencyFactor,replyCeiling,detailLevel,welcomeBurstActive,welcomeBurstUntil,cooldownUntil`，不因查询时间改变分值或持久状态。
+服务 `mood.initialize({conversations:[{key,score}],now})` 只导入尚未拥有的有效旧分值，0同样有效；已有分值不被导入覆盖，启动时按每日04:00周期补做尚未执行的保底恢复。`mood.policy()` 返回唯一有效配置。`mood.read({key,now})` 返回 `enabled,score,mode,modeName,styleInstruction,band,unansweredStreak,frequencyFactor,replyCeiling,detailLevel,welcomeBurstActive,cooldownUntil`，不因查询时间改变分值或持久状态。
 
 `mood.adjust({key,action,value,reason,ruleId?,now})` 只允许add/dec与有限正数value≤100，返回ok/before/score/reason。指定ruleId时必须在当前规则中存在，action方向与规则delta一致，value不大于abs(delta)；未指定时value不大于maxAdjustment（默认20，范围1–100）。有效调整先结清已经到期的等待，再做显式加减，避免tick稍晚时在0分边界改变应有结果。外层工具必须绑定当前QQ会话，本组件不注册模型工具。
 
@@ -12,7 +12,7 @@ positiveRules/negativeRules均为{id,label,delta,description}数组，分别接�
 
 环境应在额度判断前调用 `mood.incoming({key,messageId,userId,at,hasText,hasImage,isSelf,directedAtBot,reengaged})`：先结清已到期等待，再补做错过的04:00恢复（同周期只一次），结清有效回应，最后判定欢迎。纯图片有效、空消息和自身消息无效；稳定messageId跨重启去重。私聊任何人类文本/图片有效；群聊仅直接回应bot或对应等待目标的消息有效，每日04:00恢复不依赖任何人类消息。
 
-欢迎爆发由burstEnabled（默认true）和recoverMinutes（默认20，0–1440）管理。环境从主动互动阶段判断重回，传入可信且严格为true的reengaged；普通新消息本身不代表重回。只有当前normal形态、启用欢迎、冷却已过且无有效pending欢迎时创建一次welcomeBurstPending/lastBurstAt/activeUntil，不叠加、不因反复入站延长。正recoverMinutes同时作为欢迎有效窗口与冷却；0确实取消冷却，但pending仍保留固定5分钟安全有效期，避免无限期“刚回来”。状态与入站去重一起持久化。read的welcomeBurstActive还会检查当前形态、配置与now是否落在有效期；welcomeBurstUntil/cooldownUntil为时间戳，无历史欢迎时为null。失效只影响欢迎，不自动加分或解除其他发送约束。低落阈值唯一使用modeThreshold，不读旧lowThreshold别名。
+欢迎由可信 reengaged=true 的有效入站触发，要求普通形态、功能启用、冷却结束且没有待使用机会；重复入站不延长冷却。recoverMinutes 只限制再次触发，不决定本次机会的有效期，0表示无冷却。一次机会在首条确认成功的普通回复后消费。现有每分钟 onTick 调度通过 getProactiveFacts 确认会话 busy=false 且 conversationAwake=false 后取消尚未使用的机会；忙碌或生命周期证据缺失时不取消，不新增定时器。取消不会修改分数、刷新冷却或伪称发送成功。状态与入站去重持久化。
 
 确认成功投递后调用 `mood.sent({key,deliveryId,proactiveId,wakeReason,targetUserId,sentAt,success,expectsReply})`。只有success严格为true、expectsReply严格为true且reason为proactiveCheck/timeBubble/startupGreeting/privateFollowup才创建等待。普通回复、提醒、通知、未知或失败不创建等待。同会话同proactiveId只建一笔，分条及部分成功共享原截止时间。deliveryId与主动回合完成凭据长期保留，不盲目裁剪。
 
@@ -20,7 +20,7 @@ positiveRules/negativeRules均为{id,label,delta,description}数组，分别接�
 
 unansweredStreak按真实时间关系推导，不按确认到达顺序累加：最近断点取私聊最后人类消息（群聊取最后直接回应）与每笔已确认等待的首次有效firstReplyAt中的最大值，只计算已经实际结算且dueAt严格晚于断点的主动回合。等于截止时间时先扣分再被真实回应结束未答。等待的firstReplyAt（兼容旧answeredAt）一旦有值，旧目标再次发言不能推进它。settle、有效incoming与迟到确认后重算并持久化；老回合确认晚到不会复活较新回应已经结束的pleading，也不会抹去真正更新的另一目标未答。这个推导不改变导入基准或分值历史。
 
-成功普通回复同样调用mood.sent，由环境将wakeReason规范为message（兼容reply），可另带originReason保留原触发事实；这种调用不要求proactiveId或expectsReply，不创建情绪等待。它只在确认成功、pending欢迎仍有效时消费一次，返回welcomeConsumed，稳定deliveryId防止旧回执消费下次欢迎。失败/未知、主动、日程和通知都不消费欢迎。超过有效期的成功普通回复不会伪称已完成欢迎。欢迎不改变心情或新增burstMax，由统一回复计划在现有casual形态上限内使用；环境须冻结当轮计划，首分条消费后仍按原合法计划完成，严肃内容优先。
+成功普通回复同样调用mood.sent，由环境将wakeReason规范为message（兼容reply），可另带originReason保留原触发事实；这种调用不要求proactiveId或expectsReply，不创建情绪等待。它只在确认成功、pending欢迎仍有效时消费一次，返回welcomeConsumed，稳定deliveryId防止旧回执消费下次欢迎。失败/未知、主动、日程和通知都不消费欢迎。会话已确认结束并取消的机会不会被后续成功回执消费。欢迎不改变心情或新增burstMax，由统一回复计划在现有casual形态上限内使用；环境须冻结当轮计划，首分条消费后仍按原合法计划完成，严肃内容优先。
 
 `mood.settle({now})` 幂等扣分；onTick通过统一调度每分钟调用同一入口，不开启原生定时器。账本的dueAt/answeredAt/settledAt与分数同一次原子持久化，重复tick、热加载和重启不会重复扣分。
 

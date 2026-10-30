@@ -32,8 +32,8 @@ export function createTopicActions(ctx, raw = {}) {
     let action = r < cfg.followupWeight ? 'followup' : r < cfg.followupWeight + cfg.newTopicWeight ? 'newTopic' : 'wait';
     const topicId = topic(key), reason = action === 'wait' ? '' : allowed(key, action, topicId, id, now);
     if (reason) action = 'wait';
-    const guidance = action === 'followup' ? '本轮不结束：可围绕当前旧话题追问一次，也可简短询问是否还在。用 conversationIntent="followup"，不要另起话题；真实发送受冷却和发送计划限制。'
-      : action === 'newTopic' ? '本轮不结束：结合当前会话上下文和已确认近况，自行发起一个新话题。用 conversationIntent="newTopic" 并给出稳定 topicId；不凭空补充事实。'
+    const guidance = action === 'followup' ? '本轮不结束，已抽中旧话题追问：下一步优先实际发送一条具体、容易回答的问题，接着刚才尚未聊完的细节追问；尽量不要只说“还在吗”，也不要仅在内部计划追问后就直接再次等待。用 conversationIntent="followup"，保持当前形态与语气，不另起话题，不凭空补充用户经历；确认发送成功后再继续等待。若对方明确忙碌、拒绝或已结束话题，没有合适切入点，或冷却、免打扰、发送预算不允许，允许继续等待或正常收尾，不机械催问。'
+      : action === 'newTopic' ? '本轮不结束，已抽中新话题：下一步优先实际发送一条简短、自然的新话题消息，结合当前会话上下文和已确认近况，留一个容易回应的具体切入点；不要仅在内部计划换题后直接再次等待。用 conversationIntent="newTopic" 并给出稳定 topicId；保持当前形态与语气，不凭空补充事实，确认发送成功后再继续等待。若对方明确忙碌、拒绝，缺少合适话题或发送受限，允许继续等待或正常收尾。'
       : '本轮不结束，但现在应继续等待，不追加追问或新话题。';
     const choice = { id, scope, seq, action, topicId, generation: generation(key), reason, guidance, at: now };
     ctx.state.set({ topicChoices: { ...(get().topicChoices || {}), [key]: choice } });

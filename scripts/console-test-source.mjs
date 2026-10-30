@@ -10,7 +10,7 @@ export function readConsoleTestSource() {
       const file=path.join(dir,entry.name);
       if(entry.isDirectory()) return scripts(file);
       if(!entry.name.endsWith('.js')) return [];
-      const source=fs.readFileSync(file,'utf8').replace(/^import .+;\s*$/gm,'').replace(/export default /g,'const componentSpec = ').replace(/^export \{[^}]*\};?\s*$/gm,'').replace(/\bexport (?=(?:async )?function|const |let )/g,'');
+      const source=fs.readFileSync(file,'utf8').replace(/^import .+;\s*$/gm,'').replace(/export default /g,'const componentSpec = ').replace(/^export \{[^}]*\}(?: from ['"][^'"]+['"])?;?\s*$/gm,'').replace(/\bexport (?=(?:async )?function|const |let )/g,'');
       return ['<script>\n'+source+'\n</script>'];
     });
   }

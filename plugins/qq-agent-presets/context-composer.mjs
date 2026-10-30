@@ -1,5 +1,5 @@
 import {splitMessageSnapshot} from '../qq-components/obs-context-assembly/message-snapshot.mjs';
-import {previewRequestMessage} from '../qq-components/obs-context-assembly/request-view.mjs';
+import {previewRequestMessage,previewRequestBlocks,previewRequestToolResults} from '../qq-components/obs-context-assembly/request-view.mjs';
 import {observeModuleDelivery} from '../qq-components/obs-context-assembly/knowledge.mjs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -8,8 +8,8 @@ import fs from 'node:fs';
 import {compileModules} from '../qq-components/obs-context-assembly/policy.mjs';
 import {decodePacket} from '../qq-components/obs-context-assembly/packet.mjs';
 import {readPolicy,secretFor,recordEvidence,readEvidence,writeJson,evidenceFile} from '../qq-components/obs-context-assembly/store.mjs';
-import {planHistoryReplacements,replaceSurface} from '../qq-components/obs-context-assembly/history.mjs';
-import {refillContext,contextParts,CONTEXT_STATE_RULE} from '../qq-components/obs-context-assembly/refill.mjs';
+import {replaceSurface} from '../qq-components/obs-context-assembly/history.mjs';
+import {refillContext,contextParts,withoutSessionCredentials,retireDialogueTasks,CONTEXT_STATE_RULE,SESSION_CREDENTIAL_RULE} from '../qq-components/obs-context-assembly/refill.mjs';
 import {prioritizeChatExpression} from '../qq-components/obs-context-assembly/chat-expression.mjs';
 import {refreshContextPacket} from './context-refresh.mjs';
 export const name='qq-context-composer';
@@ -17,7 +17,8 @@ const OWN='qq-context-current';
 function texts(message){return (message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n');}
 function messageText(text,source,id=randomUUID()){return {id,role:'user',content:[{type:'text',text}],source};}
 function knownSeqs(session){const seen=new Set();for(const e of session.snapshotEvents()){const source=e?.data?.source?.kind==='qq-context-stable'?e.data.source.baseSource:e?.data?.source;if(e?.type==='user/message'&&source?.kind==='qq-context-dialogue')for(const n of source.seqs||[])seen.add(n);}return seen;}
-function retireCurrent(session,position,replace=replaceSurface){for(const seq of [...session.surface.nodes]){const e=session.eventAt(seq);if(e?.type==='user/message'&&e.data.source?.kind===OWN)replace(session,seq,{...e.data,content:[],source:{...e.data.source,kind:'qq-context-retired'}},position);}}
+function knownDialogueSeqs(session){const seen=new Set();for(const event of session.snapshotEvents()){const source=event?.data?.source?.kind==='qq-context-stable'?event.data.source.baseSource:event?.data?.source;if(event?.type==='user/message'&&source?.kind==='qq-context-dialogue')for(const seq of source.dialogueSeqs||[])seen.add(seq);}return seen;}
+function retireCurrent(session,position,replace=replaceSurface){for(const seq of [...session.surface.nodes]){const e=session.eventAt(seq);if(e?.type==='user/message'&&[OWN,'qq-context-update','qq-context-latest','qq-context-task'].includes(e.data.source?.kind))replace(session,seq,{...e.data,content:[],source:{...e.data.source,kind:'qq-context-retired'}},position);}}
 export function apply(ctx,config={}) {
  const root=config.root||path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
  const secret=secretFor(root),states=new Map(),agents=new Map(),resumeIds=new Set(),tombstones=new Map(),activities=new Map();
@@ -82,38 +83,37 @@ export function apply(ctx,config={}) {
   // Preserve all framework sections/permissions. Only signed administrator-owned
   // role/background sources become instruction sections; memory stays user data.
   const boundaryNames=new Set(['harness:identity','deployment:persona-prefix']);
-  return {...result,sections:[...result.sections.filter(x=>boundaryNames.has(x.name)),...fixed.map(x=>({name:'whale:'+x.id,text:x.text,interpolate:false})),{name:'whale:context-state-policy',text:CONTEXT_STATE_RULE,interpolate:false},...result.sections.filter(x=>!boundaryNames.has(x.name))]};
+  return {...result,sections:[...result.sections.filter(x=>boundaryNames.has(x.name)),...fixed.map(x=>({name:'whale:'+x.id,text:x.text,interpolate:false})),{name:'whale:context-state-policy',text:CONTEXT_STATE_RULE+'\n'+SESSION_CREDENTIAL_RULE,interpolate:false},...result.sections.filter(x=>!boundaryNames.has(x.name))]};
  });
  ctx.on('agent/pre-step',async(payload,next)=>{
   const decision=await next();if(decision.kind!=='enter')return decision;
   const {agent}=payload,state=stateFor(agent),policy=readPolicy(root);
   if(!state)return decision;
-  const position={turn:payload.turn,step:payload.step};state.requestPosition=position;
+  const position={turn:payload.turn,step:payload.step};state.requestPosition=position;state.currentInputMessageIds=[];
   for(const seq of [...agent.session.surface.nodes]){const event=agent.session.eventAt(seq);if(event?.type==='user/message'&&event.data?.source?.projectionRepair==='pre-step-empty-v1')replaceBeforeStep(agent.session,seq,{...event.data,content:[]},position);}
   if(!policy.enabled){retireCurrent(agent.session,position,replaceBeforeStep);return {...decision,startsRequestSeries:true};}
   try{
    const fresh=await (config.refresh||refreshContextPacket)({root,sessionId:agent.session.id,envelope:state.envelope,secret,signal:payload.signal});
    if(fresh?.modules){state.modules=fresh.modules;state.contextRefresh={status:'fresh',at:Date.now()};}
    else throw Error('刷新没有返回组件资料');
-  }catch(error){if(payload.signal?.aborted)throw error;state.contextRefresh={status:'stale',at:Date.now(),reason:String(error.message||error).slice(0,160)};}
+  }catch(error){if(payload.signal?.aborted)throw error;state.modules=withoutSessionCredentials(state.modules);state.contextRefresh={status:'stale',at:Date.now(),reason:String(error.message||error).slice(0,160)};}
   state.compiled=compileModules(prioritizeChatExpression(state.modules),policy,state.scene);
-  if(policy.compactHistory){for(const op of planHistoryReplacements(agent.session.snapshotEvents(),agent.session.surface.nodes))replaceBeforeStep(agent.session,op.seq,op.message,position);}
-  let entered=false;const seen=knownSeqs(agent.session),messages=[];
+  let entered=false;const seen=knownSeqs(agent.session),seenDialogue=knownDialogueSeqs(agent.session),messages=[];
   for(const message of decision.messages){
    const packet=decodePacket(texts(message),secret,agent.session.id);
-   if(!packet){messages.push(message);continue;}
+   if(!packet){messages.push(message);if(message.source?.kind==='user')state.currentInputMessageIds.push(message.id);continue;}
    entered=true;
    const selectedSnapshot=state.compiled.selected.find(x=>x.id==='message-snapshot');
    const split=selectedSnapshot?splitMessageSnapshot(selectedSnapshot.text):null,rows=split?.records||[];
-   const fresh=rows.filter(x=>{if(!Number.isSafeInteger(x.seq))return true;if(seen.has(x.seq))return false;seen.add(x.seq);return true;});
-   const action=packet.modules.find(x=>x.id==='wake-action')?.text||packet.scene;
+   const fresh=rows.filter(x=>{if(Number.isSafeInteger(x.dialogueSeq)){if(seenDialogue.has(x.dialogueSeq))return false;seenDialogue.add(x.dialogueSeq);}if(!Number.isSafeInteger(x.seq))return true;if(seen.has(x.seq))return false;seen.add(x.seq);return true;});
    const messageData=fresh.length?'【新增 QQ 消息数据】\n'+JSON.stringify(fresh):'';
    state.appliedModules=state.compiled.modules.map(row=>row.id==='message-snapshot'&&split?{...row,parts:[split.parts[0],{...split.parts[1],text:messageData}]}:row);
-   const text='【QQ 回合 '+packet.scene+'】\n'+action+(fresh.length?'\n【新增 QQ 消息数据】\n'+JSON.stringify(fresh):'\n本轮无新增 QQ 消息。');
-   messages.push({...message,content:[{type:'text',text},...(message.content||[]).filter(x=>x.type!=='text')],source:{kind:'qq-context-dialogue',key:packet.key,nonce:packet.nonce,seqs:fresh.map(x=>x.seq).filter(Number.isSafeInteger)}});
+   const nonText=(message.content||[]).filter(block=>block.type!=='text');
+   if(fresh.length||nonText.length){state.currentInputMessageIds.push(message.id);messages.push({...message,content:[...(messageData?[{type:'text',text:messageData}]:[]),...nonText],source:{kind:'qq-context-dialogue',key:packet.key,nonce:packet.nonce,reason:packet.scene,taskSeparated:true,seqs:fresh.map(x=>x.seq).filter(Number.isSafeInteger),dialogueSeqs:fresh.map(x=>x.dialogueSeq).filter(Number.isSafeInteger)}});}
   }
   retireCurrent(agent.session,position,replaceBeforeStep);
-  const refill=refillContext({session:agent.session,compiled:state.compiled,key:state.key,nonce:state.nonce,position,messages});
+  retireDialogueTasks(agent.session,position,replaceBeforeStep);
+  const refill=refillContext({session:agent.session,compiled:state.compiled,key:state.key,nonce:state.nonce,scene:state.scene,position,messages});
   state.contextUpdates=refill.updates;
   state.appliedModules=(state.appliedModules||state.compiled.modules).map(old=>{
    const row=state.compiled.modules.find(x=>x.id===old.id)||old;
@@ -128,9 +128,9 @@ export function apply(ctx,config={}) {
   const agent=agents.get(options.sessionId);if(!agent)return next();
   try {
   const state=states.get(options.sessionId);
-  const observedNonce=(options.messages||[]).findLast(m=>[OWN,'qq-context-update','qq-context-dialogue'].includes(m.source?.kind))?.source?.nonce;
+  const observedNonce=(options.messages||[]).findLast(m=>[OWN,'qq-context-update','qq-context-latest','qq-context-dialogue'].includes(m.source?.kind))?.source?.nonce;
   const aligned=!observedNonce||observedNonce===state?.nonce;
-  const messages=(options.messages||[]).map((m,index)=>({id:m.id||'request:'+index,name:(m.role||'消息')+' '+(index+1),role:m.role,source:m.source?.kind||'DSH 会话历史',text:previewRequestMessage(m),contextUpdates:m.source?.updates,contextSegments:m.source?.kind==='qq-context-update'?(m.source.ranges||[]).map(r=>({id:r.id,text:previewRequestMessage(m).slice(r.start,r.end)})):undefined,wrappedSource:m.source?.baseSource?.kind,toolCalls:(m.content||[]).filter(b=>b.type==='tool-call').map(b=>({id:b.id,name:b.name})),toolResults:(m.content||[]).filter(b=>b.type==='tool-result').map(b=>({toolCallId:b.toolCallId,name:b.name})),contextNonce:m.source?.nonce,chars:JSON.stringify(m).length}));
+  const messages=(options.messages||[]).map((m,index)=>({id:m.id||'request:'+index,name:(m.role||'消息')+' '+(index+1),role:m.role,isError:m.isError,triggerReason:m.source?.reason,taskSeparated:m.source?.taskSeparated,source:m.source?.kind||'DSH 会话历史',contentBlocks:previewRequestBlocks(m),currentInput:state?.currentInputMessageIds?.includes(m.id)||false,text:previewRequestMessage(m),contextUpdates:m.source?.updates,contextSegments:['qq-context-update','qq-context-latest'].includes(m.source?.kind)?(m.source.ranges||[]).map(r=>({id:r.id,text:previewRequestMessage(m).slice(r.start,r.end)})):undefined,wrappedSource:m.source?.baseSource?.kind,toolCalls:(m.content||[]).filter(b=>b.type==='tool-call').map(b=>({id:b.id,name:b.name})),toolResults:previewRequestToolResults(m),contextNonce:m.source?.nonce,chars:JSON.stringify(m).length}));
   const activity=activityFor(agent);let processingCount;
   if(activity?.active){
    const previous=readEvidence(root,options.sessionId,'request');
@@ -140,7 +140,7 @@ export function apply(ctx,config={}) {
    if(state.requestCount===undefined){const previous=readEvidence(root,options.sessionId,'request');state.requestCount=previous?.nonce===(observedNonce||state.nonce)?Number.isSafeInteger(previous.requestInRound)?previous.requestInRound:null:0;}
    if(state.requestCount!==null)state.requestCount++;
   }
-  recordEvidence(root,options.sessionId,'request',{layoutVersion:2,contextRefresh:state?.contextRefresh,contextUpdates:state?.contextUpdates,turn:state?.requestPosition?.turn,step:state?.requestPosition?.step,processingId:activity?.active?activity.id:undefined,processingStartedAt:activity?.active?activity.startedAt:undefined,requestInRound:activity?.active?processingCount:aligned?state?.requestCount:undefined,requestId:randomUUID(),sessionId:options.sessionId,key:state?.key,at:Date.now(),scene:state?.scene,nonce:observedNonce||state?.nonce,moduleEvidenceVersion:1,observerVersion:5,modules:observeModuleDelivery(aligned?(state?.appliedModules||state?.compiled?.modules||[]):[],options.messages),messages,toolCount:options.tools?.length||0,toolChars:JSON.stringify(options.tools||[]).length,messageChars:JSON.stringify(options.messages||[]).length,tools:(options.tools||[]).map(x=>({...x,chars:JSON.stringify(x).length}))});
+  recordEvidence(root,options.sessionId,'request',{layoutVersion:4,contextRefresh:state?.contextRefresh,contextUpdates:state?.contextUpdates,turn:state?.requestPosition?.turn,step:state?.requestPosition?.step,processingId:activity?.active?activity.id:undefined,processingStartedAt:activity?.active?activity.startedAt:undefined,requestInRound:activity?.active?processingCount:aligned?state?.requestCount:undefined,requestId:randomUUID(),sessionId:options.sessionId,key:state?.key,at:Date.now(),scene:state?.scene,nonce:observedNonce||state?.nonce,moduleEvidenceVersion:1,observerVersion:7,modules:observeModuleDelivery(aligned?(state?.appliedModules||state?.compiled?.modules||[]):[],options.messages),messages,toolCount:options.tools?.length||0,toolChars:JSON.stringify(options.tools||[]).length,messageChars:JSON.stringify(options.messages||[]).length,tools:(options.tools||[]).map(x=>({...x,chars:JSON.stringify(x).length}))});
   }catch{/* Observation failures must not interrupt a model request. */}
   return next();
  });
