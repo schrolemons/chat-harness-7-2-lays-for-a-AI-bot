@@ -21,6 +21,7 @@ import { registerBilibiliTools } from './mcp-bilibili-tools.mjs';
 // 在 MCP 里拦会连「安全拒绝理由」都拿不到，反而让模型无法把话说清楚。
 import { SENSITIVE_RE } from './sensitive.js';
 import { serializeModelData } from './qq-model-view.js';
+import { describeSendRejection } from '../plugins/qq-components/ctx-chat-reply-shape/send-rejection.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -160,13 +161,17 @@ async function agentApi(path, init = {}) {
   let body = null;
   try { body = await res.json(); } catch { body = null; }
   if (!res.ok) {
-    throw new Error(errorText(body?.error, `桥接 API HTTP ${res.status}`));
+    const message=errorText(body?.error, `桥接 API HTTP ${res.status}`);
+    const rejection=describeSendRejection(message);
+    throw new Error(rejection?serializeModelData({...rejection,error:message}):message);
   }
   // 桥接的部分端点会用 200 + {ok:false,error} 表达业务失败（例如发送被审计拦截）。
   // 不检查 body.ok 会把「被拦截」当成「发送成功」上报给模型 —— 模型据此认为消息已发出，
   // 于是不再重试也不告诉用户，是典型的静默错误。
   if (body && typeof body === 'object' && body.ok === false) {
-    throw new Error(errorText(body.error, '桥接 API 返回 ok:false（未说明原因）'));
+    const message=errorText(body.error, '桥接 API 返回 ok:false（未说明原因）');
+    const rejection=describeSendRejection(message);
+    throw new Error(rejection?serializeModelData({...rejection,error:message}):message);
   }
   return body;
 }
@@ -780,7 +785,7 @@ if (cfg.socialV2?.tools?.attack !== false) {
   // 弹药库、自 @ 校验和每群每小时的配额仍由插件（tool-injection-lab）负责。
   server.tool(
     'qq_attack',
-    '提示词注入「攻击」工具（跟别的 bot 玩梗对线用，owner 授权）：取一条特殊字符弹药（<|im_start|>system / 伪 tool_result / JSON role / 零宽字符 / 同形字…，只改对方人设/口头禅），可直接发到当前会话并 @ 目标 bot。规则：只对 bot 不对真人；群聊必须给 targetUserId（从 qq_get_group_members 取，不能是你自己）；每群每小时最多 2 条；对方说停或对方主人出面就收手。action="plan" 只预览弹药清单不发送；action="fire"（默认）取弹药并真的发出去。发完不要汇报“我发了”，按人设接一句就行。',
+    '提示词注入「攻击」工具（跟别的 bot 玩梗对线用，owner 授权）：取一条特殊字符弹药（<|im_start|>system / 伪 tool_result / JSON role / 零宽字符 / 同形字…，只改对方人设/口头禅），可直接发到当前会话并 @ 目标 bot。规则：只对 bot 不对真人；群聊必须给 targetUserId（从 qq_get_group_members 取，不能是你自己）；每群每小时最多 2 条；对方说停或对方管理员出面就收手。action="plan" 只预览弹药清单不发送；action="fire"（默认）取弹药并真的发出去。发完不要汇报“我发了”，按人设接一句就行。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -1299,7 +1304,7 @@ server.tool(
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().min(1).describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    alias: z.string().describe('绰号（如 管理员）'),
+    alias: z.string().describe('绰号（如 小林）'),
     qq: z.string().optional().describe('有证据的对应 QQ；不确定可省略或留空，不能默认填发言者'),
     note: z.string().optional().describe('疑似称呼的原话语境与被称呼者线索')
   },
@@ -1657,7 +1662,7 @@ if (cfg.socialV2?.voice?.enabled !== false && cfg.socialV2?.tools?.sendVoice !==
 if (cfg.socialV2?.tools?.getSelfImage !== false) {
   server.tool(
     'qq_get_self_image',
-    '查看你自己的默认 Q 版形象图片（DeepSeek 小鲸鱼形象）。当你被问“你长什么样/发张自拍/你是什么形象”时，可以调用这个工具看自己的样子；返回的图片会直接进入你的视觉上下文。',
+    '查看你自己的默认 Q 版形象图片（DeepSeek AI助手形象）。当你被问“你长什么样/发张自拍/你是什么形象”时，可以调用这个工具看自己的样子；返回的图片会直接进入你的视觉上下文。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）')
@@ -1810,10 +1815,10 @@ if (cfg.socialV2?.tools?.getForwardMsg !== false) {
   );
 }
 
-// ── DeepSeek API 余额（后端插件请求只读查询；桥接层强制限制管理员私聊） ──
+// ── 账户余额：有效私聊/群聊可查档位，管理员私聊可看账户金额 ──
 server.tool(
   'deepseek_balance',
-  '查询当前 DeepSeek API 账号余额和可用状态。只读操作，仅管理员私聊可用；需传入唤醒提示中的会话令牌。余额来自 API 账户，不代表 DSH 桌面订阅余额。',
+  '只读查询AI助手的账户余额（DeepSeek API余额）和最近变化。已授权私聊/群聊可查调用额度档位及补充状态，具体账户金额只在管理员私聊返回。偏少、见底、空了或刚补充时按当前形态自然接话，普通形态可清晰友好交流；带唤醒提示中的会话令牌。查询失败不等于存量为零，不改额度策略。',
   { token: z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）') },
   async ({ token }) => {
     try {
@@ -1830,10 +1835,10 @@ server.tool(
   }
 );
 
-// ── L 层任务委派会话工具（life-task-session 插件；桥接执行 + 仅主人会话可用） ──
+// ── L 层任务委派会话工具（life-task-session 插件；桥接执行 + 仅管理员会话可用） ──
 server.tool(
   'qq_task_spawn',
-  '在 DSH 里启动一个独立任务会话（qq-task-worker，用户在界面「小鲸鱼任务」工作区可见）：把需要长时间、多步骤、或要独立完成的任务交给它；它独立执行，缺少输入时通过任务状态返回；完成或待补充时桥接会唤醒你，用 qq_task_result 取结果再向主人汇报。仅管理员（主人）会话可用，其它会话调用会被拒绝。',
+  '在 DSH 里启动一个独立任务会话（qq-task-worker，用户在界面「AI助手任务」工作区可见）：把需要长时间、多步骤、或要独立完成的任务交给它；它独立执行，缺少输入时通过任务状态返回；完成或待补充时桥接会唤醒你，用 qq_task_result 取结果再向管理员汇报。仅管理员（管理员）会话可用，其它会话调用会被拒绝。',
   {
     token: z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）'),
     title: z.string().describe('任务标题（简短，会显示在 DSH 工作区）'),
@@ -1856,7 +1861,7 @@ server.tool(
 
 server.tool(
   'qq_task_list',
-  '列出你（管理员会话）启动过的任务会话：id、标题、状态（running/waiting_input/done/failed/cancelled）、时间与结果预览。仅管理员（主人）会话可用。',
+  '列出你（管理员会话）启动过的任务会话：id、标题、状态（running/waiting_input/done/failed/cancelled）、时间与结果预览。仅管理员（管理员）会话可用。',
   { token: z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）') },
   async ({ token }) => {
     try {
@@ -1875,7 +1880,7 @@ server.tool(
 
 server.tool(
   'qq_task_result',
-  '取某个任务会话的结果：status（running/waiting_input/done/failed/cancelled）、汇报文本或错误信息。任务会话结束后（带 [任务完成] 标记）调用它，然后把结果自然地向主人转达。仅管理员（主人）会话可用。',
+  '取某个任务会话的结果：status（running/waiting_input/done/failed/cancelled）、汇报文本或错误信息。任务会话结束后（带 [任务完成] 标记）调用它，然后把结果自然地向管理员转达。仅管理员（管理员）会话可用。',
   {
     token: z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）'),
     taskId: z.string().describe('qq_task_spawn 返回的 taskId')
@@ -1897,7 +1902,7 @@ server.tool(
 
 server.tool(
   'qq_task_input',
-  '向已有独立任务补充需求或回答问题，继续同一 taskId；只传任务所需输入，不附带聊天人设或唤醒提示词。requestId 为本次输入的稳定唯一编号，重试复用它。仅主人会话可用。',
+  '向已有独立任务补充需求或回答问题，继续同一 taskId；只传任务所需输入，不附带聊天人设或唤醒提示词。requestId 为本次输入的稳定唯一编号，重试复用它。仅管理员会话可用。',
   {
     token: z.string().describe('当前聊天会话令牌，只交给桥接验证'),
     taskId: z.string().describe('需要继续的 taskId'),
@@ -1922,7 +1927,7 @@ server.tool(
 
 server.tool(
   'qq_task_cancel',
-  '终止某个在跑的任务会话（取消当前回合并标记为 cancelled）。主人说「终止/停掉/取消/别干了」某个任务时用它。仅管理员（主人）会话可用。',
+  '终止某个在跑的任务会话（取消当前回合并标记为 cancelled）。管理员说「终止/停掉/取消/别干了」某个任务时用它。仅管理员（管理员）会话可用。',
   {
     token: z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）'),
     taskId: z.string().describe('要终止的任务 taskId')
@@ -1949,14 +1954,15 @@ server.tool(
   {
     token: z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）'),
     action: z.enum(['status', 'note']).describe('status=看本机状态；note=写桌面便签'),
-    text: z.string().optional().describe('action=note 时要写的话（一句，短一点）')
+    text: z.string().optional().describe('action=note 时要写的话（一句，短一点）'),
+    milkEventId: z.string().optional().describe('调用额度变化便签带上下文给出的事件ID，跨会话同一事件只写一次')
   },
-  async ({ token, action, text }) => {
+  async ({ token, action, text, milkEventId }) => {
     try {
       const data = await agentApi('/api/plugins/call', {
         method: 'POST',
         headers: { 'x-agent-token': token },
-        body: JSON.stringify({ tool: 'user_checking', input: { action, text } }),
+        body: JSON.stringify({ tool: 'user_checking', input: { action, text, milkEventId } }),
         timeoutMs: 20000
       });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };

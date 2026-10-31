@@ -1,9 +1,13 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {processingEntries,triggerMechanism,outputTrace,traceRelations,focusedTraceEdges,receiptIndexHtml} from '../console/layers/O/context-processing.js';
+import {processingEntries,triggerMechanism,outputTrace,traceRelations,receiptIndexHtml} from '../console/layers/O/context-processing.js';
 import {requestEntries} from '../console/layers/O/context-inspector.js';
 const dialogue=records=>({role:'user',source:'qq-context-dialogue',currentInput:false,text:'【QQ 回合 group】\n原因：probability\n【新增 QQ 消息数据】\n'+JSON.stringify(records)});
 const call=(id,name)=>({role:'assistant',text:'工具调用',toolCalls:[{id,name}]});
 const result=(id,data)=>({role:'tool',toolResults:[{toolCallId:id}],text:JSON.stringify(data)});
+
+test('a human reply to bot retains resolved quote context alongside its own plain text',()=>{
+ const r={messages:[dialogue([{seq:505,text:'[引用 AI助手：你吃饭了吗]吃过啦',plain:'吃过啦',quoteTargetIsSelf:true,receiptState:'complete'}])]},view=processingEntries(r,requestEntries(r)),row=view.bySeq.get(505);assert.equal(row.text,'吃过啦');assert.equal(row.quoted.sender,'AI助手');assert.match(row.quoted.text,/你吃饭了吗/);
+});
 test('business windows use receipts across batches and never confuse seen with completed',()=>{
  const request={key:'group:12',messages:[dialogue([{seq:1,text:'已完成',receiptState:'unseen'},{seq:2,text:'已读待回复',read:true},{seq:3,text:'未读',receiptState:'unseen'},{seq:4,text:'不确定'},{seq:5,text:'双戳',seenAt:1,repliedAt:2},{seq:6,text:'异常',repliedAt:2},{seq:7,text:'bot真QQ消息',isSelf:true}]),call('r','qq_report_message_receipts'),result('r',{ok:true,key:'group:12',receipts:[{seq:1,state:'complete'},{seq:2,state:'seen'}]}),{role:'user',source:'qq-context-latest',contextSegments:[{id:'message-snapshot',text:'【QQ 收件状态】\n'+JSON.stringify({receipts:[{seq:1,receiptState:'unseen'}]})}]}]};
  const before=JSON.stringify(request),view=processingEntries(request,requestEntries(request));
@@ -45,25 +49,17 @@ test('receipt-only indexes never masquerade as empty QQ chats',()=>{
  const request={messages:[{role:'user',source:'qq-context-latest',contextSegments:[{id:'message-snapshot',text:'【QQ 收件状态】\n'+JSON.stringify({receipts:[{seq:503,receiptState:'complete'},{seq:504,receiptState:'seen'}]})}]},dialogue([{seq:505,text:'[图片]',receiptState:'unseen'}])]};
  const view=processingEntries(request,requestEntries(request));assert.deepEqual(view.records.map(row=>row.seq),[505]);assert.equal(view.receiptIndexes.length,2);assert.equal(view.entries.filter(row=>row.kind==='receipt').length,0);
 });
-test('focused arrows show one QQ and one exact call/result pair even for shared receipt batches',()=>{
- const request={messages:[dialogue([{seq:1,text:'一',receiptState:'seen'},{seq:2,text:'二',receiptState:'seen'}]),{...call('r','qq_report_message_receipts'),text:JSON.stringify({type:'tool-call',id:'r',arguments:{receipts:[{seq:1,state:'seen'},{seq:2,state:'seen'}]}})},result('r',{ok:true,receipts:[{seq:1,state:'seen'},{seq:2,state:'seen'}]})]},rows=requestEntries(request),view=processingEntries(request,rows),links=traceRelations(request,rows,view);
- const edges=focusedTraceEdges(links,'qq:1');assert.equal(edges.length,3);assert(!JSON.stringify(edges).includes('qq:2'));assert.equal(focusedTraceEdges(links,'message:1').length,3);
-});
+test('shared receipt batches retain exact source links without an obsolete arrow graph',()=>{const r={messages:[dialogue([{seq:1,text:'一',receiptState:'seen'},{seq:2,text:'二',receiptState:'seen'}]),{...call('r','qq_report_message_receipts'),text:JSON.stringify({type:'tool-call',id:'r',arguments:{receipts:[{seq:1,state:'seen'},{seq:2,state:'seen'}]}})},result('r',{ok:true,receipts:[{seq:1,state:'seen'},{seq:2,state:'seen'}]})]},rows=requestEntries(r),links=traceRelations(r,rows,processingEntries(r,rows));assert(links.byEntry.get('qq:1').has('message:1'));assert(links.byEntry.get('qq:2').has('message:2'));assert(!('edges' in links));});
 test('internal output explains observed input path without inventing a semantic cause or QQ delivery',()=>{
  const request={messages:[dialogue([{seq:1,text:'你好',receiptState:'unseen'}]),call('r','qq_get_unread_messages'),result('r',{ok:true,messages:[]}),{role:'assistant',text:'继续思考'}]},rows=requestEntries(request),trace=outputTrace(rows[3],rows,request);
- assert.equal(trace.origin.kind,'tool-continuation');assert.equal(trace.origin.positions[0],3);assert.match(trace.origin.limit,/不证明/);assert.equal(trace.qqVerified,false);assert.match(trace.destinations[0].outcome,/会话/);
+ assert.equal(trace.origin.kind,'tool-continuation');assert.equal(trace.origin.positions[0],3);assert.match(trace.origin.limit,/不证明/);assert.equal(trace.qqVerified,false);assert.match(trace.destinations[0].outcome,/后续模型请求/);
 });
 test('original receipt seq remains primary; unnumbered bot records never receive a fake seq',()=>{
  const request={messages:[dialogue([{seq:505,text:'未处理',receiptState:'seen'},{seq:506,text:'已处理',receiptState:'complete'},{isSelf:true,text:'旧 bot 记录',at:'00:09'}])]},view=processingEntries(request,requestEntries(request));
  assert.equal(view.bySeq.get(505).numberLabel,'收件 seq 505');assert.equal(view.bySeq.get(506).numberLabel,'收件 seq 506');assert(!view.records.some(row=>row.name.includes('展示 seq')));assert(!view.records.find(row=>row.record.isSelf).name.includes('seq'));
 });
-test('failed receipt branch ends at a red return node and never implies a state update',()=>{
- const request={messages:[dialogue([{seq:505,text:'来信',receiptState:'seen'}]),{...call('r','qq_report_message_receipts'),text:JSON.stringify({type:'tool-call',id:'r',arguments:{receipts:[{seq:505,state:'complete'}]}})},result('r',{ok:false,error:'未交给模型'})]},rows=requestEntries(request),view=processingEntries(request,rows),links=traceRelations(request,rows,view),edges=focusedTraceEdges(links,'qq:505');
- assert.equal(edges.length,2);assert.equal(edges[1].failed,true);assert(!edges.some(edge=>edge.kind==='feedback'));assert.equal(view.bySeq.get(505).region,'arrivals');
-});
-test('a grouped call selects the return matching the selected QQ reference',()=>{
- const request={messages:[dialogue([{seq:1,text:'一',receiptState:'seen'},{seq:2,text:'二',receiptState:'seen'}]),{role:'assistant',toolCalls:[{id:'a',name:'qq_report_message_receipts'},{id:'b',name:'qq_report_message_receipts'}],text:[{type:'tool-call',id:'a',arguments:{receipts:[{seq:1,state:'seen'}]}},{type:'tool-call',id:'b',arguments:{receipts:[{seq:2,state:'seen'}]}}].map(JSON.stringify).join('\n')},result('a',{ok:true}),result('b',{ok:true})]},rows=requestEntries(request),view=processingEntries(request,rows),edges=focusedTraceEdges(traceRelations(request,rows,view),'qq:2');assert(edges.every(edge=>edge.callId==='b'));assert.equal(edges.find(edge=>edge.kind==='result').to,'message:3');
-});
+test('failed receipts remain linked as failures and never imply a state update',()=>{const r={messages:[dialogue([{seq:505,text:'来信',receiptState:'seen'}]),{...call('r','qq_report_message_receipts'),text:JSON.stringify({type:'tool-call',id:'r',arguments:{receipts:[{seq:505,state:'complete'}]}})},result('r',{ok:false,error:'未交给模型'})]},rows=requestEntries(r),view=processingEntries(r,rows),links=traceRelations(r,rows,view);assert.match(links.labels.get('qq:505|message:2'),/失败/);assert.equal(view.bySeq.get(505).region,'arrivals');});
+test('grouped calls link each QQ reference only to its own result',()=>{const r={messages:[dialogue([{seq:1,text:'一',receiptState:'seen'},{seq:2,text:'二',receiptState:'seen'}]),{role:'assistant',toolCalls:[{id:'a',name:'qq_report_message_receipts'},{id:'b',name:'qq_report_message_receipts'}],text:[{type:'tool-call',id:'a',arguments:{receipts:[{seq:1,state:'seen'}]}},{type:'tool-call',id:'b',arguments:{receipts:[{seq:2,state:'seen'}]}}].map(JSON.stringify).join('\n')},result('a',{ok:true}),result('b',{ok:true})]},rows=requestEntries(r),links=traceRelations(r,rows,processingEntries(r,rows));assert(links.byEntry.get('qq:2').has('message:3'));assert(!links.byEntry.get('qq:2').has('message:2'));});
 test('quoted human text remains visible as tool evidence without inventing seq or receipt state',()=>{
  const request={key:'group:12',messages:[{...call('q','qq_reply'),text:JSON.stringify({type:'tool-call',id:'q',arguments:{messageId:'m-500'}})},result('q',{ok:true,key:'group:12',sent:1,quoted:{sender:'群成员',text:'被引用的用户原文'}})]},view=processingEntries(request,requestEntries(request)),quote=view.entries.find(row=>row.kind==='quote');assert.equal(quote.text,'被引用的用户原文');assert.equal(quote.messageId,'m-500');assert.equal(quote.seq,undefined);assert.equal(quote.region,'history');assert.equal(view.records.length,0);
 });

@@ -149,7 +149,7 @@ export function createPlugin(ctx){
     },
     beforePrompt(p={}){
       const confirmed=defaultEntries(entries(),'alias',p.key,injectLimit(ctx.config?.injectMax,40)),owner=String(ctx.capabilities?.getOwnerQQ?.()||'');
-      const lines=confirmed.slice(0,40).map(e=>'- '+e.alias+' = '+e.qq+(owner===e.qq?'（管理员/主人）':''));
+      const lines=confirmed.slice(0,40).map(e=>'- '+e.alias+' = '+e.qq+(owner===e.qq?'（管理员/管理员）':''));
       return sourceGuidance('alias',ctx.capabilities)+'\n'+(queryEnabled(ctx.capabilities,'alias')?lookupHints(entries(),'alias',{...promptInputs(p),injected:confirmed}):'')+'\n'+'【成员绰号学习】一个人可有多个绰号。'+(queryEnabled(ctx.capabilities,'alias')?'认人/@/传话先 qq_alias_query(key,token,q)，':'查询工具关闭，不猜测缺失映射。')+'只把 confirmed 当成确认身份，candidate 不能确定收件人；同名多人不猜。\n'
         +(ctx.config?.autoExtract===false?'自动学习已关闭，保留管理员确认的称呼。\n':'使用 qq_alias_submit 提交高置信度绰号候选：优先明确自称或明确说明某称呼属于谁；疑似称呼也可留空 QQ 供管理员判断，模糊情况须有多条独立消息把同一短称呼用于同一成员。单条邀约、问句、@后的文字、整句、黑话、辱骂或性内容都不算证据。QQ没证据就留空，note 写原文语境与目标线索；绝不能把发言者绑定为被讨论的人。候选由管理员在控制台编辑、确认或拒绝。\n')
         +(lines.length?'【已确认成员绰号速查】\n'+lines.join('\n'):'当前适用来源没有默认注入的映射；遇到完整绰号或回复具体QQ时按需查询。');

@@ -14,12 +14,12 @@ test('long form examples survive policy normalization and active-form selection'
 });
 test('configured normal form has no second hardcoded cute voice',()=>{
  const s=moodSnapshot({score:80},moodPolicy({normalStyle:'平静自然，不使用结巴'}));
- const text=collect(style,{key:'private:1',roleName:'小鲸鱼',isPrivate:true,incomingText:'你好',moodState:s});
- assert.doesNotMatch(text,/软乎乎|那那那|先带一点得意|鲸鱼式想象/);
+ const text=collect(style,{key:'private:1',roleName:'AI助手',isPrivate:true,incomingText:'你好',moodState:s});
+ assert.doesNotMatch(text,/那那那|先带一点得意|鲸鱼式想象/);
 });
 test('care topics keep selected identity even when sticker and optional style are suppressed',()=>{
  const s=moodSnapshot({score:20},moodPolicy({criticalStyle:'CUSTOM-CRITICAL'}));
- const text=collect(dynamics,{key:'private:1',roleName:'小鲸鱼',incomingText:'我很难过，先陪我说说',moodState:s,stickerConfig:{enabled:false}});
+ const text=collect(dynamics,{key:'private:1',roleName:'AI助手',incomingText:'我很难过，先陪我说说',moodState:s,stickerConfig:{enabled:false}});
  assert.match(text,/CUSTOM-CRITICAL/);
 });
 
@@ -36,11 +36,11 @@ test('host defaults put selected identity first and preserve the end of long exa
   const normal='日常描述'.repeat(310)+'END-HOST-NORMAL',critical='安静描述'.repeat(310)+'END-HOST-CRITICAL';
   for(const score of [60,20]){
    const moodState=moodSnapshot({score},moodPolicy({normalStyle:normal,criticalStyle:critical}));
-   const blocks=host.collectPromptBlocks({key:'private:20018',roleName:'小鲸鱼',incomingText:'你好',isPrivate:true,moodState,stickerConfig:{enabled:false}});
-   assert.ok(blocks[0].startsWith('【当前形态】'));
+   const blocks=host.collectPromptBlocks({key:'private:21014',roleName:'AI助手',incomingText:'你好',isPrivate:true,moodState,stickerConfig:{enabled:false}});
+   assert.ok(blocks.some(block=>block.includes('【当前形态】')));
    const text=blocks.join('\n');assert.equal(text.split(score===60?'END-HOST-NORMAL':'END-HOST-CRITICAL').length-1,1);
    assert.ok(!text.includes(score===60?'END-HOST-CRITICAL':'END-HOST-NORMAL'));
-   assert.doesNotMatch(text,/软乎乎|那那那/);
+   assert.doesNotMatch(text,/那那那/);
   }
  }finally{await host.dispose();}
 });

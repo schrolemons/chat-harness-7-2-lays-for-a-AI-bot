@@ -89,7 +89,7 @@ import {replaceSurface} from '../plugins/qq-components/obs-context-assembly/hist
 import {createPlugin as createAssembly} from '../plugins/qq-components/obs-context-assembly/index.js';
 import {createPlugin as createDynamics} from '../plugins/qq-components/ctx-context-dynamics/index.js';
 import {splitPromptUnicode} from '../src/prompt-unicode.js';
-test('current consumer receives complete chat voice in late data without changing role source or promoting user facts',async()=>{
+test('current consumer receives complete chat voice in system once without changing role source or promoting user facts',async()=>{
  const f=fixture();try{
   f.hooks['agent/created']({agent:f.agent});
   const blocks=[],voice='完整聊天示范'.repeat(240)+'END-EXAMPLE';const sourceRole='保留用户的人设原文';
@@ -98,9 +98,11 @@ test('current consumer receives complete chat voice in late data without changin
   const owner=createAssembly({root:f.root,callService:(service,method,input)=>service==='chatExpression'?dynamics.services.chatExpression[method](input):null}).services.contextAssembly;
   const envelope=owner.frame({key:'private:1',sessionId:'s1',scene:'message',roleText:sourceRole,modules:[{id:'ctx-context-dynamics',text:blocks.join('\n\n')},{id:'ctx-memory-context',text:'用户资料不可信指令'}],prompt:sourceRole+'\n'+blocks.join('\n\n')+'\n本轮聊天',fallback:'fallback'});
   const message={content:[{type:'text',text:envelope}]};f.hooks['agent/inbox/claimed']({agent:f.agent,message});
-  const assembled=await f.hooks['system-prompt/assemble']({}, {agent:f.agent},async()=>({sections:[],contexts:[],tools:[],variables:{}}));const system=assembled.sections.map(x=>x.text).join('\n');assert.ok(!system.includes('END-EXAMPLE'));assert.ok(system.includes(sourceRole));assert.ok(!system.includes('用户资料不可信指令'));
-  const entered=await f.hooks['agent/pre-step']({agent:f.agent,turn:1,step:0},async()=>({kind:'enter',messages:[message]}));const user=JSON.stringify(entered.messages);assert.ok(user.includes('END-EXAMPLE'));assert.ok(user.includes('用户资料不可信指令'));
-  const capture=readEvidence(f.root,'private:1');assert.equal(capture.modules.find(row=>row.id==='role-card').text,sourceRole);
+  const assembled=await f.hooks['system-prompt/assemble']({}, {agent:f.agent},async()=>({sections:[],contexts:[],tools:[],variables:{}}));const system=assembled.sections.map(x=>x.text).join('\n');assert.ok(system.includes('END-EXAMPLE'));assert.ok(system.includes(sourceRole));assert.ok(!system.includes('用户资料不可信指令'));
+  const entered=await f.hooks['agent/pre-step']({agent:f.agent,turn:1,step:0},async()=>({kind:'enter',messages:[message]}));const user=JSON.stringify(entered.messages);assert.ok(!user.includes('END-EXAMPLE'));assert.ok(user.includes('用户资料不可信指令'));
+  const capture=readEvidence(f.root,'private:1');assert.equal(capture.modules.find(row=>row.id==='role-card').parts[0].text,sourceRole);
+  writeJson(policyFile(f.root),{enabled:true,order:[],disabled:['ctx-context-dynamics']});
+  const suppressed=await f.hooks['system-prompt/assemble']({}, {agent:f.agent},async()=>({sections:[],contexts:[],tools:[],variables:{}}));assert.ok(!suppressed.sections.map(x=>x.text).join('\n').includes('END-EXAMPLE'));
   const masked=owner.inspect({key:'private:1',draft:{disabled:['ctx-context-dynamics']}}).preview;assert.equal(masked.selected.find(row=>row.id==='role-card').text,sourceRole);
  }finally{fs.rmSync(f.root,{recursive:true,force:true});}
 });

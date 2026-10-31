@@ -12,7 +12,7 @@ test('console inline scripts remain valid JavaScript', () => {
   }
 });
 
-test('image generation has a dedicated E page form with all public configuration fields', () => {
+test('image generation has a dedicated picture page form with all public configuration fields', () => {
   assert.match(html, /id="envCompImageGeneration"[^>]*data-ids="exec-image-generation"/);
   const form = readFileSync(new URL('../console/layers/E/components/exec-image-generation.js', import.meta.url), 'utf8');
   assert.ok(form, 'image generation form must be declared');

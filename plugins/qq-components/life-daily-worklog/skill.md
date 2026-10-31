@@ -14,7 +14,7 @@
 ## 数据来源（只读）
 | 来源 | 内容 |
 | --- | --- |
-| `state/memory/tasks-*.md` | 小鲸鱼收尾前用 `qq_task_note` 记的中期进度（按当天日期过滤） |
+| `state/memory/tasks-*.md` | AI助手收尾前用 `qq_task_note` 记的中期进度（按当天日期过滤） |
 | `state/tasks.json` | `qq_task_spawn` 开的任务会话（标题/状态/结果摘要） |
 | `state/tool-calls.jsonl(.1)` | 当天工具调用次数、失败次数、TOP 工具 |
 | `state/token-usage.jsonl(.1)` | 当天模型调用步数与输入/输出 token（按会话、按模型） |

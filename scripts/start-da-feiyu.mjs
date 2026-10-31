@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 一键启动「DeepSeek大肥鱼」QQ 桥接。
+// 一键启动「DeepSeek通用助手」QQ 桥接。
 //
 // 为什么需要它：DSH 的 Web 端口每次启动都是随机的（例如 53973 / 60379），
 // 而桥接是拿 config.json 里的 dsh.baseUrl 去连 DSH 的。DSH 一重启、端口一变，
@@ -841,7 +841,7 @@ async function main() {
     const pid=Number(fs.readFileSync(LOCK_FILE,'utf8').trim());
     if(pid&&isAlive(pid)){log('桥接进程仍在线，但控制台暂未响应；可能正在初始化或诊断鉴权异常。保留实例，不重复启动。');return false;}
   }
-  log('════ 启动 DeepSeek大肥鱼 ════');
+  log('════ 启动 DeepSeek通用助手 ════');
   if (!fs.existsSync(CONFIG_FILE)) return fail(`找不到配置：${CONFIG_FILE}`);
 
   let cfg;

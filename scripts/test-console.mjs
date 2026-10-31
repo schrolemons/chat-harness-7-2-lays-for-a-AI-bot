@@ -39,7 +39,7 @@ ok('页面加载', page.status === 200 && html.includes('白名单 / 管理员')
 // 2. 角色列表
 let r = await api('/api/roles');
 const origRole = r.body.current ?? null;
-ok('角色列表', r.body.roles?.includes('傲娇助手'), JSON.stringify(r.body));
+ok('角色列表', r.body.roles?.includes('生硬助手'), JSON.stringify(r.body));
 
 // 3. 创建人格
 const TEST_ROLE = '测试人格Tmp';
@@ -73,18 +73,18 @@ const sameIds = (a, b) => JSON.stringify((a || []).map(String).sort()) === JSON.
 r = await api('/api/whitelist');
 const origAllow = r.body.allow;
 ok('白名单读取', origAllow && Array.isArray(origAllow.groups), JSON.stringify(origAllow));
-const testGroups = [...new Set([...(origAllow.groups || []), 20009])];
+const testGroups = [...new Set([...(origAllow.groups || []), 123456789])];
 r = await api('/api/whitelist', 'POST', { allow: { private: origAllow.private || [], groups: testGroups }, deny: { private: [], groups: [] } });
-ok('白名单写入（含测试群）', r.body.ok === true && (r.body.allow.groups || []).map(String).includes('20009'), JSON.stringify(r.body.allow));
+ok('白名单写入（含测试群）', r.body.ok === true && (r.body.allow.groups || []).map(String).includes('123456789'), JSON.stringify(r.body.allow));
 r = await api('/api/whitelist', 'POST', { allow: origAllow, deny: { private: [], groups: [] } });
 ok('白名单恢复原值', r.body.ok === true && sameIds(r.body.allow.groups, origAllow.groups) && sameIds(r.body.allow.private, origAllow.private), JSON.stringify(r.body.allow));
 
 // 8. 测试发送到机器人测试群（真实发送）
 // 先把测试群临时加入白名单：这样既能验证白名单放行，也能验证 /api/test-send 真的走到网关。
 // 若 SnowLuma 未启动，发送会失败——这属于环境问题（不是控制台回归），按「已过白名单校验」计为通过。
-const withTestGroup = [...new Set([...(origAllow.groups || []).map(String), '20009'])];
+const withTestGroup = [...new Set([...(origAllow.groups || []).map(String), '123456789'])];
 await api('/api/whitelist', 'POST', { allow: { private: origAllow.private || [], groups: withTestGroup }, deny: { private: [], groups: [] } });
-r = await api('/api/test-send', 'POST', { kind: 'group', id: '20009', message: '【控制台测试】新控制台功能验证成功 ✅' });
+r = await api('/api/test-send', 'POST', { kind: 'group', id: '123456789', message: '【控制台测试】新控制台功能验证成功 ✅' });
 const snowlumaDown = typeof r.body.error === 'string' && !/白名单/.test(r.body.error);
 ok('测试发送群消息', r.body.ok === true || snowlumaDown,
   r.body.ok === true ? JSON.stringify(r.body) : `SnowLuma 不可达（非白名单拦截）：${r.body.error}`);
@@ -92,7 +92,7 @@ ok('测试发送群消息', r.body.ok === true || snowlumaDown,
 await api('/api/whitelist', 'POST', { allow: origAllow, deny: { private: [], groups: [] } });
 
 // 9. 测试发送到非白名单（应拒绝）
-r = await api('/api/test-send', 'POST', { kind: 'group', id: '20014', message: 'x' });
+r = await api('/api/test-send', 'POST', { kind: 'group', id: '100003', message: 'x' });
 ok('非白名单发送被拒', r.body.ok === false && r.status === 403, JSON.stringify(r.body));
 
 // 10. 清理测试人格（用绝对路径，不依赖运行目录）

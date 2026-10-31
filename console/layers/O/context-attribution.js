@@ -1,5 +1,6 @@
 // Read-only annotation: exact captured text only, never reconstruct model input.
 import {inputOrigin} from './context-records.js';
+import {jsonContainerEnd as jsonEnd} from './context-qq-blocks.js';
 export function attributeText(text='',modules=[],catalog=[]){
  const numbers=new Map(catalog.map((row,index)=>[row.id,index+1])),names=new Map(catalog.map(row=>[row.id,row.name])),patterns=new Map();
  for(const row of modules){
@@ -30,7 +31,7 @@ export function messageLabel(row){
  if(row.source==='qq-context-task')return '本次处理要求';
  if(row.role==='tool'||row.toolResults?.length)return '工具返回数据';
  if(row.toolCalls?.length)return 'bot 发起的工具调用';
- if(row.role==='assistant')return 'bot 内部输出（QQ 发送另看回执）';
+ if(row.role==='assistant')return 'bot 生成原文';
  if(row.source==='compact-checkpoint')return '会话压缩摘要';
  if(row.source==='runtime-context')return '运行环境说明';
  if(row.source==='qq-context-dialogue')return '桥接任务与 QQ 消息';
@@ -57,7 +58,7 @@ export function unmatchedLabel(message={}){
  if(message.role==='tool'||message.toolResults?.length)return {tag:'工具记录',title:'工具返回数据',description:'记录工具执行结果、查询数据或错误，供模型继续处理。'};
  if(message.toolCalls?.length)return {tag:'工具记录',title:'bot 的工具调用与附带文字',description:'记录模型选择的工具、参数及同次生成的说明；调用 ID 用于配对返回结果。'};
  if(message.role==='assistant')return {tag:'生成记录',title:'bot 生成文字',description:'保留模型的回复或内部处理文字；是否发送到 QQ 需要结合发送工具结果判断。'};
- if(message.source==='compact-checkpoint')return {tag:'会话记录',title:'DSH 会话压缩摘要',description:'在压缩较早对话时生成，保留后续处理所需的聊天经过和任务线索。'};
+ if(message.source==='compact-checkpoint')return {tag:'历史压缩',title:'DSH 会话压缩摘要',description:'在压缩较早对话时生成，保留后续处理所需的聊天经过和任务线索。'};
  if(message.source==='runtime-context')return {tag:'环境记录',title:'DSH 运行环境更新',description:'由运行时按需补充当前环境信息；具体状态以这条记录正文为准。'};
  if(message.source==='tool-registry')return {tag:'工具定义',title:'DSH 工具定义新增与移除',description:'运行时对比前后工具清单而生成，记录工具名称变化；不是工具执行。新增定义引用原始 request/header，不重复粘贴整份 schema。'};
  if(message.source==='qq-context-dialogue')return {tag:'回合记录',title:'桥接回合说明与任务衔接',description:'说明本次唤醒原因、任务要求或回合衔接信息；能够验证的 QQ 来信会单独标为 C36。'};
@@ -68,21 +69,6 @@ export function unmatchedLabel(message={}){
 }
 
 // Read one JSON container without swallowing any following task or text block.
-function jsonEnd(text,start){
- if(!['[','{'].includes(text[start]))return -1;
- const stack=[];let quoted=false,escaped=false;
- for(let i=start;i<text.length;i++){
-  const c=text[i];
-  if(quoted){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')quoted=false;continue;}
-  if(c==='"'){quoted=true;continue;}
-  if(c==='['||c==='{')stack.push(c);
-  else if(c===']'||c==='}'){
-   if(stack.pop()!==(c===']'?'[':'{'))return -1;
-   if(!stack.length)return i+1;
-  }
- }
- return -1;
-}
 const record=value=>value&&typeof value==='object'&&!Array.isArray(value);
 // compactModelMessage writes HH:MM on the same day and MM-DD HH:MM across days.
 const qqTime=value=>Number.isFinite(value)||typeof value==='string'&&/^(?:(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]) )?(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);

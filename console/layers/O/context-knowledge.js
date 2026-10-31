@@ -1,5 +1,6 @@
 import {esc} from '../../shared/api.js';
-export const CONTEXT_LAYER_NAMES={system:'系统上下文',stable:'稳定用户上下文',history:'聊天与工具历史',arrivals:'本次来信与待处理',dynamic:'当前补充资料（历史后注入）'};
+export const CONTEXT_LAYER_NAMES={system:'系统上下文',stable:'用户级稳定上下文',history:'聊天与工具历史',arrivals:'本次来信与待处理',dynamic:'当前补充资料（历史后注入）'};
+export const CONTEXT_LAYER_SUMMARIES={system:'系统硬规则与角色原文。',stable:'稳定的身份、适用资料与组件规则。',history:'已处理的聊天与工具调用、返回。',arrivals:'桥接任务，以及未读或已读未回复的消息。',dynamic:'最新心情、日程、临时画像等变化资料。'};
 const layerGuide=[
  ['system','主提示词／角色定义','系统硬规则与角色原文。当前实现把角色卡原文放在 system；不会因界面换名而迁移角色或提高资料权限。'],
  ['stable','世界书资料、用户身份与辅助规则的相近位置','稳定行为规则、会话身份和适用的长期资料。位于 user 资料前缀，内容变化时更新；世界书前后位置及示例对话不强行拆成不存在的发送分区。'],

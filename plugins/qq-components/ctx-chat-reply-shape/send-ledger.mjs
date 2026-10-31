@@ -1,4 +1,5 @@
 // Persistent reservations cover every physical transport, not HTTP request batches.
+import {createHash} from 'node:crypto';
 export function createSendLedger(ctx,policy) {
   const validKey=k=>/^(private|group):\d+$/.test(String(k));
   const load=()=>({conversations:{},turns:{},...(ctx.state.get().sendLedger||{})});
@@ -26,29 +27,38 @@ export function createSendLedger(ctx,policy) {
       const pending=Object.values(s.conversations).flatMap(e=>Object.values(e.reservations||{})).filter(r=>r.turnId===plan.turnId).length;
       return plan.agent?Math.max(0,plan.maxMessages-(s.turns[plan.turnId]||0)-pending):Number.MAX_SAFE_INTEGER;
     },
+    progress({plan}={}) {
+      if(!plan?.agent||!plan.turnId)return null;
+      const s=load(),successful=s.turns[plan.turnId]||0;
+      const inflight=Object.values(s.conversations).flatMap(e=>Object.values(e.reservations||{})).filter(r=>r.turnId===plan.turnId).length;
+      return {successful,inflight,remaining:Math.max(0,plan.maxMessages-successful-inflight)};
+    },
     delay({plan,requested,random=Math.random}={}) {
       const d=plan.delayPlan;
       if(Number.isFinite(requested))return Math.max(d.min,Math.min(Math.max(d.max,d.longProbability>0?d.longMax:0),requested));
       const long=random()<d.longProbability,min=long?d.longMin:d.min,max=long?d.longMax:d.max;
       return Math.round(min+random()*(max-min));
     },
-    reserve({key,plan,operationId,now=Date.now(),requestedDelay,kind}={}) {
+    reserve({key,plan,operationId,now=Date.now(),requestedDelay,kind,text='',inputSeq,deduplicate=true}={}) {
       if(!validKey(key)||!operationId||!plan)return {ok:false,reason:'invalid_plan'};
       if(plan.agent&&!plan.turnId)return {ok:false,reason:'turn_required'};
       const s=load(),e=entry(s,key),c=counts(e,now);
+      const textKey=deduplicate&&plan.agent&&kind==='text'&&Number.isSafeInteger(inputSeq)&&inputSeq>0&&String(text).trim()?createHash('sha256').update(inputSeq+'\n'+String(text).replace(/\s+/g,' ').trim()).digest('hex'):null;
+      if(textKey&&[...e.receipts,...Object.values(e.reservations)].some(r=>r.textKey===textKey))return {ok:false,reason:'duplicate_delivery',hint:'这批来信已发送或正在发送相同内容。核对真实发送与回执，不要因回执报错再次发送；等待新来信。'};
       if(e.reservations[operationId]||e.receipts.some(r=>r.operationId===operationId))return {ok:false,reason:'duplicate_attempt'};
-      if(plan.maxSendPerMinute>0&&c.minute>=plan.maxSendPerMinute)return {ok:false,reason:'minute_limit'};
+      let rateAt=now;
+      if(plan.maxSendPerMinute>0&&c.minute>=plan.maxSendPerMinute){if(plan.budgetStage!=='weak')return {ok:false,reason:'minute_limit'};const times=[...e.receipts.map(r=>r.at),...Object.values(e.reservations).map(r=>r.at)].filter(t=>now-t<60000).sort((a,b)=>a-b);rateAt=times[times.length-plan.maxSendPerMinute]+60001;}
       if(plan.maxSendPerHour>0&&c.hour>=plan.maxSendPerHour)return {ok:false,reason:'hour_limit'};
       if(this.remaining({key,plan})<=0)return {ok:false,reason:'turn_limit'};
-      const at=Math.max(now,e.nextAt||0),delay=this.delay({plan,requested:requestedDelay});
-      e.reservations[operationId]={at:now,scheduledAt:at,turnId:plan.agent?plan.turnId:null,kind,delay};e.nextAt=at+delay;
+      const at=Math.max(rateAt,e.nextAt||0),delay=this.delay({plan,requested:requestedDelay});
+      e.reservations[operationId]={at:now,scheduledAt:at,turnId:plan.agent?plan.turnId:null,kind,delay,textKey};e.nextAt=at+delay;
       save(s);return {ok:true,waitMs:Math.max(0,at-now),operationId};
     },
     commit({key,operationId,sentAt=Date.now(),deliveryId}={}) {
       const s=load(),e=s.conversations[key],r=e?.reservations?.[operationId];
       if(!r)return {ok:false,reason:'reservation_missing'};
       delete e.reservations[operationId];
-      e.receipts.push({at:sentAt,deliveryId,operationId});
+      e.receipts.push({at:sentAt,deliveryId,operationId,...(r.textKey?{textKey:r.textKey}:{})});
       if(r.turnId)s.turns[r.turnId]=(s.turns[r.turnId]||0)+1;
       e.nextAt=Math.max(e.nextAt||0,sentAt+(r.delay||0));
       save(s);return {ok:true};

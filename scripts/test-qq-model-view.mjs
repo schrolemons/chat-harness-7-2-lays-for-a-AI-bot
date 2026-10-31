@@ -157,6 +157,9 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
       fs.copyFile(path.join(ROOT, 'src', name), path.join(fixture, 'src', name))));
     await fs.mkdir(path.join(fixture,'src','tools'));
     await fs.copyFile(path.join(ROOT,'src','tools','flags.js'),path.join(fixture,'src','tools','flags.js'));
+    const replyHelpers=path.join(fixture,'plugins','qq-components','ctx-chat-reply-shape');
+    await fs.mkdir(replyHelpers,{recursive:true});
+    await fs.copyFile(path.join(ROOT,'plugins','qq-components','ctx-chat-reply-shape','send-rejection.mjs'),path.join(replyHelpers,'send-rejection.mjs'));
     await fs.writeFile(path.join(fixture, 'config.json'), JSON.stringify({ consolePort: api.address().port }));
     const transport = new StdioClientTransport({
       command: process.execPath,

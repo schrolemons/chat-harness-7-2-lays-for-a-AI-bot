@@ -3,7 +3,8 @@
       <p class="meta">bridge_health 提供只读连接诊断；下方可独立启停单个故障群聊的会话自动恢复。</p>
       <details class="settings-group" open><summary>群聊会话自动恢复</summary><div class="settings-content"><p class="meta">有待回复消息且额度允许时，才检查持续的模型请求失败。正常等待、模型工具失误、QQ禁言和发送失败不触发；旧会话归档保留。恢复无效后停手并提醒管理员。</p><div data-component-slot="obs-session-recovery" data-toggle-label="启用群聊会话自动恢复"></div></div></details>
       <details class="settings-group"><summary>组件心跳巡检与告警</summary><div class="settings-content"><div data-component-slot="obs-health-monitor"></div></div></details>
-      <details class="settings-group" open><summary>管理员桌面便签</summary><div class="settings-content"><p class="meta">保留小鲸鱼的悄悄话，也自动记录阻断发言的故障、恢复失败和后续进展。同一故障去重，写入不依赖 LLM；关闭后全部停止。</p><div data-component-slot="tool-user-checking" data-toggle-label="启用桌面便签与运行自查"></div></div></details>
+      <details class="settings-group" open><summary>账户余额与余额健康监控</summary><div class="settings-content"><div id="bridgeMilkMonitor">读取调用额度监控…</div></div></details>
+      <details class="settings-group" open><summary>管理员桌面便签</summary><div class="settings-content"><p class="meta">保留AI助手的悄悄话，也自动记录阻断发言的故障、恢复失败和后续进展。同一故障去重，写入不依赖 LLM；关闭后全部停止。</p><div data-component-slot="tool-user-checking" data-toggle-label="启用桌面便签与运行自查"></div></div></details>
       <h3>进程与工作区维护</h3>
       <div class="row">
         <button id="restartBtn" class="danger">重启桥接</button>

@@ -42,7 +42,7 @@ async function sendVoiceFromConsole() {
   const target = document.getElementById('voiceSendTarget').value.trim();
   const dryRun = document.getElementById('voiceSendDryRun').checked;
   const pick = document.querySelector('input[name="voicePick"]:checked');
-  if (!target) { msg.textContent = '❌ 请填发送目标（如 group:20010）'; msg.className = 'meta err'; return; }
+  if (!target) { msg.textContent = '❌ 请填发送目标（如 group:21005）'; msg.className = 'meta err'; return; }
   if (!pick) { msg.textContent = '❌ 先刷新语音库并选中一个音频'; msg.className = 'meta err'; return; }
   const entry = voiceEntries[Number(pick.value)];
   msg.textContent = '发送中…'; msg.className = 'meta';

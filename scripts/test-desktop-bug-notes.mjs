@@ -3,6 +3,10 @@ import {createIncidentNotebook} from '../plugins/qq-components/tool-user-checkin
 import {createPlugin} from '../plugins/qq-components/tool-user-checking/index.js';
 function fixture(append=()=>({ok:true})){let state={};const controller=new AbortController();const ctx={config:{maxNoteChars:500},signal:controller.signal,state:{get:()=>state,set:patch=>state={...state,...patch}},log:()=>{}};return {book:createIncidentNotebook(ctx,append),read:()=>state,controller};}
 const issue={id:'incident-one',key:'group:456',phase:'open',at:100000,firstAt:90000,summary:'模型连续请求失败 HTTP400',impact:'群里只剩机械回执',nextStep:'检查请求日志和上下文编码'};
+test('a failed desktop write never exposes the local home path through a group-callable tool',()=>{
+ const stub=mock.method(fs,'appendFileSync',()=>{const e=new Error('EACCES: denied at '+os.homedir());e.code='EACCES';throw e;});
+ try{let tool;createPlugin({config:{},log(){},registerTool:(_name,spec)=>tool=spec});const r=tool.handler({action:'note',text:'调用额度见底时想说的话'});assert.equal(r.ok,false);assert.match(r.error,/EACCES/);assert(!r.error.includes(os.homedir()));}finally{stub.mock.restore();}
+});
 test('one incident records open, stopped and recovery once each, without leaking secrets',()=>{
  const writes=[],f=fixture(text=>{writes.push(text);return {ok:true};});
  assert.equal(f.book.report(issue).ok,true);assert.equal(f.book.report(issue).duplicate,true);

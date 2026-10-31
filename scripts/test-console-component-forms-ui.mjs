@@ -46,12 +46,12 @@ try{
         if(id==='ctx-chat-topic-drive'&&key==='sessionLimits'){
           const panel=page.locator('#v2FollowupSessionEditor');
           assert.equal(await panel.isVisible(),true);
-          await page.locator('#v2FollowupSessionKey').selectOption('private:20012');
+          await page.locator('#v2FollowupSessionKey').selectOption('private:21001');
           await page.waitForFunction(()=>document.getElementById('v2TbFollowupMsg')?.textContent.includes('继承全局'));
           assert.equal(await page.locator('#v2TbFollowupInterval').inputValue(),'');assert.equal(await page.locator('#v2TbFollowupDaily').inputValue(),'');
           await page.locator('#v2TbFollowupInterval').fill('240');await page.locator('#v2TbFollowupDaily').fill('0');await page.locator('#v2TbFollowupSave').click();
           await page.waitForFunction(()=>document.getElementById('v2TbFollowupMsg')?.textContent.includes('已保存'));
-          assert.deepEqual(plugin.config.sessionLimits,{'private:20012':{minIntervalMinutes:240,dailyLimit:0}},'specialized session editor must save the structured field');
+          assert.deepEqual(plugin.config.sessionLimits,{'private:21001':{minIntervalMinutes:240,dailyLimit:0}},'specialized session editor must save the structured field');
           checked.push(key);continue;
         }
         const custom=customControls[id]?.[key];

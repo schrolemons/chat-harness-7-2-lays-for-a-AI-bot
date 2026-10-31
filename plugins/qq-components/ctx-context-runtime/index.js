@@ -5,9 +5,11 @@
 //   · 【时间感】最近一条来信多久前、什么钟点，按“实时/可接/别接”分档提示
 //
 // 桥接只传 st、directUnread（确实在找“你/AI”的未读数）、wake 配置；
-// 文案与判断在 src/context-runtime.js 纯函数里，组件负责产出块。
+// 参与度复用纯统计；时间感策略由本组件拥有，不决定唤醒和结束。
 
-import { buildParticipation, buildTimeSense } from '../../../src/context-runtime.js';
+import { buildParticipation } from '../../../src/context-runtime.js';
+const timeURL = new URL('./time-sense.mjs', import.meta.url); timeURL.search = new URL(import.meta.url).search;
+const {buildTimeSense} = await import(timeURL.href);
 
 export function createPlugin(ctx) {
   const cfg = ctx.config || {};
@@ -16,7 +18,7 @@ export function createPlugin(ctx) {
     hooks: {
       beforePrompt(payload = {}) {
         if (/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview|slangLearn)$/.test(String(payload?.reason||''))) return '';
-        if (!disabled.has('participation')) {
+        if (!disabled.has('participation') && payload.isPrivate !== true && !String(payload.key || '').startsWith('private:')) {
           const p = buildParticipation(payload.st, Number(payload.directUnread) || 0);
           if (p) ctx.addPromptBlock(p);
         }

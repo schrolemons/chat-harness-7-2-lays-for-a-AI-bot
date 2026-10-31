@@ -128,7 +128,7 @@ export class Controller {
       else await this.client.resumeThread(this.state.threadId);
       this.guard();
       const stamp=currentTime(this.now());
-      const turn=await this.client.startTurn(this.state.threadId,`【来自 DeepSeek 助手正太小肥鱼；经机主授权的助手间咨询】\n【当前时间 ${stamp.timeZone}：${stamp.local}】\n${text}`,job.requestId);
+      const turn=await this.client.startTurn(this.state.threadId,`【来自 DeepSeek 助手AI助手；经机主授权的助手间咨询】\n【当前时间 ${stamp.timeZone}：${stamp.local}】\n${text}`,job.requestId);
       job.turnId=turn.id;
       if(job.status==='pending')job.status='running';job.startedAt??=this.now();this.save();
       if(live(job.status)){

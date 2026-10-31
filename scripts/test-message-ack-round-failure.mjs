@@ -1,6 +1,6 @@
 // 补话失败守卫的最小回归：
 // 模型回合报错/被中止后，已经布下的「已读补话」定时器必须被取消，
-// 到点也不许冒「哥哥别急嘛，我在认真想啦」这类话术；新消息进来后照常重新计时。
+// 到点也不许冒「用户别急嘛，我在认真想啦」这类话术；新消息进来后照常重新计时。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -84,7 +84,7 @@ for (const kind of ['rejected', 'throws']) {
   });
 }
 
-test('旧回合迟到的错误不得取消新消息的补话', async () => {
+test('旧回合迟到错误不取消新布点，但没有运行模型时不发补话', async () => {
   const h = await open();
   try {
     arm(h);
@@ -92,11 +92,11 @@ test('旧回合迟到的错误不得取消新消息的补话', async () => {
     await failTurn(h, 'error', () => { arm(h); newer = h.messageAckArmed.get(key); });
     assert.equal(h.messageAckArmed.get(key), newer);
     await settle(h, 120); await settle(h, 500);
-    assert.deepEqual(sends(h), ['ACK-WAIT', 'ACK-APOLOGY']);
+    assert.deepEqual(sends(h), [], '没有运行的模型，保持沉默');
   } finally { h.cancelMessageReadAck(key); await h.close(); }
 });
 
-test('旧投递被拒时不得取消投递期间新来消息的补话', async () => {
+test('旧投递拒绝不取消新布点，但没有运行模型时不发补话', async () => {
   const h = await open(); let release;
   try {
     arm(h);
@@ -110,7 +110,7 @@ test('旧投递被拒时不得取消投递期间新来消息的补话', async ()
     assert.equal((await deliver).ok, false);
     assert.equal(h.messageAckArmed.get(key), newer);
     await settle(h, 120); await settle(h, 500);
-    assert.deepEqual(sends(h), ['ACK-WAIT', 'ACK-APOLOGY']);
+    assert.deepEqual(sends(h), [], '没有运行的模型，保持沉默');
   } finally { h.cancelMessageReadAck(key); await h.close(); }
 });
 
@@ -132,7 +132,9 @@ test('失败标记只压住当轮：新消息进来后照常重新布点并补�
     await failTurn(h, 'error');
     await settle(h, 100);
     assert.deepEqual(sends(h), []);
-    arm(h); // 新一批消息
+    await h.deliverPrompt(key,'fixture new model turn');
+    await h.queueDshEnvelope({payload:{type:'session/event',sessionId:h.state.sessions[key],event:{type:'turn/start',data:{turn:2}}}});
+    arm(h); // 新一批消息，确实有新的模型回合在运行
     assert.ok(h.messageAckArmed.get(key), '新消息必须能重新布点');
     await settle(h, 120);
     await settle(h, 500);

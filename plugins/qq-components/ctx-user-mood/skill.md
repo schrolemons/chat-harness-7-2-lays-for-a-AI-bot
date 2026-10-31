@@ -24,7 +24,7 @@ unansweredStreak按真实时间关系推导，不按确认到达顺序累加：�
 
 `mood.settle({now})` 幂等扣分；onTick通过统一调度每分钟调用同一入口，不开启原生定时器。账本的dueAt/answeredAt/settledAt与分数同一次原子持久化，重复tick、热加载和重启不会重复扣分。
 
-score≥modeThreshold（默认40，范围0–100）的mode为normal、band为playful；低于阈值为critical/reflective。normalName默认正太、criticalName默认AI，normalStyle/criticalStyle保存各形态短描述，read返回modeName与styleInstruction。阈值0始终normal，阈值100仅100分为normal。只有critical且0且存在未获回应的主动回合时为pleading：轻声请求，短碎句可变化，避免责备、威胁和逼迫。严肃任务始终先满足任务内容，不能用形态或恳求替代。
+score≥modeThreshold（默认40，范围0–100）的mode为normal、band为playful；低于阈值为critical/reflective。normalName默认普通、criticalName默认AI，normalStyle/criticalStyle保存各形态短描述，read返回modeName与styleInstruction。阈值0始终normal，阈值100仅100分为normal。只有critical且0且存在未获回应的主动回合时为pleading：轻声请求，短碎句可变化，避免责备、威胁和逼迫。严肃任务始终先满足任务内容，不能用形态或恳求替代。
 
 frequencyFactor=0.2+0.8*score/100，主动调度自己结合聊天意愿计算唯一静默概率与间隔；本组件不提供第二套intervalMultiplier。critical的replyCeiling为1，pleading为2；normal在[modeThreshold,100]区间前半为2、后半为3，100分总是3。因此默认阈值40时70分起3条，自定义阈值80时75分仍只1条。所有值仍服从公共发送限制。detailLevel依次为expanded/balanced/concise/gentle-fragments，由发送计划和风格组件消费。
 

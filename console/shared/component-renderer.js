@@ -3,6 +3,7 @@ import { isInternalPromptComponent } from './components/presentation.js';
 import { componentUI } from './components/service.js';
 import { loadComponentDetail } from './components/detail.js';
 import { renderToolInventory } from '../layers/T/tool-inventory.js';
+import {mountBalanceControl} from '../layers/O/deepseek-balance.js';
 import { COMPONENT_OWNERS, componentPage } from './components/ownership.js';
 import { api, esc } from './api.js';
 import { refresh } from '../layers/O/status.js';
@@ -22,6 +23,7 @@ import { COMPONENT_FORMS } from './components/forms.js';
 
 export function initialize() {
   const pluginsReady=api('/api/plugins');
+  void pluginsReady.then(data=>{const root=document.getElementById('bridgeMilkMonitor'),balance=data.plugins?.find(p=>p.id==='tool-deepseek-balance');if(root&&balance){root.textContent='';mountBalanceControl(root,balance);}}).catch(error=>{document.getElementById('bridgeMilkMonitor').textContent='调用额度监控读取失败：'+error.message;});
   void renderToolInventory(pluginsReady).catch(error=>{document.getElementById('toolSwitchStatus').textContent='工具开关加载失败：'+error.message;});
 (() => {
 

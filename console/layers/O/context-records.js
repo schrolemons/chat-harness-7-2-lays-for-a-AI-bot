@@ -1,5 +1,7 @@
 // Presentation-only partitions. Labels refer to receipt facts captured then, not the live unread queue.
 import {esc} from '../../shared/api.js';
+import {messageBodyParts,quoteBodyHtml} from './context-message-body.js';
+import {qqDialogueBlocks} from './context-qq-blocks.js';
 const waitTools=new Set(['qq_wait_for_messages','qq_wait_for_quiet']);
 const messageReaders=new Set(['qq_get_recent_messages','qq_get_unread_messages','qq_get_my_recent_messages']);
 const json=value=>{try{return typeof value==='string'?JSON.parse(value):value;}catch{return null;}};
@@ -10,8 +12,10 @@ export function classifyReceipt(row){
  const seen=positive(row.seenAt)||positive(row.readAt),replied=positive(row.repliedAt);
  if(state==='anomaly'||replied&&!seen)return 'anomaly';
  if(['complete','replied'].includes(state)||seen&&replied)return 'complete';
+ if(state==='resolved'||seen&&positive(row.resolvedAt)&&row.resolutionReason)return 'resolved';
  if(state==='seen'||row.awaitingReply===true||seen||row.read===true)return 'seen';
  if(state==='unseen'||row.read===false)return 'unseen';
+ if(state==='pending')return 'pending';
  return 'unknown';
 }
 export function capturedToolResults(message){
@@ -20,36 +24,26 @@ export function capturedToolResults(message){
  return (message.toolResults||[]).map(result=>{
   const block=blocks.find(row=>row?.type==='tool-result'&&row.toolCallId===result.toolCallId);
   let body=block?.content??(message.toolResults.length===1&&whole?.type!=='tool-result'?whole:null);
-  const textContent=value=>Array.isArray(value)?value.filter(row=>row?.type==='text').map(row=>row.text).join('\n'):value;
+  const textContent=value=>Array.isArray(value)&&value.length>0&&value.every(row=>row&&['text','image','resource','resource_link'].includes(row.type))?value.filter(row=>row.type==='text').map(row=>row.text).join('\n'):value;
   body=json(textContent(body));
+  const envelopeError=body?.isError===true;
   if(body?.content&&Array.isArray(body.content))body=json(textContent(body.content));
   if(Array.isArray(body)&&messageReaders.has(String(result.name||'').split('__').at(-1)))body={messages:body};
-  return {...result,data:body&&typeof body==='object'&&!Array.isArray(body)?body:null,isError:message.isError===true||block?.isError===true};
+  return {...result,data:body&&typeof body==='object'&&!Array.isArray(body)?body:null,isError:message.isError===true||block?.isError===true||envelopeError||/^Error\s*[:：]/.test(message.text||'')};
  });
 }
-export function messageReadParts(message){return capturedToolResults(message).filter(result=>messageReaders.has(String(result.name||'').split('__').at(-1))&&Array.isArray(result.data?.messages)&&!result.isError&&result.data.ok!==false);}
+export function toolMessageRows(name,data={}){return (String(name||'').split('__').at(-1)==='qq_get_message_detail'?[data.info||data.message].filter(Boolean):[...(Array.isArray(data.messages)?data.messages:[]),...(Array.isArray(data.newMessages)?data.newMessages:[])]).filter(row=>row&&typeof row==='object'&&!Array.isArray(row));}
+export function messageReadParts(message){return capturedToolResults(message).filter(result=>(messageReaders.has(String(result.name||'').split('__').at(-1))||String(result.name||'').split('__').at(-1)==='qq_get_message_detail')&&result.data&&!result.isError&&result.data.ok!==false&&!result.data.error).map(result=>({...result,data:{...result.data,messages:toolMessageRows(result.name,result.data)}}));}
 export function waitResultParts(message){
- if(message.role!=='tool'&&!message.toolResults?.length)return [];
- const results=(message.toolResults||[]).filter(row=>waitTools.has(String(row.name||'').split('__').at(-1)));
- if(!results.length)return [];
- const text=String(message.text||''),whole=json(text);
- const blocks=whole?[whole]:text.split('\n').map(json).filter(Boolean);
- return results.flatMap(result=>{
-  const block=blocks.find(row=>row?.type==='tool-result'&&row.toolCallId===result.toolCallId);
-  let data=block?.content;
-  if(Array.isArray(data))data=data.filter(row=>row.type==='text').map(row=>row.text).join('\n');
-  data=json(data??(results.length===1&&whole?.type!=='tool-result'?whole:null));
-  if(!data||typeof data!=='object'||Array.isArray(data)||!['arrived','endRound','quiet','waitedMs','newMessages'].some(key=>Object.hasOwn(data,key)))return [];
-  return [{name:result.name,toolCallId:result.toolCallId,data}];
- });
+ return capturedToolResults(message).filter(result=>waitTools.has(String(result.name||'').split('__').at(-1))&&!result.isError&&result.data?.ok!==false&&result.data&&!result.data.error&&['arrived','endRound','quiet','waitedMs','newMessages'].some(key=>Object.hasOwn(result.data,key)));
 }
 function qqMessagesHtml(rows,{businessBySeq}={}){
  return '<div class="context-qq-messages">'+rows.map(row=>{
   const state=classifyReceipt(row);
   const resolved=businessBySeq?.get(row.seq);
-  const label=resolved?resolved.windowLabel+' · '+resolved.stateLabel:state==='self'?'QQ 历史消息 · bot':state==='complete'?'QQ 历史消息 · 处理完成':['seen','unseen'].includes(state)?'QQ 未处理消息 · '+(state==='seen'?'已读待处理':'未读'):'QQ 消息（状态未知）';
-  const text=row.plain??row.text??row.tail;
-  return '<article class="context-qq-message'+(row.isSelf?' is-self':'')+'"><header><strong>'+(row.isSelf?'bot · ':'')+esc(row.sender||row.nickname||row.userId||(row.isSelf?'bot':'发送者未记录'))+'</strong><span>'+esc(row.at||'')+(row.at?' · ':'')+esc(label)+(Number.isSafeInteger(row.seq)?' · QQ seq '+row.seq:'')+'</span></header>'+(typeof text==='string'?'<pre class="context-chat-body">'+esc(text)+'</pre>':'<p>未采集正文。</p>')+(row.truncated?'<p class="context-excerpt-note">本条为节选。</p>':'')+'<details><summary>原始字段</summary><pre>'+esc(JSON.stringify(row,null,2))+'</pre></details></article>';
+  const label=resolved?resolved.windowLabel+' · '+resolved.stateLabel:state==='self'?'QQ 历史消息 · bot':state==='complete'?'QQ 历史消息 · 处理完成':state==='resolved'?'QQ 历史消息 · 管理归档':['seen','unseen'].includes(state)?'QQ 未处理消息 · '+(state==='seen'?'已读待处理':'未读'):'QQ 消息（状态未知）';
+  const {text,quoted}=messageBodyParts(row);
+  return '<article class="context-qq-message'+(row.isSelf?' is-self':'')+'"><header><strong>'+(row.isSelf?'bot · ':'')+esc(row.sender||row.nickname||row.userId||(row.isSelf?'bot':'发送者未记录'))+'</strong><span>'+esc(row.at||'')+(row.at?' · ':'')+esc(label)+(Number.isSafeInteger(row.seq)?' · QQ seq '+row.seq:'')+'</span></header>'+quoteBodyHtml(quoted)+(typeof text==='string'?'<pre class="context-chat-body">'+esc(text)+'</pre>':'<p>未采集正文。</p>')+(row.truncated?'<p class="context-excerpt-note">本条为节选。</p>':'')+'<details><summary>原始字段</summary><pre>'+esc(JSON.stringify(row,null,2))+'</pre></details></article>';
  }).join('')+'</div>';
 }
 function waitDetails(message){
@@ -70,20 +64,20 @@ function waitDetails(message){
 }
 export function dialogueParts(message){
  if(message.role!=='user'||!(message.source==='qq-context-dialogue'||message.source==='qq-context-stable'&&message.wrappedSource==='qq-context-dialogue'))return null;
- const text=String(message.text||''),marker='【新增 QQ 消息数据】',at=text.indexOf(marker);
- if(at<0)return null;
- let records;try{records=JSON.parse(text.slice(at+marker.length).trim());}catch{return null;}
- if(!Array.isArray(records)||records.some(row=>!row||typeof row!=='object'||Array.isArray(row)))return null;
+ const text=String(message.text||''),blocks=qqDialogueBlocks(text);if(!blocks.length)return null;
+ const records=blocks.flatMap(block=>block.rows),at=blocks[0].start;
  const groups={history:[],unread:[],pending:[],unknown:[]};
  for(const row of records){
   const state=classifyReceipt(row);
   if(['self','complete'].includes(state))groups.history.push(row);
-  else if(state==='seen')groups.pending.push(row);
+  else if(state==='seen'||state==='pending')groups.pending.push(row);
   else if(state==='unseen')groups.unread.push(row);
   else groups.unknown.push(row);
  }
  const prefix=text.slice(0,at).trim(),start=message.source==='qq-context-stable'?prefix.lastIndexOf('【QQ 回合 '):0;
- return {task:message.source==='qq-context-stable'?(start>=0?prefix.slice(start):''):prefix,stablePrefix:message.source==='qq-context-stable'?(start>=0?prefix.slice(0,start).trim():prefix):'',...groups};
+ const remainder=blocks.map((block,index)=>text.slice(block.end,blocks[index+1]?.start??text.length).trim()).filter(Boolean).join('\n');
+ const task=[message.source==='qq-context-stable'?(start>=0?prefix.slice(start):''):prefix,remainder].filter(Boolean).join('\n');
+ return {task,stablePrefix:message.source==='qq-context-stable'?(start>=0?prefix.slice(0,start).trim():prefix):'',records,...groups};
 }
 export function inputOrigin(message){
  if(message.source==='qq-context-task')return {title:'本次处理要求',description:'仅保留本次触发原因和当前任务。',evidence:'桥接任务槽位'};
@@ -110,7 +104,7 @@ export function recordDetails(message){
  if(parts){
   if(parts.task)html+='<section class="context-record-part"><h4>桥接处理任务 · C39</h4><pre>'+esc(parts.task)+'</pre></section>';
   const groups={history:[],arrivals:[],unknown:[]};
-  for(const row of [...parts.history,...parts.unread,...parts.pending,...parts.unknown]){const resolved=message.qqBySeq?.get(row.seq),state=classifyReceipt(row),region=resolved?.region||(['self','complete'].includes(state)?'history':['seen','unseen'].includes(state)?'arrivals':'unknown');groups[region].push(row);}
+  for(const row of [...parts.history,...parts.unread,...parts.pending,...parts.unknown]){const resolved=message.qqBySeq?.get(row.seq),state=classifyReceipt(row),region=resolved?.region||(['self','complete','resolved'].includes(state)?'history':['seen','unseen'].includes(state)?'arrivals':'unknown');groups[region].push(row);}
   for(const [key,label]of [['history','QQ 历史消息'],['arrivals','QQ 未处理消息'],['unknown','QQ 消息（状态未知）']])if(groups[key].length)html+='<section class="context-record-part"><h4>'+label+' · '+groups[key].length+' 条</h4>'+qqMessagesHtml(groups[key].sort((a,b)=>a.seq-b.seq),{businessBySeq:message.qqBySeq})+'</section>';
  }
  return html;

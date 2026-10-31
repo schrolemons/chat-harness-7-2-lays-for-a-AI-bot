@@ -25,10 +25,10 @@ const rows=(mood='60',schedule='周五写报告')=>[
 ];
 
 test('refill keeps identity stable and credentials current without repeating bootstrap background',()=>{
- const split=contextParts({id:'ctx-context-session',text:'【你的身份】小鲸鱼\n\n【会话令牌】local-token\n\n【此刻状态】未读2条'});
+ const split=contextParts({id:'ctx-context-session',text:'【你的身份】AI助手\n\n【会话令牌】local-token\n\n【此刻状态】未读2条'});
  assert.match(split.stable,/你的身份/);assert(!split.stable.includes('local-token'));assert.match(split.current,/会话令牌.*local-token/);assert.match(split.current,/未读2条/);
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'qq-bootstrap-refill-'));try{
-  const owner=createPlugin({root,config:{},capabilities:{refreshContextModules:()=>({modules:[{id:'ctx-context-session',text:'【你的身份】小鲸鱼\n\n稳定用户背景\n\n【此刻状态】未读2条'}]})}}).services.contextAssembly;
+  const owner=createPlugin({root,config:{},capabilities:{refreshContextModules:()=>({modules:[{id:'ctx-context-session',text:'【你的身份】AI助手\n\n稳定用户背景\n\n【此刻状态】未读2条'}]})}}).services.contextAssembly;
   owner.compose({key:'private:1',sessionId:'s1',scene:'bootstrap',modules:rows(),fallback:''});const capture=readEvidence(root,'private:1');
   const envelope=encodePacket({...capture,version:1,issuedAt:Date.now()},secretFor(root));const result=owner.refresh({sessionId:'s1',envelope});
   const fresh=decodePacket(result.envelope,secretFor(root),'s1');assert(!fresh.modules.find(row=>row.id==='ctx-context-session').text.includes('稳定用户背景'));
@@ -53,12 +53,12 @@ function fixture(refresh){
  return {root,hooks,agent,session,envelope,messages,admit,close:()=>fs.rmSync(root,{recursive:true,force:true})};
 }
 
-test('refill keeps current mood out of system, unwinds old voice promotion, and marks stable user data',()=>{
+test('malformed old voice projection is withdrawn rather than revived; stable user data remains stable',()=>{
  const old=[{id:'role-card',text:'原始角色卡\n\n当前声音',chatExpressionBaseText:'原始角色卡'},
   {id:'ctx-context-dynamics',text:'变化记录',chatExpression:{kind:'selected-admin-style',text:'当前声音'}}];
  const result=compileModules(prioritizeChatExpression(old));
  assert.equal(result.selected.find(r=>r.id==='role-card').text,'原始角色卡');
- assert.match(result.selected.find(r=>r.id==='ctx-context-dynamics').text,/当前声音/);
+ assert.equal(result.selected.find(r=>r.id==='ctx-context-dynamics').text,'变化记录');
  assert.equal(compileModules(rows()).selected.find(r=>r.id==='session-background').placement,'stable');
 });
 

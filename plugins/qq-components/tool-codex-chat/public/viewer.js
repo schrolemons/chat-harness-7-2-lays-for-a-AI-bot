@@ -8,7 +8,7 @@ function render(data){
   previous=signature;messages.replaceChildren();
   for(const message of data.messages||[]){
    const row=document.createElement('article');row.className='message '+(message.role==='user'?'right':'left');
-   const label=document.createElement('div');label.className='label';label.textContent=message.role==='user'?'小鲸鱼 · DeepSeek':'Codex';
+   const label=document.createElement('div');label.className='label';label.textContent=message.role==='user'?'AI助手 · DeepSeek':'Codex';
    const bubble=document.createElement('div');bubble.className='bubble';bubble.textContent=message.text;
    row.append(label,bubble);messages.append(row);
   }

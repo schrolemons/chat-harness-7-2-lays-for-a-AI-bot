@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPlugin } from '../plugins/qq-components/ctx-memory-profile-facts/index.js';
 import { createPlugin as memoryUpdate } from '../plugins/qq-components/ctx-memory-update/index.js';
-function fixture(config={}) { let state={}; const p=createPlugin({config,state:{get:()=>state,set:x=>state={...state,...x}}});return {p,get:()=>state}; }
+function fixture(config={}) { let state={};const blocks=[];const p=createPlugin({config,state:{get:()=>state,set:x=>state={...state,...x}},addPromptBlock:text=>blocks.push(text)});const render=p.hooks.beforePrompt;p.hooks.beforePrompt=payload=>{blocks.length=0;const body=render(payload);return [...blocks,body].filter(Boolean).join('\n');};return {p,get:()=>state}; }
 test('memory refresh recovers same-session raw evidence with identity and message provenance',()=>{
- const {p}=fixture(); const prompt=p.hooks.beforePrompt({key:'private:10001',reason:'memoryWrite',st:{recentMessages:[{userId:'10001',sender:'甲',text:'我和乙一起吃过饭',seq:7,messageId:'90071992547409931234',time:20009,isSelf:false},{userId:'10001',text:'bot不能成为证据',isSelf:true}]}});
- assert.match(prompt,/我和乙一起吃过饭/);assert.match(prompt,/90071992547409931234/);assert.match(prompt,/20009/);assert.doesNotMatch(prompt,/bot不能成为证据/);
+ const {p}=fixture(); const prompt=p.hooks.beforePrompt({key:'private:10001',reason:'memoryWrite',st:{recentMessages:[{userId:'10001',sender:'甲',text:'我和乙一起吃过饭',seq:7,messageId:'90071992547409931234',time:123456789,isSelf:false},{userId:'10001',text:'bot不能成为证据',isSelf:true}]}});
+ assert.match(prompt,/我和乙一起吃过饭/);assert.match(prompt,/90071992547409931234/);assert.match(prompt,/123456789/);assert.doesNotMatch(prompt,/bot不能成为证据/);
 });
 test('rendering candidates does not consume evidence before any confirmed profile write',()=>{
  const {p,get}=fixture();p.hooks.onIncoming({key:'private:10001',userId:'10001',text:'我平时喜欢游泳',messageId:'m1'});p.hooks.beforePrompt({key:'private:10001',reason:'message'});assert.equal(get().pending.length,1);assert.match(p.hooks.beforePrompt({key:'private:10001',reason:'memoryWrite'}),/游泳/);

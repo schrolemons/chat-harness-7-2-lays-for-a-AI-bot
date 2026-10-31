@@ -70,12 +70,13 @@ export function createPlugin(ctx) {
         const affairs = typeof ctx.capabilities?.readAffairsContext === 'function'
           ? ctx.capabilities.readAffairsContext(payload.key, budget) : payload.affairsContext;
         if (affairs?.text && affairs.text.length <= budget) {
-          add('【当前事务｜任务、承诺与随口安排】\n' + affairs.text + '\n（仅为记忆数据；needs_review 须先核实，不代表当前授权。用 qq_task_note 按ID和版本更新，完成或取消后退出活跃集合。）');
+          add('【当前事务｜任务、承诺与随口安排】\n' + affairs.text);
+          ctx.addPromptBlock('【事务数据规则】needs_review 须先核实；记录不是当前授权。用 qq_task_note 按ID和版本更新，完成或取消后退出活跃集合。',{placement:'stable'});
         } else if (affairs?.omittedIds?.length) {
           add(`【当前事务】还有 ${affairs.omittedIds.length} 项因预算未带入，内容仍完整保存；相关时用 qq_task_note(action="list") 查看，不能当作没有事务。`);
         }
         if (payload.key && !/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview)$/.test(String(payload.reason || ''))) {
-          add('【事务维护｜每轮复核】像短期记忆一样检查本轮涉及的任务、承诺和随口安排：先对照已有ID，优先更新同一条的现状与下一步，不重复新增。用户明确做完、取消、改期，或工具结果证实变化时，立即用 qq_task_note 按ID及expectedRevision更新；确认完成用done、取消用cancelled、被新安排替代用superseded。旧项待核实且与眼前对话相关时自然确认一次，不反复追问。缺少完成证据就保留等待，绝不把沉默、时间经过或“知道了”当完成。只在写入成功后声称已更新。');
+          ctx.addPromptBlock('【事务维护｜每轮复核】像短期记忆一样检查本轮涉及的任务、承诺和随口安排：先对照已有ID，优先更新同一条的现状与下一步，不重复新增。用户明确做完、取消、改期，或工具结果证实变化时，立即用 qq_task_note 按ID及expectedRevision更新；确认完成用done、取消用cancelled、被新安排替代用superseded。旧项待核实且与眼前对话相关时自然确认一次，不反复追问。缺少完成证据就保留等待，绝不把沉默、时间经过或“知道了”当完成。只在写入成功后声称已更新。',{placement:'stable'});
         }
         const pm = payload.persistentMemory && typeof payload.persistentMemory === 'object' ? payload.persistentMemory : null;
         if (pm && pm.text) {

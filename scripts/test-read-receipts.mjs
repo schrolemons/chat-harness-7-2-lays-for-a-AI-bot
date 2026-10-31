@@ -397,5 +397,64 @@ await test('mark-read preserves seen messages until the JSON receipt reports rep
   } finally { await c.close(); }
 });
 
+await test('a seen status report does not erase confirmed delivery evidence before replied is reported', async () => {
+  const c = await open();
+  try {
+    c.append('read before reply');await c.call('unread');
+    const sent=await c.call('/api/send/private',{body:{token:c.st().agentToken,userId:'123',message:'actual reply'}});
+    assert.equal(sent.status,200);
+    const seen=await c.call('receipt-report',{body:{receipts:[{seq:1,status:'seen'}]}});assert.equal(seen.status,200);
+    assert.deepEqual(Array.from(c.st().receiptSendPendingSeqs),[1],'read confirmation must retain independent successful-send evidence');
+    const replied=await c.call('receipt-report',{body:{receipts:[{seq:1,status:'replied'}]}});assert.equal(replied.status,200,JSON.stringify(replied.data));
+  } finally { await c.close(); }
+});
+
+await test('an actual quoted send binds its precise incoming message before the seen callback catches up', async () => {
+  const c = await open();
+  try {
+    c.append('arrived inside a running turn');
+    for(const row of [...c.st().unread,...c.st().recentMessages])if(row.seq===1)row.messageId='123001';
+    const sent=await c.call('send-message',{body:{messages:'reply with exact quote',replyToMessageId:'1'}});
+    assert.equal(sent.status,200,JSON.stringify(sent.data));
+    assert.deepEqual(Array.from(c.st().receiptSendPendingSeqs),[1],'quote records the successful target without forging a read stamp');
+    assert.ok(!Number(c.st().unread[0].seenAt));assert.ok(!Number(c.st().unread[0].repliedAt));
+    c.append('later unrelated message');await c.call('unread');
+    const denied=await c.call('receipt-report',{body:{receipts:[{seq:2,status:'replied'}]}});assert.equal(denied.status,409);
+    const replied=await c.call('receipt-report',{body:{receipts:[{seq:1,status:'replied'}]}});assert.equal(replied.status,200,JSON.stringify(replied.data));
+    assert.deepEqual(seqs(c.st().unread),[2]);
+  } finally { await c.close(); }
+});
+
+await test('preserving session renewal archives reviewed backlog but retains mood, pending arrivals and history',async()=>{
+ const c=await open();try{
+   c.append('reviewed historical record');await c.call('unread');c.append('fresh unreviewed arrival');
+   const sid=await fixtureReplyTurn(c.h,KEY),st=c.st(),token=st.agentToken;st.mood=73;st.pendingReminder={id:'preserved-reminder'};
+   const result=await c.call('/api/session/reset',{agent:false,body:{preserveState:true,freshContext:true,resolveSeqs:[1],reason:'管理员核对旧记录后归档，保留原始聊天'}});
+   assert.equal(result.status,200,JSON.stringify(result.data));assert.equal(result.data.previousSessionId,sid);assert.equal(result.data.preserved,true);
+   assert.equal(c.st(),st);assert.equal(st.mood,73);assert.equal(st.pendingReminder.id,'preserved-reminder');assert.notEqual(st.agentToken,token);
+   assert.deepEqual(seqs(st.unread),[2]);assert.equal(st.recentMessages.find(m=>m.seq===1).repliedAt,undefined);assert.ok(st.recentMessages.find(m=>m.seq===1).resolvedAt>0);
+   assert.equal(c.h.state.sessions[KEY],undefined);
+   assert.ok(st.modelContextSince>0);const reloaded=await open({savedState:c.readSavedState()});try{assert.equal(reloaded.st().modelContextSince,st.modelContextSince);assert.deepEqual(seqs(reloaded.st().unread),[2]);assert.ok(reloaded.st().recentMessages.find(m=>m.seq===1).resolvedAt>0);}finally{await reloaded.close();}
+ }finally{await c.close();}
+});
+await test('preserving renewal refuses to close unread arrivals and leaves the current session intact',async()=>{
+ const c=await open();try{c.append('not yet read');const sid=await fixtureReplyTurn(c.h,KEY),token=c.st().agentToken;
+   const result=await c.call('/api/session/reset',{agent:false,body:{preserveState:true,resolveSeqs:[1],reason:'未读消息不应被关闭'}});
+   assert.equal(result.status,409);assert.equal(c.h.state.sessions[KEY],sid);assert.equal(c.st().agentToken,token);assert.deepEqual(seqs(c.st().unread),[1]);
+ }finally{await c.close();}
+});
+
+await test('real HTTP sends reject duplicate text for the same read batch, but admit a new human batch',async()=>{
+ const c=await open();try{
+   c.append('first hello');await c.call('unread');
+   const sid=await fixtureReplyTurn(c.h,KEY),envelope=c.h.activeTurnEnvelopes.get(sid);envelope.replyPlan=Object.freeze({...envelope.replyPlan,maxMessages:10});
+   const body={token:c.st().agentToken,userId:'123',message:'我在呀。',conversationIntent:'reply'};
+   const first=await c.call('/api/send/private',{body});assert.equal(first.status,200,JSON.stringify(first.data));
+   const duplicate=await c.call('/api/send/private',{body});assert.notEqual(duplicate.status,200);assert.match(duplicate.data.error,/duplicate_delivery/);
+   c.append('another human hello');await c.call('unread');
+   const next=await c.call('/api/send/private',{body});assert.equal(next.status,200,JSON.stringify(next.data));
+ }finally{await c.close();}
+});
+
 console.log(failures ? `Read receipts regressions: ${tests - failures}/${tests} passed.` : `Read receipts bridge regressions: ${tests}/${tests} passed.`);
 if (failures) process.exitCode = 1;

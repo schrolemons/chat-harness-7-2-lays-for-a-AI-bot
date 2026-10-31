@@ -23,10 +23,10 @@
     "enabled": true,
     "noReplyAfterMinutes": 20,
     "modeThreshold": 40,
-    "normalName": "正太",
-    "criticalName": "AI",
-    "normalStyle": "可爱、调皮、呆萌，随心情下降收敛",
-    "criticalStyle": "克制、沉浸、偏哲思的AI口吻",
+    "normalName": "日常交流",
+    "criticalName": "简洁交流",
+    "normalStyle": "友好、清晰、自然；随心情下降减少主动追问。用户：你在吗？助手：在，请说。",
+    "criticalStyle": "简洁、审慎、直接回应；不附加情绪表演。用户：可以继续吗？助手：可以，请继续。",
     "maxAdjustment": 20,
     "burstEnabled": true,
     "recoverMinutes": 20,
@@ -94,23 +94,23 @@
     "normalName": {
       "type": "string",
       "label": "普通形态名称",
-      "example": "填“正太”：达到形态阈值时，以正太形态提供表达指引。"
+      "example": "填“日常交流”：达到阈值时选用普通形态的风格。"
     },
     "criticalName": {
       "type": "string",
       "label": "临界形态名称",
-      "example": "填“AI”：低于形态阈值时，以AI形态提供表达指引。"
+      "example": "填“简洁交流”：低于阈值时减少修饰与主动追问。"
     },
     "normalStyle": {
       "type": "string",
       "label": "普通形态：语言风格与对话示例",
-      "example": "写“熟悉时轻快，陌生时克制；用户：回来了。角色：今天有什么新鲜事呀？”：仅普通形态使用，不叠加临界形态台词。",
+      "example": "写“自然友好；用户：你好。助手：你好，有什么想聊的？”：只用于普通形态。",
       "maxLength": 2400
     },
     "criticalStyle": {
       "type": "string",
       "label": "临界形态：语言风格与对话示例",
-      "example": "写“声音放轻，沿原话题思考；用户：你在吗？角色：在。刚才那个问题，我还没想明白。”：仅临界形态使用。",
+      "example": "写“简洁审慎；用户：你在吗？助手：在，请继续。”：只用于临界形态。",
       "maxLength": 2400
     },
     "maxAdjustment": {

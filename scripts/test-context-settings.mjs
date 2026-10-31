@@ -9,7 +9,7 @@ test('settings follow loading layers, keep source numbers, and omit context mana
  const rows=compileModules(completeModuleSlots([{id:'obs-context-assembly',text:''},{id:'personal-core',text:''},{id:'session-background',text:'背景'}],catalog),{order:['personal-core','session-background','role-card']}).modules;
  const groups=visualGroups(rows,catalog);
  assert.deepEqual(groups.map(group=>group.id),['fixed','stable','current']);
- assert.deepEqual(groups.map(group=>group.name),['系统上下文','稳定用户上下文','当前补充资料（历史后注入）']);
+ assert.deepEqual(groups.map(group=>group.name),['系统上下文','用户级稳定上下文','当前补充资料（历史后注入）']);
  const visible=groups.flatMap(group=>group.rows);
  assert(!visible.some(row=>row.id==='obs-context-assembly'));
  assert.equal(visible.find(row=>row.id==='personal-core').index,39);

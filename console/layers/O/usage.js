@@ -139,13 +139,14 @@ async function refreshUsageBudgets() {
     const globalInput = document.getElementById('usageGlobalLimit');
     if (document.activeElement !== globalInput) globalInput.value = Number(global.limit) || 0;
     const windows = result.recoveryWindows || {};
+    document.getElementById('usageBudgetWindowSummary').textContent = `当前冷漠消息窗口：私聊${Number(windows.privateMessages)||5}条；群聊普通${Number(windows.groupMessages)||5}条 + @／引用bot消息${Number(windows.groupAtMessages)||5}条。触发条数与消息窗口分别设置`;
     for (const [id, field] of [['usageRecoveryPrivate', 'privateMessages'], ['usageRecoveryGroup', 'groupMessages'], ['usageRecoveryGroupAt', 'groupAtMessages']]) {
       const input = document.getElementById(id);
       if (input && document.activeElement !== input) input.value = Number(windows[field]) || 5;
     }
-    document.getElementById('usageGlobalState').textContent = global.reached ? (ownerEnabled ? '已触发：全部会话进入机械回复' : '已触发：受限会话进入机械回复，owner 豁免') : global.remaining == null ? '未设统一上限' : `统一剩余 ${money(global.remaining)}`;
-    box.innerHTML = rows.length ? '<table><tr><th>会话</th><th class="num">本周期轮数</th><th class="num">已用</th><th class="num">剩余</th><th>状态</th><th>冷漠阈值（元）</th><th>上限（元）</th><th>冷漠间隔（分钟）</th><th></th></tr>'
-      + rows.map((row) => `<tr data-budget-key="${esc(row.key)}"><td>${esc(row.key)}</td><td class="num">${usageNum(row.turns)}</td><td class="num">${money(row.cost)}${row.partial ? ' <span title="部分历史用量无法按时段归属">*</span>' : ''}</td><td class="num">${row.remainingYuan == null ? '不限' : money(row.remainingYuan)}</td><td>${row.exempt ? '管理员豁免' : row.stage === 'silent' ? '机械回复' : row.stage === 'weak' ? '低频短回复' : '正常'}${Number(row.recoveryPending) > 0 ? `（待补 ${usageNum(row.recoveryPending)} 条）` : ''}</td><td><input type="number" min="0" step="0.01" value="${Number(row.coldLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="0" step="0.01" value="${Number(row.hardLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="1" max="1440" step="1" value="${Number(row.weakMinIntervalMin) || 30}" style="width:75px"></td><td><button class="small primary" data-budget-save data-save-action>保存此会话额度</button></td></tr>`).join('') + '</table>'
+    document.getElementById('usageGlobalState').textContent = global.reached ? '已触发预算静默：私聊可机械回复，群聊仅 @／引用bot 时回复'+(ownerEnabled?'':'；owner 私聊豁免') : global.remaining == null ? '未设统一上限' : `统一剩余 ${money(global.remaining)}`;
+    box.innerHTML = rows.length ? '<table><thead><tr><th>会话与状态</th><th class="num">本周期花费 / 剩余</th><th>冷漠阈值（元）</th><th>满额阈值（元）</th><th>冷漠回复规则</th><th>保存</th></tr></thead><tbody>'
+      + rows.map(row=>{const status=row.exempt?'管理员豁免':row.stage==='silent'?'满额·固定回复':row.stage==='weak'?'冷漠·固定批次':'正常';return `<tr data-budget-key="${esc(row.key)}"><td><div>${esc(row.key)}</div><small class="meta">${usageNum(row.turns)}轮 · ${status}${Number(row.recoveryPending)>0?' · 待补'+usageNum(row.recoveryPending)+'条':''}</small></td><td class="num"><div>已用 ${money(row.cost)}${row.partial?' <span title="部分历史用量无法按时段归属">*</span>':''}</div><small class="meta">剩余 ${row.remainingYuan==null?'不限':money(row.remainingYuan)}</small></td><td><input type="number" min="0" step="0.01" value="${Number(row.coldLimitYuan)||0}" aria-label="${esc(row.key)} 冷漠阈值"></td><td><input type="number" min="0" step="0.01" value="${Number(row.hardLimitYuan)||0}" aria-label="${esc(row.key)} 满额阈值"></td><td>${row.exempt?'<span class="meta">不适用（管理员豁免）</span>':row.key.startsWith('private:')?'<button type="button" class="budget-rule-link" data-budget-private-rule title="继承上方已保存的全局私聊触发条数，点击修改">'+privateWakeRuleLabel()+'</button>':'<label class="budget-interval">每 <input type="number" min="1" max="1440" step="1" value="'+(Number(row.weakMinIntervalMin)||30)+'" aria-label="'+esc(row.key)+' 冷漠检查间隔"> 分钟检查</label>'}</td><td><button class="small primary" data-budget-save data-save-action>保存此会话额度</button></td></tr>`;}).join('')+'</tbody></table>'
       : '<div class="empty-state">暂无可配置的会话；有 QQ 会话后会自动列出。</div>';
     if (rows.some((row) => row.partial)) {
       msg.textContent = '* 部分旧用量只有累计值，无法准确归入本周期；额度判断基于有时间戳的调用。';
@@ -157,6 +158,15 @@ async function refreshUsageBudgets() {
   } catch (error) {
     box.textContent = '阈值读取失败：' + (error?.message || '未知错误');
   }
+}
+
+let privateWakeRuleValue=null;
+function privateWakeRuleLabel(){return privateWakeRuleValue===null?'读取全局规则中…':'全局：每'+privateWakeRuleValue+'条来信 → 回复1条';}
+function syncPrivateWakeRuleLabels(){document.querySelectorAll('[data-budget-private-rule]').forEach(node=>{node.textContent=privateWakeRuleLabel();});}
+let usagePrivateWakeDirty=false;
+async function refreshPrivateWakeRule(){
+ if(usagePrivateWakeDirty)return;
+ try{const result=await api('/api/plugins/detail?id=life-token-budget');const value=result.plugin?.config?.privateWakeEveryMessages;if(Number.isInteger(value)&&value>=1&&value<=100){privateWakeRuleValue=value;syncPrivateWakeRuleLabels();if(!usagePrivateWakeDirty)document.getElementById('usagePrivateWakeEvery').value=value;}}catch(error){document.getElementById('usagePrivateWakeMsg').textContent='读取失败：'+error.message;}
 }
 
 let usageMechanicalDirty;
@@ -173,6 +183,7 @@ async function refreshUsageMechanicalReplies() {
     if (usageMechanicalDirty) return;
     mechanicalPrivateBox.value = (result.privateReplies || []).join('\n');
     mechanicalGroupBox.value = (result.groupReplies || []).join('\n');
+    const limits=result.mechanicalLimits||{};document.getElementById('usageMechanicalGapSec').value=(limits.minIntervalMs??10000)/1000;document.getElementById('usageMechanicalMinute').value=limits.maxPerMinute??4;document.getElementById('usageMechanicalHour').value=limits.maxPerHour??30;
     if (!msg.classList.contains('ok')) msg.textContent = '';
   } catch (error) { msg.textContent = '词条读取失败：' + error.message; msg.className = 'meta err'; }
 }
@@ -273,6 +284,7 @@ async function refreshUsage() {
     renderUsageConversations(r);
     void refreshUsageBudgets();
     void refreshUsageMechanicalReplies();
+    void refreshPrivateWakeRule();
     renderUsagePrices(r.priceTable ? { ...r.priceTable, nowTier: r.nowTier } : null);
     syncUsageKeySelect((r.conversations || []).map(c => String(c.key ?? '')));
     msg.textContent = `✅ 已同步于 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`;
@@ -341,6 +353,7 @@ document.getElementById('usageOwnerBudgetSave').addEventListener('click', async 
 });
 document.getElementById('usageBudgets').addEventListener('input',event=>{const row=event.target.closest('[data-budget-key]');if(row){row.dataset.budgetDirty='1';budgetRefreshRevision++;}});
 document.getElementById('usageBudgets').addEventListener('click', async (event) => {
+  if(event.target.closest('[data-budget-private-rule]')){const input=document.getElementById('usagePrivateWakeEvery');input.scrollIntoView({block:'center',behavior:'smooth'});input.focus({preventScroll:true});input.select();return;}
   const button = event.target.closest('[data-budget-save]');
   if (!button) return;
   const row = button.closest('[data-budget-key]');
@@ -348,7 +361,7 @@ document.getElementById('usageBudgets').addEventListener('click', async (event) 
   const msg = document.getElementById('usageBudgetMsg');
   button.disabled = true;
   try {
-    await api('/api/tokens/budgets', 'POST', { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], weakMinIntervalMin: values[2] });
+    await api('/api/tokens/budgets', 'POST', { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], ...(row.dataset.budgetKey.startsWith('group:')?{weakMinIntervalMin:values[2]}:{}) });
     const unchanged=[...row.querySelectorAll('input')].every((input,index)=>Number(input.value)===values[index]);
     if(unchanged)delete row.dataset.budgetDirty;
     msg.textContent=unchanged?'已保存':'已保存提交值；之后的修改尚未保存';msg.className='meta ok';
@@ -385,10 +398,17 @@ document.getElementById('usageGlobalSave').addEventListener('click', async (even
   } catch (error) { msg.textContent = '保存失败：' + error.message; msg.className = 'meta err'; }
   finally { button.disabled = false; }
 });
+document.getElementById('usagePrivateWakeEvery').addEventListener('input',()=>{usagePrivateWakeDirty=true;});
+document.getElementById('usagePrivateWakeSave').addEventListener('click',async event=>{
+ const button=event.currentTarget,input=document.getElementById('usagePrivateWakeEvery'),msg=document.getElementById('usagePrivateWakeMsg'),value=Number(input.value);
+ if(!Number.isInteger(value)||value<1||value>100){msg.textContent='请输入1–100的整数';msg.className='meta err';return;}
+ button.disabled=true;
+ try{const result=await api('/api/plugins/config','POST',{id:'life-token-budget',config:{privateWakeEveryMessages:value}});if(result.ok===false)throw Error(result.error||result.errors?.join('；')||'配置被拒绝');privateWakeRuleValue=value;syncPrivateWakeRuleLabels();const unchanged=Number(input.value)===value;usagePrivateWakeDirty=!unchanged;msg.textContent=unchanged?'已保存，立即生效':'提交值已保存；之后的修改尚未保存';msg.className='meta ok';await refreshUsageBudgets();}catch(error){msg.textContent='保存失败：'+error.message;msg.className='meta err';}finally{button.disabled=false;}
+});
 usageMechanicalDirty = false;
 mechanicalPrivateBox = document.getElementById('usageMechanicalPrivate');
 mechanicalGroupBox = document.getElementById('usageMechanicalGroup');
-for (const box of [mechanicalPrivateBox, mechanicalGroupBox]) box.addEventListener('input', () => { usageMechanicalDirty = true; });
+for (const box of [mechanicalPrivateBox, mechanicalGroupBox,...['usageMechanicalGapSec','usageMechanicalMinute','usageMechanicalHour'].map(id=>document.getElementById(id))]) box.addEventListener('input', () => { usageMechanicalDirty = true; });
 document.getElementById('usageMechanicalSave').addEventListener('click', async (event) => {
   const button = event.currentTarget;
   const msg = document.getElementById('usageMechanicalMsg');
@@ -398,7 +418,7 @@ document.getElementById('usageMechanicalSave').addEventListener('click', async (
     const privateReplies = lines(mechanicalPrivateBox);
     const groupReplies = lines(mechanicalGroupBox);
     if (!privateReplies.length || !groupReplies.length) throw Error('私聊和群聊各需至少一条词条');
-    await api('/api/tokens/budgets/replies', 'POST', { privateReplies, groupReplies });
+    await api('/api/tokens/budgets/replies', 'POST', { privateReplies, groupReplies,mechanicalLimits:{minIntervalMs:Number(document.getElementById('usageMechanicalGapSec').value)*1000,maxPerMinute:Number(document.getElementById('usageMechanicalMinute').value),maxPerHour:Number(document.getElementById('usageMechanicalHour').value)} });
     usageMechanicalDirty = false;
     button.blur();
     msg.textContent = `已保存：私聊 ${privateReplies.length} 条，群聊 ${groupReplies.length} 条`;

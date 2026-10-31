@@ -355,7 +355,7 @@ if (process.env.QQ_BRIDGE_TEST_LIVE === '1') {
       const denied = await fetch(`http://127.0.0.1:${port}/api/voice/send`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(token ? { 'x-console-token': token } : {}) },
-        body: JSON.stringify({ target: 'group:20020', file: first, dryRun: true }),
+        body: JSON.stringify({ target: 'group:21004', file: first, dryRun: true }),
         signal: AbortSignal.timeout(30000)
       });
       ok(denied.status === 403, `白名单外目标被拒（HTTP ${denied.status}）`);

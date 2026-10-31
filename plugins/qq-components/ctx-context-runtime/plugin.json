@@ -2,7 +2,7 @@
   "id": "ctx-context-runtime",
   "name": "参与度与时间感",
   "version": "1.0.0",
-  "description": "参与度参考（我最近说了多少/群里热度/该不该接）与时间感（最近来信多久前、按实时/可接/别接分档）；桥接只传 st、directUnread 和 wake 配置。",
+  "description": "按最新人类来信提示时效，旧未完成队列不覆盖新消息；时间阈值只约束口吻，不替代主动机会和等待收尾。另提供参与度参考。",
   "layer": "C",
   "category": "上下文与记忆",
   "order": 18,

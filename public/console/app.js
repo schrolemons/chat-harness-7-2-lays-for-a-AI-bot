@@ -105,7 +105,8 @@
   }
 
   // console/layers/O/context-knowledge.js
-  var CONTEXT_LAYER_NAMES = { system: "系统上下文", stable: "稳定用户上下文", history: "聊天与工具历史", arrivals: "本次来信与待处理", dynamic: "当前补充资料（历史后注入）" };
+  var CONTEXT_LAYER_NAMES = { system: "系统上下文", stable: "用户级稳定上下文", history: "聊天与工具历史", arrivals: "本次来信与待处理", dynamic: "当前补充资料（历史后注入）" };
+  var CONTEXT_LAYER_SUMMARIES = { system: "系统硬规则与角色原文。", stable: "稳定的身份、适用资料与组件规则。", history: "已处理的聊天与工具调用、返回。", arrivals: "桥接任务，以及未读或已读未回复的消息。", dynamic: "最新心情、日程、临时画像等变化资料。" };
   var layerGuide = [
     ["system", "主提示词／角色定义", "系统硬规则与角色原文。当前实现把角色卡原文放在 system；不会因界面换名而迁移角色或提高资料权限。"],
     ["stable", "世界书资料、用户身份与辅助规则的相近位置", "稳定行为规则、会话身份和适用的长期资料。位于 user 资料前缀，内容变化时更新；世界书前后位置及示例对话不强行拆成不存在的发送分区。"],
@@ -148,6 +149,68 @@
     return [["fixed", CONTEXT_LAYER_NAMES.system, "系统硬规则与角色原文，位于请求前部。"], ["stable", CONTEXT_LAYER_NAMES.stable, "放在 user 资料前缀；内容变化时更新。"], ["current", CONTEXT_LAYER_NAMES.dynamic, "每次请求在业务消息末尾提供一份最新资料；排序仅调整本组内部。"]].map(([id, name, description]) => ({ id, name, description, rows: rows.filter((row) => row.id !== "obs-context-assembly" && (row.placement || "current") === id).map((row) => ({ ...row, index: numbers.get(row.id) })) }));
   }
 
+  // console/layers/O/context-message-body.js
+  function messageBodyParts(row = {}) {
+    const text = typeof row.plain === "string" ? row.plain : typeof row.text === "string" ? row.text : typeof row.tail === "string" ? row.tail : "";
+    let quoted = row.quoted && typeof row.quoted.text === "string" ? row.quoted : null;
+    if (!quoted && typeof row.plain === "string" && typeof row.text === "string" && row.text !== row.plain && row.text.startsWith("[引用")) {
+      const complete = row.text.endsWith(row.plain), prefix = (complete ? row.text.slice(0, row.text.length - row.plain.length) : row.text).trim();
+      const resolved = prefix.match(/^\[引用(?:（[^）]*）)?\s+([^：:]+)[：:]([\s\S]*)\]$/);
+      quoted = { sender: row.quoteTargetIsSelf ? "AI助手" : resolved?.[1]?.trim() || "原消息", text: resolved ? resolved[2] : prefix, previewOnly: !complete };
+    }
+    return { text, quoted };
+  }
+  function quoteBodyHtml(quoted) {
+    if (!quoted) return "";
+    const sender = quoted.sender, name = sender && typeof sender === "object" ? sender.card || sender.nickname || sender.name || sender.user_id : sender;
+    return "<blockquote><strong>引用 " + esc(name || "原消息") + "</strong><p>" + esc(quoted.text) + "</p>" + (quoted.previewOnly ? "<small>引用片段</small>" : "") + "</blockquote>";
+  }
+
+  // console/layers/O/context-qq-blocks.js
+  function jsonContainerEnd(text, start) {
+    if (!["[", "{"].includes(text[start])) return -1;
+    const stack = [];
+    let quoted = false, escaped = false;
+    for (let i = start; i < text.length; i++) {
+      const c = text[i];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (c === "\\") escaped = true;
+        else if (c === '"') quoted = false;
+        continue;
+      }
+      if (c === '"') {
+        quoted = true;
+        continue;
+      }
+      if (c === "[" || c === "{") stack.push(c);
+      else if (c === "]" || c === "}") {
+        if (stack.pop() !== (c === "]" ? "[" : "{")) return -1;
+        if (!stack.length) return i + 1;
+      }
+    }
+    return -1;
+  }
+  function qqDialogueBlocks(text = "") {
+    const marker = /(^|\n)(【(?:(?:新增|历史|待处理|未处理) QQ 消息数据|历史 QQ 消息数据；当轮规则已由当前 context 取代)】)\s*/g, blocks = [];
+    let match;
+    while (match = marker.exec(text)) {
+      const start = match.index + match[1].length, jsonStart = marker.lastIndex, end = jsonContainerEnd(text, jsonStart);
+      if (end < 0) continue;
+      let rows;
+      try {
+        rows = JSON.parse(text.slice(jsonStart, end));
+      } catch {
+        continue;
+      }
+      if (match[2].includes("当轮规则") && rows && Array.isArray(rows.messages)) rows = [...Array.isArray(rows.recent) ? rows.recent : [], ...Array.isArray(rows.receiptWindow) ? rows.receiptWindow : [], ...rows.messages];
+      if (!Array.isArray(rows) || rows.some((row) => !row || typeof row !== "object" || Array.isArray(row))) continue;
+      blocks.push({ start, end, heading: match[2], rows });
+      marker.lastIndex = end;
+    }
+    return blocks;
+  }
+
   // console/layers/O/context-records.js
   var waitTools = /* @__PURE__ */ new Set(["qq_wait_for_messages", "qq_wait_for_quiet"]);
   var messageReaders = /* @__PURE__ */ new Set(["qq_get_recent_messages", "qq_get_unread_messages", "qq_get_my_recent_messages"]);
@@ -165,8 +228,10 @@
     const seen = positive(row.seenAt) || positive(row.readAt), replied = positive(row.repliedAt);
     if (state === "anomaly" || replied && !seen) return "anomaly";
     if (["complete", "replied"].includes(state) || seen && replied) return "complete";
+    if (state === "resolved" || seen && positive(row.resolvedAt) && row.resolutionReason) return "resolved";
     if (state === "seen" || row.awaitingReply === true || seen || row.read === true) return "seen";
     if (state === "unseen" || row.read === false) return "unseen";
+    if (state === "pending") return "pending";
     return "unknown";
   }
   function capturedToolResults(message2) {
@@ -175,38 +240,30 @@
     return (message2.toolResults || []).map((result) => {
       const block = blocks.find((row) => row?.type === "tool-result" && row.toolCallId === result.toolCallId);
       let body = block?.content ?? (message2.toolResults.length === 1 && whole?.type !== "tool-result" ? whole : null);
-      const textContent = (value2) => Array.isArray(value2) ? value2.filter((row) => row?.type === "text").map((row) => row.text).join("\n") : value2;
+      const textContent = (value2) => Array.isArray(value2) && value2.length > 0 && value2.every((row) => row && ["text", "image", "resource", "resource_link"].includes(row.type)) ? value2.filter((row) => row.type === "text").map((row) => row.text).join("\n") : value2;
       body = json(textContent(body));
+      const envelopeError = body?.isError === true;
       if (body?.content && Array.isArray(body.content)) body = json(textContent(body.content));
       if (Array.isArray(body) && messageReaders.has(String(result.name || "").split("__").at(-1))) body = { messages: body };
-      return { ...result, data: body && typeof body === "object" && !Array.isArray(body) ? body : null, isError: message2.isError === true || block?.isError === true };
+      return { ...result, data: body && typeof body === "object" && !Array.isArray(body) ? body : null, isError: message2.isError === true || block?.isError === true || envelopeError || /^Error\s*[:：]/.test(message2.text || "") };
     });
+  }
+  function toolMessageRows(name, data2 = {}) {
+    return (String(name || "").split("__").at(-1) === "qq_get_message_detail" ? [data2.info || data2.message].filter(Boolean) : [...Array.isArray(data2.messages) ? data2.messages : [], ...Array.isArray(data2.newMessages) ? data2.newMessages : []]).filter((row) => row && typeof row === "object" && !Array.isArray(row));
   }
   function messageReadParts(message2) {
-    return capturedToolResults(message2).filter((result) => messageReaders.has(String(result.name || "").split("__").at(-1)) && Array.isArray(result.data?.messages) && !result.isError && result.data.ok !== false);
+    return capturedToolResults(message2).filter((result) => (messageReaders.has(String(result.name || "").split("__").at(-1)) || String(result.name || "").split("__").at(-1) === "qq_get_message_detail") && result.data && !result.isError && result.data.ok !== false && !result.data.error).map((result) => ({ ...result, data: { ...result.data, messages: toolMessageRows(result.name, result.data) } }));
   }
   function waitResultParts(message2) {
-    if (message2.role !== "tool" && !message2.toolResults?.length) return [];
-    const results = (message2.toolResults || []).filter((row) => waitTools.has(String(row.name || "").split("__").at(-1)));
-    if (!results.length) return [];
-    const text = String(message2.text || ""), whole = json(text);
-    const blocks = whole ? [whole] : text.split("\n").map(json).filter(Boolean);
-    return results.flatMap((result) => {
-      const block = blocks.find((row) => row?.type === "tool-result" && row.toolCallId === result.toolCallId);
-      let data2 = block?.content;
-      if (Array.isArray(data2)) data2 = data2.filter((row) => row.type === "text").map((row) => row.text).join("\n");
-      data2 = json(data2 ?? (results.length === 1 && whole?.type !== "tool-result" ? whole : null));
-      if (!data2 || typeof data2 !== "object" || Array.isArray(data2) || !["arrived", "endRound", "quiet", "waitedMs", "newMessages"].some((key2) => Object.hasOwn(data2, key2))) return [];
-      return [{ name: result.name, toolCallId: result.toolCallId, data: data2 }];
-    });
+    return capturedToolResults(message2).filter((result) => waitTools.has(String(result.name || "").split("__").at(-1)) && !result.isError && result.data?.ok !== false && result.data && !result.data.error && ["arrived", "endRound", "quiet", "waitedMs", "newMessages"].some((key2) => Object.hasOwn(result.data, key2)));
   }
   function qqMessagesHtml(rows, { businessBySeq } = {}) {
     return '<div class="context-qq-messages">' + rows.map((row) => {
       const state = classifyReceipt(row);
       const resolved = businessBySeq?.get(row.seq);
-      const label2 = resolved ? resolved.windowLabel + " · " + resolved.stateLabel : state === "self" ? "QQ 历史消息 · bot" : state === "complete" ? "QQ 历史消息 · 处理完成" : ["seen", "unseen"].includes(state) ? "QQ 未处理消息 · " + (state === "seen" ? "已读待处理" : "未读") : "QQ 消息（状态未知）";
-      const text = row.plain ?? row.text ?? row.tail;
-      return '<article class="context-qq-message' + (row.isSelf ? " is-self" : "") + '"><header><strong>' + (row.isSelf ? "bot · " : "") + esc(row.sender || row.nickname || row.userId || (row.isSelf ? "bot" : "发送者未记录")) + "</strong><span>" + esc(row.at || "") + (row.at ? " · " : "") + esc(label2) + (Number.isSafeInteger(row.seq) ? " · QQ seq " + row.seq : "") + "</span></header>" + (typeof text === "string" ? '<pre class="context-chat-body">' + esc(text) + "</pre>" : "<p>未采集正文。</p>") + (row.truncated ? '<p class="context-excerpt-note">本条为节选。</p>' : "") + "<details><summary>原始字段</summary><pre>" + esc(JSON.stringify(row, null, 2)) + "</pre></details></article>";
+      const label2 = resolved ? resolved.windowLabel + " · " + resolved.stateLabel : state === "self" ? "QQ 历史消息 · bot" : state === "complete" ? "QQ 历史消息 · 处理完成" : state === "resolved" ? "QQ 历史消息 · 管理归档" : ["seen", "unseen"].includes(state) ? "QQ 未处理消息 · " + (state === "seen" ? "已读待处理" : "未读") : "QQ 消息（状态未知）";
+      const { text, quoted } = messageBodyParts(row);
+      return '<article class="context-qq-message' + (row.isSelf ? " is-self" : "") + '"><header><strong>' + (row.isSelf ? "bot · " : "") + esc(row.sender || row.nickname || row.userId || (row.isSelf ? "bot" : "发送者未记录")) + "</strong><span>" + esc(row.at || "") + (row.at ? " · " : "") + esc(label2) + (Number.isSafeInteger(row.seq) ? " · QQ seq " + row.seq : "") + "</span></header>" + quoteBodyHtml(quoted) + (typeof text === "string" ? '<pre class="context-chat-body">' + esc(text) + "</pre>" : "<p>未采集正文。</p>") + (row.truncated ? '<p class="context-excerpt-note">本条为节选。</p>' : "") + "<details><summary>原始字段</summary><pre>" + esc(JSON.stringify(row, null, 2)) + "</pre></details></article>";
     }).join("") + "</div>";
   }
   function waitDetails(message2) {
@@ -227,25 +284,21 @@
   }
   function dialogueParts(message2) {
     if (message2.role !== "user" || !(message2.source === "qq-context-dialogue" || message2.source === "qq-context-stable" && message2.wrappedSource === "qq-context-dialogue")) return null;
-    const text = String(message2.text || ""), marker = "【新增 QQ 消息数据】", at = text.indexOf(marker);
-    if (at < 0) return null;
-    let records;
-    try {
-      records = JSON.parse(text.slice(at + marker.length).trim());
-    } catch {
-      return null;
-    }
-    if (!Array.isArray(records) || records.some((row) => !row || typeof row !== "object" || Array.isArray(row))) return null;
+    const text = String(message2.text || ""), blocks = qqDialogueBlocks(text);
+    if (!blocks.length) return null;
+    const records = blocks.flatMap((block) => block.rows), at = blocks[0].start;
     const groups = { history: [], unread: [], pending: [], unknown: [] };
     for (const row of records) {
       const state = classifyReceipt(row);
       if (["self", "complete"].includes(state)) groups.history.push(row);
-      else if (state === "seen") groups.pending.push(row);
+      else if (state === "seen" || state === "pending") groups.pending.push(row);
       else if (state === "unseen") groups.unread.push(row);
       else groups.unknown.push(row);
     }
     const prefix = text.slice(0, at).trim(), start = message2.source === "qq-context-stable" ? prefix.lastIndexOf("【QQ 回合 ") : 0;
-    return { task: message2.source === "qq-context-stable" ? start >= 0 ? prefix.slice(start) : "" : prefix, stablePrefix: message2.source === "qq-context-stable" ? start >= 0 ? prefix.slice(0, start).trim() : prefix : "", ...groups };
+    const remainder = blocks.map((block, index) => text.slice(block.end, blocks[index + 1]?.start ?? text.length).trim()).filter(Boolean).join("\n");
+    const task = [message2.source === "qq-context-stable" ? start >= 0 ? prefix.slice(start) : "" : prefix, remainder].filter(Boolean).join("\n");
+    return { task, stablePrefix: message2.source === "qq-context-stable" ? start >= 0 ? prefix.slice(0, start).trim() : prefix : "", records, ...groups };
   }
   function inputOrigin(message2) {
     if (message2.source === "qq-context-task") return { title: "本次处理要求", description: "仅保留本次触发原因和当前任务。", evidence: "桥接任务槽位" };
@@ -278,7 +331,7 @@
       if (parts.task) html += '<section class="context-record-part"><h4>桥接处理任务 · C39</h4><pre>' + esc(parts.task) + "</pre></section>";
       const groups = { history: [], arrivals: [], unknown: [] };
       for (const row of [...parts.history, ...parts.unread, ...parts.pending, ...parts.unknown]) {
-        const resolved = message2.qqBySeq?.get(row.seq), state = classifyReceipt(row), region = resolved?.region || (["self", "complete"].includes(state) ? "history" : ["seen", "unseen"].includes(state) ? "arrivals" : "unknown");
+        const resolved = message2.qqBySeq?.get(row.seq), state = classifyReceipt(row), region = resolved?.region || (["self", "complete", "resolved"].includes(state) ? "history" : ["seen", "unseen"].includes(state) ? "arrivals" : "unknown");
         groups[region].push(row);
       }
       for (const [key2, label2] of [["history", "QQ 历史消息"], ["arrivals", "QQ 未处理消息"], ["unknown", "QQ 消息（状态未知）"]]) if (groups[key2].length) html += '<section class="context-record-part"><h4>' + label2 + " · " + groups[key2].length + " 条</h4>" + qqMessagesHtml(groups[key2].sort((a, b) => a.seq - b.seq), { businessBySeq: message2.qqBySeq }) + "</section>";
@@ -328,7 +381,7 @@
     if (row.source === "qq-context-task") return "本次处理要求";
     if (row.role === "tool" || row.toolResults?.length) return "工具返回数据";
     if (row.toolCalls?.length) return "bot 发起的工具调用";
-    if (row.role === "assistant") return "bot 内部输出（QQ 发送另看回执）";
+    if (row.role === "assistant") return "bot 生成原文";
     if (row.source === "compact-checkpoint") return "会话压缩摘要";
     if (row.source === "runtime-context") return "运行环境说明";
     if (row.source === "qq-context-dialogue") return "桥接任务与 QQ 消息";
@@ -353,7 +406,7 @@
     if (message2.role === "tool" || message2.toolResults?.length) return { tag: "工具记录", title: "工具返回数据", description: "记录工具执行结果、查询数据或错误，供模型继续处理。" };
     if (message2.toolCalls?.length) return { tag: "工具记录", title: "bot 的工具调用与附带文字", description: "记录模型选择的工具、参数及同次生成的说明；调用 ID 用于配对返回结果。" };
     if (message2.role === "assistant") return { tag: "生成记录", title: "bot 生成文字", description: "保留模型的回复或内部处理文字；是否发送到 QQ 需要结合发送工具结果判断。" };
-    if (message2.source === "compact-checkpoint") return { tag: "会话记录", title: "DSH 会话压缩摘要", description: "在压缩较早对话时生成，保留后续处理所需的聊天经过和任务线索。" };
+    if (message2.source === "compact-checkpoint") return { tag: "历史压缩", title: "DSH 会话压缩摘要", description: "在压缩较早对话时生成，保留后续处理所需的聊天经过和任务线索。" };
     if (message2.source === "runtime-context") return { tag: "环境记录", title: "DSH 运行环境更新", description: "由运行时按需补充当前环境信息；具体状态以这条记录正文为准。" };
     if (message2.source === "tool-registry") return { tag: "工具定义", title: "DSH 工具定义新增与移除", description: "运行时对比前后工具清单而生成，记录工具名称变化；不是工具执行。新增定义引用原始 request/header，不重复粘贴整份 schema。" };
     if (message2.source === "qq-context-dialogue") return { tag: "回合记录", title: "桥接回合说明与任务衔接", description: "说明本次唤醒原因、任务要求或回合衔接信息；能够验证的 QQ 来信会单独标为 C36。" };
@@ -361,30 +414,6 @@
     if (message2.role === "user" && message2.source === "user" && inputOrigin(message2)?.title.startsWith("桥接收尾提醒")) return { tag: "桥接任务", title: "桥接收尾提醒正文（历史格式）", description: "按程序提醒格式识别；原始日志只记录 source=user，具体插件ID未保存。不能将这段当作群成员的QQ发言。" };
     if (message2.role === "user" && message2.source === "user") return { tag: "外部输入", title: "外部输入正文（具体提交方未记录）", description: "user 是协议角色，不足以证明这段来自QQ用户；保留原文和事件位置供核对，不猜测具体提交方。" };
     return { tag: "上下文记录", title: "其他上下文记录（来源组件未记录）", description: "按实际请求原样保留；当前只知道消息角色与来源字段，无法确认具体触发机制。" };
-  }
-  function jsonEnd(text, start) {
-    if (!["[", "{"].includes(text[start])) return -1;
-    const stack = [];
-    let quoted = false, escaped = false;
-    for (let i = start; i < text.length; i++) {
-      const c = text[i];
-      if (quoted) {
-        if (escaped) escaped = false;
-        else if (c === "\\") escaped = true;
-        else if (c === '"') quoted = false;
-        continue;
-      }
-      if (c === '"') {
-        quoted = true;
-        continue;
-      }
-      if (c === "[" || c === "{") stack.push(c);
-      else if (c === "]" || c === "}") {
-        if (stack.pop() !== (c === "]" ? "[" : "{")) return -1;
-        if (!stack.length) return i + 1;
-      }
-    }
-    return -1;
   }
   var record = (value2) => value2 && typeof value2 === "object" && !Array.isArray(value2);
   var qqTime = (value2) => Number.isFinite(value2) || typeof value2 === "string" && /^(?:(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]) )?(?:[01]\d|2[0-3]):[0-5]\d$/.test(value2);
@@ -418,7 +447,7 @@
       if (receipt !== (message2.source === "qq-context-current")) continue;
       let start = header.lastIndex;
       while (/\s/.test(text[start] || "") && start < text.length) start++;
-      const end = jsonEnd(text, start);
+      const end = jsonContainerEnd(text, start);
       if (end < 0) continue;
       let value2;
       try {
@@ -453,62 +482,191 @@
       if (group) return group;
       if (a.region === "arrivals") {
         if ((a.kind === "task" || b.kind === "task") && a.kind !== b.kind) return a.kind === "task" ? -1 : 1;
-        if (a.kind === "qq" && b.kind === "qq") return a.displaySeq - b.displaySeq;
+        if (a.kind === "qq" && b.kind === "qq") return Number.isSafeInteger(a.seq) && Number.isSafeInteger(b.seq) ? a.seq - b.seq : a.displaySeq - b.displaySeq;
       }
       return a.position - b.position || (a.kind === "qq" && b.kind === "qq" ? a.displaySeq - b.displaySeq : 0);
     });
   }
   var purposes = { qq_memory_append: "更新会话记忆", qq_memory_update: "整理会话记忆", qq_mood: "调整心情", qq_slang_learn: "学习黑话", qq_report_message_receipts: "更新收件回执", qq_mark_read: "标记已读", qq_get_unread_messages: "读取待处理消息", qq_get_recent_messages: "回查聊天记录", qq_wait_for_messages: "等待新消息", qq_wait_for_quiet: "等待对方说完", qq_send_message: "发送 QQ 消息", qq_reply: "引用回复", qq_send_sticker: "发送表情" };
   function timelinePreview(row) {
-    if (["qq", "quote"].includes(row.kind)) return row.text || "";
+    if (["qq", "quote", "delivery", "forwarded"].includes(row.kind)) return row.text || "";
     if (row.kind === "call") return (row.toolCalls || []).map((call) => purposes[short(call.name)] || "调用 " + short(call.name)).join(" · ");
     if (row.kind === "result") {
       const results = capturedToolResults(row), failed = row.isError || results.some((result) => result.isError || result.data?.ok === false || result.data?.error) || /^Error\s*[:：]/.test(row.text || "");
       if (failed) return "工具返回失败 · " + String(results.find((result) => result.data?.error)?.data.error || row.text || "查看返回详情").replace(/\s+/g, " ").slice(0, 160);
       return "工具已返回 · 点击查看执行结果";
     }
-    if (row.kind === "assistant") return "内部记录 · 点击查看生成来源与去向";
+    if (row.kind === "assistant") return String(row.text || "无文本输出").split("\n").filter((line) => !/^\s*\{.*"type"\s*:\s*"tool-/.test(line)).join(" ").replace(/\s+/g, " ").slice(0, 140);
     return String(row.text || "无文本内容").replace(/\s+/g, " ").slice(0, 120);
+  }
+  function timelineFamily(row) {
+    return ["qq", "quote", "delivery", "forwarded"].includes(row.kind) ? "message" : ["call", "result", "registry", "definition"].includes(row.kind) ? "tool" : "context";
+  }
+  function receiptSequence(row) {
+    return Number.isSafeInteger(row.seq) && row.seq > 0 ? row.seq : null;
+  }
+  function messageIsOutgoing(row) {
+    return row.kind === "delivery" && row.verified === true || row.record?.isSelf === true;
+  }
+  function messageActor(row) {
+    if (messageIsOutgoing(row)) return "AI助手";
+    const value2 = row.record?.sender || row.sender || row.record?.userId;
+    if (value2 && typeof value2 === "object") return value2.card || value2.nickname || value2.name || value2.user_id || "用户";
+    return value2 || "用户";
+  }
+
+  // console/layers/O/context-deliveries.js
+  var short2 = (name) => String(name || "").split("__").at(-1);
+  var parse = (text) => {
+    try {
+      return typeof text === "string" ? JSON.parse(text) : text;
+    } catch {
+      return null;
+    }
+  };
+  var TEXT_SEND_TOOLS = /* @__PURE__ */ new Set(["qq_send_message", "qq_send_burst", "qq_reply", "qq_send_group_message", "qq_send_private_message", "private_followup_send"]);
+  var readTools = /* @__PURE__ */ new Set(["qq_get_recent_messages", "qq_get_unread_messages", "qq_get_my_recent_messages", "qq_wait_for_messages", "qq_wait_for_quiet"]);
+  var successful = (payload) => payload?.data && !payload.isError && payload.data.ok !== false && !payload.data.error;
+  function deliveryTarget(request, args, data2, name) {
+    return data2.key || args.key || args.conversationId || (args.groupId ? "group:" + args.groupId : ["private_followup_send", "qq_send_private_message"].includes(name) && args.userId ? "private:" + args.userId : request.key);
+  }
+  function toolCallArgs(message2, id) {
+    for (const line of String(message2.text || "").split("\n")) {
+      const block = parse(line);
+      if (block?.type === "tool-call" && block.id === id) return parse(block.arguments) || {};
+    }
+    return {};
+  }
+  function extractToolDeliveries(request, messages) {
+    const items2 = [];
+    for (const origin of messages) for (const call of origin.toolCalls || []) {
+      const name = short2(call.name);
+      if (!TEXT_SEND_TOOLS.has(name)) continue;
+      const returned = messages.find((row) => (row.toolResults || []).some((result) => result.toolCallId === call.id));
+      if (!returned) continue;
+      const payload = capturedToolResults(returned).find((row) => row.toolCallId === call.id), data2 = payload?.data;
+      if (!data2 || payload.isError || data2.ok === false || data2.error || data2.queued === true) continue;
+      const args = toolCallArgs(origin, call.id);
+      let bodies = args.messages ?? args.text ?? args.message;
+      if (typeof bodies === "string" && name !== "private_followup_send") {
+        const trimmed = bodies.trim(), parsed = parse(trimmed);
+        if (trimmed.startsWith('"') && typeof parsed === "string") bodies = parsed;
+        else if (["qq_send_message", "qq_send_burst"].includes(name) && trimmed.startsWith("[") && Array.isArray(parsed)) bodies = parsed;
+      }
+      bodies = Array.isArray(bodies) ? bodies : [bodies];
+      bodies = bodies.filter((value2) => typeof value2 === "string" && value2.trim());
+      if (!bodies.length) continue;
+      const sent = Number(data2.sent), success = data2.sent !== void 0 ? Number.isSafeInteger(sent) && sent === bodies.length && !Number(data2.failed) : bodies.length === 1 && (data2.success === true || data2.status === "ok" && data2.retcode === 0);
+      if (!success) continue;
+      const targetKey = deliveryTarget(request, args, data2, name), sourceKey = data2.fromKey || args.fromKey || args.groupKey || request.key;
+      for (const [index, text] of bodies.entries()) items2.push({ key: "delivery:" + call.id + ":" + index, kind: "delivery", region: "history", position: returned.position + 0.01 + index / 1e4, name: "bot QQ 消息（发送回执）", text, targetKey, sourceKey, crossSession: !!sourceKey && !!targetKey && sourceKey !== targetKey, quoted: data2.quoted || null, quoteMessageId: args.replyToMessageId || args.messageId, verified: true, callId: call.id, callPosition: origin.position, resultPosition: returned.position, messageId: bodies.length === 1 ? data2.message_id || data2.messageId : void 0, source: "已确认的发送工具回执", effectiveComponents: [], withdrawnComponents: [] });
+    }
+    return items2;
+  }
+  function extractForwardMessages(request, messages) {
+    const items2 = [];
+    for (const origin of messages) for (const call of origin.toolCalls || []) {
+      const name = short2(call.name);
+      if (!["qq_get_forward_msg", "qq_get_message_detail"].includes(name) && !readTools.has(name)) continue;
+      const returned = messages.find((row) => (row.toolResults || []).some((result) => result.toolCallId === call.id)), payload = returned ? capturedToolResults(returned).find((row) => row.toolCallId === call.id) : null, data2 = payload?.data;
+      if (!successful(payload)) continue;
+      const args = toolCallArgs(origin, call.id), sourceKey = data2.fromKey || data2.key || args.key || request.key;
+      if ((readTools.has(name) || name === "qq_get_message_detail") && sourceKey === request.key) continue;
+      const groups = name === "qq_get_forward_msg" ? [{ id: data2.id || args.id, messages: data2.messages }, ...(data2.nestedPreviews || []).filter((row) => !row.error)] : [{ messages: data2.info ? [data2.info] : data2.message ? [data2.message] : data2.messages || data2.newMessages }];
+      let index = 0;
+      for (const group of groups) for (const row of Array.isArray(group.messages) ? group.messages : []) {
+        const parts = messageBodyParts(row), text = parts.text || (typeof row?.content === "string" ? row.content : "");
+        if (!text && !parts.quoted) continue;
+        items2.push({ key: "forwarded:" + call.id + ":" + index, kind: "forwarded", region: "history", position: returned.position + 1e-3 + index++ / 1e4, name: name === "qq_get_forward_msg" ? "合并转发内消息" : "QQ 消息（工具读取）", text, quoted: parts.quoted, sender: row.sender || row.userId, at: row.at, record: row, messageId: row.messageId || row.message_id, originalSeq: Number.isSafeInteger(row.seq) ? row.seq : void 0, originalMessageSeq: row.messageSeq, forwardId: group.id, textTruncated: row.textTruncated === true || data2.textTruncated === true, sourceKey: row.sourceKey || sourceKey, targetKey: request.key, crossSession: sourceKey !== request.key, source: "工具返回的转发/查询消息", callId: call.id, resultPosition: returned.position, effectiveComponents: [], withdrawnComponents: [] });
+      }
+    }
+    return items2;
+  }
+
+  // console/layers/O/context-output-effects.js
+  var categories = { activeTopic: ["当前话题", "activeTopics", "话题"], pendingThought: ["待说想法", "pendingThoughts", "想法"], memberImpression: ["行为印象", "memberImpressions", "印象"] };
+  var sessionKey = (key2) => /^(private|group):\d{1,20}$/.test(key2 || "") ? key2 : null;
+  function storedToolEffect(name, args, payload, request = {}) {
+    const outer = payload?.data;
+    const data2 = outer?.plugin && outer.result && typeof outer.result === "object" ? outer.result : outer;
+    const key2 = sessionKey(data2?.key || args.key || request.key), profileId = String(data2?.userId || args.userId || "");
+    const failed = payload?.isError || outer?.ok === false || outer?.error || data2?.error;
+    let effect = null, confirmed = false, read = false, unchanged = false;
+    if (["profile_get", "profile_update", "profile_delete"].includes(name)) {
+      read = name === "profile_get";
+      unchanged = data2?.changed === false && !data2?.error || data2?.deleted === false;
+      confirmed = name === "profile_update" ? data2?.ok === true && data2.changed === true : name === "profile_delete" ? data2?.ok === true && data2.deleted === true : data2?.ok === true;
+      effect = { title: "QQ 人物档案", badge: "档案", storage: "state/person-profiles.json", field: (/^\d+$/.test(profileId) ? "profiles[" + profileId + "]" : "目标 QQ 档案") + (name === "profile_update" ? " · " + [...Object.keys(args.profile || {}), ...Array.isArray(args.deleteKeys) ? args.deleteKeys : []].join("、") : ""), action: read ? "读取" : name === "profile_delete" ? "删除" : "更新" };
+    } else if (name === "qq_memory_append") {
+      const category = categories[args.category || data2?.category];
+      if (category) {
+        effect = { title: "轻量记忆 · " + category[0], badge: category[2], storage: "state/social-v2.json", field: (key2 ? key2 + " · " : "") + category[1], action: "追加" };
+        confirmed = data2?.ok === true && data2.category === (args.category || data2.category);
+      }
+    } else if (name === "qq_task_note") {
+      read = args.action === "list";
+      confirmed = data2?.ok === true && (read || !!data2.item);
+      effect = { title: "会话事务", badge: "事务", storage: key2 ? "state/memory/affairs/" + key2.replace(":", "_") + ".json" : "state/memory/affairs/<会话key>.json", field: data2?.item?.id || args.id || "事务条目", action: read ? "读取" : "更新" };
+    } else if (name === "qq_schedule") {
+      read = args.action === "list";
+      unchanged = data2?.duplicated === true;
+      confirmed = data2?.ok === true && (read || !!data2.item || !!data2.removed);
+      effect = { title: "日程安排", badge: "日程", storage: "state/plugins/life-schedule-reminder.json", field: [key2, data2?.item?.id || data2?.removed?.id || args.id].filter(Boolean).join(" · "), action: read ? "读取" : args.action === "cancel" ? "取消" : args.action === "complete" ? "完成" : "更新" };
+    } else if (name === "qq_mood") {
+      confirmed = data2?.ok === true && Number.isFinite(data2?.score) && Number.isFinite(data2?.before);
+      effect = { title: "心情账本", badge: "心情", storage: "state/plugins/ctx-user-mood.json", field: "mood.conversations" + (key2 ? "[" + key2 + "]" : "") + " · score / history", action: "更新" };
+    } else if (name === "qq_report_message_receipts" || name === "qq_mark_read") {
+      const reporting = name === "qq_report_message_receipts";
+      unchanged = reporting ? data2?.updated === 0 : data2?.markedCount === 0;
+      confirmed = data2?.ok === true && (reporting ? Array.isArray(data2.receipts) : Number.isSafeInteger(data2.markedCount) && data2.markedCount > 0);
+      effect = { title: reporting ? "QQ 收件双戳" : "QQ 已读水位", badge: "收件状态", storage: "state/social-v2.json", field: (key2 ? key2 + " · " : "") + (reporting ? "逐消息收件状态 / seenAt / repliedAt" : "已读水位 / seenAt"), action: "更新" };
+    }
+    if (!effect) return null;
+    const status = !payload ? "pending" : failed ? "failed" : unchanged ? "unchanged" : data2?.ok === false ? "failed" : confirmed ? read ? "read" : "confirmed" : "unverified";
+    const outcome = status === "pending" ? "已请求" + effect.action + "，尚无对应返回" : status === "failed" ? "工具未确认" + effect.action + (data2?.error || outer?.error ? "：" + String(data2?.error || outer?.error) : "成功") : status === "unchanged" ? "返回确认没有新增变更" : status === "read" ? "只读返回，未写入此资料" : status === "confirmed" ? "工具回执确认" + effect.action + "成功" : "未采集足以确认此项" + effect.action + "的返回字段；可能转入其他处理路径";
+    return { kind: "storage", ...effect, status, outcome, verified: status === "confirmed" };
   }
 
   // console/layers/O/context-processing.js
-  var short2 = (name) => String(name || "").split("__").at(-1);
-  var parse = (value2) => {
+  var short3 = (name) => String(name || "").split("__").at(-1);
+  var parse2 = (value2) => {
     try {
       return typeof value2 === "string" ? JSON.parse(value2) : value2;
     } catch {
       return null;
     }
   };
-  var readers = /* @__PURE__ */ new Set(["qq_get_recent_messages", "qq_get_unread_messages", "qq_get_my_recent_messages", "qq_wait_for_messages", "qq_wait_for_quiet"]);
-  var senders = /* @__PURE__ */ new Set(["qq_send_message", "qq_send_burst", "qq_reply", "private_followup_send"]);
-  var labels = { self: "bot QQ 消息", complete: "已完成处理", seen: "已读待处理", unseen: "未读", anomaly: "双戳异常", unknown: "" };
+  var readers = /* @__PURE__ */ new Set(["qq_get_recent_messages", "qq_get_unread_messages", "qq_get_my_recent_messages", "qq_get_message_detail", "qq_wait_for_messages", "qq_wait_for_quiet"]);
+  var senders = TEXT_SEND_TOOLS;
+  var labels = { self: "bot QQ 消息", complete: "已完成处理", resolved: "管理归档（保留原记录）", seen: "已读待处理", unseen: "未读", pending: "待处理（读戳未采集）", anomaly: "双戳异常", unknown: "" };
   function receiptSnapshot(message2) {
     const chunks = (message2.contextSegments || []).filter((part) => part.id === "message-snapshot").map((part) => part.text);
     if (message2.source === "qq-context-current") chunks.push(message2.text || "");
     return chunks.flatMap((text) => {
       const marker = ["【QQ 收件状态】", "【本次消息快照】"].find((value3) => text.includes(value3));
       if (!marker) return [];
-      const value2 = parse(text.slice(text.indexOf(marker) + marker.length).trim().split("\n")[0]);
+      const value2 = parse2(text.slice(text.indexOf(marker) + marker.length).trim().split("\n")[0]);
       if (!value2 || typeof value2 !== "object") return [];
       return ["receipts", "recent", "messages", "receiptWindow"].flatMap((key2) => Array.isArray(value2[key2]) ? value2[key2] : []);
     });
   }
   function processingEntries(request, messages) {
     const records = /* @__PURE__ */ new Map(), tasks = [], quotes = /* @__PURE__ */ new Map(), stablePrefixes = /* @__PURE__ */ new Map(), consumed = /* @__PURE__ */ new Set();
-    let unsequenced = 0;
+    let unsequenced = 0, bodyOrder = 0;
     const record2 = (row, message2, label2, { receiptOnly = false, authoritative = false } = {}) => {
       if (!row || typeof row !== "object") return;
       const validSeq = Number.isSafeInteger(row.seq) && row.seq > 0;
       if (!validSeq && typeof (row.text ?? row.plain ?? row.tail) !== "string") return;
       const recordId = validSeq ? row.seq : Number.isSafeInteger(row.dialogueSeq) ? "dialogue:" + row.dialogueSeq : row.messageId ? "id:" + row.messageId : "unsequenced:" + message2.position + ":" + unsequenced++;
-      const old = records.get(recordId), next = classifyReceipt(row), ranks = { unknown: 0, unseen: 1, seen: 2, complete: 3, self: 3, anomaly: 4 };
+      const old = records.get(recordId), next = classifyReceipt(row), ranks = { unknown: 0, pending: 1, unseen: 2, seen: 3, complete: 4, resolved: 4, self: 4, anomaly: 5 };
       const position = message2.position, proof = { position, label: label2 };
       const selected2 = !old || next !== "unknown" && (authoritative || ranks[next] >= ranks[old.receiptState]);
-      const capturedText = typeof (row.plain ?? row.text ?? row.tail) === "string" ? row.plain ?? row.text ?? row.tail : "";
+      const { text: capturedText, quoted: quoted2 } = messageBodyParts(row);
       const saved2 = old || { recordId, seq: validSeq ? row.seq : void 0, text: "", record: {}, sourcePositions: [], evidence: [], receiptState: "unknown" };
-      if (!receiptOnly && capturedText.trim() && capturedText.length >= saved2.text.length) {
+      if (!receiptOnly && (capturedText.trim() || quoted2) && capturedText.length >= saved2.text.length) {
+        if (!saved2.bodyCaptured) saved2.bodyOrder = bodyOrder++;
         saved2.text = capturedText;
+        saved2.quoted = quoted2;
         saved2.bodyCaptured = true;
         saved2.record = { ...saved2.record, ...row };
       } else saved2.record = { ...row, ...saved2.record };
@@ -526,25 +684,40 @@
       if (parts) {
         if (parts.stablePrefix) stablePrefixes.set(message2.key, { ...message2, text: parts.stablePrefix });
         else consumed.add(message2.key);
-        for (const key2 of ["history", "unread", "pending", "unknown"]) for (const row of parts[key2]) record2(row, message2, "桥接 QQ 输入");
+        for (const row of parts.records) record2(row, message2, "桥接 QQ 输入");
         if (parts.task) tasks.push({ ...message2, key: "task:" + message2.position, kind: "task", name: "桥接处理任务与触发机制", text: parts.task, region: message2.currentInput ? "arrivals" : "history", originalKey: message2.key });
       }
       for (const result of capturedToolResults(message2)) {
-        const data2 = result.data, name = short2(result.name);
+        const data2 = result.data, name = short3(result.name);
         if (!data2 || result.isError || data2.ok === false || data2.error || data2.key && request.key && data2.key !== request.key) continue;
-        if (readers.has(name)) for (const row of [...Array.isArray(data2.messages) ? data2.messages : [], ...Array.isArray(data2.newMessages) ? data2.newMessages : []]) record2(name === "qq_get_my_recent_messages" ? { ...row, isSelf: true } : row, message2, "工具读取 " + name);
+        if (readers.has(name)) {
+          const rows = toolMessageRows(name, data2);
+          for (const row of rows) {
+            if (!row || typeof row !== "object") continue;
+            const pendingEvidence = name === "qq_get_unread_messages" || ["qq_wait_for_messages", "qq_wait_for_quiet"].includes(name) && data2.arrived === true;
+            record2(name === "qq_get_my_recent_messages" ? { ...row, isSelf: true } : pendingEvidence && classifyReceipt(row) === "unknown" ? { ...row, receiptState: "pending" } : row, message2, "工具读取 " + name);
+          }
+        }
         if (name === "qq_report_message_receipts" && data2.ok === true) for (const row of Array.isArray(data2.receipts) ? data2.receipts : []) record2(row, message2, "成功工具回执", { receiptOnly: true, authoritative: true });
         if (senders.has(name) && data2.quoted && typeof data2.quoted.text === "string" && data2.quoted.text.trim()) {
           const origin = messages.find((row) => (row.toolCalls || []).some((call) => call.id === result.toolCallId)), args = origin ? callArguments(origin, result.toolCallId) : {}, id = args.messageId || args.message_id;
-          const key2 = id ? "quote:" + id : "quote:" + message2.position;
-          if (!quotes.has(key2)) quotes.set(key2, { key: key2, kind: "quote", region: "history", position: message2.position, name: "用户原文（引用回执）", text: data2.quoted.text, record: data2.quoted, messageId: id, source: "工具引用回执", effectiveComponents: [], withdrawnComponents: [] });
+          const quoteId = args.replyToMessageId || id || data2.quoted.messageId;
+          const key2 = quoteId ? "quote:" + (data2.key || request.key) + ":" + quoteId : "quote:" + message2.position;
+          if (!quotes.has(key2)) quotes.set(key2, { key: key2, kind: "quote", region: "history", position: message2.position, name: "用户消息（被引用）", text: data2.quoted.text, record: data2.quoted, messageId: quoteId, sourceKey: data2.key || request.key, resultPosition: message2.position, callId: result.toolCallId, source: "工具引用回执", effectiveComponents: [], withdrawnComponents: [] });
         }
       }
     }
     const receiptIndexes = [...records.values()].filter((row) => !row.bodyCaptured);
-    const qq = [...records.values()].filter((row) => row.bodyCaptured).sort((a, b) => Number.isSafeInteger(a.record.dialogueSeq) && Number.isSafeInteger(b.record.dialogueSeq) ? a.record.dialogueSeq - b.record.dialogueSeq : (a.seq ?? Number.MAX_SAFE_INTEGER) - (b.seq ?? Number.MAX_SAFE_INTEGER)).map((row, index) => {
-      const region = ["complete", "self"].includes(row.receiptState) ? "history" : ["seen", "unseen"].includes(row.receiptState) ? "arrivals" : "unknown";
-      const dialogueSeq = Number.isSafeInteger(row.record.dialogueSeq) ? row.record.dialogueSeq : null, numberLabel = row.seq ? "收件 seq " + row.seq : dialogueSeq ? "对话序号 " + dialogueSeq : (row.record.isSelf ? "bot QQ 消息" : "QQ 消息（无收件 seq）") + (row.record.at ? " · " + row.record.at : "");
+    const batches = /* @__PURE__ */ new Map();
+    for (const row of records.values()) if (row.bodyCaptured) {
+      const position = Math.min(...row.sourcePositions);
+      if (!batches.has(position)) batches.set(position, []);
+      batches.get(position).push(row);
+    }
+    const orderedRecords = [...batches].sort(([a], [b]) => a - b).flatMap(([, rows]) => rows.every((row) => Number.isSafeInteger(row.record.dialogueSeq)) ? rows.sort((a, b) => a.record.dialogueSeq - b.record.dialogueSeq) : rows.every((row) => Number.isSafeInteger(row.seq)) ? rows.sort((a, b) => a.seq - b.seq) : rows.sort((a, b) => a.bodyOrder - b.bodyOrder));
+    const qq = orderedRecords.map((row, index) => {
+      const region = ["complete", "resolved", "self"].includes(row.receiptState) ? "history" : ["seen", "unseen", "pending"].includes(row.receiptState) ? "arrivals" : "unknown";
+      const dialogueSeq = Number.isSafeInteger(row.record.dialogueSeq) ? row.record.dialogueSeq : null, numberLabel = row.seq ? "收件 seq " + row.seq : (row.record.isSelf ? "bot QQ 消息" : "QQ 消息（无收件 seq）") + (row.record.at ? " · " + row.record.at : "");
       return { ...row, dialogueSeq, displaySeq: index + 1, numberLabel, key: "qq:" + row.recordId, kind: "qq", region, position: Math.min(...row.sourcePositions), source: "QQ 收件证据", name: numberLabel + (row.record.isSelf ? " · bot" : ""), text: row.text, windowLabel: region === "history" ? "QQ 历史消息" : region === "arrivals" ? "QQ 未处理消息" : "QQ 消息（状态未知）", stateLabel: labels[row.receiptState], effectiveComponents: [], withdrawnComponents: [] };
     });
     const hasCurrentTask = messages.some((row) => row.source === "qq-context-task");
@@ -554,7 +727,9 @@
       latest.name = "最近桥接处理任务（旧快照）";
     }
     const quoted = [...quotes.values()].filter((row) => !row.messageId || !qq.some((q) => String(q.record.messageId || q.record.message_id) === String(row.messageId)));
-    const entries = [...messages.filter((message2) => !consumed.has(message2.key)).map((message2) => stablePrefixes.get(message2.key) || message2), ...tasks, ...qq, ...quoted].sort((a, b) => a.position - b.position || (a.seq || 0) - (b.seq || 0));
+    const deliveries = extractToolDeliveries(request, messages).filter((delivery) => !delivery.messageId || !qq.some((row) => row.record.isSelf && String(row.record.messageId) === String(delivery.messageId)));
+    const forwarded = extractForwardMessages(request, messages);
+    const entries = [...messages.filter((message2) => !consumed.has(message2.key)).map((message2) => stablePrefixes.get(message2.key) || message2), ...tasks, ...qq, ...quoted, ...deliveries, ...forwarded].sort((a, b) => a.position - b.position || (a.seq || 0) - (b.seq || 0));
     return { entries, records: qq, receiptIndexes, bySeq: new Map(qq.filter((row) => row.seq).map((row) => [row.seq, row])), counts: { pending: qq.filter((row) => row.region === "arrivals").length, completed: qq.filter((row) => row.region === "history").length, unknown: qq.filter((row) => row.region === "unknown").length } };
   }
   var triggers = {
@@ -583,32 +758,50 @@
   }
   function callArguments(message2, id) {
     for (const line of String(message2.text || "").split("\n")) {
-      const block = parse(line);
-      if (block?.type === "tool-call" && block.id === id) return parse(block.arguments) || {};
+      const block = parse2(line);
+      if (block?.type === "tool-call" && block.id === id) return parse2(block.arguments) || {};
     }
     return {};
   }
   function outputTrace(message2, messages, request = {}) {
-    const preceding = messages.filter((row) => row.position < message2.position), previous = preceding.filter((row) => row.toolResults?.length || row.role === "tool" || ["qq-context-dialogue", "qq-context-task"].includes(row.source)).at(-1);
+    const preceding = messages.filter((row) => row.position < message2.position), previous = preceding.filter((row) => row.toolResults?.length || row.role === "tool" || ["user", "developer"].includes(row.role)).at(-1);
     const isContinuation = !!(previous?.toolResults?.length || previous?.role === "tool");
-    const inputName = previous ? (previous.toolResults || []).map((row) => short2(row.name)).filter(Boolean).join("、") || previous.name || previous.source : "";
-    const origin = { kind: isContinuation ? "tool-continuation" : "input-continuation", title: (isContinuation ? "工具返回后继续生成" : previous ? "来信或桥接任务后生成" : "生成前的输入未在此快照中定位") + (inputName ? " · " + inputName : ""), positions: previous ? [previous.position] : [], limit: "按请求顺序定位最近输入，不证明模型的具体思考原因。" };
+    const inputName = previous ? (previous.toolResults || []).map((row) => short3(row.name)).filter(Boolean).join("、") || previous.name || previous.source : "";
+    const task = preceding.filter((row) => ["qq-context-dialogue", "qq-context-task"].includes(row.source)).at(-1);
+    const taskTrigger = task ? triggerMechanism({ ...task, currentInput: false }, {}) : null;
+    const origin = { kind: isContinuation ? "tool-continuation" : "input-continuation", title: (isContinuation ? "工具返回后继续生成" : previous ? "输入记录后继续生成" : "生成前的输入未在此快照中定位") + (inputName ? " · " + inputName : ""), positions: previous ? [previous.position] : [], limit: "按请求顺序定位前置输入，不证明模型的具体思考原因。", task: taskTrigger?.code ? taskTrigger.title : "", taskPosition: task?.position };
     const ownCalls = message2.toolCalls || [], resultIds = new Set((message2.toolResults || []).map((result) => result.toolCallId));
     const origins = ownCalls.length ? [{ message: message2, calls: ownCalls }] : resultIds.size ? messages.map((row) => ({ message: row, calls: (row.toolCalls || []).filter((call) => resultIds.has(call.id)) })).filter((row) => row.calls.length) : [];
-    if (!origins.length) return message2.role === "assistant" ? { origin, qqVerified: false, destinations: [{ kind: "session", outcome: "保留在 DSH 会话记录，供后续请求使用；本条未调用发送工具，不能视为 QQ 消息。" }] } : null;
+    if (!origins.length) {
+      if (message2.role !== "assistant") return null;
+      const destinations2 = [{ kind: "session", title: "模型输出事件（assistant）", badge: "生成原文", storage: "sessions/<提供方>/<会话>/session.v4.jsonl.zstd", target: request.sessionId || "", outcome: "这段生成原文随 assistant 事件保存，供后续模型请求衔接；未关联到印象、画像或 MD 的写入回执，也未见本条对应的 QQ 发送回执。提供方目录未采集，以上显示日志路径格式。" }];
+      if (taskTrigger?.code === "memoryWrite" && /<MEMORY>\s*\S[\s\S]*?<\/MEMORY>/i.test(message2.text || "")) destinations2.push({ kind: "memory", title: "会话记忆 MD · 写入待核验", badge: "记忆MD·待核验", status: "unverified", storage: /^(private|group):\d+$/.test(request.key || "") ? "state/memory/" + request.key.replace(/[^a-zA-Z0-9]/g, "_") + ".md" : "state/memory/<会话key>.md", outcome: "前置任务要求整理记忆，输出含 MEMORY 正文；桥接须在记忆任务仍有效时捕获。本快照没有与这条输出配对的落盘回执，尚不能确认已保存。" });
+      const priorEffects = isContinuation ? (previous.toolResults || []).flatMap((result) => {
+        const caller = messages.find((row) => (row.toolCalls || []).some((call2) => call2.id === result.toolCallId)), call = caller?.toolCalls.find((call2) => call2.id === result.toolCallId);
+        if (!call) return [];
+        const effect = storedToolEffect(short3(call.name), callArguments(caller, call.id), capturedToolResults(previous).find((row) => row.toolCallId === call.id), request);
+        return effect ? [{ ...effect, name: call.name, callId: call.id, callPosition: caller.position, resultPosition: previous.position }] : [];
+      }) : [];
+      const results = isContinuation ? capturedToolResults(previous) : [];
+      const wait = results.find((result) => ["qq_wait_for_messages", "qq_wait_for_quiet"].includes(short3(result.name)) && !result.isError && result.data?.ok !== false)?.data;
+      const waitingCause = wait ? wait.arrived === true ? "等到新来信" : wait.endRound === true ? "等待结束收尾" : wait.action === "followup" ? "旧话题追问建议" : wait.action === "newTopic" ? "新话题建议" : wait.timeout === true ? "等待超时" : "静默判定后" : "";
+      const badges = [isContinuation ? "工具续接" : taskTrigger?.code ? taskTrigger.title : "输入续接", ...waitingCause ? [waitingCause] : [], ...priorEffects.filter((effect) => effect.status === "confirmed").map((effect) => effect.badge + "回执后"), ...destinations2.map((row) => row.badge)];
+      return { origin, priorEffects, destinations: destinations2, badges: [...new Set(badges)], qqVerified: false };
+    }
     const destinations = origins.flatMap((origin2) => origin2.calls.map((call) => {
       const resultMessage = messages.find((row) => (row.toolResults || []).some((result) => result.toolCallId === call.id));
-      const payload = resultMessage ? capturedToolResults(resultMessage).find((result) => result.toolCallId === call.id) : null, data2 = payload?.data, name = short2(call.name), args = callArguments(origin2.message, call.id);
-      const isSend = senders.has(name), target = data2?.key || args.key || args.conversationId || (name === "private_followup_send" && args.userId ? "private:" + args.userId : "");
+      const payload = resultMessage ? capturedToolResults(resultMessage).find((result) => result.toolCallId === call.id) : null, data2 = payload?.data, name = short3(call.name), args = callArguments(origin2.message, call.id);
+      const isSend = senders.has(name), target = isSend ? deliveryTarget(request, args, data2 || {}, name) : data2?.key || args.key || args.conversationId || "";
       const failed = payload?.isError || data2?.ok === false || data2?.error || /^Error\s*[:：]/.test(resultMessage?.text || "");
-      const positive = isSend && !failed && (Number(data2?.sent) > 0 || data2?.success === true || data2?.status === "ok" && data2?.retcode === 0);
-      const outcome = !resultMessage ? "请求内尚无对应工具返回" : failed ? "工具返回失败，未确认 QQ 投递" : positive ? Number(data2?.failed) > 0 ? "部分投递成功，仍有失败项" : "QQ 投递成功（工具返回确认）" : isSend && data2?.sent === 0 ? "未发送（sent=0）" : isSend ? "缺少足以确认 QQ 投递的返回字段" : "已进入工具结果；不等于 QQ 消息";
-      return { kind: isSend ? "qq" : "tool", name: call.name, callId: call.id, target, outcome, verified: !!positive, callPosition: origin2.message.position, resultPosition: resultMessage?.position };
+      const positive = isSend && !failed && data2?.queued !== true && (data2?.sent !== void 0 ? Number(data2.sent) > 0 : data2?.success === true || data2?.status === "ok" && data2?.retcode === 0);
+      const effect = !isSend ? storedToolEffect(name, args, payload, request) : null;
+      const outcome = !resultMessage ? "请求内尚无对应工具返回" : failed ? "工具返回失败" + (isSend ? "，未确认 QQ 投递" : "") : positive ? Number(data2?.failed) > 0 ? "部分投递成功，仍有失败项" : "QQ 投递成功（工具返回确认）" : isSend && data2?.sent === 0 ? "未发送（sent=0）" : isSend ? "缺少足以确认 QQ 投递的返回字段" : "结果返回给模型继续处理；未据此推定写入印象、画像或文件";
+      return { kind: isSend ? "qq" : "tool", title: isSend ? "QQ 投递" : "工具返回 → 模型", name: call.name, callId: call.id, target, outcome, verified: !!positive, ...effect, callPosition: origin2.message.position, resultPosition: resultMessage?.position };
     }));
-    return { origin: message2.role === "tool" ? { kind: "call-return", title: "对应工具调用的执行结果", positions: origins.map((row) => row.message.position), limit: "通过 toolCallId 配对。" } : origin, destinations, qqVerified: destinations.some((row) => row.verified), mode: request.mode };
+    return { origin: message2.role === "tool" ? { kind: "call-return", title: "对应工具调用的执行结果", positions: origins.map((row) => row.message.position), limit: "通过 toolCallId 配对。" } : origin, destinations, qqVerified: destinations.some((row) => row.kind === "qq" && row.verified), mode: request.mode };
   }
   function traceRelations(request, messages, view) {
-    const byEntry = /* @__PURE__ */ new Map(), labels3 = /* @__PURE__ */ new Map(), ids = /* @__PURE__ */ new Map(), edges = [];
+    const byEntry = /* @__PURE__ */ new Map(), labels3 = /* @__PURE__ */ new Map(), ids = /* @__PURE__ */ new Map();
     for (const row of view.records) for (const id of [row.record.messageId, row.record.message_id, row.record.id]) if (id !== void 0) ids.set(String(id), row.key);
     const connect = (a, b, label2) => {
       if (!a || !b || a === b) return;
@@ -619,15 +812,20 @@
       }
     };
     const qqKey = (seq) => view.bySeq.get(Number(seq))?.key;
+    for (const row of view.entries.filter((row2) => ["quote", "delivery", "forwarded"].includes(row2.kind))) {
+      const origin = messages.find((message2) => (message2.toolCalls || []).some((call) => call.id === row.callId));
+      const result = messages.find((message2) => message2.position === row.resultPosition);
+      if (origin) connect(row.key, origin.key, row.kind === "delivery" ? "发送调用" : "消息来源");
+      if (result) connect(row.key, result.key, row.kind === "delivery" ? "发送回执" : "消息原文");
+    }
     for (const origin of messages) for (const call of origin.toolCalls || []) {
       const resultMessage = messages.find((row) => (row.toolResults || []).some((result) => result.toolCallId === call.id));
       const captured = resultMessage ? capturedToolResults(resultMessage).find((row) => row.toolCallId === call.id) : null;
       const resultFailed = !!(resultMessage?.isError || captured?.isError || captured?.data?.ok === false || captured?.data?.error || /^Error\s*[:：]/.test(resultMessage?.text || ""));
       if (resultMessage) {
-        connect(origin.key, resultMessage.key, "调用／返回");
-        edges.push({ from: origin.key, to: resultMessage.key, kind: "result", label: resultFailed ? "工具返回失败" : "工具返回", failed: resultFailed, callId: call.id });
+        connect(origin.key, resultMessage.key, resultFailed ? "工具返回失败" : "调用／返回");
       }
-      const name = short2(call.name), args = callArguments(origin, call.id), payload = resultMessage ? capturedToolResults(resultMessage).find((row) => row.toolCallId === call.id) : null, data2 = payload?.data;
+      const name = short3(call.name), args = callArguments(origin, call.id), payload = resultMessage ? capturedToolResults(resultMessage).find((row) => row.toolCallId === call.id) : null, data2 = payload?.data;
       const known = readers.has(name) || senders.has(name) || name === "qq_report_message_receipts";
       if (!known) continue;
       const target = args.key || args.conversationId || data2?.key;
@@ -638,8 +836,9 @@
       }
       for (const id of [args.messageId, args.message_id, args.quotedMessageId]) if (id !== void 0 && ids.has(String(id))) referenced.set(ids.get(String(id)), "引用回复");
       if (data2 && !payload.isError && data2.ok !== false && !data2.error) {
-        if (readers.has(name)) {
-          for (const row of [...Array.isArray(data2.messages) ? data2.messages : [], ...Array.isArray(data2.newMessages) ? data2.newMessages : []]) if (row && qqKey(row.seq)) referenced.set(qqKey(row.seq), "读取消息");
+        if (readers.has(name)) for (const row of toolMessageRows(name, data2)) {
+          const key2 = qqKey(row.seq) || ids.get(String(row.messageId || row.message_id));
+          if (key2) referenced.set(key2, "读取消息");
         }
         if (name === "qq_report_message_receipts") {
           for (const row of Array.isArray(data2.receipts) ? data2.receipts : []) if (qqKey(row.seq)) referenced.set(qqKey(row.seq), "收件回执");
@@ -647,29 +846,22 @@
       }
       for (const [key2, label2] of referenced) if (key2) {
         connect(key2, origin.key, label2);
-        edges.push({ from: key2, to: origin.key, kind: "call", label: label2, callId: call.id });
-        if (resultMessage) {
-          connect(key2, resultMessage.key, label2);
-          if (!resultFailed) edges.push({ from: resultMessage.key, to: key2, kind: "feedback", label: label2, callId: call.id });
-        }
-      }
-      if (![...referenced.keys()].some(Boolean)) {
-        edges.push({ from: "context-track-anchor", to: origin.key, kind: "flow-call", label: "调用时上下文", callId: call.id });
-        if (resultMessage) edges.push({ from: resultMessage.key, to: "context-track-anchor", kind: "flow-return", label: "返回进入上下文", callId: call.id });
+        if (resultMessage) connect(key2, resultMessage.key, resultFailed ? "工具返回失败" : label2);
       }
     }
-    return { byEntry, labels: labels3, edges };
+    return { byEntry, labels: labels3 };
   }
   function processingRecordHtml(row) {
-    return '<section class="context-record-part context-processing-record" data-qq-window="' + esc(row.region) + '"><h4>' + esc(row.windowLabel) + (row.stateLabel ? " · " + esc(row.stateLabel) : "") + "</h4><p>" + esc(row.numberLabel) + " · " + esc(row.record.sender || row.record.nickname || row.record.userId || (row.record.isSelf ? "bot" : "发送者未采集")) + (row.record.at ? " · " + esc(row.record.at) : "") + '</p><pre class="context-chat-body">' + esc(row.text) + "</pre><details><summary>来源与原始字段</summary><p>" + (!row.seq && !row.dialogueSeq ? "旧记录没有消息序号；不补造 seq。" : "") + (row.dialogueSeq ? " 双方共用的对话序号：" + row.dialogueSeq + "。" : "") + (row.seq ? " 双戳工具定位：收件 seq " + row.seq + "。" : "") + "</p><p>状态依据：" + esc(row.receiptEvidence?.label || "未采集") + '</p><div class="context-detail-note">' + row.sourcePositions.map((position) => '<button type="button" data-inspector-message="message:' + (position - 1) + '">原始位置 ' + position + "</button>").join(" ") + "</div><pre>" + esc(JSON.stringify(row.record, null, 2)) + "</pre></details></section>";
+    return '<section class="context-record-part context-processing-record" data-qq-window="' + esc(row.region) + '"><h4>' + esc(row.windowLabel) + (row.stateLabel ? " · " + esc(row.stateLabel) : "") + "</h4><p>" + esc(row.numberLabel) + " · " + esc(messageActor(row)) + (row.record.at ? " · " + esc(row.record.at) : "") + "</p>" + quoteBodyHtml(row.quoted) + '<pre class="context-chat-body">' + esc(row.text) + "</pre><details><summary>来源与原始字段</summary><p>" + (!row.seq ? "原记录未采集 QQ 收件 seq；不补造编号。" : "") + (row.dialogueSeq ? " 内部对话排序字段（非 QQ 收件 seq）：" + row.dialogueSeq + "。" : "") + (row.seq ? " 双戳工具定位：收件 seq " + row.seq + "。" : "") + "</p><p>状态依据：" + esc(row.receiptEvidence?.label || "未采集") + '</p><div class="context-detail-note">' + row.sourcePositions.map((position) => '<button type="button" data-inspector-message="message:' + (position - 1) + '" data-inspector-record="' + esc(row.key) + '">原始位置 ' + position + "</button>").join(" ") + "</div><pre>" + esc(JSON.stringify(row.record, null, 2)) + "</pre></details></section>";
   }
   function traceHtml(trace) {
     if (!trace) return "";
-    return '<section class="context-record-part context-output-trace"><h4>生成来源</h4><p>' + esc(trace.origin?.title || "对应调用") + "</p>" + (trace.origin?.positions || []).map((position) => '<button type="button" data-inspector-message="message:' + (position - 1) + '">原始位置 ' + position + "</button>").join(" ") + "<small>" + esc(trace.origin?.limit || "") + "</small><h4>数据流向</h4>" + trace.destinations.map((row) => "<article><strong>" + esc(row.kind === "session" ? "DSH 会话记录" : row.kind === "qq" ? "QQ 投递工具" : "工具执行") + "</strong>" + (row.name ? "<p><code>" + esc(row.name) + "</code></p>" : "") + "<p>" + esc(row.outcome) + "</p>" + (row.target ? "<p>目标：" + esc(row.target) + "</p>" : "") + (row.callPosition ? "<small>调用 " + row.callPosition + (row.resultPosition ? " → 返回 " + row.resultPosition : "") + " · " + esc(row.callId) + "</small>" : "") + "</article>").join("") + "</section>";
+    const destination = (row) => "<article" + (row.status ? ' data-write-status="' + esc(row.status) + '"' : "") + "><strong>" + esc(row.title || "工具执行") + "</strong>" + (row.name ? "<p><code>" + esc(row.name) + "</code></p>" : "") + "<p>" + esc(row.outcome) + "</p>" + (row.storage ? "<p>位置：<code>" + esc(row.storage) + "</code></p>" : "") + (row.field ? "<p>条目：" + esc(row.field) + "</p>" : "") + (row.target ? "<p>目标：" + esc(row.target) + "</p>" : "") + (row.callPosition ? '<div class="context-flow-links"><button type="button" data-inspector-message="message:' + (row.callPosition - 1) + '">查看调用</button>' + (row.resultPosition ? '<button type="button" data-inspector-message="message:' + (row.resultPosition - 1) + '">查看返回</button>' : "") + "</div>" : "") + "</article>";
+    return '<section class="context-record-part context-output-trace"><h4>生成来源</h4><p>' + esc(trace.origin?.title || "对应调用") + "</p>" + (trace.origin?.positions || []).map((position) => '<button type="button" data-inspector-message="message:' + (position - 1) + '">查看前置记录</button>').join(" ") + (trace.origin?.task ? "<p>前置桥接任务：" + esc(trace.origin.task) + "</p>" : "") + "<small>" + esc(trace.origin?.limit || "") + "</small>" + (trace.priorEffects?.length ? "<h4>前一步工具处理</h4><p>以下是前置工具的结果，不是这段内部文字的保存位置。</p>" + trace.priorEffects.map(destination).join("") : "") + "<h4>本条数据去向</h4>" + trace.destinations.map(destination).join("") + "</section>";
   }
   function receiptIndexHtml(text) {
     const marker = ["【QQ 收件状态】", "【本次消息快照】"].find((value2) => String(text).includes(value2)), body = marker ? String(text).slice(String(text).indexOf(marker) + marker.length).trim() : String(text).trim();
-    const data2 = parse(body) || parse(body.split("\n")[0]);
+    const data2 = parse2(body) || parse2(body.split("\n")[0]);
     if (!data2 || Array.isArray(data2) || typeof data2 !== "object") return "";
     const rows = /* @__PURE__ */ new Map();
     for (const row of [...Array.isArray(data2.receipts) ? data2.receipts : [], ...Array.isArray(data2.receiptWindow) ? data2.receiptWindow : []]) if (Number.isSafeInteger(row?.seq)) rows.set(row.seq, row);
@@ -678,7 +870,7 @@
   }
 
   // console/layers/O/context-inspector.js
-  var KIND_LABELS = { system: "系统提示", context: "上下文记录", notice: "运行提醒", incoming: "QQ与任务", qq: "QQ 消息", quote: "工具引用原文", task: "桥接任务", registry: "工具清单变更", runtime: "运行环境", summary: "历史摘要", user: "外部输入", assistant: "bot 内部输出", call: "工具调用", result: "工具返回", definition: "工具定义", component: "组件来源" };
+  var KIND_LABELS = { system: "系统提示", context: "上下文记录", notice: "运行提醒", incoming: "QQ与任务", qq: "QQ 消息", quote: "用户消息（引用）", delivery: "bot 已发送", forwarded: "转发内消息", task: "桥接任务", registry: "工具清单变更", runtime: "运行环境", summary: "历史摘要", user: "外部输入", assistant: "bot 内部输出", call: "工具调用", result: "工具返回", definition: "工具定义", component: "组件来源" };
   var REGION_LABELS = CONTEXT_LAYER_NAMES;
   function requestEntries(request) {
     const callNames = new Map((request.messages || []).flatMap((row) => (row.toolCalls || []).map((call) => [call.id, call.name])));
@@ -712,10 +904,21 @@
   var dynamicSources = [["ctx-context-dynamics", "05 · 心情"], ["ctx-chat-topic-drive", "10 · 话题建议"], ["ctx-memory-context", "12 · 记忆与临时画像"], ["life-schedule-reminder", "25 · 日程"]];
   var badge = (kind) => '<span class="context-kind context-kind-' + kind + '">' + esc(KIND_LABELS[kind] || kind) + "</span>";
   var listName = (row) => ["call", "result", "definition"].includes(row.kind) ? String(row.name || row.id).split("、").map((name) => name.startsWith("mcp__") ? name.split("__").at(-1) : name).join("、") : row.name || row.id;
+  function quotePreview(row) {
+    const flow = row.outputTrace?.badges?.length ? '<span class="context-output-badges" aria-label="内部输出来源与去向">' + row.outputTrace.badges.map((label2) => "<span>" + esc(label2) + "</span>").join("") + "</span>" : "";
+    return flow + (row.quoted ? '<span class="context-quote-preview"><span>引用 ' + esc(messageActor({ record: row.quoted })) + "</span>" + esc(row.quoted.text || "引用原文未采集") + "</span>" : "");
+  }
+  function extractedMessageDetails(row) {
+    const quoted = row.quoted ? "<blockquote><strong>引用 " + esc(messageActor({ record: row.quoted })) + "</strong><p>" + esc(row.quoted.text || "引用原文未采集") + "</p></blockquote>" : "";
+    const route = row.sourceKey && row.targetKey && row.sourceKey !== row.targetKey ? row.sourceKey + " → " + row.targetKey : row.targetKey || row.sourceKey || "";
+    const note = row.kind === "delivery" ? "发送成功由匹配回执确认；正文取自对应发送参数。" : row.kind === "quote" ? "工具回执中的引用原文；不据此推断已读或已回复。" : row.forwardId ? "合并转发内容；不计入当前会话的未处理队列。" : "工具读取的消息原文；不据此推断已读或已回复。";
+    const ids = [row.messageId ? "messageId：" + row.messageId : "", row.originalSeq ? "来源会话收件 seq：" + row.originalSeq : "", row.originalMessageSeq ? "原转发 messageSeq：" + row.originalMessageSeq : "", row.forwardId ? "转发 ID：" + row.forwardId : ""].filter(Boolean).join(" · ");
+    return '<section class="context-record-part"><h4>' + esc(messageActor(row)) + "</h4>" + (route ? "<p>会话：" + esc(route) + "</p>" : "") + quoted + '<pre class="context-chat-body">' + esc(row.text) + "</pre><p>" + esc(note) + "</p>" + (ids ? "<p>" + esc(ids) + "</p>" : "<p>原记录没有消息 seq，不补造编号。</p>") + (row.textTruncated ? '<p class="context-excerpt-note">工具只返回了正文片段，不是完整消息。</p>' : "") + '<button type="button" data-inspector-message="message:' + ((row.resultPosition || Math.floor(row.position)) - 1) + '">查看来源工具返回</button></section>';
+  }
   function inspectorHtml(request, catalog, state, { renderText, renderComponent }) {
     const messages = requestEntries(request), tools = (request.tools || []).map((row, index) => ({ ...row, key: "tool:" + index, position: index + 1, kind: "definition", name: row.name || "未命名工具", text: JSON.stringify(row, null, 2) }));
     const business = processingEntries(request, messages), raw = state.layout === "raw";
-    const ordered = raw ? messages : timelineEntries(business.entries);
+    const ordered = (raw ? messages : timelineEntries(business.entries)).map((row) => row.kind === "assistant" ? { ...row, outputTrace: outputTrace(row, messages, request) } : row);
     const modules = new Map((request.modules || []).map((row) => [row.id, row]));
     const moodStyle = modules.get("role-card")?.parts?.find((part) => part.id === "ctx-context-dynamics:expression");
     const confirmedStyle = moodStyle?.text?.trim() && (request.messages || []).some((m) => m.text?.includes(moodStyle.text.trim())) ? moodStyle.text : "";
@@ -730,20 +933,26 @@
     const shortcuts = '<div class="context-source-shortcuts"><span>动态资料定位</span>' + dynamicSources.filter(([id]) => catalog.some((row) => row.id === id)).map(([id, label2]) => '<button type="button" data-inspector-component="' + id + '">' + label2 + "</button>").join("") + "</div>";
     const mapping = state.view === "components" ? '<label class="context-component-lookup">按组件名称定位到固定编号<select id="contextComponentLookup"><option value="">选择组件…</option>' + components.map((row) => '<option value="' + esc(row.id) + '"' + (selected2?.id === row.id ? " selected" : "") + ">" + String(row.componentNumber).padStart(2, "0") + " ｜ " + esc(row.name) + "</option>").join("") + "</select></label>" : "";
     const controls = '<div class="context-inspector-controls"><label class="context-search"><span>搜索' + (state.view === "messages" ? "本次请求" : state.view === "tools" ? "工具" : "组件") + '</span><input id="contextInspectorSearch" type="search" value="' + esc(state.query) + '" placeholder="名称、正文或调用 ID"></label>' + (state.view === "messages" ? '<label><span>类型</span><select id="contextInspectorKind"><option value="">全部类型</option>' + Object.entries(KIND_LABELS).filter(([kind]) => !["definition", "component"].includes(kind)).map(([kind, label2]) => '<option value="' + kind + '"' + (state.kind === kind ? " selected" : "") + ">" + label2 + "</option>").join("") + "</select></label>" : "") + "</div>";
-    const sequenceHtml = (items2, caption2) => '<div class="context-sequence" role="group" aria-label="' + (state.view === "messages" ? raw ? "按请求顺序排列的消息" : "按处理状态排列的消息" : state.view === "tools" ? "本次请求的工具定义" : "40 个组件来源") + '"><div class="context-sequence-caption">' + caption2 + " <span>" + items2.length + " 项</span></div>" + items2.map((row) => '<button type="button" class="context-sequence-row' + (row.kind === "qq" ? row.record.isSelf ? " is-qq-self" : " is-qq-human" : ["call", "result"].includes(row.kind) ? " is-tool-step" : "") + (related.has(row.key) ? " is-related" : "") + '" data-inspector-select="' + esc(row.key) + '" data-entry-kind="' + row.kind + '" data-request-position="' + row.position + '" aria-pressed="' + (row.key === selected2?.key) + '"><span class="context-sequence-number">' + (state.view === "messages" && !raw ? row.kind === "qq" ? row.seq ?? "—" : "·" : String(row.listNumber).padStart(3, "0")) + '</span><span class="context-sequence-main">' + (row.kind === "qq" ? '<span class="context-kind context-kind-qq">' + esc(row.windowLabel) + "</span>" : badge(row.kind)) + (row.kind === "qq" ? '<span class="context-window-badge">' + esc(row.stateLabel) + "</span>" : row.componentNumber ? '<span class="context-component-code">组件 ' + String(row.componentNumber).padStart(2, "0") + "</span>" : row.role ? '<span class="context-protocol-role">' + esc(row.role) + "</span>" : "") + (hint(row) ? '<span class="context-link-hint">关联 ' + esc(hint(row)) + "</span>" : "") + '<strong class="' + (row.superseded ? "context-superseded-title" : "") + '" title="' + esc(row.name || row.id) + '">' + esc(listName(row)) + "</strong>" + (row.kind === "qq" ? '<span class="context-chat-sender">' + esc(row.record.sender || row.record.userId || (row.record.isSelf ? "小鲸鱼" : "用户")) + (row.record.at ? " · " + esc(row.record.at) : "") + "</span>" : "") + '<span class="context-sequence-preview">' + esc(raw ? String(row.text || "结构化记录").replace(/\s+/g, " ").slice(0, 100) : timelinePreview(row)) + '</span></span><span class="context-sequence-size">' + (row.text?.length || 0).toLocaleString() + "</span></button>").join("") + (items2.length ? "" : '<p class="context-empty">没有匹配项。</p>') + "</div>";
-    const caption = state.view === "messages" ? raw ? "阅读序号 · 原始请求顺序" : "聊天与工具时间线 · QQ 使用原始收件 seq" : state.view === "tools" ? "实际 tools 字段" : "固定组件目录";
+    const sequenceHtml = (items2, caption2) => '<div class="context-sequence" role="group" aria-label="' + (state.view === "messages" ? raw ? "按请求顺序排列的消息" : "按处理状态排列的消息" : state.view === "tools" ? "本次请求的工具定义" : "40 个组件来源") + '"><div class="context-sequence-caption">' + caption2 + " <span>" + items2.length + " 项</span></div>" + items2.map((row) => '<button type="button" class="context-sequence-row context-family-' + timelineFamily(row) + (timelineFamily(row) === "message" && messageIsOutgoing(row) ? " is-message-outgoing" : "") + (row.kind === "qq" ? row.record.isSelf ? " is-qq-self" : " is-qq-human" : ["call", "result"].includes(row.kind) ? " is-tool-step" : "") + (related.has(row.key) ? " is-related" : "") + '" data-inspector-select="' + esc(row.key) + '" data-entry-kind="' + row.kind + '" data-request-position="' + row.position + '" aria-pressed="' + (row.key === selected2?.key) + '"><span class="context-sequence-number" title="' + esc(state.view === "messages" ? receiptSequence(row) ? "QQ 收件 seq " + receiptSequence(row) : timelineFamily(row) === "message" ? "原记录未采集 QQ 收件 seq" : "协议记录，无 QQ 收件 seq" : "目录编号") + '"' + (receiptSequence(row) ? ' data-qq-seq="' + receiptSequence(row) + '"' : "") + ">" + (state.view === "messages" ? receiptSequence(row) ?? (timelineFamily(row) === "message" ? "未记录" : "·") : String(row.listNumber).padStart(3, "0")) + '</span><span class="context-sequence-main">' + (row.kind === "qq" ? '<span class="context-kind context-kind-qq">' + esc(row.windowLabel) + "</span>" : badge(row.kind)) + (row.kind === "qq" ? '<span class="context-window-badge">' + esc(row.stateLabel) + "</span>" : row.componentNumber ? '<span class="context-component-code">组件 ' + String(row.componentNumber).padStart(2, "0") + "</span>" : row.role ? '<span class="context-protocol-role">' + esc(row.role) + "</span>" : "") + (hint(row) ? '<span class="context-link-hint">关联 ' + esc(hint(row)) + "</span>" : "") + '<strong class="' + (row.superseded ? "context-superseded-title" : "") + '" title="' + esc(row.name || row.id) + '">' + esc(listName(row)) + "</strong>" + (timelineFamily(row) === "message" ? '<span class="context-chat-sender">' + esc(messageActor(row)) + (row.record?.at || row.at ? " · " + esc(row.record?.at || row.at) : "") + (row.targetKey ? " · " + esc(row.crossSession ? (row.sourceKey || "来源会话") + " → " + row.targetKey : row.targetKey) : "") + "</span>" : "") + quotePreview(row) + '<span class="context-sequence-preview">' + esc(raw ? String(row.text || "结构化记录").replace(/\s+/g, " ").slice(0, 100) : timelinePreview(row)) + '</span></span><span class="context-sequence-size">' + (row.text?.length || 0).toLocaleString() + "</span></button>").join("") + (items2.length ? "" : '<p class="context-empty">没有匹配项。</p>') + "</div>";
+    const caption = state.view === "messages" ? raw ? "原始请求顺序 · QQ 仅显示真实收件 seq" : "聊天与工具时间线 · QQ 使用原始收件 seq" : state.view === "tools" ? "实际 tools 字段" : "固定组件目录";
+    const legend = state.view === "messages" ? '<div class="context-card-legend" aria-label="记录颜色"><span><i class="message"></i>QQ 消息</span><span><i class="context"></i>系统与上下文</span><span><i class="tool"></i>工具调用与返回</span></div>' : "";
     const list = sequenceHtml(rows, caption);
     const isTimeline = state.view === "messages" && !raw;
+    const historyHumans = business.records.filter((row) => !row.record.isSelf && row.region === "history").length;
+    const historyBots = business.records.filter((row) => row.record.isSelf && row.region === "history").length;
+    const pendingHumans = business.records.filter((row) => !row.record.isSelf && row.region === "arrivals").length;
+    const missingPending = business.receiptIndexes.filter((row) => ["seen", "unseen", "pending"].includes(row.receiptState)).length;
+    const windowNote = state.view === "messages" && !raw && ["history", "arrivals"].includes(state.region) ? '<div class="context-window-summary">' + (state.region === "history" ? "用户原文 " + historyHumans + " 条 · bot 消息 " + historyBots + " 条" + (!historyHumans ? "。这份请求未携带已处理的用户消息正文；不从实时聊天记录补入。" : "") : "待处理用户原文 " + pendingHumans + " 条" + (missingPending ? "；另有 " + missingPending + " 条只有收件状态，正文未包含在这份请求中。" : !pendingHumans ? "。这份请求未携带待处理消息正文，不表示桥接队列已清空。" : "")) + "</div>" : "";
     let detail = '<p class="context-empty">没有可查看的记录。</p>';
     if (state.view === "messages" && state.region === "arrivals" && !rows.length) detail = '<section class="context-record-part"><h3>本请求中未找到待处理来信</h3><p>仅依据所选快照；状态不完整的消息在“状态待核实”，不推断实时队列已经清空。</p></section>';
     if (selected2) {
       const calls = [...(selected2.toolCalls || []).map((c) => "<div><dt>调用工具</dt><dd>" + esc(c.name) + " · " + esc(c.id) + "</dd></div>"), ...(selected2.toolResults || []).map((c) => "<div><dt>对应调用</dt><dd>" + esc(c.name || "") + " · " + esc(c.toolCallId) + "</dd></div>")].join("");
-      detail = '<header class="context-detail-heading">' + badge(selected2.kind) + '<h3 class="' + (selected2.superseded ? "context-superseded-title" : "") + '">' + esc(selected2.name || selected2.id) + "</h3><p>" + (selected2.kind === "qq" ? esc(selected2.windowLabel) : selected2.kind === "component" ? selected2.componentNumber ? "组件 C" + String(selected2.componentNumber).padStart(2, "0") : "附加规则" : selected2.kind === "definition" ? "本次请求的工具定义" : "原始请求位置 " + selected2.position + " / " + messages.length) + " · " + (selected2.text?.length || 0).toLocaleString() + " 个文本字符</p></header>";
-      if (!["component", "definition", "qq", "quote"].includes(selected2.kind)) detail += recordDetails({ ...selected2, qqBySeq: business.bySeq, triggerInfo: triggerMechanism(selected2, request) });
+      detail = '<header class="context-detail-heading">' + badge(selected2.kind) + '<h3 class="' + (selected2.superseded ? "context-superseded-title" : "") + '">' + esc(selected2.name || selected2.id) + "</h3><p>" + (selected2.kind === "qq" ? esc(selected2.windowLabel) : selected2.kind === "component" ? selected2.componentNumber ? "组件 C" + String(selected2.componentNumber).padStart(2, "0") : "附加规则" : selected2.kind === "definition" ? "本次请求的工具定义" : ["delivery", "quote", "forwarded"].includes(selected2.kind) ? "从工具返回提取 · 原始位置 " + (selected2.resultPosition || Math.floor(selected2.position)) : "原始请求位置 " + selected2.position + " / " + messages.length) + " · " + (selected2.text?.length || 0).toLocaleString() + " 个文本字符</p></header>";
+      if (!["component", "definition", "qq", "quote", "delivery", "forwarded"].includes(selected2.kind)) detail += recordDetails({ ...selected2, qqBySeq: business.bySeq, triggerInfo: triggerMechanism(selected2, request) });
       detail += traceHtml(outputTrace(selected2, messages, request));
       if (related.size) {
         const targets = [...related].map((key2) => business.entries.find((row) => row.key === key2)).filter(Boolean);
-        detail += '<section class="context-related-links"><strong>关联轨迹</strong>' + targets.map((row) => '<button type="button" data-inspector-related="' + esc(row.key) + '">' + esc(relations.labels.get(selected2.key + "|" + row.key) || "关联") + " · " + esc(row.kind === "qq" ? row.numberLabel + (row.seq ? " · 收件 seq " + row.seq : "") : "原始位置 " + row.position) + "</button>").join("") + "</section>";
+        detail += '<section class="context-related-links"><strong>关联轨迹</strong>' + targets.map((row) => '<button type="button" data-inspector-related="' + esc(row.key) + '">' + esc(relations.labels.get(selected2.key + "|" + row.key) || "关联") + " · " + esc(row.kind === "qq" ? row.numberLabel + (row.seq ? " · 收件 seq " + row.seq : "") : "原始位置 " + (row.resultPosition || Math.floor(row.position))) + "</button>").join("") + "</section>";
       }
       if (selected2.kind === "component") {
         detail += componentGuide(selected2);
@@ -755,9 +964,9 @@
         if (!selected2.text?.trim() && ["memoryWrite", "selfReview", "selfOptimize", "userFeedbackReview", "slangLearn"].includes(request.scene) && ["ctx-context-dynamics", "life-schedule-reminder"].includes(selected2.id)) detail += '<p class="context-detail-note">这次是后台整理任务，心情和日程组件按场景跳过。</p>';
         if (!selected2.relatedStyleText || selected2.text?.trim()) detail += renderComponent(selected2);
       } else if (selected2.kind === "qq") detail += processingRecordHtml(selected2);
-      else if (selected2.kind === "quote") detail += '<section class="context-record-part"><h4>' + esc(selected2.record.sender || selected2.record.userId || "用户") + '</h4><pre class="context-chat-body">' + esc(selected2.text) + "</pre><p>来源：工具返回中的引用原文。" + (selected2.messageId ? " messageId：" + esc(selected2.messageId) + "。" : "") + '未采集收件 seq，不补造编号或双戳状态。</p><button type="button" data-inspector-message="message:' + (selected2.position - 1) + '">查看引用回执 · 原始位置 ' + selected2.position + "</button></section>";
+      else if (["delivery", "forwarded", "quote"].includes(selected2.kind)) detail += extractedMessageDetails(selected2);
       else {
-        const structured = dialogueParts(selected2) || waitResultParts(selected2).length || messageReadParts(selected2).length || selected2.source === "tool-registry" && (selected2.contentBlocks || selected2.provenance?.toolChanges || []).some((block) => ["tool-addition", "tool-removal"].includes(block.type));
+        const structured = dialogueParts(selected2) || waitResultParts(selected2).length || messageReadParts(selected2).length || selected2.source === "tool-registry" && (selected2.contentBlocks || selected2.provenance?.toolChanges || []).some((block) => ["tool-addition", "tool-removal"].includes(block.type)) || business.entries.some((row) => ["quote", "delivery", "forwarded"].includes(row.kind) && row.resultPosition === selected2.position);
         const body = selected2.kind === "definition" ? '<pre class="context-tool-schema">' + esc(selected2.text) + "</pre>" : '<div class="context-detail-text">' + renderText(selected2.text || "", request.modules || [], catalog, selected2) + "</div>";
         detail += '<dl class="context-detail-fields"><div><dt>消息角色</dt><dd>' + esc(selected2.role || "未记录") + "</dd></div><div><dt>来源</dt><dd>" + esc(selected2.source || (selected2.kind === "definition" ? "tools 字段" : "未记录")) + "</dd></div>" + calls + "</dl>" + (structured ? '<details class="context-raw-record"><summary>完整请求原文（保留原始字段与顺序）</summary>' + body + "</details>" : body);
       }
@@ -765,14 +974,13 @@
       if (selected2.region === "stable") detail += '<p class="context-detail-note">稳定资料以 user 角色提供，独立于系统硬规则；首次放入消息前部，内容变化时才更新。</p>';
       if (selected2.region === "dynamic") detail += '<p class="context-detail-note">' + (selected2.source === "qq-context-latest" ? "这是所选请求的完整当前资料；旧状态仅保存在运行日志，不在新版请求中反复携带。未列出的组件本次没有有效补充，不表示底层数据已删除。" : esc(selected2.stateLabel) + "。" + (selected2.effectiveComponents.length ? "本条仍有效的组件：" + selected2.effectiveComponents.map(esc).join("、") + "。" : "") + "这是旧版追加式记录；同组件以最后一次更新为准，旧状态保留在历史原位置。") + "</p>";
       if (selected2.id === "ctx-chat-topic-drive" && selected2.kind === "component") detail += '<p class="context-detail-note">C10 展示请求前提供的会话推进建议。等待超时后的追问或换题建议位于 qq_wait_for_messages 工具返回中，请在“聊天与工具历史”查看对应返回；它们不会重复标为 C10 正文。</p>';
-      if (selected2.kind === "assistant") detail += '<p class="context-detail-note">内部输出不等于 QQ 消息；投递情况见上方证据。</p>';
+      if (selected2.kind === "assistant") detail += '<p class="context-detail-note">内部输出与 QQ 消息分别核验；保存和投递以对应回执为准。</p>';
     }
     const toolsNote = state.view === "tools" ? '<p class="context-tools-note">工具定义来自所选请求独立的 tools 字段，与系统提示、messages 消息列表并列。这里的分区位置不表示模型内部的编码顺序。</p>' : "";
-    const regionLabels = { ...REGION_LABELS, ...business.counts.unknown ? { unknown: "处理状态未知" } : {} };
-    const regions = '<div class="context-layout-map" role="group" aria-label="请求结构筛选"><button type="button" data-inspector-region="" aria-pressed="' + (!state.region && state.view === "messages") + '"><strong>全部内容</strong><span>' + ordered.length + " 项</span></button>" + Object.entries(regionLabels).map(([id, label2]) => '<button type="button" data-inspector-region="' + id + '" aria-pressed="' + (state.region === id && state.view === "messages") + '"><strong>' + label2 + "</strong><span>" + (raw ? messages : business.entries).filter((row) => row.region === id).length + " 项</span></button>").join("") + '<button type="button" data-inspector-region="tools"><strong>工具定义</strong><span>' + tools.length + " 个 · 独立字段</span></button></div>";
+    const regions = '<div class="context-layer-controls" role="group" aria-label="其他查看范围"><button type="button" data-inspector-region="" aria-pressed="' + (!state.region && state.view === "messages") + '">全部内容 · ' + ordered.length + ' 项</button><button type="button" data-inspector-region="tools" aria-pressed="' + (state.view === "tools") + '">工具定义 · ' + tools.length + " 个（独立 tools 字段）</button>" + (business.counts.unknown ? '<button type="button" data-inspector-region="unknown" aria-pressed="' + (state.region === "unknown" && state.view === "messages") + '">处理状态待核实 · ' + business.counts.unknown + " 条</button>" : "") + '</div><div class="context-layout-map" role="group" aria-label="五层上下文结构">' + Object.entries(REGION_LABELS).map(([id, label2]) => '<button type="button" data-inspector-region="' + id + '" aria-pressed="' + (state.region === id && state.view === "messages") + '"><strong>' + label2 + '</strong><span class="context-layer-summary">' + esc(CONTEXT_LAYER_SUMMARIES[id]) + '</span><span class="context-layer-count">' + (raw ? messages : business.entries).filter((row) => row.region === id).length + " 项</span></button>").join("") + "</div>";
     const layout = '<div class="context-layout-switch" role="group" aria-label="查看方式"><button type="button" data-inspector-layout="business" aria-pressed="' + !raw + '">按处理状态</button><button type="button" data-inspector-layout="raw" aria-pressed="' + raw + '">原始请求顺序</button><span>' + (raw ? "保留实际装填顺序，QQ seq 可能因分批补入而回跳。" : "历史窗口 " + business.counts.completed + " 条 · 未处理窗口 " + business.counts.pending + " 条" + (business.counts.unknown ? " · 待核实 " + business.counts.unknown + " 条" : "") + "。工具记录保留配对。") + "</span></div>";
     const refresh3 = request.layoutVersion >= 2 ? '<p class="context-refresh-note">' + esc(request.contextRefresh?.status === "fresh" ? "支持逐请求更新的组件已刷新" : request.contextRefresh?.status === "stale" ? "资料刷新失败" : "未采集刷新结果") + " · " + (request.layoutVersion >= 3 ? "当前资料集中在末尾；原始记录与工具配对保留。" : "旧版追加式记录。") + "</p>" : '<p class="context-refresh-note">旧版采集；按原始证据展示。</p>';
-    return contextLayerGuide() + layout + regions + refresh3 + navHtml + shortcuts + mapping + toolsNote + controls + '<div class="context-inspector-split' + (isTimeline ? " has-timeline" : "") + '">' + list + '<section class="context-detail" aria-label="选中项详情" data-inspector-detail="' + esc(selected2?.key || "") + '">' + detail + "</section></div>";
+    return contextLayerGuide() + layout + regions + refresh3 + navHtml + shortcuts + mapping + toolsNote + controls + windowNote + legend + '<div class="context-inspector-split' + (isTimeline ? " has-timeline" : "") + '">' + list + '<section class="context-detail context-family-' + timelineFamily(selected2 || {}) + '" aria-label="选中项详情" data-inspector-detail="' + esc(selected2?.key || "") + '">' + detail + "</section></div>";
   }
 
   // console/layers/O/context-request-stages.js
@@ -800,6 +1008,18 @@
   function requestStageSummary(row) {
     if (!row) return "尚未采集到模型调用记录。";
     return (row.processingId ? "本次持续处理" : "旧采集批次") + "：" + ordinal(row) + " · 携带 " + (row.messages?.length || 0) + " 条消息记录（含历史） · " + (row.toolCount ?? row.tools?.length ?? 0) + " 个可用工具";
+  }
+
+  // console/layers/O/context-navigation.js
+  function resolveInspectorTarget(request, target, preferred = "") {
+    const messages = requestEntries(request), view = processingEntries(request, messages);
+    if (preferred && view.entries.some((row) => row.key === preferred)) return preferred;
+    if (view.entries.some((row) => row.key === target)) return target;
+    const native = messages.find((row) => row.key === target);
+    if (!native) return null;
+    const qq = view.records.filter((row) => row.sourcePositions.includes(native.position));
+    if (qq.length) return qq[0].key;
+    return view.entries.find((row) => row.originalKey === target)?.key || null;
   }
 
   // console/shared/page-loaders.js
@@ -914,11 +1134,9 @@
   function card(m, editable) {
     const delivery = !editable ? m.notCaptured && typeof m.inRequest !== "boolean" ? "未采集，不能判定实发" : m.included === false ? "未注入：" + reasonText(m.reason) : m.inRequest === true ? "已在实际请求正文中确认" : m.inRequest === false ? "实际请求未完整包含此模块" : "旧记录没有逐模块实发证据" : m.truncated ? "内容超过组件上限，已截断" : "";
     const locked = m.protected || !editable, title = (editable ? data.knowledge?.[m.id]?.name : null) || m.name || m.id, tag = m.placement === "fixed" ? "系统设定与角色要求" : m.placement === "stable" ? "稳定会话资料（user 前缀）" : m.id === "wake-action" ? "本次要处理什么" : m.id === "message-snapshot" ? "收件处理进度与聊天原文" : m.id === "personal-core" ? "按需注入（目录导读与资料读取）" : "当前资料（只保留最新版本）", placeholder = !m.text?.trim();
-    const request = data.requestStages?.find((s) => s.kind === selectedRequestId)?.request || data.request;
-    const annotated = !editable && (String(m.id).startsWith("actual-") && m.id !== "actual-tools" || m.requestIndex !== void 0);
-    const content = annotated ? '<div class="context-framed-content">' + framedText(m.text || "", request?.modules || [], data.catalog || []) + "</div>" : "<pre>" + esc(m.text || "（这部分没有文字内容）") + "</pre>";
+    const content = "<pre>" + esc(m.text || "（这部分没有文字内容）") + "</pre>";
     const tone = Number.isInteger(m.index) ? " context-tone-" + m.index % 5 : "";
-    return '<article class="context-module' + tone + (placeholder ? " is-placeholder" : m.included === false ? " is-excluded" : "") + '" data-context-id="' + esc(m.id) + '"><div class="context-module-head">' + (editable ? '<button type="button" class="context-drag" draggable="true" data-context-move="drag" aria-label="拖动 ' + esc(title) + '">⠿</button>' : "") + "<h3>" + (Number.isInteger(m.index) ? '<span class="context-number">C' + String(m.index + 1).padStart(2, "0") + "</span> " : m.requestIndex ? '<span class="context-number">#' + esc(m.requestIndex) + "</span> " : "") + esc(title) + "</h3>" + (editable ? '<label title="' + (locked ? "身份、权限和任务等必要内容不能在这里关闭" : "勾选表示允许把这部分内容发给 AI；保存后适用于所有会话") + '"><input type="checkbox" data-context-toggle="' + esc(m.id) + '" ' + (!draft.disabled.includes(m.id) || locked ? "checked " : "") + (locked ? "disabled " : "") + ">" + (locked ? "必要内容，不能关闭" : "允许发给 AI") + '</label><button type="button" data-context-move="up" aria-label="上移 ' + esc(title) + '">↑</button><button type="button" data-context-move="down" aria-label="下移 ' + esc(title) + '">↓</button>' : "") + '</div><div class="context-source"><span class="context-pill">' + esc(sourceText(m.source) || m.layer || "系统") + "</span>" + (editable ? '<span class="context-pill">' + esc(tag) + "</span>" : "") + "<span>" + esc(m.chars ?? m.text?.length ?? 0) + " 字符</span>" + (delivery ? '<span class="context-delivery">' + esc(delivery) + "</span>" : "") + (!placeholder && m.reason ? "<span>" + esc(reasonText(m.reason)) + "</span>" : "") + "</div>" + (m.toolCalls?.length || m.toolResults?.length ? '<p class="context-knowledge-note">' + (m.toolCalls || []).map((c) => "具体调用：" + esc(c.name) + " · 调用ID " + esc(c.id)).join("；") + (m.toolResults || []).map((c) => "返回对应调用ID：" + esc(c.toolCallId)).join("；") + "</p>" : "") + (m.references ? '<details class="context-references"><summary>查看组件来源清单' + (m.attributionVerified === false ? " · 缺少同轮标记" : "") + "</summary><ul>" + m.references.map((ref) => "<li>" + esc(ref) + "</li>").join("") + "</ul></details>" : "") + (m.id === "personal-core" ? '<p class="context-knowledge-note">按需注入：本会话适用且有新的对话输入时附带资料包目录导读，正文由工具按需读取，不会整库注入；本轮没有导读不代表资料库为空。' + (editable ? "此处开关只控制导读文字，不控制 core_status、core_topics、core_read 的工具权限。" : "资料正文由读取工具按需返回。") + "</p>" : "") + (editable ? componentGuide({ ...data.catalog?.find((slot) => slot.id === m.id), ...m }) : "") + knowledgePanel(m, data.knowledge?.[m.id], { actual: !editable, allowed: editable ? !(draft?.enabled !== false && draft.disabled.includes(m.id)) : m.included !== false }) + (m.id === "message-snapshot" && m.parts?.length ? '<p class="context-knowledge-note">两部分共用开关；新增来信按消息序号去重。</p>' + m.parts.map((part) => "<details><summary>" + esc(partLabel(part)) + "</summary>" + (receiptIndexHtml(part.text) || "<pre>" + esc(part.text || "本轮无新增正文") + "</pre>") + "</details>").join("") : placeholder ? '<p class="context-placeholder">本轮暂无内容，位置保留。</p>' : '<details class="context-content"' + (annotated && m.requestIndex === void 0 ? " open" : "") + "><summary>" + (editable ? "查看组件原文" : annotated ? "查看按组件标注的原文" : "查看原文") + "</summary>" + content + "</details>") + "</article>";
+    return '<article class="context-module' + tone + (placeholder ? " is-placeholder" : m.included === false ? " is-excluded" : "") + '" data-context-id="' + esc(m.id) + '"><div class="context-module-head">' + (editable ? '<button type="button" class="context-drag" draggable="true" data-context-move="drag" aria-label="拖动 ' + esc(title) + '">⠿</button>' : "") + "<h3>" + (Number.isInteger(m.index) ? '<span class="context-number">C' + String(m.index + 1).padStart(2, "0") + "</span> " : "") + esc(title) + "</h3>" + (editable ? '<label title="' + (locked ? "身份、权限和任务等必要内容不能在这里关闭" : "勾选表示允许把这部分内容发给 AI；保存后适用于所有会话") + '"><input type="checkbox" data-context-toggle="' + esc(m.id) + '" ' + (!draft.disabled.includes(m.id) || locked ? "checked " : "") + (locked ? "disabled " : "") + ">" + (locked ? "必要内容，不能关闭" : "允许发给 AI") + '</label><button type="button" data-context-move="up" aria-label="上移 ' + esc(title) + '">↑</button><button type="button" data-context-move="down" aria-label="下移 ' + esc(title) + '">↓</button>' : "") + '</div><div class="context-source"><span class="context-pill">' + esc(sourceText(m.source) || m.layer || "系统") + "</span>" + (editable ? '<span class="context-pill">' + esc(tag) + "</span>" : "") + "<span>" + esc(m.chars ?? m.text?.length ?? 0) + " 字符</span>" + (delivery ? '<span class="context-delivery">' + esc(delivery) + "</span>" : "") + (!placeholder && m.reason ? "<span>" + esc(reasonText(m.reason)) + "</span>" : "") + "</div>" + (m.toolCalls?.length || m.toolResults?.length ? '<p class="context-knowledge-note">' + (m.toolCalls || []).map((c) => "具体调用：" + esc(c.name) + " · 调用ID " + esc(c.id)).join("；") + (m.toolResults || []).map((c) => "返回对应调用ID：" + esc(c.toolCallId)).join("；") + "</p>" : "") + (m.id === "personal-core" ? '<p class="context-knowledge-note">按需注入：本会话适用且有新的对话输入时附带资料包目录导读，正文由工具按需读取，不会整库注入；本轮没有导读不代表资料库为空。' + (editable ? "此处开关只控制导读文字，不控制 core_status、core_topics、core_read 的工具权限。" : "资料正文由读取工具按需返回。") + "</p>" : "") + (editable ? componentGuide({ ...data.catalog?.find((slot) => slot.id === m.id), ...m }) : "") + knowledgePanel(m, data.knowledge?.[m.id], { actual: !editable, allowed: editable ? !(draft?.enabled !== false && draft.disabled.includes(m.id)) : m.included !== false }) + (m.id === "message-snapshot" && m.parts?.length ? '<p class="context-knowledge-note">两部分共用开关；新增来信按消息序号去重。</p>' + m.parts.map((part) => "<details><summary>" + esc(partLabel(part)) + "</summary>" + (receiptIndexHtml(part.text) || "<pre>" + esc(part.text || "本轮无新增正文") + "</pre>") + "</details>").join("") : placeholder ? '<p class="context-placeholder">本轮暂无内容，位置保留。</p>' : '<details class="context-content"><summary>' + (editable ? "查看组件原文" : "查看原文") + "</summary>" + content + "</details>") + "</article>";
   }
   async function refresh(keepDraft = false) {
     const ticket = ++revision;
@@ -982,8 +1200,13 @@
     void project();
   }
   function initialize3() {
+    const resetInspection = () => Object.assign(inspectorState, { view: "messages", layout: "business", selected: "", region: "", query: "", kind: "" });
     $("contextRefresh").addEventListener("click", () => refresh(true));
-    $("contextSession").addEventListener("change", () => refresh(true));
+    $("contextSession").addEventListener("change", () => {
+      resetInspection();
+      selectedRequestId = "";
+      void refresh(true);
+    });
     $("contextDraftTab").addEventListener("click", () => {
       actual = false;
       render();
@@ -1031,17 +1254,18 @@
       const button = event.target.closest("[data-inspector-component]");
       if (button) locateComponent(button.dataset.inspectorComponent);
     });
+    const locateRecord = (target, preferred = "") => {
+      const key2 = resolveInspectorTarget(inspectedRequest, target, preferred);
+      if (!key2) {
+        notice("这个来源没有可定位的聊天卡片，请展开当前记录的原始字段核对。");
+        return;
+      }
+      Object.assign(inspectorState, { view: "messages", layout: "business", region: "", query: "", kind: "", selected: key2 });
+      renderInspector();
+    };
     $("contextModules").addEventListener("click", (event) => {
       const button = event.target.closest("[data-inspector-message]");
-      if (button) {
-        inspectorState.view = "messages";
-        inspectorState.layout = "raw";
-        inspectorState.region = "";
-        inspectorState.query = "";
-        inspectorState.kind = "";
-        inspectorState.selected = button.dataset.inspectorMessage;
-        renderInspector();
-      }
+      if (button) locateRecord(button.dataset.inspectorMessage, button.dataset.inspectorRecord);
     });
     $("contextModules").addEventListener("click", (event) => {
       const button = event.target.closest("[data-inspector-layout]");
@@ -1052,10 +1276,7 @@
     });
     $("contextModules").addEventListener("click", (event) => {
       const button = event.target.closest("[data-inspector-related]");
-      if (button) {
-        Object.assign(inspectorState, { view: "messages", layout: "business", region: "", query: "", kind: "", selected: button.dataset.inspectorRelated });
-        renderInspector();
-      }
+      if (button) locateRecord(button.dataset.inspectorRelated);
     });
     $("contextModules").addEventListener("click", (event) => {
       const region = event.target.closest("[data-inspector-region]"), view = event.target.closest("[data-inspector-view]"), row = event.target.closest("[data-inspector-select]");
@@ -1117,7 +1338,10 @@
         render();
       }
     });
-    registerPageLoader("context-visual", () => refresh(true));
+    registerPageLoader("context-visual", () => {
+      resetInspection();
+      return refresh(true);
+    });
   }
 
   // console/layers/L/proactive-preview.js
@@ -1443,13 +1667,13 @@
   // console/layers/O/preset-catalog.js
   var DEFINITIONS = {
     standard: { label: "通用编程助手", group: "常用", description: "DSH 的通用编程与本地工具配置。例：处理代码和文件任务。" },
-    "qq-chat-dev": { label: "小鲸鱼管理员助手", group: "常用", description: "保留小鲸鱼角色并开放本地开发工具，仅供管理员私聊。例：让小鲸鱼检查本机代码。" },
+    "qq-chat-dev": { label: "AI助手管理员助手", group: "常用", description: "保留AI助手角色并开放本地开发工具，仅供管理员私聊。例：让AI助手检查本机代码。" },
     ptc: { label: "程序化工具调用", group: "DSH 高级", description: "通过代码编排工具调用，适合熟悉 DSH 工具执行机制的使用者。" },
     minimal: { label: "精简编程助手", group: "DSH 高级", description: "精简的人格与工具配置。例：需要更少默认上下文时选用。" },
     cordis: { label: "DSH 插件与配置开发", group: "DSH 高级", description: "提供 Cordis 组合、插件开发相关工具与技能。例：开发 DSH 插件。" },
-    "qq-chat": { label: "小鲸鱼一代聊天", group: "按模式自动使用", description: "一代仿真聊天预设，由桥接按运行模式选择。" },
-    "qq-chat-v2": { label: "小鲸鱼二代仿真", group: "按模式自动使用", description: "二代仿真专用，自主读消息、用工具发言和等待；由桥接按模式选择。" },
-    "qq-task-worker": { label: "独立任务执行", group: "后台专用", description: "小鲸鱼处理委派任务时创建的独立工作会话，不是日常聊天入口。" },
+    "qq-chat": { label: "AI助手一代聊天", group: "按模式自动使用", description: "一代仿真聊天预设，由桥接按运行模式选择。" },
+    "qq-chat-v2": { label: "AI助手二代仿真", group: "按模式自动使用", description: "二代仿真专用，自主读消息、用工具发言和等待；由桥接按模式选择。" },
+    "qq-task-worker": { label: "独立任务执行", group: "后台专用", description: "AI助手处理委派任务时创建的独立工作会话，不是日常聊天入口。" },
     "qq-learning": { label: "知识学习与核实", group: "后台专用", description: "后台学习、核实公开知识；不接入聊天人格、QQ 发送或本机执行。" },
     "campus-summary": { label: "网页更新整理", group: "后台专用", description: "整理监控网页差异；无工具，不发送消息，不读取聊天历史。" }
   };
@@ -1798,7 +2022,7 @@
     const dryRun = document.getElementById("voiceSendDryRun").checked;
     const pick = document.querySelector('input[name="voicePick"]:checked');
     if (!target) {
-      msg.textContent = "❌ 请填发送目标（如 group:20010）";
+      msg.textContent = "❌ 请填发送目标（如 group:21005）";
       msg.className = "meta err";
       return;
     }
@@ -2677,7 +2901,7 @@
       persona: ["人格与角色", "给你的伙伴，一点独特个性。", "选择已有角色，或用自己的语言写下新的性格与表达方式。"],
       "v2-t": ["工具开关", "工具开关", "勾选 AI 可以调用的工具。"],
       "games": ["Games", "Games · 独立互动 MCP", "查看 Games T 层工具、玩法与互动边界。"],
-      "codex-peer": ["Codex Peer", "Codex Peer · 小鲸鱼与 Codex 专用通道", "管理端专用 Codex 通信工具与组件设置。"],
+      "codex-peer": ["Codex Peer", "Codex Peer · AI助手与 Codex 专用通道", "管理端专用 Codex 通信工具与组件设置。"],
       "injection-lab": ["提示词注入实验室", "提示词注入实验室 · 免疫 + 嘴炮", "管理注入免疫、对线工具与组件设置。"],
       "v2-e": ["语音", "语音", "管理语音库与发送设置。"],
       "social-v1": ["一代仿真", "为自然对话，设定合适的节奏。", "调整参与概率、活跃周期和分条发送。"],
@@ -2997,12 +3221,16 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const globalInput = document.getElementById("usageGlobalLimit");
       if (document.activeElement !== globalInput) globalInput.value = Number(global.limit) || 0;
       const windows = result.recoveryWindows || {};
+      document.getElementById("usageBudgetWindowSummary").textContent = `当前冷漠消息窗口：私聊${Number(windows.privateMessages) || 5}条；群聊普通${Number(windows.groupMessages) || 5}条 + @／引用bot消息${Number(windows.groupAtMessages) || 5}条。触发条数与消息窗口分别设置`;
       for (const [id, field] of [["usageRecoveryPrivate", "privateMessages"], ["usageRecoveryGroup", "groupMessages"], ["usageRecoveryGroupAt", "groupAtMessages"]]) {
         const input = document.getElementById(id);
         if (input && document.activeElement !== input) input.value = Number(windows[field]) || 5;
       }
-      document.getElementById("usageGlobalState").textContent = global.reached ? ownerEnabled ? "已触发：全部会话进入机械回复" : "已触发：受限会话进入机械回复，owner 豁免" : global.remaining == null ? "未设统一上限" : `统一剩余 ${money(global.remaining)}`;
-      box.innerHTML = rows.length ? '<table><tr><th>会话</th><th class="num">本周期轮数</th><th class="num">已用</th><th class="num">剩余</th><th>状态</th><th>冷漠阈值（元）</th><th>上限（元）</th><th>冷漠间隔（分钟）</th><th></th></tr>' + rows.map((row) => `<tr data-budget-key="${esc(row.key)}"><td>${esc(row.key)}</td><td class="num">${usageNum(row.turns)}</td><td class="num">${money(row.cost)}${row.partial ? ' <span title="部分历史用量无法按时段归属">*</span>' : ""}</td><td class="num">${row.remainingYuan == null ? "不限" : money(row.remainingYuan)}</td><td>${row.exempt ? "管理员豁免" : row.stage === "silent" ? "机械回复" : row.stage === "weak" ? "低频短回复" : "正常"}${Number(row.recoveryPending) > 0 ? `（待补 ${usageNum(row.recoveryPending)} 条）` : ""}</td><td><input type="number" min="0" step="0.01" value="${Number(row.coldLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="0" step="0.01" value="${Number(row.hardLimitYuan) || 0}" style="width:90px"></td><td><input type="number" min="1" max="1440" step="1" value="${Number(row.weakMinIntervalMin) || 30}" style="width:75px"></td><td><button class="small primary" data-budget-save data-save-action>保存此会话额度</button></td></tr>`).join("") + "</table>" : '<div class="empty-state">暂无可配置的会话；有 QQ 会话后会自动列出。</div>';
+      document.getElementById("usageGlobalState").textContent = global.reached ? "已触发预算静默：私聊可机械回复，群聊仅 @／引用bot 时回复" + (ownerEnabled ? "" : "；owner 私聊豁免") : global.remaining == null ? "未设统一上限" : `统一剩余 ${money(global.remaining)}`;
+      box.innerHTML = rows.length ? '<table><thead><tr><th>会话与状态</th><th class="num">本周期花费 / 剩余</th><th>冷漠阈值（元）</th><th>满额阈值（元）</th><th>冷漠回复规则</th><th>保存</th></tr></thead><tbody>' + rows.map((row) => {
+        const status = row.exempt ? "管理员豁免" : row.stage === "silent" ? "满额·固定回复" : row.stage === "weak" ? "冷漠·固定批次" : "正常";
+        return `<tr data-budget-key="${esc(row.key)}"><td><div>${esc(row.key)}</div><small class="meta">${usageNum(row.turns)}轮 · ${status}${Number(row.recoveryPending) > 0 ? " · 待补" + usageNum(row.recoveryPending) + "条" : ""}</small></td><td class="num"><div>已用 ${money(row.cost)}${row.partial ? ' <span title="部分历史用量无法按时段归属">*</span>' : ""}</div><small class="meta">剩余 ${row.remainingYuan == null ? "不限" : money(row.remainingYuan)}</small></td><td><input type="number" min="0" step="0.01" value="${Number(row.coldLimitYuan) || 0}" aria-label="${esc(row.key)} 冷漠阈值"></td><td><input type="number" min="0" step="0.01" value="${Number(row.hardLimitYuan) || 0}" aria-label="${esc(row.key)} 满额阈值"></td><td>${row.exempt ? '<span class="meta">不适用（管理员豁免）</span>' : row.key.startsWith("private:") ? '<button type="button" class="budget-rule-link" data-budget-private-rule title="继承上方已保存的全局私聊触发条数，点击修改">' + privateWakeRuleLabel() + "</button>" : '<label class="budget-interval">每 <input type="number" min="1" max="1440" step="1" value="' + (Number(row.weakMinIntervalMin) || 30) + '" aria-label="' + esc(row.key) + ' 冷漠检查间隔"> 分钟检查</label>'}</td><td><button class="small primary" data-budget-save data-save-action>保存此会话额度</button></td></tr>`;
+      }).join("") + "</tbody></table>" : '<div class="empty-state">暂无可配置的会话；有 QQ 会话后会自动列出。</div>';
       if (rows.some((row) => row.partial)) {
         msg.textContent = "* 部分旧用量只有累计值，无法准确归入本周期；额度判断基于有时间戳的调用。";
         msg.className = "meta";
@@ -3012,6 +3240,30 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       }
     } catch (error) {
       box.textContent = "阈值读取失败：" + (error?.message || "未知错误");
+    }
+  }
+  var privateWakeRuleValue = null;
+  function privateWakeRuleLabel() {
+    return privateWakeRuleValue === null ? "读取全局规则中…" : "全局：每" + privateWakeRuleValue + "条来信 → 回复1条";
+  }
+  function syncPrivateWakeRuleLabels() {
+    document.querySelectorAll("[data-budget-private-rule]").forEach((node) => {
+      node.textContent = privateWakeRuleLabel();
+    });
+  }
+  var usagePrivateWakeDirty = false;
+  async function refreshPrivateWakeRule() {
+    if (usagePrivateWakeDirty) return;
+    try {
+      const result = await api("/api/plugins/detail?id=life-token-budget");
+      const value2 = result.plugin?.config?.privateWakeEveryMessages;
+      if (Number.isInteger(value2) && value2 >= 1 && value2 <= 100) {
+        privateWakeRuleValue = value2;
+        syncPrivateWakeRuleLabels();
+        if (!usagePrivateWakeDirty) document.getElementById("usagePrivateWakeEvery").value = value2;
+      }
+    } catch (error) {
+      document.getElementById("usagePrivateWakeMsg").textContent = "读取失败：" + error.message;
     }
   }
   var usageMechanicalDirty;
@@ -3025,6 +3277,10 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       if (usageMechanicalDirty) return;
       mechanicalPrivateBox.value = (result.privateReplies || []).join("\n");
       mechanicalGroupBox.value = (result.groupReplies || []).join("\n");
+      const limits = result.mechanicalLimits || {};
+      document.getElementById("usageMechanicalGapSec").value = (limits.minIntervalMs ?? 1e4) / 1e3;
+      document.getElementById("usageMechanicalMinute").value = limits.maxPerMinute ?? 4;
+      document.getElementById("usageMechanicalHour").value = limits.maxPerHour ?? 30;
       if (!msg.classList.contains("ok")) msg.textContent = "";
     } catch (error) {
       msg.textContent = "词条读取失败：" + error.message;
@@ -3100,6 +3356,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       renderUsageConversations(r);
       void refreshUsageBudgets();
       void refreshUsageMechanicalReplies();
+      void refreshPrivateWakeRule();
       renderUsagePrices(r.priceTable ? { ...r.priceTable, nowTier: r.nowTier } : null);
       syncUsageKeySelect((r.conversations || []).map((c) => String(c.key ?? "")));
       msg.textContent = `✅ 已同步于 ${(/* @__PURE__ */ new Date()).toLocaleTimeString("zh-CN", { hour12: false })}`;
@@ -3176,6 +3433,13 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       }
     });
     document.getElementById("usageBudgets").addEventListener("click", async (event) => {
+      if (event.target.closest("[data-budget-private-rule]")) {
+        const input = document.getElementById("usagePrivateWakeEvery");
+        input.scrollIntoView({ block: "center", behavior: "smooth" });
+        input.focus({ preventScroll: true });
+        input.select();
+        return;
+      }
       const button = event.target.closest("[data-budget-save]");
       if (!button) return;
       const row = button.closest("[data-budget-key]");
@@ -3183,7 +3447,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const msg = document.getElementById("usageBudgetMsg");
       button.disabled = true;
       try {
-        await api("/api/tokens/budgets", "POST", { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], weakMinIntervalMin: values[2] });
+        await api("/api/tokens/budgets", "POST", { key: row.dataset.budgetKey, coldLimitYuan: values[0], hardLimitYuan: values[1], ...row.dataset.budgetKey.startsWith("group:") ? { weakMinIntervalMin: values[2] } : {} });
         const unchanged = [...row.querySelectorAll("input")].every((input, index) => Number(input.value) === values[index]);
         if (unchanged) delete row.dataset.budgetDirty;
         msg.textContent = unchanged ? "已保存" : "已保存提交值；之后的修改尚未保存";
@@ -3235,10 +3499,38 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         button.disabled = false;
       }
     });
+    document.getElementById("usagePrivateWakeEvery").addEventListener("input", () => {
+      usagePrivateWakeDirty = true;
+    });
+    document.getElementById("usagePrivateWakeSave").addEventListener("click", async (event) => {
+      const button = event.currentTarget, input = document.getElementById("usagePrivateWakeEvery"), msg = document.getElementById("usagePrivateWakeMsg"), value2 = Number(input.value);
+      if (!Number.isInteger(value2) || value2 < 1 || value2 > 100) {
+        msg.textContent = "请输入1–100的整数";
+        msg.className = "meta err";
+        return;
+      }
+      button.disabled = true;
+      try {
+        const result = await api("/api/plugins/config", "POST", { id: "life-token-budget", config: { privateWakeEveryMessages: value2 } });
+        if (result.ok === false) throw Error(result.error || result.errors?.join("；") || "配置被拒绝");
+        privateWakeRuleValue = value2;
+        syncPrivateWakeRuleLabels();
+        const unchanged = Number(input.value) === value2;
+        usagePrivateWakeDirty = !unchanged;
+        msg.textContent = unchanged ? "已保存，立即生效" : "提交值已保存；之后的修改尚未保存";
+        msg.className = "meta ok";
+        await refreshUsageBudgets();
+      } catch (error) {
+        msg.textContent = "保存失败：" + error.message;
+        msg.className = "meta err";
+      } finally {
+        button.disabled = false;
+      }
+    });
     usageMechanicalDirty = false;
     mechanicalPrivateBox = document.getElementById("usageMechanicalPrivate");
     mechanicalGroupBox = document.getElementById("usageMechanicalGroup");
-    for (const box of [mechanicalPrivateBox, mechanicalGroupBox]) box.addEventListener("input", () => {
+    for (const box of [mechanicalPrivateBox, mechanicalGroupBox, ...["usageMechanicalGapSec", "usageMechanicalMinute", "usageMechanicalHour"].map((id) => document.getElementById(id))]) box.addEventListener("input", () => {
       usageMechanicalDirty = true;
     });
     document.getElementById("usageMechanicalSave").addEventListener("click", async (event) => {
@@ -3250,7 +3542,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         const privateReplies = lines(mechanicalPrivateBox);
         const groupReplies = lines(mechanicalGroupBox);
         if (!privateReplies.length || !groupReplies.length) throw Error("私聊和群聊各需至少一条词条");
-        await api("/api/tokens/budgets/replies", "POST", { privateReplies, groupReplies });
+        await api("/api/tokens/budgets/replies", "POST", { privateReplies, groupReplies, mechanicalLimits: { minIntervalMs: Number(document.getElementById("usageMechanicalGapSec").value) * 1e3, maxPerMinute: Number(document.getElementById("usageMechanicalMinute").value), maxPerHour: Number(document.getElementById("usageMechanicalHour").value) } });
         usageMechanicalDirty = false;
         button.blur();
         msg.textContent = `已保存：私聊 ${privateReplies.length} 条，群聊 ${groupReplies.length} 条`;
@@ -3930,10 +4222,10 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       refresh2();
     });
     document.getElementById("wlSave").addEventListener("click", async () => {
-      const parse2 = (s) => s.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean).map(Number).filter(Number.isFinite);
+      const parse3 = (s) => s.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean).map(Number).filter(Number.isFinite);
       const r = await api("/api/whitelist", "POST", {
-        allow: { private: parse2(document.getElementById("wlPrivate").value), groups: parse2(document.getElementById("wlGroups").value) },
-        deny: { private: parse2(document.getElementById("dnPrivate").value), groups: parse2(document.getElementById("dnGroups").value) },
+        allow: { private: parse3(document.getElementById("wlPrivate").value), groups: parse3(document.getElementById("wlGroups").value) },
+        deny: { private: parse3(document.getElementById("dnPrivate").value), groups: parse3(document.getElementById("dnGroups").value) },
         ownerQQ: document.getElementById("ownerQQ").value.trim()
       });
       if (r.ok) {
@@ -4722,9 +5014,9 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     document.getElementById("v2NewsHour").value = nw.hour ?? 9;
     document.getElementById("v2NewsMinute").value = nw.minute ?? 0;
     document.getElementById("v2NewsMax").value = nw.maxItems ?? 2;
-    const defaultNewsTopics = ["鲸鱼", "海洋", "少年感", "海洋 纪录片", "大海 治愈", "少年 成长"];
+    const defaultNewsTopics = ["科学", "技术", "科普", "自然 纪录片", "艺术", "学习 方法"];
     document.getElementById("v2NewsKeywords").value = (Array.isArray(nw.keywords) && nw.keywords.length ? nw.keywords : defaultNewsTopics).join("\n");
-    const defaultNewsUploaders = [{ topic: "鲸鱼", uploader: "正太肥鱼与龙少的日常", weight: 2 }];
+    const defaultNewsUploaders = [];
     const topicUploaders = Array.isArray(nw.topicUploaders) ? nw.topicUploaders : defaultNewsUploaders;
     document.getElementById("v2NewsUploaders").value = topicUploaders.map((x) => `${x.topic} | ${x.uploader} | ${x.weight ?? 1}`).join("\n");
     document.getElementById("v2NewsSessions").value = (Array.isArray(nw.sessionWhitelist) ? nw.sessionWhitelist : []).join("\n");
@@ -5081,8 +5373,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     const text = value2 == null ? "" : String(value2);
     if (!text) return '<span class="meta">-</span>';
     const summary = tool ? summarizeToolArgs(tool, text) : text;
-    const short3 = summary.length > 100 ? summary.slice(0, 100) + "…" : summary;
-    return `<span class="tool-log-cell" data-full="${esc(text)}" data-short="${esc(short3)}" title="点击查看完整 JSON">${esc(short3)}</span>`;
+    const short4 = summary.length > 100 ? summary.slice(0, 100) + "…" : summary;
+    return `<span class="tool-log-cell" data-full="${esc(text)}" data-short="${esc(short4)}" title="点击查看完整 JSON">${esc(short4)}</span>`;
   }
   function renderV2ToolLog(entries) {
     const box = document.getElementById("v2ToolLogOutput");
@@ -5116,10 +5408,10 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const cell = ev.target.closest(".tool-log-cell");
       if (!cell) return;
       const full = cell.dataset.full;
-      const short3 = cell.dataset.short;
+      const short4 = cell.dataset.short;
       if (cell.classList.contains("expanded")) {
         cell.classList.remove("expanded");
-        cell.textContent = short3;
+        cell.textContent = short4;
       } else {
         cell.classList.add("expanded");
         cell.textContent = full;
@@ -5942,6 +6234,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
 
   // console/layers/O/ownership.js
   var ownership_default7 = {
+    "tool-deepseek-balance": { "page": "operations", "selector": "#balanceToolControl" },
     "obs-session-recovery": { "page": "operations", "selector": '[data-component-slot="obs-session-recovery"]' },
     "obs-context-assembly": { "presentation": "internal", "page": "context-visual" },
     "life-token-budget": {
@@ -5971,10 +6264,6 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
 
   // console/layers/T/ownership.js
   var ownership_default9 = {
-    "tool-deepseek-balance": {
-      "page": "v2-t",
-      "selector": "#balanceToolControl"
-    },
     "tool-bilibili": {
       "page": "v2-t",
       "selector": '[data-component-slot="tool-bilibili"]'
@@ -6153,10 +6442,10 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         const rows = Array.isArray(data2.entries) ? data2.entries : data2.key ? [{ key: data2.key, used: data2.used, remaining: data2.remaining }] : [];
         for (const row of rows) if (validKey(row.key)) keys.add(row.key);
         fillOptions();
-        const categories = { professional: "专业求助", casual: "日常交流", uncertain: "待澄清" };
+        const categories2 = { professional: "专业求助", casual: "日常交流", uncertain: "待澄清" };
         const records = Array.isArray(data2.recentClassifications) ? data2.recentClassifications : [];
         result.innerHTML = '<div class="quota-summary"><span>日期 <b>' + esc(data2.day || "—") + "</b></span><span>每日上限 <b>" + esc(data2.limit ?? "—") + "</b></span><span>计数方式 <b>" + esc(data2.countBy === "user" ? "按发言人" : "按会话") + "</b></span><span>识别方式 <b>" + ((data2.semanticEnabled ?? p.config?.semanticEnabled) !== false ? "AI语义优先" : "关键词规则") + "</b></span>" + ((data2.exemptOwner ?? p.config?.exemptOwner) !== false ? "<span>管理员提问不计数</span>" : "<span>管理员提问也计数</span>") + (data2.enabled === false ? '<span class="quota-off">功能已停用</span>' : "") + "</div>" + (rows.length ? '<div class="quota-rows">' + rows.map((row) => '<div class="quota-row"><code>' + esc(row.key) + "</code><span>已用 <b>" + esc(row.used) + "</b></span><span>剩余 <b>" + esc(row.remaining) + "</b></span></div>").join("") + "</div>" : '<div class="quota-empty">今天还没有专业问答用量。</div>');
-        if (records.length) result.insertAdjacentHTML("beforeend", '<details class="parameter-block"><summary>最近识别记录</summary>' + records.map((item) => '<p class="meta"><code>' + esc(item.bucketKey || item.key) + "</code> · " + esc(categories[item.category] || item.category) + " · " + (item.source === "ai" ? "AI判定" : item.source === "nontext" ? "媒体交回正常会话" : "规则兜底") + "<br>" + esc(item.reason) + "</p>").join("") + "</details>");
+        if (records.length) result.insertAdjacentHTML("beforeend", '<details class="parameter-block"><summary>最近识别记录</summary>' + records.map((item) => '<p class="meta"><code>' + esc(item.bucketKey || item.key) + "</code> · " + esc(categories2[item.category] || item.category) + " · " + (item.source === "ai" ? "AI判定" : item.source === "nontext" ? "媒体交回正常会话" : "规则兜底") + "<br>" + esc(item.reason) + "</p>").join("") + "</details>");
       } catch (error) {
         if (request === sequence2) result.textContent = "读取失败：" + error.message;
       }
@@ -6660,7 +6949,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       "injectPrompt": "关闭后不额外注入组件索引提示，不会删除实际注册的工具。"
     },
     "tool-user-checking": {
-      "noteFileName": "填小鲸鱼想说的话.txt：悄悄话、故障待处理和恢复记录都追加到这一个文件。",
+      "noteFileName": "填AI助手想说的话.txt：悄悄话、故障待处理和恢复记录都追加到这一个文件。",
       "maxNoteChars": "设为500：单条便签最多约500字；故障摘要过长会缩短，不会拆坏emoji。"
     }
   };
@@ -6793,7 +7082,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     { key: "classificationTimeoutSeconds", label: "AI识别最长等待（秒）", help: "包括后台工作队列等待；超时、模型不可用或结果无效时使用兜底关键词规则，不阻塞后续聊天。", example: "设为12：最多等待12秒，迟到结果不会补扣用量。", type: "number", min: 1, max: 30 },
     { key: "dailyLimit", label: "每个计数对象每日可回答次数", help: "达到此次数后，后续命中的专业问题会改为使用下方的自然带过提示。设为 0 表示不允许额度内回答。", type: "number", min: 0, max: 1e3 },
     { key: "resetHour", label: "每日重置时间（小时）", help: "按桥接所在时区重置每日计数。填 0 表示午夜重置；填 4 表示每天凌晨 4 点重置。", type: "number", min: 0, max: 23 },
-    { key: "exemptOwner", label: "主人不受配额限制", help: "开启后，主人发起的专业问题不计入配额，也不会被配额拦截。", type: "boolean" },
+    { key: "exemptOwner", label: "管理员不受配额限制", help: "开启后，管理员发起的专业问题不计入配额，也不会被配额拦截。", type: "boolean" },
     { key: "countBy", label: "配额计数方式", help: "session：同一群或私聊共用额度；user：群内每位发言者各自计算，私聊仍按会话计算。", type: "select", options: ["session", "user"] },
     { key: "deflectText", label: "超额时实际发送的短句", help: "超额后直接发送这句话，停止本条请求的模型调度。最多 120 字；空白使用默认短句。", type: "textarea" },
     { key: "keywords", label: "规则兜底关键词（逗号分隔）", help: "AI识别关闭或失败时，才结合明确提问/任务表达判定；AI正常工作时无需命中这些词。匹配不区分英文大小写。", type: "comma-list" }
@@ -6823,8 +7112,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     { key: "followUpCooldownMinutes", label: "同一话题跟进冷却（分钟）", help: "私聊、群聊共用规则；“还在吗”等催回复也算追问。", type: "number", min: 0, group: "当前会话的话题（私聊、群聊）" },
     { key: "newTopicCooldownMinutes", label: "新话题冷却（分钟）", help: "两次主动换题至少间隔多久，正常聊天也受限。", type: "number", min: 0 },
     { key: "newTopicMaxPerHour", label: "每小时最多新话题数", help: "按实际成功发送的话题波次计数，0 表示不主动起新话题。", type: "number", min: 0, max: 60 },
-    { key: "followupWeight", label: "旧话题追问权重 a", help: "等待超时且不结束本轮时抽取；受冷却限制则继续等待。", type: "number", min: 0, max: 1, step: 0.01, group: "超时后怎么继续" },
-    { key: "newTopicWeight", label: "新话题权重 b", help: "a+b ≤ 1；剩余 1−a−b 用于继续等待。发起、跟进成功均重置主动会话状态。", type: "number", min: 0, max: 1, step: 0.01 }
+    { key: "followupWeight", label: "旧话题追问权重 a", help: "全局内容选择。例：a=0.5、b=0.2，主动开聊约71%延续今天或上一段话题；等待超时且本轮继续时，50%追问。", type: "number", min: 0, max: 1, step: 0.01, group: "主动开聊与等待后的话题选择" },
+    { key: "newTopicWeight", label: "新话题权重 b", help: "例：a=0.5、b=0.2，主动开聊约29%换题，不抽终止；等待继续时20%换题、30%继续等。a+b≤1，冷却和上限仍有效；旧话题收束可改换题，最新问题须先答。", type: "number", min: 0, max: 1, step: 0.01 }
   ] };
 
   // console/layers/E/components/exec-browser-manager.js
@@ -6906,7 +7195,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   // console/layers/O/components/obs-cost-policy.js
   var obs_cost_policy_default = {
     saveLabel: "保存模型调用档位",
-    title: "小鲸鱼统一模型与思考强度",
+    title: "AI助手统一模型与思考强度",
     fields: [
       { key: "autoUpgradeComplexTasks", label: "复杂任务自动使用下方升级档位（关闭后仅明确指定）", type: "boolean" },
       { key: "defaultModel", label: "默认模型", type: "select", options: ["deepseek-flash", "deepseek-v4-pro"] },
@@ -7334,7 +7623,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     "life-schedule-reminder": "单条日程的收件会话和覆盖值单独保存。",
     "life-campus-watch": "本机监控与脚本配置；消息只投递到配置中的目标会话。",
     "exec-image-generation": "本机 API 服务、额度与密钥；密钥单独保存，普通参数按钮不修改密钥。",
-    "obs-cost-policy": "小鲸鱼会话、主动处理及独立任务共用的唯一调用策略。保存后同步已有会话与未完成任务；正在生成的请求不追溯切换，后续请求使用新档位。复杂或明确指定的任务按本面板升级规则执行。DSH 自动上下文压缩摘要保持独立档位。"
+    "obs-cost-policy": "AI助手会话、主动处理及独立任务共用的唯一调用策略。保存后同步已有会话与未完成任务；正在生成的请求不追溯切换，后续请求使用新档位。复杂或明确指定的任务按本面板升级规则执行。DSH 自动上下文压缩摘要保持独立档位。"
   };
   function componentScope(id, label2) {
     const prefix = LOCAL.has(id) ? "本机" : "全局";
@@ -7797,39 +8086,130 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     document.getElementById("toolsCatalogRefresh").onclick = loadToolCatalog;
     registerPageLoader("reference", loadToolCatalog);
     const configReady = loadConfig();
-    const balanceReady = Promise.resolve(pluginsReady || api("/api/plugins")).then((data2) => {
-      const balance = data2.plugins?.find((p) => p.id === "tool-deepseek-balance");
-      if (!balance) return;
-      const row = document.createElement("div");
-      row.id = "balanceToolControl";
-      row.dataset.componentId = balance.id;
-      row.innerHTML = '<label class="v2-tool-item"><input type="checkbox" id="balanceToolEnabled"' + (balance.enabled ? " checked" : "") + '><span><b>DeepSeek 余额查询</b><small class="meta">管理员私聊只读查询；开关即时生效。</small></span></label><span class="meta" role="status"></span>';
-      root.querySelector('[data-tool-group="读取与状态"] .tool-parameter-options').append(row);
-      updateCounts();
-      row.querySelector("input").addEventListener("change", async (event) => {
-        const input = event.target, previous = !input.checked, msg = row.querySelector("[role=status]");
-        input.disabled = true;
-        try {
-          const out = await api("/api/plugins/toggle", "POST", { id: balance.id, enabled: input.checked });
-          if (out.ok !== true) throw Error(out.error || "更新失败");
-          msg.textContent = input.checked ? "已启用" : "已停用";
-        } catch (error) {
-          input.checked = previous;
-          msg.textContent = "更新失败：" + error.message;
-        } finally {
-          input.disabled = false;
-          updateCounts();
+    void pluginsReady;
+    await configReady;
+  }
+
+  // console/layers/O/deepseek-balance.js
+  function mountBalanceControl(container, balance, updateCounts = () => {
+  }) {
+    const row = document.createElement("div");
+    row.id = "balanceToolControl";
+    row.dataset.componentId = balance.id;
+    const numeric = [["abundantBalance", "富足提醒阈值", 0, 1e6, 20, "例：填20，达到20及以上为超级富足。"], ["lowBalance", "偏少提醒阈值", 0, 1e6, 5, "例：填5，余额降到5及以下进入偏少；低于见底阈值再进入下一档。"], ["criticalBalance", "见底提醒阈值", 0, 1e6, 1, "例：填1，余额降到1及以下可再次提醒；0及以下为空了。"], ["dropAlertAmount", "明显消耗参考金额", 0, 1e6, 5, "例：填5，两次核对净减少至少5时记录明显消耗；0关闭。"], ["notificationCooldownMin", "普通变化提醒冷却（分钟）", 1, 1440, 30, "例：普通补充/消耗30分钟冷却；偏少→见底→空了各自可提醒。"], ["checkIntervalMin", "余额检查间隔（分钟）", 1, 1440, 5, "例：5表示约每5分钟核对一次，不调用LLM。"]];
+    row.innerHTML = '<label class="v2-tool-item"><input type="checkbox" id="balanceToolEnabled"' + (balance.enabled ? " checked" : "") + '><span><b>启用账户余额监控</b><small class="meta">检查真实余额，分阶段提供聊天提醒；仅管理员可见账户金额。</small></span></label><span class="meta" role="status"></span><details class="balance-settings"><summary>阶段金额与提醒范围</summary><p class="meta">全局账户规则。自然提醒在已有聊天或主动机会里生成，不额外唤醒LLM；措辞参考当前存量、补充前后差额与相对增幅。</p><div class="balance-config-grid"><label><span>自动检查</span><input type="checkbox" data-balance-setting="monitorEnabled" checked><small>关闭后保留手动查询；停用上方组件开关则全部停止。</small></label><label><span>提醒范围</span><select data-balance-setting="reminderScope"><option value="admin">仅管理员</option><option value="private">仅私聊</option><option value="all" selected>全部</option></select><small>仅管理员私聊／所有已授权私聊／再包含已授权群聊。系统核对异常仍仅报管理员。</small></label><label><span>提醒币种</span><select data-balance-setting="currency"><option value="CNY">人民币 CNY</option><option value="USD">美元 USD</option></select><small>三个金额阈值统一按这个币种判断，不混算币种。</small></label>' + numeric.map(([key2, label2, min, max, value2, example2]) => "<label><span>" + label2 + '</span><input type="number" data-balance-setting="' + key2 + '" min="' + min + '" max="' + max + '" step="' + (["checkIntervalMin", "notificationCooldownMin"].includes(key2) ? "1" : "0.01") + '" value="' + value2 + '"><small>' + example2 + "</small></label>").join("") + '</div><p class="meta" data-balance-example></p><div class="balance-actions"><button class="small primary" type="button" data-balance-save>保存调用额度监控阶段与范围</button><button class="small" type="button" data-balance-query>立即核对账户余额</button><span class="meta" data-balance-message role="status"></span></div><p class="meta" data-balance-snapshot>尚未加载核对记录。</p></details>';
+    container.append(row);
+    updateCounts();
+    let dirty3 = false, loaded = false;
+    const settings = row.querySelector("details"), message2 = row.querySelector("[data-balance-message]"), snapshot = row.querySelector("[data-balance-snapshot]"), enabled = row.querySelector("#balanceToolEnabled"), query = row.querySelector("[data-balance-query]");
+    query.disabled = !balance.enabled;
+    const fields = [...row.querySelectorAll("[data-balance-setting]")], save2 = row.querySelector("[data-balance-save]");
+    fields.forEach((input) => input.disabled = true);
+    save2.disabled = true;
+    function renderSnapshot(state) {
+      const sample = state?.lastSuccess;
+      if (!sample) {
+        snapshot.textContent = "尚未成功核对账户余额。";
+        return;
+      }
+      snapshot.textContent = "上次核对：" + new Date(sample.at).toLocaleString("zh-CN") + " · " + (sample.balance_infos || []).map((r) => r.currency + " " + r.total_balance).join("；") + " · 账户" + (sample.is_available ? "可用" : "不可用") + (state.lastError ? " · 最近查询失败，当前存量未核实" : "");
+    }
+    function example() {
+      const value2 = (k) => row.querySelector('[data-balance-setting="' + k + '"]').value;
+      row.querySelector("[data-balance-example]").textContent = "当前规则：≥" + value2("abundantBalance") + " 超级富足；" + value2("lowBalance") + "<存量<" + value2("abundantBalance") + " 尚可；" + value2("criticalBalance") + "<存量≤" + value2("lowBalance") + " 偏少；0<存量≤" + value2("criticalBalance") + " 见底；≤0 空了。充值还会比较净增与相对变化，由AI自然表达。";
+    }
+    async function load2() {
+      const result = await api("/api/plugins/detail?id=" + encodeURIComponent(balance.id));
+      if (!result.ok || !result.plugin?.config || fields.some((input) => result.plugin.config[input.dataset.balanceSetting] === void 0)) throw Error(result.error || "未取得完整实际设置，请重试");
+      if (!dirty3) for (const input of row.querySelectorAll("[data-balance-setting]")) {
+        const value2 = result.plugin.config?.[input.dataset.balanceSetting];
+        if (value2 !== void 0) {
+          if (input.type === "checkbox") input.checked = value2;
+          else input.value = value2;
         }
+      }
+      renderSnapshot(result.plugin.state?.milk);
+      example();
+      loaded = true;
+      fields.forEach((input) => input.disabled = false);
+      save2.disabled = false;
+    }
+    settings.addEventListener("toggle", () => {
+      if (settings.open && !loaded) void load2().catch((error) => {
+        message2.textContent = "读取失败：" + error.message;
       });
-    }).catch((error) => {
-      status.textContent = "组件工具状态读取失败：" + error.message;
     });
-    await Promise.all([configReady, balanceReady]);
+    row.querySelector(".balance-config-grid").addEventListener("input", () => {
+      dirty3 = true;
+      example();
+    });
+    example();
+    enabled.addEventListener("change", async () => {
+      const previous = !enabled.checked, status = row.querySelector("[role=status]");
+      enabled.disabled = true;
+      try {
+        const result = await api("/api/plugins/toggle", "POST", { id: balance.id, enabled: enabled.checked });
+        if (!result.ok) throw Error(result.error || "更新失败");
+        status.textContent = enabled.checked ? "已启用" : "已停用";
+        query.disabled = !enabled.checked;
+      } catch (error) {
+        enabled.checked = previous;
+        status.textContent = "更新失败：" + error.message;
+      } finally {
+        enabled.disabled = false;
+        updateCounts();
+      }
+    });
+    row.querySelector("[data-balance-save]").addEventListener("click", async (event) => {
+      const button = event.currentTarget, config = {};
+      for (const input of row.querySelectorAll("[data-balance-setting]")) config[input.dataset.balanceSetting] = input.type === "checkbox" ? input.checked : input.tagName === "SELECT" ? input.value : Number(input.value);
+      button.disabled = true;
+      fields.forEach((input) => input.disabled = true);
+      try {
+        const result = await api("/api/plugins/config", "POST", { id: balance.id, config });
+        if (!result.ok) throw Error(result.error || "配置校验失败");
+        dirty3 = false;
+        message2.textContent = "账户余额提醒设置已保存";
+        message2.className = "meta ok";
+        await load2();
+      } catch (error) {
+        message2.textContent = "保存失败：" + error.message;
+        message2.className = "meta err";
+      } finally {
+        button.disabled = false;
+        fields.forEach((input) => input.disabled = !loaded);
+      }
+    });
+    query.addEventListener("click", async () => {
+      query.disabled = true;
+      try {
+        const result = await api("/api/plugins/call", "POST", { tool: "deepseek_balance", input: {} }), data2 = result.result || result;
+        if (!data2.ok) throw Error(data2.error || result.error || "查询失败");
+        message2.textContent = "账户余额已核对";
+        message2.className = "meta ok";
+        snapshot.textContent = (data2.balance_infos || []).map((r) => r.currency + " " + r.total_balance).join("；") + " · 账户" + (data2.is_available ? "可用" : "不可用") + " · 核对时间 " + new Date(data2.milk?.checkedAt || Date.now()).toLocaleString("zh-CN");
+      } catch (error) {
+        message2.textContent = "查询失败：" + error.message;
+        message2.className = "meta err";
+      } finally {
+        query.disabled = !enabled.checked;
+      }
+    });
+    return row;
   }
 
   // console/shared/component-renderer.js
   function initialize48() {
     const pluginsReady = api("/api/plugins");
+    void pluginsReady.then((data2) => {
+      const root = document.getElementById("bridgeMilkMonitor"), balance = data2.plugins?.find((p) => p.id === "tool-deepseek-balance");
+      if (root && balance) {
+        root.textContent = "";
+        mountBalanceControl(root, balance);
+      }
+    }).catch((error) => {
+      document.getElementById("bridgeMilkMonitor").textContent = "调用额度监控读取失败：" + error.message;
+    });
     void renderToolInventory(pluginsReady).catch((error) => {
       document.getElementById("toolSwitchStatus").textContent = "工具开关加载失败：" + error.message;
     });

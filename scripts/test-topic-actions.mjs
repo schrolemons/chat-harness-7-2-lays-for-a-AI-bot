@@ -27,7 +27,7 @@ test('normal optional sends and low-content nudges obey the same cooldown; repli
   const f = fixture(createTopicActions), key = 'private:1', now = 10000000;
   f.ctx.state.set({ driveByKey: { [key]: { driveFollowUpAt: now - 1000, driveNewTopicAt: now - 1000 } } });
   assert.equal(f.actions.reserve({ key, scope: 's:1', operationId: 'a', kind: 'followup', text: '后来怎么样？', now }).ok, false);
-  assert.equal(f.actions.reserve({ key, scope: 's:1', operationId: 'b', text: '哥哥还在吗....', now }).ok, false);
+  assert.equal(f.actions.reserve({ key, scope: 's:1', operationId: 'b', text: '用户还在吗....', now }).ok, false);
   assert.equal(f.actions.reserve({ key, scope: 's:1', operationId: 'c', kind: 'newTopic', text: '换个话题', now }).ok, false);
   assert.equal(f.actions.reserve({ key, scope: 's:1', operationId: 'd', kind: 'reply', text: '答案是42。', now }).ok, true);
   assert.equal(f.actions.reserve({ key, operationId: 'e', originReason: 'privateFollowup', text: '群里那件事后来呢？', now }).ok, true, 'cross-private uses independent limits');
@@ -42,7 +42,7 @@ test('timeout branch binds actual sends, blocks the wait branch, revokes stale l
   f.actions.incoming({ key: args.key });
   assert.equal(f.actions.authorize({ key: args.key, lease }).ok, false);
   f.actions.afterWait({ ...args, seq: 1, emptyWaits: 2, random: () => .9 });
-  assert.equal(f.actions.reserve({ key: args.key, scope: args.scope, operationId: 'op2', text: '哥哥还在吗', now: args.now }).ok, false);
+  assert.equal(f.actions.reserve({ key: args.key, scope: args.scope, operationId: 'op2', text: '用户还在吗', now: args.now }).ok, false);
 });
 test('configuration rejects invalid a/b and weights over one; zero weights mean waiting', async () => {
   const { createTopicActions } = await load();

@@ -1,8 +1,8 @@
 {
   "id": "life-proactive-startup-greeting",
-  "name": "开机起床问候",
+  "name": "启动问候",
   "version": "0.1.0",
-  "description": "桥接刚启动（等于刚睡醒）时主动冒一句起床话；不是回复谁，也不接旧话题。",
+  "description": "桥接刚启动时按冷却发送简短问候；不是回复谁，也不接旧话题。",
   "category": "生命周期与编排",
   "order": 41,
   "tags": [
@@ -15,7 +15,7 @@
     "beforePrompt"
   ],
   "config": {
-    "hint": "刚开机算刚睡醒：早安、还有点困、想喝牛奶",
+    "hint": "桥接刚启动，简短说明现在可以继续交流；不要重复发送。",
     "cooldownMinutes": 180
   },
   "layer": "L",

@@ -537,7 +537,7 @@ await test('oldest-first unread paging can drain a backlog beyond both recent an
   append('arrived after complete read');
   assert.equal((await request('wake-config', { body: { config: ACTIVE, throughSeq: next.data.readThroughSeq } })).status, 200);
   assert.deepEqual(seqs(st.unread), [151]);
-  for (const value of ['', '-1', '1.2', 'text', '20021']) {
+  for (const value of ['', '-1', '1.2', 'text', '9007199254740992']) {
     assert.equal((await request('unread', { query: `&afterSeq=${value}` })).status, 400);
   }
 });

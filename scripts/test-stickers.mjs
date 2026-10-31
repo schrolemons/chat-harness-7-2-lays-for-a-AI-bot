@@ -73,7 +73,7 @@ console.log('## sticker-lib 纯函数');
   const ctx = buildStickerContext(list, 8);
   ok(ctx.includes('笑死') && ctx.includes('生气'), 'buildStickerContext 包含备注');
   ok(buildStickerStrategyHint().includes('qq_send_sticker'), '策略提示包含发送工具');
-  ok(!/默认只用「大肥鱼」系列|白饭\/token/.test(buildStickerStrategyHint()), '策略不把旧人设表情当本体');
+  ok(!/默认只用「通用助手」系列|白饭\/token/.test(buildStickerStrategyHint()), '策略不把旧人设表情当本体');
 }
 
 {
@@ -112,10 +112,10 @@ console.log('## 表情单气泡约束');
 
 console.log('## 当前人设表情选择');
 {
-  const oldOnly = pickStickers({ entries: [{ id: 'old', desc: '大肥鱼吃饭' }], incomingText: '你好' });
+  const oldOnly = pickStickers({ entries: [{ id: 'old', desc: '通用助手吃饭' }], incomingText: '你好' });
   ok(oldOnly.picks.length === 0 && oldOnly.line === '', '旧人设表情不自动进入候选');
-  const current = pickStickers({ entries: [{ id: 'new', desc: '小鲸鱼打招呼' }], incomingText: '你好' });
-  ok(current.picks[0]?.entry?.id === 'new', '当前小鲸鱼表情可以进入候选');
+  const current = pickStickers({ entries: [{ id: 'new', desc: 'AI助手打招呼' }], incomingText: '你好' });
+  ok(current.picks[0]?.entry?.id === 'new', '当前AI助手表情可以进入候选');
 }
 
 console.log('## MCP 工具描述存在性');

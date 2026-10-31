@@ -14,7 +14,7 @@ const check = (name, ok, detail) => {
 const raw = [
   '用 [SILENT] 结束这句话。',
   '## 一、你是谁',
-  '你是大肥鱼。',
+  '你是通用助手。',
   '## 三、回复示例',
   '群友：在干嘛',
   '你：咚咚咚 干饭中',
@@ -22,7 +22,7 @@ const raw = [
 ].join('\n');
 const cleaned = cleanRoleHint(raw);
 check('去掉 GEN1 指令行', !cleaned.includes('[SILENT]'));
-check('保留普通行', cleaned.includes('你是大肥鱼'));
+check('保留普通行', cleaned.includes('你是通用助手'));
 check('示例区空格转逗号', cleaned.includes('咚咚咚，干饭中'));
 
 const plugin = createPlugin({ warn: (m) => console.error('warn:', m) });

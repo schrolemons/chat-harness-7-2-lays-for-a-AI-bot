@@ -1,7 +1,7 @@
 # skill：时间冒泡（time-bubble）
 
 ## 它解决什么
-桥接按分会话时段安排一次「主动开口」。小鲸鱼可在本人私聊明确分享或修改作息/饮食时间后，通过 `time_bubble_manage` 查看并调整该 session 的计划。
+桥接按分会话时段安排一次「主动开口」。AI助手可在本人私聊明确分享或修改作息/饮食时间后，通过 `time_bubble_manage` 查看并调整该 session 的计划。
 
 ## 什么时候被调用
 `beforePrompt` 且 `reason === "timeBubble"`：桥接已经把 `pendingTimeBubble = { label, hint }` 准备好。

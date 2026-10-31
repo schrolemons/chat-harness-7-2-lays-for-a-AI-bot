@@ -1,10 +1,10 @@
 {
   "id": "tool-deepseek-balance",
-  "name": "DeepSeek 余额查询",
-  "version": "0.2.0",
-  "description": "只读查询 DeepSeek API 余额，作为小鲸鱼自己的钱包：没钱委屈想哭，有钱高兴硬气；保留真实余额与可用状态，仅管理员私聊可调用。",
-  "category": "工具接口与协议",
-  "layer": "T",
+  "name": "DeepSeek 余额与账户余额",
+  "version": "0.5.1",
+  "description": "私聊与群聊可查询分阶段调用额度状态，管理员另看账户金额；变化可自然谈起并写桌面便签，沿用现有限额策略。",
+  "category": "健康监控",
+  "layer": "O",
   "order": 95,
   "tags": [
     "DeepSeek",
@@ -12,5 +12,68 @@
     "运维"
   ],
   "main": "index.js",
-  "enabled": true
+  "enabled": true,
+  "hooks": [
+    "onTick", "afterSend"
+  ],
+  "schedule": {
+    "everyMs": 60000
+  },
+  "config": {
+    "monitorEnabled": true,
+    "checkIntervalMin": 5,
+    "currency": "CNY",
+    "abundantBalance": 20,
+    "lowBalance": 5,
+    "criticalBalance": 1,
+    "reminderScope": "all",
+    "dropAlertAmount": 5,
+    "notificationCooldownMin": 30
+  },
+  "configSchema": {
+    "monitorEnabled": {
+      "type": "boolean",
+      "label": "自动检查账户余额"
+    },
+    "checkIntervalMin": {
+      "type": "number",
+      "min": 1,
+      "max": 1440,
+      "label": "余额检查间隔（分钟）"
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "CNY",
+        "USD"
+      ],
+      "label": "提醒币种"
+    },
+    "lowBalance": {
+      "type": "number",
+      "min": 0,
+      "max": 1000000,
+      "label": "偏少提醒阈值"
+    },
+    "abundantBalance":{"type":"number","min":0,"max":1000000,"label":"富足提醒阈值"},
+    "reminderScope":{"type":"string","enum":["admin","private","all"],"label":"提醒范围"},
+    "criticalBalance": {
+      "type": "number",
+      "min": 0,
+      "max": 1000000,
+      "label": "见底提醒阈值"
+    },
+    "dropAlertAmount": {
+      "type": "number",
+      "min": 0,
+      "max": 1000000,
+      "label": "单次明显消耗提醒金额"
+    },
+    "notificationCooldownMin": {
+      "type": "number",
+      "min": 1,
+      "max": 1440,
+      "label": "普通变化提醒冷却（分钟）"
+    }
+  }
 }

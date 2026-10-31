@@ -11,7 +11,7 @@ try {
   await page.goto(fixture.url + '/#setting-c-0');
   await page.waitForTimeout(600);
   assert.deepEqual(errors, [], 'Console startup must reach the data-loading and routing stages');
-  await page.waitForFunction(() => document.getElementById('wlGroups').value.includes('20009'));
+  await page.waitForFunction(() => document.getElementById('wlGroups').value.includes('123456789'));
   assert.equal(await page.locator('#mainNav [data-view="v2-c"]').count(), 0);
   assert.equal(await page.locator('#mainNav [data-view="setting-c-0"]').count(), 1);
   assert.equal(await page.locator('[data-page="setting-c-0"]:visible').count() > 0, true);

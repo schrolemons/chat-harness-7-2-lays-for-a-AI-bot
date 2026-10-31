@@ -1,14 +1,14 @@
 // 会话推进插件：把 conversation-drive.js 的判定从桥接主程序搬进插件目录。
-// 插件只负责「这一轮要不要追问/起话题」，判定逻辑仍是仓库里的 conversation-drive 模块，
-// 决定语义，真实发送后才消费组件自己的冷却；静默时机由 life-wake-reasons 统一授予。
+// 普通回复语义复用 conversation-drive；主动开口与等待后的内容抽签由 topic-actions 拥有。
+// 真实发送后才消费组件自己的冷却；静默开聊时机由 life-wake-reasons 统一授予。
 
 import { createTurnPolicy } from '../personal-core/turn-policy.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PRIVATE_FOLLOWUP_POLICY } from '../../../src/qq-reply-policy.js';
 const helperUrl = relative => { const url = new URL(relative, import.meta.url); url.search = new URL(import.meta.url).search; return url.href; };
-const [{ planConversationDrive }, { effectiveFollowupLimits, isFollowupAllowed }, { createTopicActions }, { createPrivateFollowup }] = await Promise.all([
-  import(helperUrl('../../../src/conversation-drive.js')), import(helperUrl('./followup-policy.mjs')), import(helperUrl('./topic-actions.mjs')), import(helperUrl('./private-followup.mjs'))
+const [{ planConversationDrive }, { effectiveFollowupLimits, isFollowupAllowed }, { createTopicActions }, { createPrivateFollowup }, {hasCurrentTopic, hasReplyContent, hasBareSelfAttention, BARE_ATTENTION_GUIDANCE}] = await Promise.all([
+  import(helperUrl('../../../src/conversation-drive.js')), import(helperUrl('./followup-policy.mjs')), import(helperUrl('./topic-actions.mjs')), import(helperUrl('./private-followup.mjs')), import(helperUrl('./opening-topic.mjs'))
 ]);
 
 const NON_CHAT_REASONS = /^(selfReview|selfOptimize|memoryWrite|timeBubble|startupGreeting|reminder|newFriend|newsShare|careCheck|idleRescue|replyCheck)/;
@@ -26,11 +26,11 @@ export function createPlugin(ctx) {
     const current = state.get(), drive = { ...(current.driveByKey?.[key] || {}), ...(topicId ? {currentTopicId:String(topicId)} : {}) }, receipts = drive.receipts || {}, episodes = drive.episodes || {};
     const id = String(eventId || episodeId || ''), episode = String(episodeId || eventId || '');
     if (!id || receipts[id]) return { ok: false, duplicate: !!receipts[id] };
-    const actualQuestion = /[?？]/.test(String(text)) || kind === 'followup';
+    const actualQuestion = actual.asksQuestion ?? (/[?？]|(?:吗|么|呢)[呀啊嘛]?[。！!]*$/.test(String(text).trim()) || kind === 'followup');
     if (!['followup', 'newTopic'].includes(kind) && !actualQuestion) return { ok: true, recorded: false };
     const seen = typeof episodes[episode] === 'object' ? episodes[episode] : {};
     const semantic = kind === 'newTopic' ? 'newTopic' : 'followup';
-    const patch = { ...drive, receipts: { ...receipts, [id]: at }, episodes: { ...episodes, [episode]: { ...seen, [semantic]: true } }, driveCount: (drive.driveCount || 0) + (episodes[episode] ? 0 : 1),
+    const patch = { ...drive, receipts: { ...receipts, [id]: at }, episodes: { ...episodes, [episode]: { ...seen, [semantic]: true, ...(semantic === 'newTopic' ? {topicId:String(topicId || drive.currentTopicId || text)} : {}),...(actualQuestion?{questionSent:true,questionGeneration:actual.generation??current.topicGenerations?.[key]??0}:{}) } }, driveCount: (drive.driveCount || 0) + (episodes[episode] ? 0 : 1),
       ...(actualQuestion ? { lastQuestionAt: Math.max(Number(drive.lastQuestionAt) || 0, at) } : {}),
       ...(!seen.followup && semantic === 'followup' ? { driveFollowUpAt: at, driveLastKind: 'followup', followupByTopic: {...(drive.followupByTopic||{}),[String(topicId||drive.currentTopicId||'current')]:at} } : {}),
       ...(!seen.newTopic && semantic === 'newTopic' ? { driveNewTopicAt: at, driveLastKind: 'newTopic', lastTopicId: String(topicId || text), driveNewTopicTimes: [...(drive.driveNewTopicTimes || []).filter(t => t > at - 3600000), at] } : {}) };
@@ -56,7 +56,7 @@ export function createPlugin(ctx) {
   ctx.registerTool('private_followup_send', {
     description: '群聊回复完成后，如果本轮实际发言者值得关心，或你对其具体经历/话题确实感兴趣且自然想了解后续，应使用本工具向其私聊追问一句。只问一个简短、具体的问题，不复述群里回复；必须使用本轮群聊 key 和实际发言者 QQ。系统会校验真实私聊关系、会话白名单、当前发言者和冷却/日上限，不要尝试绕过限制。',
     schema: { type: 'object', required: ['groupKey', 'userId', 'text'], properties: {
-      groupKey: { type: 'string', description: '本轮群聊 key，例如 group:20011' },
+      groupKey: { type: 'string', description: '本轮群聊 key，例如 group:21007' },
       userId: { type: 'string', description: '本轮群消息实际发送者 QQ 号' },
       text: { type: 'string', description: '一条简短的私聊追问，不复述群聊回复' }
     } },
@@ -72,7 +72,14 @@ export function createPlugin(ctx) {
         const st = payload?.st;
         if (!st) return '';
         const key = String(payload?.key || '');
-        const lines = [];
+        const identity = {...payload, groupNames:ctx.callService?.('proactive','policy',{})?.groupNames};
+        const bareAttention=hasBareSelfAttention(identity);
+        const groupAttention = payload.hasUnreadNow!==false && key.startsWith('group:') && (bareAttention||/^(?:atMention|nameMention|question|poke|keyword|reply)(?:@|$)/.test(String(payload.reason || '')));
+        const hasReply = hasReplyContent(identity);
+        if ((payload.reason === 'proactiveCheck' && !hasReply) || (groupAttention && !hasReply)) {
+          return [bareAttention?BARE_ATTENTION_GUIDANCE:'',topicActions.opening({ key, scope: 'wake:' + (st.wakeConfig?.lastWakeAt || st.lastWakeAt || 0), hasContext: hasCurrentTopic(st, Date.now(), identity) }).guidance].filter(Boolean).join('\n\n');
+        }
+        const lines = bareAttention?[BARE_ATTENTION_GUIDANCE]:[];
         if (key.startsWith('group:') && cfg.privateFollowupEnabled !== false) {
           const unread = Array.isArray(st.unread) ? st.unread.filter((m) => m && !m.isSelf) : [];
           const speaker = unread.at(-1);

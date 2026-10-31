@@ -69,9 +69,9 @@
     "maxReplyChars": 500,
     "mustReplyKeywords": [
       "deepseek",
-      "小鲸鱼",
-      "大肥鱼",
-      "鲸鱼",
+      "AI助手",
+      "通用助手",
+      "助手",
       "d指导",
       "在吗"
     ],
@@ -110,7 +110,7 @@
       "enabled": true,
       "minDelayMs": 15000,
       "maxDelayMs": 45000,
-      "hint": "刚开机算刚睡醒：早安、还有点困、想喝牛奶"
+      "hint": "桥接刚启动，简短说明现在可以继续交流；不要重复发送。"
     },
     "taskSession": {
       "enabled": true,
@@ -164,7 +164,7 @@
       "recommendedSleepMaxMs": 7200000,
       "recommendedProbability": 0.05,
       "recommendedKeywords": [
-        "小鲸鱼",
+        "AI助手",
         "DeepSeek",
         "deepseek",
         "DS",
@@ -175,8 +175,8 @@
         "D师傅",
         "d师傅",
         "深度求索",
-        "大肥鱼",
-        "鲸鱼",
+        "通用助手",
+        "助手",
         "DeepSeek V3",
         "DeepSeek R1",
         "R1"

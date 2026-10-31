@@ -62,21 +62,21 @@ test('registered time_bubble_manage tool supports session-scoped get/set CRUD', 
       }
     }, state: { get: () => ({}), set: () => {} }
   });
-  plugin.hooks.beforePrompt({ key: 'private:20001', reason: 'message' });
+  plugin.hooks.beforePrompt({ key: 'private:11003', reason: 'message' });
   assert.equal(tool.description.includes('保留无关时段'), true);
-  assert.deepEqual(tool.handler({ action: 'get', key: 'private:20001' }).slots, slots);
-  const added = tool.handler({ action: 'set', key: 'private:20001', slots: [
+  assert.deepEqual(tool.handler({ action: 'get', key: 'private:11003' }).slots, slots);
+  const added = tool.handler({ action: 'set', key: 'private:11003', slots: [
     { hour: 14, minute: 30, label: '报告准备', hint: '带上讲义', enabled: true }
   ] });
   assert.equal(added.ok, true);
   assert.equal(added.slots.some((slot) => slot.hour === 14 && slot.label === '报告准备' && slot.hint === '带上讲义'), true);
   assert.equal(added.slots.some((slot) => slot.id === 'fixed' && slot.hint === '原文案'), true);
   const current = added.slots.find((slot) => slot.label === '报告准备');
-  const edited = tool.handler({ action: 'set', key: 'private:20001', slots: [
+  const edited = tool.handler({ action: 'set', key: 'private:11003', slots: [
     { ...current, hour: 15, label: '报告', hint: '已修改文案' }
   ] });
   assert.equal(edited.slots.some((slot) => slot.hour === 15 && slot.label === '报告' && slot.hint === '已修改文案'), true);
-  const deleted = tool.handler({ action: 'set', key: 'private:20001', slots: [] });
+  const deleted = tool.handler({ action: 'set', key: 'private:11003', slots: [] });
   assert.deepEqual(deleted.slots.map((slot) => slot.id), ['fixed']);
   assert.equal(tool.handler({ action: 'get', key: 'private:999' }).error, 'not_current_session');
 });

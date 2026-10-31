@@ -22,6 +22,11 @@ const group = build({}, { isPrivate: false, isOwnerKey: false });
 const priv = build({}, { isPrivate: true, isOwnerKey: false });
 const owner = build({}, { isPrivate: true, isOwnerKey: true });
 
+for(const [scene,payload] of Object.entries({ordinary:{},serious:{reason:'private',inputText:'请认真解释这个技术问题'},critical:{moodState:{mode:'critical'}}})){
+  const prompt=build({},payload);
+  check(scene+'：明确人设卡与示范职责，包括严肃任务',prompt.includes('【人设卡与对话示范】')&&prompt.includes('严肃的任务型回复')&&prompt.includes('不照抄示范台词'));
+}
+
 check('群聊：有反 AI 味/风格/积极性', group.includes('反AI味') && group.includes('回复条数与风格') && group.includes('积极性'));
 check('群聊：有轻量记忆规则', group.includes('轻量记忆'));
 check('群聊：没有私聊必回/传话', !group.includes('私聊必回') && !group.includes('传话靠桥接'));

@@ -68,7 +68,7 @@ test('多种标记写法都认（[v1] / （reserved2） / 2 代）', () => {
 });
 
 test('没有模式标记的老卡片：两种模式都完整注入（向后兼容）', () => {
-  const legacy = '# 老卡\n\n- 性格：傲娇\n- 说话风格：简短';
+  const legacy = '# 老卡\n\n- 性格：生硬\n- 说话风格：简短';
   assert.equal(selectRoleText(legacy, 'v1'), legacy);
   assert.equal(selectRoleText(legacy, 'v2'), legacy);
 });
@@ -93,14 +93,14 @@ test('统计与小节报告可用于控制台预览', () => {
 });
 
 test('真实人格卡可用，且筛选不丢公共内容', () => {
-  const file = new URL('../roles/小鲸鱼.md', import.meta.url);
+  const file = new URL('../roles/AI助手.md', import.meta.url);
   const raw = fs.readFileSync(file, 'utf8');
   const v2 = selectRoleText(raw, 'v2');
   const v1 = selectRoleText(raw, 'v1');
   assert.ok(v2.length > 0 && v1.length > 0);
   // 人设部分两种模式都必须保留
   for (const text of [v1, v2]) {
-    assert.match(text, /小鲸鱼/);
+    assert.match(text, /AI\s*助手/);
     assert.match(text, /防止机械化/);
   }
   // 二代注入的文本里不应再出现一代的分条机制

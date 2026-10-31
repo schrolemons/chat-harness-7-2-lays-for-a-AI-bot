@@ -549,6 +549,9 @@ export function createPlugin(ctx) {
 
             const mem = readMemory(root, key);
             const diary = extractDiary(mem.text);
+            const budgetStage=typeof cap.budgetRecoveryStatus==='function'?cap.budgetRecoveryStatus(key)?.stage:'normal';
+            if(['weak','silent'].includes(budgetStage)){await sendDiaryDetailed({key,now,day:dueDay});continue;} // Existing dated diary only; never invoke the model to refresh it under a budget limit.
+
 
             // 每晚到点强制刷新一次记忆（每天一次）：force=true 跳过「会话繁忙」判断，唤醒会排队等空闲再写；
             // 这样即使白天 pendingMemoryWrite 卡过、或每小时调度因忙被跳过，到点也能把日记刷成最新。

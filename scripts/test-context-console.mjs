@@ -6,14 +6,14 @@ const exe=[path.join(process.env.PROGRAMFILES||'','Google/Chrome/Application/chr
 test('business windows sort unique QQ seqs, resolve receipts and retain the complete native tool timeline',async()=>{
  const fixture=await startConsoleFixture(),browser=await chromium.launch({headless:true,executablePath:exe});try{
   const page=await browser.newPage({viewport:{width:1440,height:1050}}),errors=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.route('**/api/context/preview*',async route=>{const response=await route.fetch(),data=await response.json();if(data.request){const r={...data.request,key:'private:20012',observerVersion:6,layoutVersion:3,messages:[
+  await page.route('**/api/context/preview*',async route=>{const response=await route.fetch(),data=await response.json();if(data.request){const r={...data.request,key:'private:21001',observerVersion:6,layoutVersion:3,messages:[
    {role:'system',text:'固定规则'},
    {role:'user',source:'qq-context-dialogue',currentInput:false,text:'【QQ 回合 group】\n原因：probability\n【新增 QQ 消息数据】\n'+JSON.stringify([{seq:4,text:'较新未读',receiptState:'unseen'},{seq:1,text:'已经完成',receiptState:'unseen'},{seq:3,text:'旧消息已完成',receiptState:'complete'},{seq:2,text:'较旧已读待回复',read:true},{seq:5,text:'bot真实QQ回复',isSelf:true},{seq:6,text:'没有状态证据'}])},
    {role:'assistant',text:'调用回执',toolCalls:[{id:'r',name:'qq_report_message_receipts'}]},
-   {role:'tool',text:JSON.stringify({ok:true,key:'private:20012',receipts:[{seq:1,state:'complete'},{seq:3,state:'complete'}]}),toolResults:[{toolCallId:'r'}]},
+   {role:'tool',text:JSON.stringify({ok:true,key:'private:21001',receipts:[{seq:1,state:'complete'},{seq:3,state:'complete'}]}),toolResults:[{toolCallId:'r'}]},
    {role:'assistant',text:'内部计划，不代表已经发送'},
    {role:'assistant',text:'调用发送',toolCalls:[{id:'s',name:'qq_send_message'}]},
-   {role:'tool',text:JSON.stringify({ok:true,key:'private:20012',sent:1,failed:0}),toolResults:[{toolCallId:'s'}]},
+   {role:'tool',text:JSON.stringify({ok:true,key:'private:21001',sent:1,failed:0}),toolResults:[{toolCallId:'s'}]},
    {role:'user',source:'qq-context-latest',text:'心情80\n【QQ 收件状态】\n'+JSON.stringify({receipts:[{seq:503,receiptState:'complete'},{seq:504,receiptState:'seen'}]}),contextSegments:[{id:'message-snapshot',text:'【QQ 收件状态】\n'+JSON.stringify({receipts:[{seq:503,receiptState:'complete'},{seq:504,receiptState:'seen'}]})}],contextUpdates:[{id:'ctx-context-dynamics',hash:'80'},{id:'message-snapshot',hash:'receipt-fixture'}]}
   ]};data.request=r;data.requestStages=[{kind:'current',request:r}];}await route.fulfill({response,json:data});});
   await page.goto(fixture.url+'/#context-visual');await page.locator('#contextInspector').waitFor();assert.equal(await page.locator('[data-inspector-layout="business"]').getAttribute('aria-pressed'),'true');
@@ -23,8 +23,8 @@ test('business windows sort unique QQ seqs, resolve receipts and retain the comp
   assert.equal(await page.locator('.context-tracks,.context-relation-tree,.context-link-path').count(),0);assert.equal(await page.locator('.has-timeline>.context-sequence').count(),1);assert.equal(await page.locator('[data-inspector-select="message:2"].is-related').count(),1);const feed=await page.locator('.context-sequence-row').evaluateAll(nodes=>nodes.map(node=>node.dataset.inspectorSelect));assert(feed.indexOf('message:2')<feed.indexOf('message:3'));if(dir)await page.locator('#contextInspector').screenshot({path:path.join(dir,'single-timeline.png')});
   await page.locator('.context-related-links [data-inspector-related="message:2"]').click();assert.equal(await page.locator('[data-inspector-select="qq:1"].is-related').count(),1);
   await page.locator('[data-inspector-select="task:2"]').click();assert.match(await page.locator('.context-trigger').innerText(),/群聊普通来信通过概率判定/);
-  await page.locator('[data-inspector-select="message:4"]').click();assert.match(await page.locator('.context-output-trace').innerText(),/DSH 会话记录/);
-  await page.locator('[data-inspector-select="message:5"]').click();assert.match(await page.locator('.context-output-trace').innerText(),/QQ 投递成功[\s\S]*private:20012/);if(dir)await page.locator('#contextInspector').screenshot({path:path.join(dir,'business-output.png')});
+  await page.locator('[data-inspector-select="message:4"]').click();assert.match(await page.locator('.context-output-trace').innerText(),/模型输出事件/);
+  await page.locator('[data-inspector-select="message:5"]').click();assert.match(await page.locator('.context-output-trace').innerText(),/QQ 投递成功[\s\S]*private:21001/);if(dir)await page.locator('#contextInspector').screenshot({path:path.join(dir,'business-output.png')});
   await page.locator('[data-inspector-region="unknown"]').click();assert.equal(await page.locator('[data-inspector-select="qq:6"]').count(),1);assert.match(await page.locator('.context-detail').innerText(),/状态未知/);
   await page.locator('[data-inspector-region="dynamic"]').click();await page.locator('[data-inspector-select="message:7"]').click();assert.equal(await page.locator('[data-inspector-select="receipt-index"]').count(),0);const receipts=page.locator('.context-detail [data-context-owner="message-snapshot"] .context-receipts');assert.match(await receipts.locator(':scope>summary').innerText(),/2 条/);await receipts.locator(':scope>summary').click();assert.match(await receipts.innerText(),/503[\s\S]*504/);assert(!(await page.locator('#contextInspector').innerText()).includes('未采集正文'));
   await page.locator('[data-inspector-layout="raw"]').click();assert.equal(await page.locator('.context-sequence-row').count(),8);assert.deepEqual(await page.locator('.context-sequence-row').evaluateAll(nodes=>nodes.map(node=>Number(node.dataset.requestPosition))),[1,2,3,4,5,6,7,8]);
@@ -126,10 +126,10 @@ test('DSH-style context inspector preserves sequence, tool pairs, definitions, s
   page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>new URL(route.request().url()).origin===fixture.url?route.continue():route.abort());
   const sequence=page.locator('.context-sequence-row');
-  const continuous=async()=>{const numbers=await page.locator('.context-sequence-number').allTextContents();assert.deepEqual(numbers.map(Number),Array.from({length:numbers.length},(_,i)=>i+1));};
+  const continuous=async()=>{const numbers=await page.locator('.context-sequence-number').allTextContents();if(await page.locator('[data-inspector-view="messages"][aria-pressed="true"]').count()){assert(numbers.every(value=>['·','—'].includes(value)),'native protocol rows do not receive fake QQ receipt seqs');}else assert.deepEqual(numbers.map(Number),Array.from({length:numbers.length},(_,i)=>i+1));};
   const choose=key=>page.locator('[data-inspector-select="'+key+'"]').click();
   await page.goto(fixture.url+'/#context-visual');await page.locator('#contextInspector').waitFor();
-  assert.equal(await page.locator('#contextSession').inputValue(),'private:20012');await page.locator('[data-inspector-layout="raw"]').click();
+  assert.equal(await page.locator('#contextSession').inputValue(),'private:21001');await page.locator('[data-inspector-layout="raw"]').click();
   assert.equal(await sequence.count(),9);await continuous();
   assert.equal(await page.locator('#contextSave').isVisible(),false);
   assert.equal(await page.locator('[data-inspector-detail="message:7"] [data-context-owner="ctx-context-dynamics"]').count(),1);
@@ -142,7 +142,7 @@ test('DSH-style context inspector preserves sequence, tool pairs, definitions, s
   await choose('message:2');assert.match(await page.locator('.context-detail').innerText(),/DSH 运行环境更新[\s\S]*按需补充/);
   await choose('message:5');assert.match(await page.locator('.context-detail').innerText(),/工具调用[\s\S]*qq_schedule[\s\S]*call-demo/);
   await choose('message:6');assert.match(await page.locator('.context-detail').innerText(),/工具返回[\s\S]*call-demo/);
-  await choose('message:4');assert.match(await page.locator('.context-detail').innerText(),/bot 内部[\s\S]*DSH 会话记录/);
+  await choose('message:4');assert.match(await page.locator('.context-detail').innerText(),/bot 内部[\s\S]*模型输出事件/);
   await choose('message:3');assert.equal(await page.locator('.context-detail [data-context-owner="wake-action"]').count(),1);
   await choose('message:8');assert.equal(await page.locator('.context-detail [data-context-owner="wake-action"]').count(),1,'repeated task stays visible in both original positions');
   await page.locator('#contextInspectorKind').selectOption('result');assert.equal(await sequence.count(),1);await continuous();

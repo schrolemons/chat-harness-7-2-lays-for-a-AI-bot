@@ -31,7 +31,7 @@ export function planReplyShape({key,turnId='',incomingText='',mood={},willingnes
   if(mood?.enabled!==false&&Number.isFinite(mood?.replyCeiling)&&!mood.welcomeBurstActive)maxMessages=Math.min(maxMessages,mood.replyCeiling);
   const detailLevel=engagement.detailLevel;
   const styleInstruction=mood?.enabled===false?'':String(mood?.styleInstruction||'');
-  const line='【本轮节奏】'+(kind==='serious'?'先完整解决当前问题':'自然回应当前话题')+'；本轮全部文字、图片、语音和表情合计最多 '+maxMessages+' 条，每条最多 '+p.maxMessageChars+' 字。内容完整性优先，按剩余条数组织，不重复调用工具扩充额度。';
-  return Object.freeze({...p,key,turnId,agent,kind,maxMessages,hourlyLimit:p.maxSendPerHour,minIntervalMs:p.intervalMinMs,detailLevel,styleInstruction,engagement,willingness,line:line+' 深度：'+detailLevel+'；风格只按心情，不按用户忙闲改变。',createdAt:now,
+  const line='【本轮节奏】'+(kind==='serious'?'准确回答实际问题，必要信息保持完整':'闲聊先接住眼前一句，通常一两句短话就够')+'；本轮全部文字、图片、语音和表情合计最多 '+maxMessages+' 条，每条最多 '+p.maxMessageChars+' 字。这是发送上限，不是目标字数或必须发满的条数；不为凑完整而复述、总结或补第二个问题。信息任务才按需要展开，不重复调用工具扩充额度。';
+  return Object.freeze({...p,key,turnId,agent,kind,maxMessages,hourlyLimit:p.maxSendPerHour,minIntervalMs:p.intervalMinMs,detailLevel,styleInstruction,engagement,willingness,line:line+' 可用深度：'+detailLevel+'（不是闲聊篇幅要求）；语气依当前形态和示范。',createdAt:now,
     delayPlan:Object.freeze({min:p.intervalMinMs,max:p.intervalMaxMs,longProbability:p.longGapProbability,longMin:p.longGapMinMs,longMax:p.longGapMaxMs})});
 }

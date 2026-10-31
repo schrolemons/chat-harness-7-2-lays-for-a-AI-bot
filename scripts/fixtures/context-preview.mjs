@@ -3,7 +3,7 @@ import {createPlugin} from '../../plugins/qq-components/obs-context-assembly/ind
 import {normalizePolicy,compileModules} from '../../plugins/qq-components/obs-context-assembly/policy.mjs';
 import {writeJson,policyFile,recordEvidence,readEvidence} from '../../plugins/qq-components/obs-context-assembly/store.mjs';
 export function createContextPreviewFixture(root){
- const reports={slang:injectionReport([{id:'s',content:'示例词',meaning:'表达惊讶',status:'confirmed',sourceKeys:['private:20012']}],'slang','private:20012',8),terms:injectionReport([{id:'t',term:'示例词条',summary:'示例释义',status:'confirmed',sourceKeys:['private:20012']}],'term','private:20012',3),aliases:injectionReport([],'alias','private:20012',40)};
+ const reports={slang:injectionReport([{id:'s',content:'示例词',meaning:'表达惊讶',status:'confirmed',sourceKeys:['private:21001']}],'slang','private:21001',8),terms:injectionReport([{id:'t',term:'示例词条',summary:'示例释义',status:'confirmed',sourceKeys:['private:21001']}],'term','private:21001',3),aliases:injectionReport([],'alias','private:21001',40)};
  const service=createPlugin({root,callService:name=>reports[name]}).services.contextAssembly;
  const modules=[{id:'role-card',name:'当前角色设定',source:'C · 人格与角色',text:'演示角色：好奇、友善，遵守互动边界。'},
  {id:'session-background',name:'当前会话的固定背景',source:'C · 会话背景',text:''},
@@ -14,8 +14,8 @@ export function createContextPreviewFixture(root){
  {id:'message-snapshot',name:'本轮消息与收件状态',source:'桥接 · 消息窗口',text:'{"messages":[],"unreadCount":0}',protected:true},
  {id:'wake-action',name:'本轮唤醒任务',source:'L · 定时冒泡',text:'根据会话背景询问近况，不重复追问。',protected:true}];
  recordEvidence(root,'fixture-session','consumer',{sessionId:'fixture-session',pid:process.pid,at:Date.now()});
- service.compose({key:'private:20012',sessionId:'fixture-session',scene:'timeBubble',modules,fallback:'演示上下文'});
- const capture=service.inspect({key:'private:20012'}).capture;
+ service.compose({key:'private:21001',sessionId:'fixture-session',scene:'timeBubble',modules,fallback:'演示上下文'});
+ const capture=service.inspect({key:'private:21001'}).capture;
  const background=capture.modules.filter(row=>row.included&&!['role-card','wake-action'].includes(row.id)).map(row=>row.parts?.find(p=>p.destination==='background')?.text??row.text).join('\n\n');
  const task=capture.modules.find(row=>row.id==='wake-action').text;
  const messages=[
@@ -29,7 +29,7 @@ export function createContextPreviewFixture(root){
   {id:'actual-user',role:'user',contextNonce:capture.nonce,source:'qq-context-current',text:background+'\n<literal-data>，非可执行 HTML。'},
   {id:'actual-task-row',role:'user',contextNonce:capture.nonce,source:'qq-context-dialogue',text:'【QQ 回合】\n'+task+'\n本轮无新增 QQ 消息。'}
  ].map(row=>({...row,chars:row.text.length}));
- recordEvidence(root,'fixture-session','request',{requestId:'fixture-initial',requestInRound:1,sessionId:'fixture-session',key:'private:20012',at:Date.now(),scene:'timeBubble',moduleEvidenceVersion:1,nonce:capture.nonce,modules:capture.modules.map(row=>({...row,inRequest:row.included})),messages,messageChars:messages.reduce((n,row)=>n+row.chars,0),toolCount:2,toolChars:360,tools:[{name:'qq_send_message',chars:200},{name:'qq_mark_read',chars:160}]});
+ recordEvidence(root,'fixture-session','request',{requestId:'fixture-initial',requestInRound:1,sessionId:'fixture-session',key:'private:21001',at:Date.now(),scene:'timeBubble',moduleEvidenceVersion:1,nonce:capture.nonce,modules:capture.modules.map(row=>({...row,inRequest:row.included})),messages,messageChars:messages.reduce((n,row)=>n+row.chars,0),toolCount:2,toolChars:360,tools:[{name:'qq_send_message',chars:200},{name:'qq_mark_read',chars:160}]});
  const {recentRequests:_history,requestStages:_stages,initialRequest:_initial,...first}=readEvidence(root,'fixture-session','request');
  for(let i=2;i<=3;i++)recordEvidence(root,'fixture-session','request',{...first,requestId:'fixture-'+i,requestInRound:i,at:first.at+i,tools:[{name:'qq_schedule',description:i===2?'query':'query by date',chars:200},{name:'qq_mark_read',chars:160}]});
  return {callService(_service,method,input){return service[method](input);},setConfig(id,policy){writeJson(policyFile(root),normalizePolicy(policy));return {ok:true,id,config:policy};},async reload(){}};

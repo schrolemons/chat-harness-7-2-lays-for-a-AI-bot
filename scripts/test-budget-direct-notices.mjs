@@ -57,7 +57,7 @@ test('direct notifications keep pause and whitelist gates and do not consume rec
 });
 
 test('a website notice does not pretend to answer an unrelated question or cancel its thinking timers', async t => {
-  const { h } = await open(t, 'weak');
+  const { h } = await open(t, 'normal');h.v2TurnStartAt.set(h.state.sessions[KEY],Date.now());
   const at = h.noteMessageAckInbound(KEY, Date.now()); h.scheduleMessageReadAck(KEY, at);
   assert.equal(h.messageAckArmed.has(KEY), true);
   await h.taskCaps.sendNotificationBatch(KEY, [{ id: 'independent-notice', text: '独立网站通知', sourceAt: at, expiresAt: at + 60000 }]);

@@ -3,7 +3,7 @@
 // 每天固定时间（默认 23:00）把「这一天干了什么」汇总成一份 Markdown：
 //   state/memory/worklog/<日期>.md
 // 数据源全部是桥接已有的运行数据（只读）：
-//   · state/memory/tasks-*.md    大肥鱼收尾前用 qq_task_note 记的中期进度
+//   · state/memory/tasks-*.md    通用助手收尾前用 qq_task_note 记的中期进度
 //   · state/tasks.json           qq_task_spawn 开的独立任务会话
 //   · state/tool-calls.jsonl     工具调用与失败
 //   · state/token-usage.jsonl    token 消耗

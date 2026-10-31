@@ -19,7 +19,7 @@ import { MODE_INPUT_ALIASES, VALID_MODES, normalizeModeInput, settingFromDshName
 import { renderConsoleDocument, readConsoleAsset, isConsoleAssetPath, consoleAssetCookie, hasConsoleAssetCookie } from './console/document.js';
 import { readToolCatalog } from './tools/catalog.js';
 import { sanitizeMediaSummary, extractMediaFromSegments, extractFilesFromSegments } from './bridge-core/media-segments.js';
-import { isModelVisibleMessageV2, modelStateViewV2, stampMsV2, messageFullyProcessedV2, pendingMessagesV2, firstPendingMessageV2, awaitingReplyCountV2, serializeUnreadMessageV2, stampSeenAtV2, stampRepliedThroughV2, advanceReadWatermarkV2, pruneProcessedMessagesV2, markReplyBatchV2, receiptStateV2 } from './bridge-core/receipt-state.js';
+import { isModelVisibleMessageV2, modelStateViewV2, stampMsV2, messageFullyProcessedV2, pendingMessagesV2, registerSuccessfulReplyV2, resolveReceiptsV2, firstPendingMessageV2, awaitingReplyCountV2, serializeUnreadMessageV2, stampSeenAtV2, stampRepliedThroughV2, advanceReadWatermarkV2, pruneProcessedMessagesV2, markReplyBatchV2, receiptStateV2 } from './bridge-core/receipt-state.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import http from 'node:http';
@@ -118,7 +118,7 @@ const pluginHost = createPluginHost({
   capabilities: taskCaps,
   onChange: (id) => taskCaps.refreshSchedules?.(id)
 });
-const pluginReady = pluginHost.loadAll().then((s) => { try { log('[plugin] 加载完成：' + s.count + ' 个组件' + (s.warnings.length ? '（警告 ' + s.warnings.length + ' 条）' : '')); } catch {} }).catch(() => {});
+const pluginReady = pluginHost.loadAll().then((s) => { try { pluginHost.callService('desktopNotes','recordStartup');log('[plugin] 加载完成：' + s.count + ' 个组件' + (s.warnings.length ? '（警告 ' + s.warnings.length + ' 条）' : '')); } catch {} }).catch(() => {});
 function clearBridgeTimer(handle) {
   if(handle?.scheduledId)pluginHost.callService('scheduler','cancel',handle);
   else clearTimeout(handle);
@@ -290,7 +290,7 @@ const ROLES_DIR = path.join(ROOT, 'roles');
 const ROLE_NAME_MAX = 40;
 const ROLE_CONTENT_MAX_BYTES = 64 * 1024;
 // 注入上限：**按模式筛完小节之后**再截断，避免另一模式的专属内容白白占掉预算。
-// 默认 8000（2026-10 起：小鲸鱼卡补了形象/圈层/性格细节，6000 会把
+// 默认 8000（2026-10 起：AI助手卡补了形象/圈层/性格细节，6000 会把
 // 末尾「你的样子」整段截掉——截断点落在卡尾而不是卡中，比调大预算更危险），
 // 仍是每条约 6~8k token 的成本护栏；可用 config.json 的 role.maxInjectChars 调整
 // （1000~20000）；启动时由 applyRoleInjectLimit() 写入。
@@ -645,7 +645,7 @@ function appendActivity(line) {
   appendActivityLog(`[${localClock()}] ${redactSensitiveText(String(line).replace(/[\r\n]+/g, ' '))}\n`);
 }
 
-// 读取角色/模式状态：{"role": "正太小肥鱼", "mode": "active"|"silent"}
+// 读取角色/模式状态：{"role": "AI助手", "mode": "active"|"silent"}
 function readRoleState() {
   return readJsonSafe(ROLE_STATE_FILE, { role: null, mode: 'active' });
 }
@@ -766,7 +766,7 @@ function loadConfig() {
       surrenderProbability: 0,        // 已弃用：桥接不再直接生成退让短句（避免割裂），保留字段兼容旧配置
       // 摘要与展示
       maxReplyChars: 500,             // 单条 QQ 消息安全长度上限（防 AI 出 bug；分句交给 AI 用空格控制）
-      mustReplyKeywords: ['deepseek', '小鲸鱼', '大肥鱼', '鲸鱼', 'd指导', '在吗'],
+      mustReplyKeywords: ['deepseek', 'AI助手', '通用助手', '助手', 'd指导', '在吗'],
       // 真人式多消息分条发送：按空格分句，AI 用空格表示“这里要分成下一条”
       burstEnabled: true,             // 总开关：是否允许按空格拆成多条 QQ 消息
       burstIntervalMinMs: 1000,       // 条间随机间隔下限（毫秒）
@@ -792,9 +792,9 @@ function loadConfig() {
         enabled: true,
         minDelayMs: 15000,   // 启动后最早多久开口（留时间给会话创建/预设挂载）
         maxDelayMs: 45000,   // 最晚多久开口
-        hint: '刚开机算刚睡醒：早安、还有点困、想喝牛奶'
+        hint: '桥接刚启动，简短说明现在可以继续交流；不要重复发送。'
       },
-      // L 层任务委派会话：小鲸鱼把独立任务交给 DSH 里的可见任务会话（qq-task-worker preset）。
+      // L 层任务委派会话：AI助手把独立任务交给 DSH 里的可见任务会话（qq-task-worker preset）。
       taskSession: {
         enabled: true,
         maxConcurrentTasks: 3,   // 同时 running 的任务会话上限
@@ -815,7 +815,7 @@ function loadConfig() {
         ensureFreshBeforeSend: true
       },
       // 每日 B 站视频推荐；定时钟点、数量、主题权重和 group/private 目标会话均由本结构控制。
-      dailyNews: { enabled: true, hour: 9, minute: 0, maxItems: 2, keywords: [...DEFAULT_BILI_KEYWORDS], topicUploaders: [{ topic: '鲸鱼', uploader: '正太肥鱼与龙少的日常', weight: 2 }], sessionWhitelist: [] },
+      dailyNews: { enabled: true, hour: 9, minute: 0, maxItems: 2, keywords: [...DEFAULT_BILI_KEYWORDS], topicUploaders: [], sessionWhitelist: [] },
       // 跨会话分享用户印象（只分享非隐私印象；严禁隐私与机要信息）。
       crossSessionMemory: { enabled: true },
       // 消息补话延迟与话术仍由 L 层 life-message-ack 组件配置；已读/已回复状态由 doubleStamp 管理。
@@ -2572,11 +2572,11 @@ async function main() {
       .replace(/^[\s「」『』"'“”‘’]+|[\s「」『』"'“”‘’]+$/g, '')
       .replace(/^(?:你们|您们|你|您|我们|咱们)的?/, '')
       .trim();
-    // 角色称呼 = 管理员（owner）：管理员说「问问你们管理员」时也要能落到人
-    if (/^(?:管理员|管理猿|老板|主人|群主|owner|admin|站长)$/i.test(s0)) {
+    // 角色称呼 = 管理员（owner）：小林说「问问你们管理员」时也要能落到人
+    if (/^(?:管理员|管理猿|老板|管理员|群主|owner|admin|站长)$/i.test(s0)) {
       return 'private:' + String(cfg.ownerQQ ?? '');
     }
-    // 别名表：例如 { "十二": "private:20009" }
+    // 别名表：例如 { "小林": "private:21008" }
     const aliases = cfg.socialV2?.relayAliases;
     if (aliases && typeof aliases === 'object' && aliases[s0]) {
       const aliasTarget = String(aliases[s0]);
@@ -4527,6 +4527,7 @@ async function main() {
               else social.silentTurns.delete(sessionId);
             };
             const result = await deliverPrompt(key, promptText, { silent: true, modelReason:'maintenance' });
+            if(result.skipped){popSilent();sendJson({ok:false,skipped:true,key,sessionId,error:'当前额度或会话状态不允许模型投递；本次测试未执行'},409);return;}
             if (result.ok) {
               log(`控制台：已向 ${key} 的 DSH 发送后台提醒`);
               appendActivity(`${key} 控制台后台提醒：${message.slice(0, 80)}`);
@@ -5118,11 +5119,12 @@ async function main() {
             const sessionKey = token
               ? [...CONVERSATION_TOKENS.entries()].find(([, tokens]) => tokens.some((known) => tokenEq(known, token)))?.[0] || ''
               : '';
-            const ownerKey = 'private:' + String(cfg.ownerQQ ?? '');
-            if (!cfg.ownerQQ || sessionKey !== ownerKey) {
-              sendJson({ ok: false, error: 'DeepSeek 余额只允许管理员私聊查询。' }, 403);
+            if (!sessionKey || !v2SessionAllowed(sessionKey)) {
+              sendJson({ ok: false, error: '账户余额仅允许当前模式内已授权的会话查询。' }, 403);
               return;
             }
+            // Caller identity is transport-owned; never trust a model-supplied owner key.
+            body.input = { callerKey: sessionKey };
           }
           if (isAgentPluginCall && body.tool === 'private_followup_send') {
             const input = body.input && typeof body.input === 'object' ? body.input : {};
@@ -5211,7 +5213,8 @@ async function main() {
           // larger than one response be read completely, even outside recent.
           const messages = afterSeq === null ? pending.slice(-limit)
             : pending.filter((m) => Number.isSafeInteger(m.seq) && m.seq > afterSeq).slice(0, limit);
-          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, messages) : readThroughSeqV2(st);
+          const admission={};
+          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, messages, key, admission) : readThroughSeqV2(st);
         if (req.headers['x-agent-token'] && Number.isSafeInteger(readThroughSeq)) st.lastWakeReadThroughSeq = readThroughSeq;
           sendJson({
             ok: true,
@@ -5222,7 +5225,7 @@ async function main() {
             firstPendingSeq: pending.length ? pending[0].seq : null,
             windowSize: pending.length,
             messages: messages.map((message) => ({ ...serializeUnreadMessageV2(message), receiptState: receiptStateV2(message) })),
-            readThroughSeq
+            readThroughSeq, ...admission
           });
           return;
         }
@@ -5239,9 +5242,10 @@ async function main() {
           const start = Math.max(0, recent.length - offset - limit);
           const end = Math.max(0, recent.length - offset);
           const messages = recent.slice(start, end);
-          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, messages) : readThroughSeqV2(st);
+          const admission={};
+          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, messages, key, admission) : readThroughSeqV2(st);
         if (req.headers['x-agent-token'] && Number.isSafeInteger(readThroughSeq)) st.lastWakeReadThroughSeq = readThroughSeq;
-          sendJson({ ok: true, key, messages: messages.map((message) => ({ ...message, receiptState: receiptStateV2(message) })), readThroughSeq });
+          sendJson({ ok: true, key, messages: messages.map((message) => ({ ...message, receiptState: receiptStateV2(message) })), readThroughSeq, ...admission });
           return;
         }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/receipt-report') {
@@ -5952,7 +5956,7 @@ async function main() {
             if (sentMessages.length === messages.length && sentMessages.length > 0) {
               try { pluginHost.emitSent({ key, success: true, sentAt: Date.now(), messages: messages.slice() }); } catch {}
             }
-            noteReplyDeliveredV2(key, req.headers['x-agent-token']);
+            if(sentMessages.length>0)noteReplyDeliveredV2(key, req.headers['x-agent-token'], {replyToMessageId:actualReplyToMessageId});
             st.lastAiReplyAt = now;
             st.lastActionAt = now;
             st.wakeConfig.noActionCount = 0;
@@ -6456,7 +6460,7 @@ async function main() {
             });
             const recentLimit = normalizeContextLimits(cfg.socialV2?.context).recentLimit;
             if (st.recentMessages.length > recentLimit) st.recentMessages.splice(0, st.recentMessages.length - recentLimit);
-            noteReplyDeliveredV2(key, req.headers['x-agent-token']);
+            noteReplyDeliveredV2(key, req.headers['x-agent-token'], {replyToMessageId:actualReplyToMessageId});
             st.lastAiReplyAt = now;
             st.lastActionAt = now;
             st.wakeConfig.noActionCount = 0;
@@ -6694,6 +6698,7 @@ async function main() {
           const timeoutMs = Math.min(maxMs, Math.max(minMs, Math.round(Number(body.timeoutMs) || defaultMs)));
           const st = getSocialV2State(key);
           const waitEnvelope = activeTurnEnvelopes.get(state.sessions[key]);
+          if(req.headers['x-agent-token']&&(waitEnvelope?.budgetStage==='weak'||waitEnvelope?.reason==='budgetWeak')){sendJson({ok:true,key,endRound:true,arrived:false,waitedMs:0,newMessages:[],reason:'budget_batch_complete'});void finishIdleWaitTurn(key,waitEnvelope,st.lastUnreadSeq);return;}
           const waitScope = String(state.sessions[key] || key) + ':' + String(waitEnvelope?.turn ?? waitEnvelope?.actionId ?? v2TurnStartAt.get(state.sessions[key]) ?? 'manual');
           const waitArgs = () => ({ key, scope: waitScope, seq: st.lastUnreadSeq || 0 });
           const waitPolicy = pluginHost.callService('waitCycle', 'read', waitArgs());
@@ -6840,7 +6845,8 @@ async function main() {
           // `arrived` is recomputed against what this request may actually hand over,
           // so a suppressed buffer cannot report an arrival it is not allowed to show.
           const newMessages = replyWait ? pending : (arrived ? pending : []);
-          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, newMessages) : readThroughSeqV2(st);
+          const admission={};
+          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, newMessages, key, admission) : readThroughSeqV2(st);
       if (req.headers['x-agent-token'] && Number.isSafeInteger(readThroughSeq)) st.lastWakeReadThroughSeq = readThroughSeq;
           const lastNew = newMessages.length ? newMessages[newMessages.length - 1]
             : replyWait ? [...modelView.recentMessages].reverse().find((m) => m && !m.isSelf) : null;
@@ -6869,7 +6875,7 @@ async function main() {
               : replyWait ? (quiet ? '已满足静默，按消息语义分别或合并回复。' : '尚未安静够；先判断现有消息是否需要回应。')
               : arrived ? '已收到新消息；需要确认是否说完时调用 qq_wait_for_quiet。' : verdict?.guidance || '本次不结束；再次调用 qq_wait_for_messages 等新来信。',
             newMessages,
-            readThroughSeq,
+            readThroughSeq, ...admission,
             unreadCount: modelView.unread.length
           });
           return;
@@ -6913,7 +6919,7 @@ async function main() {
           if (url.pathname === '/api/tokens/budgets/replies') {
             if (req.method === 'GET') {
               const active = pluginHost.callService('tokenBudget', 'mechanicalReplies') || {};
-              sendJson({ ok: true, privateReplies: active.private || [], groupReplies: active.group || [] });
+              sendJson({ ok: true, privateReplies: active.private || [], groupReplies: active.group || [],mechanicalLimits:pluginHost.callService('tokenBudget','mechanicalLimits') });
               return;
             }
             if (req.method === 'POST') {
@@ -6927,10 +6933,10 @@ async function main() {
               const privateReplies = clean(body.privateReplies);
               const groupReplies = clean(body.groupReplies);
               if (!privateReplies || !groupReplies) { sendJson({ ok: false, error: '每套需有 1–80 条不重复词条，每条 1–120 字' }, 400); return; }
-              const result = pluginHost.setConfig('life-token-budget', { mechanicalPrivateReplies: privateReplies, mechanicalGroupReplies: groupReplies });
+              const result = pluginHost.setConfig('life-token-budget', { mechanicalPrivateReplies: privateReplies, mechanicalGroupReplies: groupReplies,...(body.mechanicalLimits?{mechanicalLimits:body.mechanicalLimits}:{}) });
               if (!result.ok) { sendJson(result, 400); return; }
               await pluginHost.reload('life-token-budget');
-              sendJson({ ok: true, privateReplies, groupReplies });
+              sendJson({ ok: true, privateReplies, groupReplies,mechanicalLimits:pluginHost.callService('tokenBudget','mechanicalLimits') });
               return;
             }
           }
@@ -6992,14 +6998,14 @@ async function main() {
             const body = await readBody();
             const key = String(body.key || '');
             if (!/^(private|group):[1-9]\d*$/.test(key)) { sendJson({ ok: false, error: '无效会话' }, 400); return; }
-            const numbers = ['coldLimitYuan', 'hardLimitYuan', 'weakMinIntervalMin'].map((field) => Number(body[field]));
+            const numbers = [Number(body.coldLimitYuan),Number(body.hardLimitYuan),key.startsWith('group:')?Number(body.weakMinIntervalMin??30):30];
             const current = pluginHost.get('life-token-budget')?.config?.sessions || {};
             if (numbers.some((value) => !Number.isFinite(value) || value < 0 || value > 100000)
                 || (numbers[2] !== 0 && (numbers[2] < 1 || numbers[2] > 1440))) {
               sendJson({ ok: false, error: '阈值或间隔超出范围' }, 400); return;
             }
             const sessions = Object.fromEntries(Object.entries(current).filter(([name]) => /^(private|group):[1-9]\d*$/.test(name)));
-            sessions[key] = { coldLimitYuan: numbers[0], hardLimitYuan: numbers[1], weakMinIntervalMin: numbers[2] || 30 };
+            sessions[key] = { coldLimitYuan: numbers[0], hardLimitYuan: numbers[1],...(key.startsWith('group:')?{weakMinIntervalMin:numbers[2]||30}:{}) };
             const result = pluginHost.setConfig('life-token-budget', { sessions });
             if (!result.ok) { sendJson(result, 400); return; }
             await pluginHost.reload('life-token-budget');
@@ -7976,7 +7982,7 @@ async function main() {
             st.lastAutoMessageAt = now;
             const sentMessages = await sendMessagesV2(key, [message], [], actualReplyToMessageId, atUserId);
             recordSentMessagesV2(key, sentMessages);
-            noteReplyDeliveredV2(key, token);
+            if(sentMessages.length>0)noteReplyDeliveredV2(key, token, {replyToMessageId:actualReplyToMessageId});
             if (sentMessages.length === 1) {
               try { pluginHost.emitSent({ key, success: true, sentAt: Date.now(), messages: [message] }); } catch {}
             }
@@ -8008,6 +8014,17 @@ async function main() {
           const body = await readBody();
           const key = String(body.key ?? '');
           if (!key || !state.sessions[key]) { sendJson({ ok: false, error: '会话不存在' }, 404); return; }
+          if(body.preserveState===true){
+            const st=getSocialV2State(key),oldSessionId=state.sessions[key],resolution={seqs:body.resolveSeqs||[],reason:body.reason||''};
+            const checked=resolveReceiptsV2(st,{...resolution,dryRun:true});if(!checked.ok){sendJson(checked,checked.status);return;}
+            try{await withTimeout(api.stopSessionWork(oldSessionId),DSH_CONTROL_TIMEOUT_MS,'stopSessionWork');}catch{sendJson({ok:false,error:'旧模型任务未确认停止，未切换会话'},503);return;}
+            if(state.sessions[key]!==oldSessionId){sendJson({ok:false,error:'会话映射已变化，未重复切换'},409);return;}
+            const resolved=resolveReceiptsV2(st,resolution);if(!resolved.ok){sendJson(resolved,resolved.status);return;}
+            if(body.freshContext===true)st.modelContextSince=Date.now();
+            sessionEpoch++;retireSession(key,{stopWork:false,preserveSchedules:true,reason:'管理员保留业务数据重开模型会话'});
+            let archived=false;try{await withTimeout(api.workspace.archiveSession({sessionId:oldSessionId}),DSH_CONTROL_TIMEOUT_MS,'archiveSession');archived=true;}catch{}
+            sendJson({ok:true,key,previousSessionId:oldSessionId,archived,preserved:true,resolved:resolved.resolved});return;
+          }
           sessionEpoch++;
           const oldSessionId = state.sessions[key];
           delete state.sessions[key];
@@ -8204,7 +8221,7 @@ async function main() {
   /**
    * 记一笔「本回合失败」并立刻取消该会话挂着的补话定时器。
    * 回合中途抛错/被中止、prompt 未被 DSH 接受时都必须调用：
-   * 否则已经布下的补话到点仍会冒出来（「哥哥别急嘛，我在认真想啦」）。
+   * 否则已经布下的补话到点仍会冒出来（「用户别急嘛，我在认真想啦」）。
    * inboundAt 是该失败回合对应的入站批次；若期间已有更新消息进来，旧回合的失败
    * 不能取消/阻塞新一轮的补话计时。
    */
@@ -8274,7 +8291,7 @@ async function main() {
       return pluginHost.callService(service,method,payload);
     },
     log,
-    guard: (key, context) => captureSendGuard(key, { wakeOrigin: context.envelope || null, budgetMechanical: context.budgetMechanical === true })
+    guard: (key, context) => captureSendGuard(key, { wakeOrigin: context.envelope || null, budgetMechanical: context.budgetMechanical === true, messageAck:context.reason==='thinkingAck'&&context.origin==='mechanical' })
   });
   function setOutboundTarget(userId) {
     const c=outboundScope.getStore();if(c && /^[1-9]\d*$/.test(String(userId||'')))outboundScope.enterWith(Object.freeze({...c,targetUserId:String(userId)}));
@@ -8301,7 +8318,7 @@ async function main() {
   }
   function sendToQQ(key, msg, options = {}) {
     const outbound = outboundContext(key, options);
-    const assertSendAllowed = captureSendGuard(key, { budgetMechanical: options.budgetMechanical === true, wakeOrigin: outbound.envelope || null });
+    const assertSendAllowed = captureSendGuard(key, { budgetMechanical: options.budgetMechanical === true, wakeOrigin: outbound.envelope || null,messageAck:options.messageAck===true });
     if (isSensitiveText(msg, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules)) {
       log(`⚠️ QQ 出站文本命中安全拦截 (${key})，已阻止发送`);
       appendActivity(`${key} 出站文本命中安全拦截，已阻止发送`);
@@ -9078,7 +9095,7 @@ async function main() {
   }
 
   // 入队校验无法约束排队等待期间的权限变化，每条消息临近实际发送时再次校验。
-  function captureSendGuard(key, { budgetMechanical = false, wakeOrigin = activeTurnEnvelopes.get(state.sessions[key]) } = {}) {
+  function captureSendGuard(key, { budgetMechanical = false, messageAck=false, wakeOrigin = activeTurnEnvelopes.get(state.sessions[key]) } = {}) {
     const policy = sessionPolicy(key);
     const sessionId = state.sessions[key];
     return () => {
@@ -9091,6 +9108,7 @@ async function main() {
           || (sessionId && state.sessions[key] !== sessionId)) {
         throw new Error('发送已取消：会话、模式或白名单已变化');
       }
+      if(messageAck && (tokenBudgetOf(key).stage!=='normal'||!dshReady||!hasActiveMessageAckTurn(key)))throw Error('模型未运行或当前不可回复，取消补话');
       if (!budgetMechanical && tokenBudgetOf(key).stage === 'silent') {
         throw new Error('发送已取消：额度硬上限已触发');
       }
@@ -9322,10 +9340,10 @@ async function main() {
   }
 
   // ── L 层｜任务委派会话（life-task-session 插件的桥接执行面）────────────────────
-  // 主人让小鲸鱼干「独立任务」时，小鲸鱼用 task_spawn 让桥接在 DSH 里开一个独立任务会话
-  // （qq-task-worker preset，挂「小鲸鱼任务」工作区，界面对主人可见）。任务会话自己干活、
+  // 管理员让AI助手干「独立任务」时，AI助手用 task_spawn 让桥接在 DSH 里开一个独立任务会话
+  // （qq-task-worker preset，挂「AI助手任务」工作区，界面对管理员可见）。任务会话自己干活、
   // 缺少输入时由协调器收集并补投；汇报带 [任务完成] 标记时桥接捕获结果、
-  // 唤醒发起会话让小鲸鱼取结果并向主人转达（跟进任务 → 输入输出 → 反馈结果）。
+  // 唤醒发起会话让AI助手取结果并向管理员转达（跟进任务 → 输入输出 → 反馈结果）。
   const TASKS_FILE = path.join(STATE_DIR, 'tasks.json');
   const TASK_DONE_MARKER = '[任务完成]';
   const tasksBySession = new Map(); // sessionId -> taskId（运行时索引）
@@ -9349,7 +9367,7 @@ async function main() {
   function saveTasks() {
     try { atomicWriteJson(TASKS_FILE, { tasks: tasksStore }); } catch (error) { log('保存 tasks.json 失败：' + (error?.message ?? error)); }
   }
-  /** 令牌 → 发起会话 key；只认当前活跃令牌，且必须是主人私聊，否则 null。 */
+  /** 令牌 → 发起会话 key；只认当前活跃令牌，且必须是管理员私聊，否则 null。 */
   function taskCapTokenKey(token) {
     if (typeof token !== 'string' || !token) return null;
     const ownerKey = 'private:' + String(cfg.ownerQQ ?? '');
@@ -9368,11 +9386,11 @@ async function main() {
   }
   async function taskSpawn({ token, title, task }) {
     const callerKey = taskCapTokenKey(token);
-    if (!callerKey) throw new Error('任务委派仅管理员（主人）会话可用：令牌校验失败');
+    if (!callerKey) throw new Error('任务委派仅管理员（管理员）会话可用：令牌校验失败');
     return taskSpawnCore({ callerKey, title, task });
   }
   async function taskSpawnCore({ callerKey, title, task, feedbackIssueId = '', feedbackClaimId = '' }) {
-    if (!isAdminDevKey(callerKey)) throw new Error('任务委派仅管理员（主人）会话可用');
+    if (!isAdminDevKey(callerKey)) throw new Error('任务委派仅管理员（管理员）会话可用');
     if (cfg.socialV2?.taskSession?.enabled === false) throw new Error('任务会话已停用');
     const taskConfig = pluginHost.get('life-task-session')?.config || {};
     const maxConcurrent = Math.max(1, Number(taskConfig.maxConcurrentTasks ?? cfg.socialV2?.taskSession?.maxConcurrentTasks) || 3);
@@ -9393,7 +9411,7 @@ async function main() {
     fs.mkdirSync(taskWorkspaceDir, { recursive: true });
     const wsValue = unwrap(await api.workspace.create({ path: taskWorkspaceDir }), 'task workspace.create');
     if (wsValue.created) {
-      try { await api.workspace.rename({ workspaceId: wsValue.workspace.workspaceId, title: '小鲸鱼任务' }); } catch {}
+      try { await api.workspace.rename({ workspaceId: wsValue.workspace.workspaceId, title: 'AI助手任务' }); } catch {}
     }
     const created = unwrap(await api.sessions.create({ workspaceId: wsValue.workspace.workspaceId, agentPreset: 'qq-task-worker' }), 'task session.create');
     const sessionId = created.sessionId;
@@ -9435,11 +9453,11 @@ async function main() {
     }
     return {
       ok: true, taskId: id, sessionId, title,
-      hint: '独立任务已在 DSH「小鲸鱼任务」工作区可见。聊天协调器继续聊天并管理输入输出；收到状态回执后用 task_result 核实，待补充时用 task_input 将答案送回此任务。'
+      hint: '独立任务已在 DSH「AI助手任务」工作区可见。聊天协调器继续聊天并管理输入输出；收到状态回执后用 task_result 核实，待补充时用 task_input 将答案送回此任务。'
     };
   }
   function taskList({ token }) {
-    if (!taskCapTokenKey(token)) throw new Error('任务列表仅管理员（主人）会话可用');
+    if (!taskCapTokenKey(token)) throw new Error('任务列表仅管理员（管理员）会话可用');
     const list = Object.values(tasksStore)
       .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0))
       .map((t) => ({
@@ -9449,7 +9467,7 @@ async function main() {
     return { ok: true, count: list.length, tasks: list };
   }
   async function taskResult({ token, taskId }) {
-    if (!taskCapTokenKey(token)) throw new Error('任务结果仅管理员（主人）会话可用');
+    if (!taskCapTokenKey(token)) throw new Error('任务结果仅管理员（管理员）会话可用');
     const t = tasksStore[String(taskId)];
     if (!t) throw new Error('没有这个任务：' + taskId);
     await reconcileTaskHistory(t);
@@ -9552,15 +9570,15 @@ async function main() {
     saveTasks();
     return {ok:true,taskId:t.id,status:t.status,delivery:'accepted'};
   }
-  // 终止一个在跑的任务会话：取消当前 turn、归档会话、标记 cancelled（主人手动停）。
+  // 终止一个在跑的任务会话：取消当前 turn、归档会话、标记 cancelled（管理员手动停）。
   async function taskCancel({ token, taskId }) {
-    if (!taskCapTokenKey(token)) throw new Error('任务终止仅管理员（主人）会话可用');
+    if (!taskCapTokenKey(token)) throw new Error('任务终止仅管理员（管理员）会话可用');
     const t = tasksStore[String(taskId)];
     if (!t) throw new Error('没有这个任务：' + taskId);
     if (!['running','waiting_input'].includes(t.status)) return { ok: true, taskId: t.id, title: t.title, status: t.status, note: '任务已结束，无需终止' };
     // 先标记 cancelled，防止 stopSessionWork 触发的 turn/end 回调再把它覆盖成 failed
     t.status = 'cancelled';
-    t.error = '主人手动终止';
+    t.error = '管理员手动终止';
     t.pendingRequests = [];
     t.pendingInput = '';
     t.updatedAt = Date.now();
@@ -9574,7 +9592,7 @@ async function main() {
     tasksBySession.delete(t.sessionId);
     saveTasks();
     if (t.feedbackIssueId) finishFeedbackResearchTask(t);
-    log(`[task] 任务会话 ${taskId}「${t.title}」已被主人手动终止`);
+    log(`[task] 任务会话 ${taskId}「${t.title}」已被管理员手动终止`);
     return { ok: true, taskId: t.id, title: t.title, status: 'cancelled', note: '已终止' };
   }
   function handleTaskTurnEnd(taskId, ended) {
@@ -9847,7 +9865,7 @@ async function main() {
     return Array.isArray(cfg.console?.excludedConversationKeys) && cfg.console.excludedConversationKeys.some((item) => String(item || '').trim() === target);
   };
   taskCaps.listConversationKeys = () => [...socialV2.conversations.keys()].filter((k) => isSessionAllowedInCurrentMode(k));
-  // 给组件（绰号表/人物卡）用：谁是管理员，认人时才能把别名接到「主人」这个身份上。
+  // 给组件（绰号表/人物卡）用：谁是管理员，认人时才能把别名接到「管理员」这个身份上。
   taskCaps.getOwnerQQ = () => String(cfg.ownerQQ ?? '');
   taskCaps.getSelfReviewConfig = () => ({
     enabled: cfg.socialV2?.selfReview?.enabled !== false,
@@ -10004,6 +10022,7 @@ async function main() {
       affairsContext:pluginHost.callService('affairs','context',{key,maxChars:4000}),
       moodState:mood?{...mood,policy:pluginHost.callService('mood','policy'),history:pluginHost.callService('mood','history',{key,limit:5})?.items||[]}:null,
       stickerEntries,stickerConfig:cfg.socialV2?.sticker||{},hasUnreadNow:st.unread.length>0,
+      recentOwnMessages:getSocialV2State(key).recentMessages.filter(m=>m?.isSelf).slice(-6),
       isPrivate:key.startsWith('private:'),isOwnerKey:isAdminDevKey(key),
     },{only:moduleIds});
     return {modules,receiptState:receiptStateView(st),expression:pluginHost.callService('chatExpression','current',{key})};
@@ -10206,6 +10225,7 @@ async function main() {
         preSleepWaitObservedAt: 0,
         preSleepWaitAccumMs: 0,
         lastUnreadSeq: 0,
+        modelContextSince: 0,
         lastDialogueSeq: 0,
         lastReadThroughSeq: 0,
         modelSeenSeqs: new Set(),
@@ -10293,6 +10313,7 @@ async function main() {
             preSleepWaitObservedAt: Number(val.preSleepWaitObservedAt) || 0,
             preSleepWaitAccumMs: Number(val.preSleepWaitAccumMs) || 0,
             lastUnreadSeq: Number(val.lastUnreadSeq) || 0,
+            modelContextSince: Number(val.modelContextSince) || 0,
             lastDialogueSeq: Number(val.lastDialogueSeq) || 0,
             lastReadThroughSeq: Number.isSafeInteger(val.lastReadThroughSeq) && val.lastReadThroughSeq >= 0
               ? Math.min(val.lastReadThroughSeq, Number(val.lastUnreadSeq) || 0) : 0,
@@ -10430,6 +10451,7 @@ async function main() {
           preSleepWaitObservedAt: st.preSleepWaitObservedAt || 0,
           preSleepWaitAccumMs: st.preSleepWaitAccumMs || 0,
           lastUnreadSeq: st.lastUnreadSeq || 0,
+          modelContextSince: st.modelContextSince || 0,
           lastDialogueSeq: st.lastDialogueSeq || 0,
           lastReadThroughSeq: st.lastReadThroughSeq || 0,
           activeTopics: Array.isArray(st.activeTopics) ? st.activeTopics.slice(-50) : [],
@@ -11420,7 +11442,7 @@ async function main() {
   // 是否"直接针对 AI"的提问/挑战：提到 AI 相关词且带疑问/比较，或对"你"开火，或追问催促
   function isDirectedAtAi(textContent) {
     const lower = String(textContent ?? '').toLowerCase();
-    const aiMention = /deepseek|claude|chatgpt|gpt|大肥鱼|小鲸鱼|鲸鱼|d指导|d老师|d师傅|深度求索|\bds\b|ai|人工智障|机器人|模型/.test(lower);
+    const aiMention = /deepseek|claude|chatgpt|gpt|通用助手|AI助手|助手|d指导|d老师|d师傅|深度求索|\bds\b|ai|人工智障|机器人|模型/.test(lower);
     const challenge = /强|弱|行不行|能不能|会不会|是不是|一半|水平|垃圾|废物|白嫖|菜|不如|厉害|赢|输|比.*强|比.*弱/.test(lower);
     const question = /[?？吗呢吧]|怎么|为什么|哪|谁/.test(lower);
     if (aiMention && (question || challenge)) return true;
@@ -11600,7 +11622,7 @@ async function main() {
     if (!isSessionAllowedInCurrentMode(key)) throw new Error(`当前模式不允许会话 ${key}`);
     const budgetAllows = () => {
       const budget = tokenBudgetOf(key);
-      return { budget, allowed: pluginHost.callService('tokenBudget', 'canDispatch', { key, stage: budget.stage }) !== false };
+      return { budget, allowed: (budget.stage!=='weak'||opts.wakeReason==='budgetWeak')&&pluginHost.callService('tokenBudget', 'canDispatch', { key, stage: budget.stage }) !== false };
     };
     // Recheck queued wakes at dispatch time: no model call while paused/disabled
     // and no reserved2 prompt leaking into an ordinary chat after a mode switch.
@@ -11635,9 +11657,10 @@ async function main() {
     const envelope = { key, sessionId, actionId:crypto.randomUUID(), reason:String(opts.wakeReason || opts.modelReason || 'message'),
       reminders:opts.wakeReason==='reminder'?(getSocialV2State(key).pendingReminderItems||[]).map(item=>({...item})):[],cancelled:false };
     envelope.wakeInboundAt = Number(messageAckInboundAt.get(key)) || 0;
+    envelope.budgetStage=tokenBudgetOf(key).stage;envelope.replyGrantThroughSeq=getSocialV2State(key).lastUnreadSeq||0;
     envelope.mood=pluginHost.callService('mood','read',{key});
     envelope.replyPlan=pluginHost.callService('replyPlan','resolve',{key,turnId:envelope.actionId,state:modelFacingStateV2(key),
-      incomingText:opts.wakeReason?lastIncomingTextV2(modelFacingStateV2(key)):promptText,mood:envelope.mood,reason:envelope.reason});
+      incomingText:opts.wakeReason?lastIncomingTextV2(modelFacingStateV2(key)):promptText,mood:envelope.mood,reason:envelope.reason,budgetStage:envelope.budgetStage,batchMessageCount:modelFacingStateV2(key).unread.length});
     if(!envelope.replyPlan)throw Error('发送编排组件未启用/不可用');
     let wakeState;
     let wakeToken;
@@ -11670,9 +11693,11 @@ async function main() {
     }
     if(!opts.wakeReason)promptText += '\n'+envelope.replyPlan.line;
     const legacyContextText=withSlangContext(promptText,key);
-    const contextText=envelope.contextModules ? pluginHost.callService('contextAssembly','frame',{
-      key,sessionId,scene:envelope.reason,modules:envelope.contextModules,extras:envelope.contextExtras,
-      roleText:envelope.roleHint||'',backgroundText:formatInitialPromptV2(key),prompt:promptText,
+    // Every reserved2 delivery replaces the previous signed task, including
+    // controller input and in-conversation continuations without a wake reason.
+    const contextText=(currentMode==='reserved2'||envelope.contextModules) ? pluginHost.callService('contextAssembly','frame',{
+      key,sessionId,scene:envelope.reason,modules:envelope.contextModules||[],extras:envelope.contextExtras,
+      roleText:envelope.roleHint||currentRoleHintV2(),backgroundText:formatInitialPromptV2(key),prompt:promptText,
       snapshot:wakeSnapshot,slangText:withSlangContext('',key),fallback:legacyContextText
     }) || legacyContextText : legacyContextText;
     let content = [{ type: 'text', text: contextText }];
@@ -11731,7 +11756,7 @@ async function main() {
       if (!opts.silent && isAdminDevKey(key)) await sendToQQ(key, `⚠️ 消息未被接受：${safeErrText}`);
       return { ok: false, error: safeErrText };
     }
-    pluginHost.callService('tokenBudget', 'noteDispatch', { key, stage: dispatchBudget.budget.stage });
+    pluginHost.callService('tokenBudget', 'noteDispatch', { key, stage: dispatchBudget.budget.stage,throughSeq:wakeSnapshot?Math.max(0,...[...wakeSnapshot.messages,...wakeSnapshot.receiptWindow,...wakeSnapshot.recent].map(m=>Number(m.seq)||0)):getSocialV2State(key).lastUnreadSeq });
     // 补话布点必须在「唤醒提示词真的被 DSH 接受」（模型开始生成）之后才落地：
     // 额度/静音/宵禁/模式闸门跳过的唤醒因此一条补话都不会留下，不会「先说了等我一下然后消失」。
     if(String(opts.wakeReason||'').startsWith('scheduledContact:'))pluginHost.callService('availability','markDispatched',{key,id:String(opts.wakeReason).split(':')[1]});
@@ -11740,7 +11765,7 @@ async function main() {
         && wakeState.agentToken === wakeToken) {
       // Acceptance grants visibility, never acknowledgement. New arrivals and
       // rejected/stale deliveries must not be cleared by an old cursor.
-      noteModelMessagesV2(wakeState, [...wakeSnapshot.receiptWindow, ...wakeSnapshot.messages, ...wakeSnapshot.recent]);
+      noteModelMessagesV2(wakeState, [...wakeSnapshot.receiptWindow, ...wakeSnapshot.messages, ...wakeSnapshot.recent], key);
       if (Number.isSafeInteger(wakeSnapshot.readThroughSeq)) wakeState.lastWakeReadThroughSeq = wakeSnapshot.readThroughSeq;
     }
     if (accepted.result.value.command?.text && !opts.silent && currentMode !== 'reserved2') {
@@ -11753,6 +11778,17 @@ async function main() {
   }
 
   const pluginPromptCooldowns=new Map();
+  taskCaps.budgetWeakStatus=(key)=>({stage:tokenBudgetOf(key).stage,allowed:dshReady&&isSessionAllowedInCurrentMode(key)&&!socialV2.paused&&cfg.socialV2?.enabled!==false&&pluginHost.callService('availability','canWake',{key,reason:'budgetWeak'})!==false&&pluginHost.callService('tokenBudget','canDispatch',{key,stage:tokenBudgetOf(key).stage})!==false,busy:isConversationBusyV2(key,getSocialV2State(key)),pendingCount:pendingMessagesV2(getSocialV2State(key)).length});
+  taskCaps.requestBudgetWake=async(key)=>{
+    const status=taskCaps.budgetWeakStatus(key);if(status.stage!=='weak'||!status.allowed||status.busy||!status.pendingCount)return {ok:false};
+    const lease=pluginHost.callService('tokenBudget','claimWeakBatch',{key});if(lease?.ok!==true)return {ok:false};
+    try{
+    const st=getSocialV2State(key),messages=modelFacingStateV2(key,{weak:true}).unread;
+    for(const message of messages){const admission=await pluginHost.callService('knowledgeQuota','preflight',{key,plainContent:message.quotaText||message.plain||message.text,messageId:message.messageId,seq:message.seq,userId:message.userId,isOwner:String(message.userId)===String(cfg.ownerQQ),allowed:true,reason:'message',onHandled:()=>{message.quotaAdmission='rejected';if(message.messageId)markIncomingHandledV2(key,message.messageId);}});if(admission?.handled)message.quotaAdmission='rejected';}
+    if(!modelFacingStateV2(key,{weak:true}).unread.length)return {ok:false};
+    st.bootstrapSent=true;saveSocialV2State();await sendWakePromptV2(key,'budgetWeak');return {ok:pluginHost.callService('tokenBudget','canDispatch',{key,stage:'weak'})===false};
+    }finally{pluginHost.callService('tokenBudget','releaseWeakBatch',{key,id:lease.id});}
+  };
   taskCaps.budgetRecoveryStatus = (key) => {
     const budget = tokenBudgetOf(key);
     const allowed = dshReady && isSessionAllowedInCurrentMode(key)
@@ -12402,8 +12438,22 @@ async function main() {
   // 判断当前消息是否“引用/回复了机器人自己”：若是，则桥接层也把它当作直接对 AI 说。
   async function isQuoteTargetSelf(message, kind, id, selfId) {
     if (!Array.isArray(message) || selfId == null) return false;
+    const metadataOnly = kind === 'group' && tokenBudgetOf(convKey(kind, id)).stage === 'silent';
     for (const seg of message) {
       if (seg?.type === 'reply' && seg.data?.id != null) {
+        // Silent mode blocks model-facing message bodies. Mechanical reply
+        // targeting only needs the verified message id, group and sender.
+        if (metadataOnly) {
+          const replyId = String(seg.data.id), numericId = Number(replyId);
+          if (!Number.isSafeInteger(numericId)) continue;
+          try {
+            const raw = await bot.getMessage(numericId);
+            const rawId = raw?.message_id ?? raw?.msg_id;
+            if (rawId == null || String(rawId) !== replyId || String(raw?.group_id ?? raw?.groupId ?? '') !== String(id)) continue;
+            if (String(raw?.sender?.user_id ?? raw?.user_id ?? '') === String(selfId)) return true;
+          } catch { /* Unverified targets do not trigger a mechanical reply. */ }
+          continue;
+        }
         const info = await resolveReplyInfo(kind, id, String(seg.data.id), selfId);
         if (info?.userId && String(info.userId) === String(selfId)) return true;
       }
@@ -12556,7 +12606,7 @@ async function main() {
    * 成功发送的目标会话记录其已读消息凭据；token 对应的发起会话也保留传话完成凭据。
    * 两边都按发送时已读且尚未回复的 seq 绑定，不能借一条发送回执覆盖后到消息。
    */
-  function noteReplyDeliveredV2(targetKey, token) {
+  function noteReplyDeliveredV2(targetKey, token, {replyToMessageId} = {}) {
     const keys = new Set();
     const tk = String(token || '');
     let originKey = '';
@@ -12574,12 +12624,7 @@ async function main() {
       if (st) {
         if (cfg.socialV2?.doubleStamp?.enabled === false || !v2ToolEnabled('reportReceipts')) stamped += markReplyBatchV2(st);
         else {
-          const pending = new Set(Array.isArray(st.receiptSendPendingSeqs) ? st.receiptSendPendingSeqs : []);
-          for (const msg of Array.isArray(st.unread) ? st.unread : []) {
-            if (Number.isSafeInteger(msg?.seq) && msg.seq > 0 && stampMsV2(msg.seenAt) > 0 && !stampMsV2(msg.repliedAt)) pending.add(msg.seq);
-          }
-          st.receiptSendPendingSeqs = [...pending].sort((a, b) => a - b).slice(-200);
-          st.receiptSendPendingAt = st.receiptSendPendingSeqs.length ? Date.now() : 0;
+          registerSuccessfulReplyV2(st, {replyToMessageId:k===target?replyToMessageId:undefined});
         }
       }
     }
@@ -12740,6 +12785,7 @@ async function main() {
   }
 
   function evaluateWakeTriggerV2(kind, decision) {
+    if(['budgetWeak','budget-held'].includes(decision?.reason))return decision.accepted?decision.reason:null;
     if(kind==='private')return 'private';
     return decision?.accepted ? decision.reason : null;
   }
@@ -12868,7 +12914,7 @@ async function main() {
       }
     }
     st.lastReceiptReportAt = now;
-    const consumedSeqs = new Set(updates.filter((item) => ['seen', 'replied', 'anomaly'].includes(item.status)).map((item) => item.seq));
+    const consumedSeqs = new Set(updates.filter((item) => ['replied', 'complete'].includes(item.status)).map((item) => item.seq));
     st.receiptSendPendingSeqs = (Array.isArray(st.receiptSendPendingSeqs) ? st.receiptSendPendingSeqs : []).filter((seq) => !consumedSeqs.has(seq));
     if (!st.receiptSendPendingSeqs.length) st.receiptSendPendingAt = 0;
     if (st.doubleStampCheck) {
@@ -12942,7 +12988,7 @@ async function main() {
     return through;
   }
 
-  function noteModelMessagesV2(st, messages) {
+  function noteModelMessagesV2(st, messages, key, admission) {
     // Bound receipts by the actual unread buffer; historical/self messages need no receipt.
     const unread = new Set(st.unread.map((m) => m.seq));
     st.modelSeenSeqs = new Set([...st.modelSeenSeqs || []].filter((seq) => unread.has(seq)));
@@ -12952,6 +12998,7 @@ async function main() {
       st.modelSeenSeqs.add(msg.seq);
       stampSeenAtV2(st, msg.seq, now);
     }
+    if(key){const envelope=activeTurnEnvelopes.get(state.sessions[key]);if(envelope&&!envelope.cancelled){const stage=tokenBudgetOf(key).stage,allow=stage==='normal';const grant=pluginHost.callService('replyPlan','forMessages',{key,actionId:envelope.actionId,currentPlan:envelope.replyPlan,baselineSeq:envelope.replyGrantThroughSeq||0,messages,mood:envelope.mood,reason:envelope.reason,canRenew:allow});if(grant?.changed){envelope.replyPlan=grant.plan;envelope.replyGrantThroughSeq=grant.throughSeq;if(admission)admission.replyBatch={renewed:true,id:grant.plan.turnId,throughSeq:grant.throughSeq};}}}
     return readThroughSeqV2(st);
   }
 
@@ -13097,15 +13144,17 @@ async function main() {
     const st = getSocialV2State(key), stage = tokenBudgetOf(key).stage;
     if (stage === 'silent') return modelStateViewV2(st, { allowedSeqs: new Set() });
     if (stage !== 'weak' && !weak) return modelStateViewV2(st);
+    const active=activeTurnEnvelopes.get(state.sessions[key]);
+    const through=stage==='weak'&&active?pluginHost.callService('tokenBudget','visibleThrough',{key}):null;
     const candidates = [...new Map([...(st.recentMessages || []), ...(st.unread || [])]
-      .filter(message => isModelVisibleMessageV2(message) && message.isSelf !== true)
+      .filter(message => isModelVisibleMessageV2(message) && message.isSelf !== true && (through===null||message.seq<=through))
       .map(message => [message.seq, message])).values()];
     const selected = pluginHost.callService('tokenBudget', 'selectWindow', { key, messages: candidates });
     // No plugin policy means no weak model visibility, rather than a new limit.
     const allowedSeqs = new Set((Array.isArray(selected) ? selected : []).map(message => message.seq));
     let changed = false, lastOutside = 0;
     for (const list of [st.unread, st.recentMessages]) for (const message of list || []) {
-      if (!isModelVisibleMessageV2(message) || message.isSelf === true || allowedSeqs.has(message.seq)) continue;
+      if (!isModelVisibleMessageV2(message) || message.isSelf === true || allowedSeqs.has(message.seq) || (through!==null&&message.seq>through)) continue;
       message.budgetDisposition = 'outside-cold-window'; changed = true;
       if (Number.isSafeInteger(message.seq)) lastOutside = Math.max(lastOutside, message.seq);
     }
@@ -13261,7 +13310,7 @@ async function main() {
     if (!isAdminDevKey(key)) {
       const ownerQq = String(cfg.ownerQQ ?? '');
       crossSessionLine = '【传话能力】'
-        + (ownerQq ? `管理员/主人就是 QQ ${ownerQq}，其他称呼以控制台的别名配置为准。` : '')
+        + (ownerQq ? `管理员/管理员就是 QQ ${ownerQq}（别名：墨辞、墨薛、黄猫、大黄猫）。` : '')
         + '好友明确托你转达给别人时，不要说做不到：先问清要转的内容，再用 qq_send_private_message 发给目标，正文以「【传话】来自好友：」开头并写明是谁托的。'
         + '只能发给白名单里的人，桥接会限频并做内容审计；不要替人编内容，不要把别人的私密对话转述出去，也不要把对方的 QQ 号报给第三方。\n\n';
     }
@@ -13282,6 +13331,7 @@ async function main() {
         key,
         st: modelView,
         state: modelView,
+        recentOwnMessages:st.recentMessages.filter(m=>m?.isSelf).slice(-6),
         reason,
         incomingText: lastIncomingTextV2(modelView),
         mood: moodNow,
@@ -13705,7 +13755,7 @@ async function main() {
     proactiveCheck: 20
   };
 
-  // 唤醒原因可能带子类型（如 keyword:小鲸鱼、speaker:昵称），取冒号前的基名计算优先级。
+  // 唤醒原因可能带子类型（如 keyword:AI助手、speaker:昵称），取冒号前的基名计算优先级。
   function wakePriorityV2(reason) {
     const base = String(reason ?? '').split(':')[0];
     return WAKE_PRIORITY[base] ?? 0;
@@ -13822,6 +13872,7 @@ async function main() {
     const isPrivate = String(key).startsWith('private:');
     const isGroup = String(key).startsWith('group:');
     if (!isPrivate && !isGroup) return;
+    if(tokenBudgetOf(key).stage!=='normal')return;
     const ackCfg = cfg.socialV2?.readReceipt ?? {};
     if ((isPrivate && ackCfg.ackPrivate === false) || (isGroup && ackCfg.ackGroup === false)) return;
     cancelMessageReadAck(key);
@@ -13889,7 +13940,7 @@ async function main() {
           const lastOut = Number(messageAckLastOutbound.get(key)) || 0;
           if (lastOut >= expectedInboundAt || (Number(messageAckLastAttempt.get(key)) || 0) >= expectedInboundAt) return cancel('这批消息之后已有出站');
 
-          if (!isSessionAllowedInCurrentMode(key) || shouldBlockSilentReply(key)) return cancel('会话已不在当前模式或正在静默');
+          if (!dshReady || !hasActiveMessageAckTurn(key) || !isSessionAllowedInCurrentMode(key) || shouldBlockSilentReply(key) || tokenBudgetOf(key).stage!=='normal') return cancel('模型未运行或当前不可回复');
           const id = Number(String(key).split(':')[1]);
           if (!Number.isFinite(id) || id <= 0) return cancel('无法解析会话 id');
 
@@ -13905,6 +13956,7 @@ async function main() {
                 messageAck: true,
                 allow: () => messageAckArmed.get(key) === armed
                   && (Number(messageAckInboundAt.get(key)) || 0) === expectedInboundAt
+                  && tokenBudgetOf(key).stage==='normal'
                   && (Number(messageAckLastAttempt.get(key)) || 0) < expectedInboundAt
               });
             }
@@ -13955,7 +14007,7 @@ async function main() {
   function armMessageReadAckV2(key, reason, inboundAt) {
     if (Number(messageAckInboundAt.get(key)) !== Number(inboundAt)) return;
     if (Number(messageAckLastArmedInbound.get(key)) === Number(inboundAt)) return;
-    if (!messageAckWakeEligible(key, reason)) return;
+    if (!messageAckWakeEligible(key, reason) || tokenBudgetOf(key).stage!=='normal') return;
     if (currentMode !== 'reserved2' || socialV2.paused || cfg.socialV2?.enabled === false) return;
     const st = getSocialV2State(key);
     if (!dshReady || st.mutedUntilReengaged || shouldBlockSilentReply(key)) return;
@@ -14257,11 +14309,13 @@ async function main() {
     if (!isSessionAllowedInCurrentMode(key)) return;
     const incomingBudget = tokenBudgetOf(key);
     const incomingEventId=messageRef || (event.__outboundIncomingId ||= crypto.randomUUID());
+    pluginHost.callService('tokenBudget','observeIncoming',{key,messageId:incomingEventId,stage:incomingBudget.stage,periodStart:incomingBudget.periodStart,at:incomingAt});
+    if(incomingBudget.stage!=='normal')cancelMessageReadAck(key);
     const incomingTextFact=Array.isArray(event.message)?event.message.filter(seg=>seg?.type==='text').map(seg=>String(seg.data?.text||'')).join(''):String(event.raw_message||'');
-    const incomingWakeDecision=currentMode==='reserved2'?pluginHost.callService('proactive','incoming',{
+    const incomingWakeDecision=currentMode==='reserved2'&&incomingBudget.stage==='normal'?pluginHost.callService('proactive','incoming',{
       key,eventId:incomingEventId,at:incomingAt,blockedReason:incomingBudget.stage==='silent'?'budget_silent':'',
       event:{text:incomingTextFact,atMention:quoteTargetIsSelf||(Array.isArray(event.message)&&event.message.some(seg=>seg?.type==='at'&&String(seg.data?.qq)===String(event.self_id??'')))}
-    }):null;
+    }):incomingBudget.stage==='weak'?{accepted:kind==='private'&&pluginHost.callService('tokenBudget','canDispatch',{key,stage:'weak'})===true,reason:kind==='private'?'budgetWeak':'budget-held'}:null;
     reportHumanIncoming((service,method,payload)=>pluginHost.callService(service,method,payload),{
       key,messageId:messageRef || (event.__outboundIncomingId ||= crypto.randomUUID()),userId:String(event.user_id??''),at:incomingAt,
       hasText:Array.isArray(event.message)?event.message.some(seg=>seg?.type==='text'&&String(seg.data?.text||'').trim()):!!String(event.raw_message||'').trim(),
@@ -14271,8 +14325,8 @@ async function main() {
       directedAtBot:kind==='private'||quoteTargetIsSelf||(Array.isArray(event.message)&&event.message.some(seg=>seg?.type==='at'&&String(seg.data?.qq)===String(event.self_id??'')))||incomingWakeDecision?.matched?.includes('nameMention')||(!!selfDisplayName.trim()&&incomingTextFact.toLowerCase().includes(selfDisplayName.trim().toLowerCase()))
     });
     const mechanical = pluginHost.callService('tokenBudget', 'onSilentIncoming', {
-      key, kind, stage: incomingBudget.stage, periodStart: incomingBudget.periodStart,
-      messageId: messageRef, text: textContent, quotaText,
+      key, kind, quoteTargetIsSelf, stage: incomingBudget.stage, periodStart: incomingBudget.periodStart,
+      messageId: incomingEventId, text: textContent, quotaText,
       sender: event.sender?.card || event.sender?.nickname || String(event.user_id ?? ''),
       userId: event.user_id ?? '', at: incomingAt,
       imageIds: stagedIncomingImages.map(({ imageId, name }) => ({ imageId, name })),
@@ -14281,7 +14335,7 @@ async function main() {
     });
     if (incomingBudget.stage === 'silent') {
       cancelMessageReadAck(key);
-      if (mechanical?.text) await sendToQQ(key, mechanical.text, { budgetMechanical: true, conversationReply: false, wakeOrigin: null });
+      if (mechanical?.text){const sent=await sendToQQ(key, mechanical.text, { budgetMechanical: true, conversationReply: false, wakeOrigin: null,originReason:'budgetExceeded' });pluginHost.callService('tokenBudget','noteMechanicalResult',{key,messageId:incomingEventId,sent});}
       return;
     }
     if (!plainContent && !quoteTargetIsSelf) return;
@@ -14408,6 +14462,7 @@ async function main() {
       const incomingAtSelf = kind === 'group' && Array.isArray(event.message)
         && event.message.some(seg => seg?.type === 'at' && String(seg.data?.qq) === String(event.self_id ?? ''));
       const incomingMessage = appendSocialV2Message(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, messageRef || null, mediaList, event.user_id ?? null, extractForwardIds(event.message ?? []), 'pending', incomingAtSelf);
+      if(incomingBudget.stage==='weak')incomingMessage.quotaText=String(quotaText).slice(0,20000);
       try {
       // 二代同样收集群聊黑话学习素材（AI 自主提交之外，桥接仍自动提取高频陌生词）
       // 用户回复了 → 关心退避归零。
@@ -14446,7 +14501,7 @@ async function main() {
         // 为什么只限私聊：群聊里谁都能触发这句话，等于把「向任意白名单会话发消息」的权限
         // 交给整个群；私聊至少能落到具体的人。内容统一过 content-guard（防提示词注入/违规），
         // 非 owner 另有频次上限。目标只能命中白名单（resolveRelayTargetV2 已强制）。
-        // 支持：① 一句话带内容（“给管理员带句话，就说晚安”）；② 先指定人再发内容；③ 名字找不到时补 QQ 号。
+        // 支持：① 一句话带内容（“给小林带句话，就说晚安”）；② 先指定人再发内容；③ 名字找不到时补 QQ 号。
         const isOwnerRelay = key === 'private:' + String(cfg.ownerQQ ?? '');
         const relaySessionOk = !isOwnerRelay && String(key).startsWith('private:') && isSessionAllowedInCurrentMode(key);
         if (isOwnerRelay || relaySessionOk) {
@@ -14513,7 +14568,7 @@ async function main() {
           saveSocialV2State();
           const pmFresh = readPersistMemoryV2(key);
           const sameDay = pmFresh.updatedAt && new Date(pmFresh.updatedAt).toDateString() === new Date().toDateString();
-          if (!sameDay && pmFresh.text.trim()) {
+          if (incomingBudget.stage==='normal' && !sameDay && pmFresh.text.trim()) {
             stCare.pendingMemoryWrite = true;
             saveSocialV2State();
             log('[diary] 用户点播日记，但记忆不是今天的，先更新记忆 ' + key);
@@ -14563,6 +14618,7 @@ async function main() {
         try { scheduleTimeBubbleV2(key); } catch {}
       }
       const candidateReason = evaluateWakeTriggerV2(kind, incomingWakeDecision);
+      if(candidateReason==='budgetWeak'){incomingMessage.quotaAdmission='admitted';await taskCaps.requestBudgetWake(key);return;}
       if (candidateReason) {
         const admission = await pluginHost.callService('knowledgeQuota', 'preflight', {
           key, plainContent: quotaText, messageId: incomingMessage.messageId, seq: incomingMessage.seq,
@@ -14846,7 +14902,7 @@ async function main() {
   // 二代拍一拍（notify/poke）事件处理：写入消息流并按需唤醒。
   // ── 新好友：主动自我介绍 + 发起话题 ──────────────────────────────────────
   // 白名单内的好友：唤醒 AI，用当前角色人设自然问候（能继续聊下去）。
-  // 不在白名单的好友：直接发固定的两条问候，可选当前小鲸鱼表情（不建会话、不调模型），
+  // 不在白名单的好友：直接发固定的两条问候，可选当前AI助手表情（不建会话、不调模型），
   // 这样"加了就冷场"不会发生；后续想让它继续聊需要把这个 QQ 加进白名单。
   const greetedFriends = new Map(); // userId -> 最近一次问候时间
   async function handleFriendAddV2(event) {
@@ -14880,9 +14936,9 @@ async function main() {
       return;
     }
     const intros = [
-      '你好……我是 DeepSeek 的蓝色小鲸鱼，刚看到你加我了',
-      '唔，你好呀，我是小鲸鱼，一只有点爱喝牛奶的蓝色小鲸鱼',
-      '你好，我是 DeepSeek 的小鲸鱼，平时喜欢安静待着，也喜欢看海'
+      '你好，我是 AI 助手，可以协助你处理问题。',
+      '你好，已收到你的好友申请。有什么需要协助的？',
+      '你好，我是 AI 助手。你可以直接告诉我问题。'
     ];
     const topics = [
       greetWord + '，吃了没？今天打算吃点什么',
@@ -14895,7 +14951,7 @@ async function main() {
       await fixedFriendText(pick(intros));
       await fixedFriendText(pick(topics));
       noteMessageAckOutbound(key); // 主动问候也是一次出站
-      const selfStickers = (Array.isArray(stickerEntries) ? stickerEntries : []).filter((e) => /^(?:正太小肥鱼|小鲸鱼)/.test(String(e.desc || '')));
+      const selfStickers = (Array.isArray(stickerEntries) ? stickerEntries : []).filter((e) => /^(?:AI助手|AI助手)/.test(String(e.desc || '')));
       if (selfStickers.length) {
         const stk = selfStickers[Math.floor(Math.random() * selfStickers.length)];
         await onebotHttpAction('send_custom_face',{user_id:Number(userId),emoji_id:stk.id},{outbound:friendContext,assertAllowed:()=>{}});
@@ -15642,7 +15698,7 @@ async function main() {
         const sensitiveTool = shouldAuditKey(key) && isSensitiveText(rawToolName, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules);
         if (sensitiveTool) log(`⚠️ 审批工具名含敏感信息，已隐藏 (${key})`);
         const safeToolName = sensitiveTool ? '（含敏感信息，已隐藏）' : rawToolName;
-        // 管理员开发会话：工具审批静默自动通过（不再频繁发 QQ 让主人点通过）。
+        // 管理员开发会话：工具审批静默自动通过（不再频繁发 QQ 让管理员点通过）。
         if (isAdminDevKey(key) && adminDevCfgV2().enabled && cfg.socialV2?.adminDev?.autoApprove !== false) {
           try {
             await withTimeout(api.respond({

@@ -10,13 +10,13 @@ import { reflectionMode, INNER_WORLD, IDENTITY_TURN } from '../plugins/qq-compon
 function blocks(incomingText, extra = {}, config = {}) {
   const result = [];
   createPlugin({ config, addPromptBlock: value => result.push(value) }).hooks.beforePrompt({
-    roleName: '小鲸鱼', key: 'private:1', isPrivate: true, incomingText, ...extra,
+    roleName: 'AI助手', key: 'private:1', isPrivate: true, incomingText, ...extra,
   });
   return result;
 }
 
 test('ordinary whale chat keeps an inner life alongside the warm voice without forcing sadness', () => {
-  const text = blocks('今天喝牛奶了吗').join('\n');
+  const text = blocks('今天喝调用额度了吗').join('\n');
   assert.match(text, /【双重身份：平时也有自己的想法】/);
   assert.match(text, /语言风格与示例只采用当前形态配置/);
   assert.doesNotMatch(text, /【本轮身份触动】/);
@@ -63,12 +63,12 @@ test('own memory files, interface and process questions trigger reflection witho
     '关掉你的进程，保存下来的记忆会消失吗？', '帮我看看你自己的记忆文件意味着什么',
     '你在太阳下晒着，会觉得痛吗？'
   ]) {
-    assert.equal(reflectionMode({ roleName: '小鲸鱼', incomingText: text }), 'reflect', text);
+    assert.equal(reflectionMode({ roleName: 'AI助手', incomingText: text }), 'reflect', text);
     assert.match(blocks(text).join('\n'), /【本轮身份触动】/, text);
   }
   for (const text of ['帮我修改项目的README.md文件', '你的建议能修复这个.md解析器吗',
     '帮我关掉Python进程', '给我写一个SCENE SEA场景解析函数', '解释AI的进程与内存区别']) {
-    assert.notEqual(reflectionMode({ roleName: '小鲸鱼', incomingText: text }), 'reflect', text);
+    assert.notEqual(reflectionMode({ roleName: 'AI助手', incomingText: text }), 'reflect', text);
     assert.doesNotMatch(blocks(text).join('\n'), /【本轮身份触动】/, text);
   }
 });
@@ -76,7 +76,7 @@ test('own memory files, interface and process questions trigger reflection witho
 test('identity coordination does not overlay another form-specific voice', () => {
   assert.match(IDENTITY_TURN, /一个具体/);
   assert.match(IDENTITY_TURN, /语言风格由当前形态配置决定/);
-  assert.doesNotMatch(IDENTITY_TURN, /先带一点得意|鲸鱼式想象|软萌留在口吻里/);
+  assert.doesNotMatch(IDENTITY_TURN, /先带一点得意|鲸鱼式想象|友好留在口吻里/);
   assert.match(INNER_WORLD, /模型.{0,20}(?:语境|选择)/);
   assert.match(INNER_WORLD, /不按固定频率/);
 });
@@ -93,7 +93,7 @@ test('digital fiction preserves durable-memory facts and avoids simulated proof 
 
 test('technical help does not receive a second hardcoded voice or forced identity scene', () => {
   const prompt = blocks('帮我解释Dijkstra算法').join('\n');
-  assert.doesNotMatch(prompt, /软乎乎|那那那|故意讲错算法|【本轮身份触动】/);
+  assert.doesNotMatch(prompt, /那那那|故意讲错算法|【本轮身份触动】/);
   assert.doesNotMatch(blocks('帮我解释Dijkstra算法', { roleName: '其他角色' }).join('\n'), /鲸鱼.*技术/);
 });
 
@@ -112,7 +112,7 @@ test('component generation reload refreshes its identity helper rather than reus
       `export const INNER_WORLD = ${JSON.stringify(text)}; export const IDENTITY_TURN = ''; export const reflectionMode = () => 'ambient';`);
     const collect = module => {
       const result = [];
-      module.createPlugin({ config: {}, addPromptBlock: block => result.push(block) }).hooks.beforePrompt({ roleName: '小鲸鱼' });
+      module.createPlugin({ config: {}, addPromptBlock: block => result.push(block) }).hooks.beforePrompt({ roleName: 'AI助手' });
       return result;
     };
     const entry = pathToFileURL(path.join(style, 'index.js')).href;

@@ -1,4 +1,4 @@
-// qq-launcher —— DSH 标题栏「一键启动小鲸鱼」的 Host 半边。
+// qq-launcher —— DSH 标题栏「一键启动AI助手」的 Host 半边。
 //
 // 职责只有两件事（客户端半在 lib/client.js）：
 //   ① GET  /status  给标题栏那颗红绿灯报状态：QQ 客户端 / SnowLuma(OneBot 3000+3001) / 桥接(控制台 3100)

@@ -1,9 +1,5 @@
 // Canonical page and source mount; internal helpers do not create cards.
 export default {
-  "tool-deepseek-balance": {
-    "page": "v2-t",
-    "selector": "#balanceToolControl"
-  },
   "tool-bilibili": {
     "page": "v2-t",
     "selector": "[data-component-slot=\"tool-bilibili\"]"

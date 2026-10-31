@@ -1,6 +1,6 @@
 // Snapshot data is always user data. The parent module owns the one shared switch.
 export const RECEIPT_INDEX_RULE='【C36 收件状态索引规则】当前收件状态只由 C36 的 receipt-index 提供；索引保留真实 seq 与双戳，不包含聊天正文，也不是新的聊天任务。索引有编号不等于正文已交给模型，不能仅凭索引报告已读或已回复；未列入索引也不表示消息未处理。聊天原文与工具调用、工具返回按原执行时间线保留；历史工具回执是当次结果，不另作一份当前索引。已读不等于已回复，不能用对话序号替换工具所需的原始收件 seq。';
-const receiptFields=new Set(['seq','dialogueSeq','dialogueSeqRecovered','messageId','id','time','userId','senderId','sender','isSelf','needsReply','awaitingReply','receiptState','replyStatus','receiptStatus','state','status','read','readAt','seenAt','repliedAt','quoteTargetIsSelf']);
+const receiptFields=new Set(['seq','dialogueSeq','dialogueSeqRecovered','messageId','id','time','userId','senderId','sender','isSelf','needsReply','awaitingReply','receiptState','replyStatus','receiptStatus','state','status','read','readAt','seenAt','repliedAt','resolvedAt','resolutionReason','quoteTargetIsSelf']);
 const receiptRow=row=>Object.fromEntries(Object.entries(row).filter(([key])=>receiptFields.has(key)));
 export function refreshReceiptIndex(row,live){
  if(row.id!=='message-snapshot'||!Array.isArray(live?.receipts))return row;

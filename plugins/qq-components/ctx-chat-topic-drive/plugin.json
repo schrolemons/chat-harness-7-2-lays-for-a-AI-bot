@@ -2,7 +2,7 @@
   "id": "ctx-chat-topic-drive",
   "name": "话题发起与跟进",
   "version": "0.1.0",
-  "description": "无人回复且本轮继续时，按权重追问旧话题、开启新话题或继续等待；群聊转私聊跟进独立限频。",
+  "description": "主动开聊按a:b选择延续或换题；等待超时未收尾按a、b、剩余权重选择追问、换题或等待；群聊转私聊跟进独立限频。",
   "category": "生命周期与编排",
   "order": 10,
   "tags": [
@@ -34,13 +34,15 @@
       "type": "number",
       "min": 0,
       "max": 1,
-      "label": "旧话题追问权重 a"
+      "label": "旧话题追问权重 a",
+      "description": "全局话题内容规则。主动开聊按a/(a+b)选延续；等待超时未结束时以a选追问。例：a=0.5、b=0.2，主动开聊约71%延续。"
     },
     "newTopicWeight": {
       "type": "number",
       "min": 0,
       "max": 1,
-      "label": "新话题权重 b"
+      "label": "新话题权重 b",
+      "description": "主动开聊按b/(a+b)选换题，不抽终止；等待继续时以b选换题，剩余1-a-b继续等。冷却和小时上限仍有效。"
     }
   }
 }

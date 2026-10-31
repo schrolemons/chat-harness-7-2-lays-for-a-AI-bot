@@ -7,7 +7,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const gamesRules = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugins/qq-components/tool-games/games.json'), 'utf8'));
-const rolePrompt = fs.readFileSync(path.join(ROOT, 'roles/小鲸鱼.md'), 'utf8');
+const rolePrompt = fs.readFileSync(path.join(ROOT, 'roles/AI助手.md'), 'utf8');
 const governancePrompt = fs.readFileSync(path.join(ROOT, 'plugins/qq-components/gov-policy/plugin.json'), 'utf8');
 assert.equal(gamesRules.games.find(g=>g.id==='spark').name,'轻微电流');
 assert.match(gamesRules.sparkPrompt,/无需预先/);assert.doesNotMatch(rolePrompt.split('\n').find(line=>line.includes('挨电/被电'))||'',/仅参与者本人明确愿意|第三人不能代替同意/);assert.doesNotMatch(governancePrompt,/同意限制/);assert.match(rolePrompt,/Games MCP/);assert.match(governancePrompt,/Games MCP/);

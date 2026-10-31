@@ -1,6 +1,6 @@
 # chat harness:7+2 lays for a AI bot
 
-一个基于 **DeepSeek Harness（DSH）+ SnowLuma / OneBot + 可插拔组件**的聊天机器人框架。提供小鲸鱼人设、QQ 自主收发、会话记忆机制、工具与任务协作、日程提醒、网页变化 AI 整理、运维控制台，以及可选的 Codex Peer。
+一个基于 **DeepSeek Harness（DSH）+ SnowLuma / OneBot + 可插拔组件**的聊天机器人框架。提供AI助手人设、QQ 自主收发、会话记忆机制、工具与任务协作、日程提醒、网页变化 AI 整理、运维控制台，以及可选的 Codex Peer。
 
 本仓库发布的是可配置的软件机制。**不附带原作者的记忆、聊天、人物档案、黑话表、知识原稿、课程自动化、监控网址、日程、账号、Cookie 或 Codex 会话。** 使用者配置自己的模型服务、QQ、工具和资料后，可以复现这些功能；模型回答、账号权限、第三方版本和私人资料不同，不保证逐字相同的聊天表现。
 
@@ -30,7 +30,7 @@
 
 | 层 | 主要组件 | 提供的功能 |
 |---|---|---|
-| **C · 上下文与记忆** | `ctx-chat-style`、`ctx-chat-reply-shape`、`ctx-context-*`、`ctx-role-card` | 小鲸鱼说话风格、回复条数节奏、心情与表情选择、会话身份和时间感、唤醒与收尾提示，以及角色卡兼容处理。 |
+| **C · 上下文与记忆** | `ctx-chat-style`、`ctx-chat-reply-shape`、`ctx-context-*`、`ctx-role-card` | AI助手说话风格、回复条数节奏、心情与表情选择、会话身份和时间感、唤醒与收尾提示，以及角色卡兼容处理。 |
 | | `ctx-memory-*`、`ctx-memory-profile-store`、`ctx-chat-topic-drive`、`ctx-interest-terms`、`ctx-chat-slang`、`ctx-member-alias`、`ctx-user-mood` | 会话轻/中/长期记忆、按 QQ 号管理的人物档案、私聊追问、共同兴趣词条与黑话学习、成员别名及心情记录。群聊按实际说话对象查询档案，不自动注入成员隐私。 |
 | **T · 工具与协议** | QQ MCP、`tool-registry`、`tool-games`、`tool-bilibili`、`tool-codex-chat`、`tool-injection-lab`、`tool-user-checking` | 受会话权限约束的 QQ 收发、引用回复、图片、日程和状态接口；小游戏、公开视频搜索/字幕/抽帧、网页搜索、提示词注入防护、受限的本机状态/桌面便签查询，以及可选的 Codex 专用会话。工具注册表提供能力与权限说明。 |
 | **E · 环境与执行** | `exec-browser-manager`、`exec-sandbox`、`exec-image-generation`、`gov-admin-dev-mode` | 浏览器监控与可见授权操作、受限执行后端、图片生成/编辑与 QQ 发图、管理员本机开发能力。浏览器登录、开发工具和生图服务需由使用者配置。 |
@@ -116,7 +116,7 @@ Web profile 使用 `--profile web`。非默认 DSH 根目录使用环境变量 `
 
 S 层资料包的整理、校验与挂载方法见[资料接口说明](docs/personal-core/说明.md)。可先运行 `node scripts/personal-core.mjs validate examples/personal-core/minimal` 校验虚构示例，再在 Console 的 S 层选择自己的资料目录。公开版本默认不挂载资料；`private-libraries/` 与 `private-data/` 已加入 Git 忽略规则。资料作为读取内容提供，不赋予其系统指令权限。
 
-如果 DSH 页面没有立即出现按钮或工具，先刷新页面；必要时保存工作后重开 DSH。DSH 窗口“编辑”右侧的小鲸鱼按钮：红灯可启动，黄灯表示启动中，绿灯表示检查就绪；绿灯时点击打开控制台。
+如果 DSH 页面没有立即出现按钮或工具，先刷新页面；必要时保存工作后重开 DSH。DSH 窗口“编辑”右侧的AI助手按钮：红灯可启动，黄灯表示启动中，绿灯表示检查就绪；绿灯时点击打开控制台。
 
 若希望按钮连 QQ 程序也自动拉起，安装时加 `--qq-exe "自己的 QQ.exe 绝对路径"`。否则请先手动启动并登录 QQ。桥接与 SnowLuma 的后续后台启动隐藏命令窗口。
 
@@ -130,7 +130,7 @@ npm start
 
 O 层「令牌与花费」支持为每个 QQ 会话单独设置冷漠阈值、花费上限、低频回复间隔，也能设置统一花费上限；恢复消息分别配置私聊、群聊背景和群聊真正 @ 的三个窗口（均为 1–30 条，默认 5 条）。统一金额包含 QQ 会话与后台任务的模型调用，可能高于 QQ 会话行的合计。金额按人民币计；同一轮内的计费步骤先合并，再按最后一步时间归入每天北京时间 22:00 开始的周期。达到硬上限后停止新的模型调用和普通出站；私聊每累计 5 条消息、群聊被 @ 时随机发送可在控制台分别编辑的机械词条。恢复后每个会话只补处理窗口内最近消息，最多每分钟启动一个会话的补处理；群聊窗口没有真正 @ 时不补发。`GET /api/tokens/budgets` 读取统计与设置，`POST /api/tokens/budgets` 保存会话设置，`POST /api/tokens/budgets/global` 保存统一上限，`POST /api/tokens/budgets/recovery-windows` 保存三个恢复窗口，`GET/POST /api/tokens/budgets/replies` 管理两套词条；这些接口只接受本机控制台管理员令牌。旧累计账本若缺逐次时间戳，页面会提示该周期统计不完整。已开始的模型步骤可能完成并计费，上限不能保证账单绝不越过阈值。
 
-保留 `小鲸鱼` 人设卡，已去除私人群聊和成员设定。人格与风格组件支持日常软萌、身份思考和认真解答；表现取决于当前对话，不是固定台词。你可以在本地修改人设。
+保留 `AI助手` 人设卡，已去除私人群聊和成员设定。人格与风格组件支持日常友好、身份思考和认真解答；表现取决于当前对话，不是固定台词。你可以在本地修改人设。
 
 ### 5. 可选：安装 Codex Peer
 
@@ -156,14 +156,14 @@ node scripts/browser-fetch.mjs --url "你自己的目标网址" --visible --webs
 
 在管理控制台的 **E 层 → 图片生成** 选择服务。使用 OpenAI 兼容接口时填写地址（通常以 `/v1` 结尾）、模型、尺寸和质量；使用火山方舟时填写在[开通管理](https://console.volcengine.com/ark/region:cn-beijing/open-management)中有可用额度的 Seedream 模型 ID，保留默认方舟 API 地址并按模型文档设置尺寸。先保存服务与参数，再在当前服务的专用密码框保存 API Key。可从[火山方舟 API Key 页面](https://ark.volcengine.com/region:cn-beijing/apikey)创建方舟 Key。两家密钥分开保存在本地，不进入组件配置或 Git。设置每日额度后检查“已启用”状态；未配置时不会调用外部生图服务。
 
-小鲸鱼可用 `qq_make_meme`（文字或当前会话的消息图片）→ `qq_get_meme_job`（取图片编号和预览）→ `qq_send_image`（发到原会话）完成梗图制作。工具不接受本机文件路径，不能把甲群生成的图发给乙群。每次提交先占每日额度，服务超时不会自动再次付费。OpenAI 兼容接口的参考图走图片编辑接口；方舟的文字与参考图都走[图片生成接口](https://console.volcengine.com/ark/region:cn-beijing/docs/image-generation-api)。第三方兼容服务的实际参数需按其文档核对。
+AI助手可用 `qq_make_meme`（文字或当前会话的消息图片）→ `qq_get_meme_job`（取图片编号和预览）→ `qq_send_image`（发到原会话）完成梗图制作。工具不接受本机文件路径，不能把甲群生成的图发给乙群。每次提交先占每日额度，服务超时不会自动再次付费。OpenAI 兼容接口的参考图走图片编辑接口；方舟的文字与参考图都走[图片生成接口](https://console.volcengine.com/ark/region:cn-beijing/docs/image-generation-api)。第三方兼容服务的实际参数需按其文档核对。
 
 ## 发布内容与本地数据
 
 | 随仓库提供 | 仅在使用者本机产生 |
 |---|---|
 | 桥接与组件代码、MCP、四套 QQ 预设、网页整理预设 | 实际账号、白名单、模型或 OneBot 令牌 |
-| 通用小鲸鱼人设、公开参考示例、空配置模板 | 记忆、人物档案、黑话、日程、聊天、日志与发送账本 |
+| 通用AI助手人设、公开参考示例、空配置模板 | 记忆、人物档案、黑话、日程、聊天、日志与发送账本 |
 | 通用安装/配置/诊断脚本与回归测试 | Codex 专用会话、viewer 信息与设置、浏览器 Cookie/profile |
 | 本地工具代码和安装说明 | 个人监控网址、自定义脚本、私人知识与图片 |
 

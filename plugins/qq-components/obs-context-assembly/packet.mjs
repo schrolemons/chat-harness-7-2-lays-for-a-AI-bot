@@ -1,5 +1,5 @@
 import {createHmac,timingSafeEqual} from 'node:crypto';
-export const PACKET_HEADER='【小鲸鱼 context envelope v1】\n';
+export const PACKET_HEADER='【AI助手 context envelope v1】\n';
 export function encodePacket(body,secret){const json=JSON.stringify(body);return PACKET_HEADER+JSON.stringify({body:json,signature:createHmac('sha256',secret).update(json).digest('hex')});}
 export function decodePacket(text,secret,sessionId){
  try {

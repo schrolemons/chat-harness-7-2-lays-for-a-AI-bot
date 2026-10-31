@@ -124,20 +124,20 @@ test('recovered group requests respect each real author bucket and do not charge
   } finally { await f.close(); }
 });
 
-test('recovered batch waits for the real weak-dispatch interval before allocating another professional answer', async () => {
+test('hard recovery stays held in weak stage and cannot bypass private five-message admission', async () => {
   const f = await open({ dailyLimit: 3, cold: true });
   try {
     await f.incoming('这个算法为什么正确？ FIRST_WEAK_RECOVERY', { messageId: 'weak-first' });
     await f.recover();
-    assert.equal(f.usage(), 1);
+    assert.equal(f.usage(), 0);
     assert.equal(f.h.tokenBudgetOf(PRIVATE).stage, 'weak');
     assert.equal(f.h.taskCaps.budgetRecoveryStatus(PRIVATE).allowed, false);
     await f.setHardLimit(0.1);
     await f.incoming('这个定理为什么成立？ WAIT_FOR_WEAK_WINDOW', { messageId: 'weak-second' });
     const prompts = f.h.calls.prompts.length;
     await f.recover();
-    assert.equal(f.usage(), 1, 'closed weak window must not preallocate the next professional answer');
+    assert.equal(f.usage(), 0, 'weak state must not preallocate a separate recovery model round');
     assert.equal(f.h.calls.prompts.length, prompts);
-    assert.equal(f.h.pluginHost.callService('tokenBudget', 'recoveryPending', { key: PRIVATE }), 1);
+    assert.equal(f.h.pluginHost.callService('tokenBudget', 'recoveryPending', { key: PRIVATE }), 2);
   } finally { await f.close(); }
 });

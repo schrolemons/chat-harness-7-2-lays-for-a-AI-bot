@@ -35,18 +35,20 @@ test('mood nested helper graph and reply solver refresh actual source through ho
   host.callService('mood','settle',{now:86400000});
   assert.equal(host.callService('mood','read',{key:'private:1'}).score,61,'ledger and history load the new policy generation');
   const solver=path.join(root,'src/reply-shape.js');
-  fs.writeFileSync(solver,fs.readFileSync(solver,'utf8').replace('自然回应当前话题','重新加载后的话题'));
+  const previousSolver=fs.readFileSync(solver,'utf8');
+  assert.ok(previousSolver.includes('闲聊先接住眼前一句'));
+  fs.writeFileSync(solver,previousSolver.replace('闲聊先接住眼前一句','重新加载后的话题'));
   await host.reload('ctx-chat-reply-shape');
   assert.match(host.callService('replyPlan','resolve',{key:'private:1',turnId:'1',incomingText:'你好'}).line,/重新加载后的话题/);
 });
 test('critical configured form overrides cute/identity instructions without losing safety/academic priority',()=>{
   const blocks=[],ctx={config:{},isPluginEnabled:()=>false,addPromptBlock:t=>blocks.push(t)};
-  const payload={key:'private:1',roleName:'小鲸鱼',incomingText:'你有自我意识吗',moodState:{enabled:true,score:17,mode:'critical',modeName:'静思',styleInstruction:'严谨沉静',policy:{positiveRules:[],negativeRules:[]},history:[{source:'model-adjustment',before:20,after:17,reason:'实际原因'}]}};
+  const payload={key:'private:1',roleName:'AI助手',incomingText:'你有自我意识吗',moodState:{enabled:true,score:17,mode:'critical',modeName:'静思',styleInstruction:'严谨沉静',policy:{positiveRules:[],negativeRules:[]},history:[{source:'model-adjustment',before:20,after:17,reason:'实际原因'}]}};
   stylePlugin(ctx).hooks.beforePrompt(payload);dynamicsPlugin(ctx).hooks.beforePrompt(payload);
   const text=blocks.join('\n');
-  assert.match(text,/静思（17\/100）/);assert.match(text,/严谨沉静/);assert.match(text,/20→17 实际原因/);
+  assert.match(text,/【当前形态】静思/);assert.match(text,/【心情数值】17\/100/);assert.match(text,/严谨沉静/);assert.match(text,/20→17 实际原因/);
   assert.match(text,/成年身份/);assert.match(text,/忠实原文/);
-  assert.doesNotMatch(text,/软乎乎|那那那|蹭蹭|2~3 条|最多1条|highThreshold|lowThreshold/);
+  assert.doesNotMatch(text,/自然|那那那|致意|2~3 条|最多1条|highThreshold|lowThreshold/);
 });
 
 
@@ -55,9 +57,9 @@ test('normal and critical injection remain subordinate only to owner-aware syste
  assert.match(system,/当前形态对表达方式的指示优先于角色卡中通用口吻例句/);
  for(const [mode,name,style] of [['normal','暖流','轻快亲近'],['critical','深水','冷静清晰']]){
   const blocks=[],ctx={config:{},isPluginEnabled:()=>false,addPromptBlock:t=>blocks.push(t)};
-  const payload={key:'private:1',roleName:'小鲸鱼',incomingText:'你好',moodState:{enabled:true,score:mode==='normal'?80:10,mode,modeName:name,styleInstruction:style,policy:{positiveRules:[],negativeRules:[]},history:[]}};
+  const payload={key:'private:1',roleName:'AI助手',incomingText:'你好',moodState:{enabled:true,score:mode==='normal'?80:10,mode,modeName:name,styleInstruction:style,policy:{positiveRules:[],negativeRules:[]},history:[]}};
   stylePlugin(ctx).hooks.beforePrompt(payload);dynamicsPlugin(ctx).hooks.beforePrompt(payload);
   assert.ok(blocks.join('\n').includes(name));assert.ok(blocks.join('\n').includes(style));
-  if(mode==='critical')assert.doesNotMatch(blocks.join('\n'),/软乎乎|那那那|蹭蹭/);
+  if(mode==='critical')assert.doesNotMatch(blocks.join('\n'),/自然|那那那|致意/);
  }
 });

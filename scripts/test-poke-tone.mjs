@@ -6,7 +6,7 @@ const poke=(extra={})=>({kind:'poke',isSelf:false,poke:{targetIsSelf:true},...ex
 function render(unread,extra={}){
  const blocks=[];
  createPlugin({config:{},addPromptBlock:text=>blocks.push(text)}).hooks.beforePrompt({
-  reason:'private',roleName:'小鲸鱼',isPrivate:true,isOwnerKey:true,key:'private:10001',
+  reason:'private',roleName:'AI助手',isPrivate:true,isOwnerKey:true,key:'private:10001',
   hasUnreadNow:true,st:{unread},...extra,
  });
  return blocks.join('\n');

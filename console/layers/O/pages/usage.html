@@ -36,21 +36,31 @@
       <div class="meta" id="usageChartNote" style="margin-top:6px"></div>
       <h3 class="usage-h3">按会话（群 / 私聊）</h3>
       <div class="tool-log-table" id="usageConversations">加载中…</div>
-      <details class="settings-group"><summary>小鲸鱼调用档位与成本策略</summary><div class="settings-content"><div data-component-slot="obs-cost-policy" data-hide-toggle="1"></div></div></details>
-<h3 class="usage-h3">会话花费阈值</h3>
-      <p class="meta">预算受限消息窗口已统一至 <a href="#setting-c-1">上下文与记忆 → QQ缓存与待处理窗口</a>。</p>
-      <div class="meta">每晚 22:00（北京时间）重新计入新周期。金额按本周期可归属的调用计算；0 表示不启用对应阈值。达到冷漠阈值后会降低回复频率并缩短注入内容；达到上限后改用机械回复。恢复时每个会话只补处理最近窗口内的消息。</div>
-      <div class="row usage-controls"><span>全部会话及后台任务本周期：<strong id="usageGlobalTurns">—</strong> 轮，花费 <strong id="usageGlobalCost">—</strong></span><label>统一花费上限（元） <input id="usageGlobalLimit" type="number" min="0" step="0.01" value="0" style="width:100px"></label><button id="usageGlobalSave" class="small primary" data-save-action>保存全局花费上限</button><span id="usageGlobalState" class="meta"></span></div>
-      <div class="row"><label><input id="usageOwnerBudgetEnabled" type="checkbox" checked> 管理员 owner 受额度限制</label><button id="usageOwnerBudgetSave" class="small primary" data-save-action>保存管理员额度规则</button><span class="meta">关闭后，owner 私聊及其发起的任务不受个人、全局额度和低频限制；花费仍计入统计。</span></div>
+      <details class="settings-group"><summary>AI助手调用档位与成本策略</summary><div class="settings-content"><div data-component-slot="obs-cost-policy" data-hide-toggle="1"></div></div></details>
+<h3 class="usage-h3">会话花费阈值与冷漠回复</h3>
+      <p class="meta"><span id="usageBudgetWindowSummary">正在读取预算受限消息窗口…</span> · <a href="#setting-c-1">修改消息窗口：上下文与记忆 → QQ缓存、待处理队列与自动附带窗口</a>。</p>
+      <p class="parameter-example">例：冷漠阈值2元、满额阈值4元：达到2元后按下方冷漠规则回复；达到4元后停用模型，改用满额固定回复。金额0表示不设该阈值，每晚22:00（北京时间）重新计入新周期。</p>
+      <p class="meta">全部会话及后台任务本周期：<strong id="usageGlobalTurns">—</strong>轮，花费 <strong id="usageGlobalCost">—</strong>。</p>
+      <div class="usage-rule-grid">
+        <div class="setting-field"><label for="usageGlobalLimit">统一花费上限（元）</label><input id="usageGlobalLimit" type="number" min="0" step="0.01" value="0"><small class="parameter-example">例：设30元，受限会话和后台任务合计达到30元后停用新模型请求。</small><button id="usageGlobalSave" class="small primary" data-save-action>保存全局花费上限</button><span id="usageGlobalState" class="meta" role="status"></span></div>
+        <div class="setting-field usage-owner-rule"><label><input id="usageOwnerBudgetEnabled" type="checkbox" checked> 管理员 owner 受额度限制</label><small class="parameter-example">例：关闭后，owner私聊及其发起的任务豁免个人、全局额度与冷漠规则；花费仍统计。</small><button id="usageOwnerBudgetSave" class="small primary" data-save-action>保存管理员额度规则</button></div>
+        <div class="setting-field"><label for="usagePrivateWakeEvery">私聊冷漠触发条数</label><input id="usagePrivateWakeEvery" type="number" min="1" max="100" step="1" value="5"><small class="parameter-example">全局设置、每个私聊分别计数。例：设3，每3条新来信合并回复1条。下表显示已保存值；未保存的修改不生效。上下文条数由C层窗口控制。</small><button id="usagePrivateWakeSave" class="small primary" data-save-action>保存私聊冷漠触发条数</button><span id="usagePrivateWakeMsg" class="meta" role="status"></span></div>
+      </div>
+      <p class="meta">下表阈值只影响该会话。群聊按各自的分钟间隔检查消息窗口；冷漠批次处理后结束，均不触发思考补话。</p>
       <div class="tool-log-table" id="usageBudgets">加载中…</div>
       <div class="meta" id="usageBudgetMsg"></div>
-      <h3 class="usage-h3">静默后的机械回复</h3>
-      <div class="meta">达到会话或全局硬上限后，私聊每累计 5 条消息随机回一句；群聊仅被 @ 时随机回一句。词条不调用模型，每行一条，私聊与群聊分别管理。</div>
-      <div class="row" style="align-items:flex-start;margin-top:10px">
+      <h3 class="usage-h3">满额后的固定回复（不调用 LLM）</h3>
+      <p class="parameter-scope"><b>全局规则、按会话分别计数</b> · 下列词库与防刷屏参数适用于所有受额度限制的会话；管理员豁免沿用上方设置。</p>
+      <div class="meta">达到会话或全局硬上限后，私聊来信可触发固定回复；群聊仅真实 @ 或经核实引用 bot 时触发，普通群消息保持安静且不占回复额度。以下三项限制同时生效，按会话分别计数；限流时不排队补发。日程、冒泡、日记与监控沿用独立投递。词条每行一条。</div>
+      <div class="usage-rule-grid usage-mechanical-limits">
+<div class="setting-field"><label for="usageMechanicalGapSec">最短间隔（秒）</label><input id="usageMechanicalGapSec" type="number" min="1" max="3600" value="10"><small class="parameter-example">例：回复后至少10秒才可再次回复；不是每10秒自动发送。</small></div>
+<div class="setting-field"><label for="usageMechanicalMinute">每会话滚动1分钟最多</label><input id="usageMechanicalMinute" type="number" min="1" max="60" value="4"><small class="parameter-example">例：最近60秒已回4次，即使间隔够了也暂停。</small></div>
+<div class="setting-field"><label for="usageMechanicalHour">每会话滚动1小时最多</label><input id="usageMechanicalHour" type="number" min="1" max="1000" value="30"><small class="parameter-example">例：最近3600秒最多30条；与上面两项同时生效。</small></div>
+</div><div class="usage-rule-grid usage-reply-lists">
         <label style="flex:1;min-width:230px">私聊词条<textarea id="usageMechanicalPrivate" rows="8" spellcheck="false" placeholder="每行一条"></textarea></label>
         <label style="flex:1;min-width:230px">群聊词条<textarea id="usageMechanicalGroup" rows="8" spellcheck="false" placeholder="每行一条"></textarea></label>
       </div>
-      <div class="row" style="margin-top:8px"><button id="usageMechanicalSave" class="small primary" data-save-action>保存全局机械回复词条</button><span id="usageMechanicalMsg" class="meta"></span></div>
+      <div class="row" style="margin-top:8px"><button id="usageMechanicalSave" class="small primary" data-save-action>保存满额回复词条与防刷屏限制</button><span id="usageMechanicalMsg" class="meta"></span></div>
       <h3 class="usage-h3">逐轮花费 <span class="meta" id="usageTurnScope">—</span></h3>
       <div class="row usage-controls">
         <div class="setting-field"><label class="sr-only" for="usageKeySelect">选择要查看逐轮明细的会话</label><select id="usageKeySelect"></select><small class="parameter-example" data-example-for="usageKeySelect">例：选择一个会话：下钻查看它的逐轮用量，不改变该会话预算。</small></div>

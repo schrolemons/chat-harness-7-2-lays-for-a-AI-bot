@@ -1,4 +1,4 @@
-// qq-launcher —— 客户端半边：把「小鲸鱼红绿灯 + 一键启动」挂到 Windows 标题栏
+// qq-launcher —— 客户端半边：把「AI助手红绿灯 + 一键启动」挂到 Windows 标题栏
 // 「应用 / 编辑」右边的同一行里。
 //
 // 实现约束（都是实测出来的，别改回去）：
@@ -30,10 +30,10 @@ window.__ModuleLoader__.load({
     };
 
     const TEXT = {
-      green: '小鲸鱼',
-      red: '小鲸鱼',
+      green: 'AI助手',
+      red: 'AI助手',
       amber: '启动中',
-      grey: '小鲸鱼'
+      grey: 'AI助手'
     };
 
     let host = null;
@@ -85,8 +85,8 @@ window.__ModuleLoader__.load({
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.id = 'qq-launcher-button';
-      btn.title = '小鲸鱼：读取状态中…';
-      btn.setAttribute('aria-label', '小鲸鱼一键启动');
+      btn.title = 'AI助手：读取状态中…';
+      btn.setAttribute('aria-label', 'AI助手一键启动');
       Object.assign(btn.style, {
         display: 'inline-flex',
         alignItems: 'center',
@@ -124,7 +124,7 @@ window.__ModuleLoader__.load({
       });
 
       const txt = document.createElement('span');
-      txt.textContent = '小鲸鱼';
+      txt.textContent = 'AI助手';
       Object.assign(txt.style, {
         minWidth: '4em',
         flexShrink: '0',
@@ -164,14 +164,14 @@ window.__ModuleLoader__.load({
     function buildSettingsPanel() {
       const panel = document.createElement('section');
       panel.id = 'qq-launcher-settings-panel';
-      panel.setAttribute('aria-label', '小鲸鱼启动设置');
+      panel.setAttribute('aria-label', 'AI助手启动设置');
       Object.assign(panel.style, { position: 'absolute', top: '40px', left: '0', width: '340px',
         maxWidth: 'calc(100vw - 32px)', boxSizing: 'border-box', padding: '16px', borderRadius: '10px',
         border: '1px solid var(--dsw-alias-border-default, #d7dce3)',
         background: 'var(--dsw-alias-background-primary, #fff)', color: 'var(--dsw-alias-label-primary, #20252c)',
         boxShadow: '0 8px 30px rgba(0,0,0,.16)', pointerEvents: 'auto', WebkitAppRegion: 'no-drag', display: 'none',
         fontSize: '13px', lineHeight: '1.5', maxHeight: 'calc(100vh - 56px)', overflowY: 'auto' });
-      const title = document.createElement('strong'); title.textContent = '小鲸鱼设置';
+      const title = document.createElement('strong'); title.textContent = 'AI助手设置';
       const form = document.createElement('form'); form.id = 'qq-launcher-settings-form';
       const field = (id, title, multiline = false) => {
         const row = document.createElement('label');
@@ -389,7 +389,7 @@ window.__ModuleLoader__.load({
         paint(busy || stopping ? 'amber' : data.light || 'red');
         if (button !== null) {
           const title = data.ready
-            ? '小鲸鱼运行中（点击打开桥接控制台）'
+            ? 'AI助手运行中（点击打开桥接控制台）'
             : timedOut
               ? '启动超时，请检查 DSH、QQ 与 SnowLuma；查看启动日志'
               : data.lastError

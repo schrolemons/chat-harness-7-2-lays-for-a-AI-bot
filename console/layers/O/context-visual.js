@@ -5,6 +5,7 @@ import {inspectorHtml} from './context-inspector.js';
 import {requestStageOptions,requestStageSummary} from './context-request-stages.js';
 import {api,esc} from '../../shared/api.js';
 import {receiptIndexHtml} from './context-processing.js';
+import {resolveInspectorTarget} from './context-navigation.js';
 import {registerPageLoader} from '../../shared/page-loaders.js';
 let saved,draft,data,actual=true,dragged='',revision=0,loading=false,selectedRequestId='',inspectedRequest;
 const inspectorState={view:'messages',layout:'business',selected:'',query:'',kind:'',region:''};
@@ -72,21 +73,18 @@ function section(id,title,body,folded=false){return folded?'<details class="cont
 function card(m,editable){
  const delivery=!editable?(m.notCaptured&&typeof m.inRequest!=='boolean'?'未采集，不能判定实发':m.included===false?'未注入：'+reasonText(m.reason):m.inRequest===true?'已在实际请求正文中确认':m.inRequest===false?'实际请求未完整包含此模块':'旧记录没有逐模块实发证据'):m.truncated?'内容超过组件上限，已截断':'';
  const locked=m.protected||!editable,title=(editable?data.knowledge?.[m.id]?.name:null)||m.name||m.id,tag=m.placement==='fixed'?'系统设定与角色要求':m.placement==='stable'?'稳定会话资料（user 前缀）':m.id==='wake-action'?'本次要处理什么':m.id==='message-snapshot'?'收件处理进度与聊天原文':m.id==='personal-core'?'按需注入（目录导读与资料读取）':'当前资料（只保留最新版本）',placeholder=!m.text?.trim();
- const request=data.requestStages?.find(s=>s.kind===selectedRequestId)?.request||data.request;
- const annotated=!editable&&(String(m.id).startsWith('actual-')&&m.id!=='actual-tools'||m.requestIndex!==undefined);
- const content=annotated?'<div class="context-framed-content">'+framedText(m.text||'',request?.modules||[],data.catalog||[])+'</div>':'<pre>'+esc(m.text||'（这部分没有文字内容）')+'</pre>';
+ const content='<pre>'+esc(m.text||'（这部分没有文字内容）')+'</pre>';
  const tone=Number.isInteger(m.index)?' context-tone-'+(m.index%5):'';
  return '<article class="context-module'+tone+(placeholder?' is-placeholder':m.included===false?' is-excluded':'')+'" data-context-id="'+esc(m.id)+'"><div class="context-module-head">'
  +(editable?'<button type="button" class="context-drag" draggable="true" data-context-move="drag" aria-label="拖动 '+esc(title)+'">⠿</button>':'')
- +'<h3>'+(Number.isInteger(m.index)?'<span class="context-number">C'+String(m.index+1).padStart(2,'0')+'</span> ':m.requestIndex?'<span class="context-number">#'+esc(m.requestIndex)+'</span> ':'')+esc(title)+'</h3>'
+ +'<h3>'+(Number.isInteger(m.index)?'<span class="context-number">C'+String(m.index+1).padStart(2,'0')+'</span> ':'')+esc(title)+'</h3>'
  +(editable?'<label title="'+(locked?'身份、权限和任务等必要内容不能在这里关闭':'勾选表示允许把这部分内容发给 AI；保存后适用于所有会话')+'"><input type="checkbox" data-context-toggle="'+esc(m.id)+'" '+(!draft.disabled.includes(m.id)||locked?'checked ':'')+(locked?'disabled ':'')+'>'+(locked?'必要内容，不能关闭':'允许发给 AI')+'</label><button type="button" data-context-move="up" aria-label="上移 '+esc(title)+'">↑</button><button type="button" data-context-move="down" aria-label="下移 '+esc(title)+'">↓</button>':'')
  +'</div><div class="context-source"><span class="context-pill">'+esc(sourceText(m.source)||m.layer||'系统')+'</span>'+(editable?'<span class="context-pill">'+esc(tag)+'</span>':'')+'<span>'+esc(m.chars??m.text?.length??0)+' 字符</span>'+(delivery?'<span class="context-delivery">'+esc(delivery)+'</span>':'')+(!placeholder&&m.reason?'<span>'+esc(reasonText(m.reason))+'</span>':'')+'</div>'
  +((m.toolCalls?.length||m.toolResults?.length)?'<p class="context-knowledge-note">'+(m.toolCalls||[]).map(c=>'具体调用：'+esc(c.name)+' · 调用ID '+esc(c.id)).join('；')+(m.toolResults||[]).map(c=>'返回对应调用ID：'+esc(c.toolCallId)).join('；')+'</p>':'')
- +(m.references?'<details class="context-references"><summary>查看组件来源清单'+(m.attributionVerified===false?' · 缺少同轮标记':'')+'</summary><ul>'+m.references.map(ref=>'<li>'+esc(ref)+'</li>').join('')+'</ul></details>':'')
  +(m.id==='personal-core'?'<p class="context-knowledge-note">按需注入：本会话适用且有新的对话输入时附带资料包目录导读，正文由工具按需读取，不会整库注入；本轮没有导读不代表资料库为空。'+(editable?'此处开关只控制导读文字，不控制 core_status、core_topics、core_read 的工具权限。':'资料正文由读取工具按需返回。')+'</p>':'')
  +(editable?componentGuide({...data.catalog?.find(slot=>slot.id===m.id),...m}):'')
  +knowledgePanel(m,data.knowledge?.[m.id],{actual:!editable,allowed:editable?!(draft?.enabled!==false&&draft.disabled.includes(m.id)):m.included!==false})
- +(m.id==='message-snapshot'&&m.parts?.length?'<p class="context-knowledge-note">两部分共用开关；新增来信按消息序号去重。</p>'+m.parts.map(part=>'<details><summary>'+esc(partLabel(part))+'</summary>'+(receiptIndexHtml(part.text)||'<pre>'+esc(part.text||'本轮无新增正文')+'</pre>')+'</details>').join(''):placeholder?'<p class="context-placeholder">本轮暂无内容，位置保留。</p>':'<details class="context-content"'+(annotated&&m.requestIndex===undefined?' open':'')+'><summary>'+(editable?'查看组件原文':annotated?'查看按组件标注的原文':'查看原文')+'</summary>'+content+'</details>')+'</article>';
+ +(m.id==='message-snapshot'&&m.parts?.length?'<p class="context-knowledge-note">两部分共用开关；新增来信按消息序号去重。</p>'+m.parts.map(part=>'<details><summary>'+esc(partLabel(part))+'</summary>'+(receiptIndexHtml(part.text)||'<pre>'+esc(part.text||'本轮无新增正文')+'</pre>')+'</details>').join(''):placeholder?'<p class="context-placeholder">本轮暂无内容，位置保留。</p>':'<details class="context-content"><summary>'+(editable?'查看组件原文':'查看原文')+'</summary>'+content+'</details>')+'</article>';
 }
 async function refresh(keepDraft=false){
  const ticket=++revision;loading=true;
@@ -103,7 +101,8 @@ function move(id,target){if(!data?.preview||actual)return;const rows=visualGroup
  if(rows[from].placement!==rows[to].placement){notice('请在同一装填层内调序：系统规则、稳定资料、动态资料各有固定位置。');return;}
  const [item]=rows.splice(from,1);rows.splice(to,0,item);draft.order=rows.map(x=>x.id);void project();}
 export function initialize(){
- $('contextRefresh').addEventListener('click',()=>refresh(true));$('contextSession').addEventListener('change',()=>refresh(true));
+ const resetInspection=()=>Object.assign(inspectorState,{view:'messages',layout:'business',selected:'',region:'',query:'',kind:''});
+ $('contextRefresh').addEventListener('click',()=>refresh(true));$('contextSession').addEventListener('change',()=>{resetInspection();selectedRequestId='';void refresh(true);});
  $('contextDraftTab').addEventListener('click',()=>{actual=false;render();});$('contextActualTab').addEventListener('click',()=>{actual=true;render();});
  $('contextRequestSelect').addEventListener('change',event=>{selectedRequestId=event.target.value;inspectorState.selected='';render();});
  $('contextReset').addEventListener('click',()=>{draft=copy(saved);void project();});
@@ -113,9 +112,10 @@ export function initialize(){
  const locateComponent=id=>{inspectorState.view='components';inspectorState.selected='component:'+id;inspectorState.query='';renderInspector();};
  $('contextModules').addEventListener('change',event=>{if(event.target.id==='contextComponentLookup'&&event.target.value)locateComponent(event.target.value);});
  $('contextModules').addEventListener('click',event=>{const button=event.target.closest('[data-inspector-component]');if(button)locateComponent(button.dataset.inspectorComponent);});
- $('contextModules').addEventListener('click',event=>{const button=event.target.closest('[data-inspector-message]');if(button){inspectorState.view='messages';inspectorState.layout='raw';inspectorState.region='';inspectorState.query='';inspectorState.kind='';inspectorState.selected=button.dataset.inspectorMessage;renderInspector();}});
+ const locateRecord=(target,preferred='')=>{const key=resolveInspectorTarget(inspectedRequest,target,preferred);if(!key){notice('这个来源没有可定位的聊天卡片，请展开当前记录的原始字段核对。');return;}Object.assign(inspectorState,{view:'messages',layout:'business',region:'',query:'',kind:'',selected:key});renderInspector();};
+ $('contextModules').addEventListener('click',event=>{const button=event.target.closest('[data-inspector-message]');if(button)locateRecord(button.dataset.inspectorMessage,button.dataset.inspectorRecord);});
  $('contextModules').addEventListener('click',event=>{const button=event.target.closest('[data-inspector-layout]');if(button){Object.assign(inspectorState,{view:'messages',layout:button.dataset.inspectorLayout,region:'',query:'',kind:'',selected:''});renderInspector();}});
- $('contextModules').addEventListener('click',event=>{const button=event.target.closest('[data-inspector-related]');if(button){Object.assign(inspectorState,{view:'messages',layout:'business',region:'',query:'',kind:'',selected:button.dataset.inspectorRelated});renderInspector();}});
+ $('contextModules').addEventListener('click',event=>{const button=event.target.closest('[data-inspector-related]');if(button)locateRecord(button.dataset.inspectorRelated);});
  $('contextModules').addEventListener('click',event=>{const region=event.target.closest('[data-inspector-region]'),view=event.target.closest('[data-inspector-view]'),row=event.target.closest('[data-inspector-select]');if(region){inspectorState.layout='business';inspectorState.view=region.dataset.inspectorRegion==='tools'?'tools':'messages';inspectorState.region=region.dataset.inspectorRegion==='tools'?'':region.dataset.inspectorRegion;inspectorState.kind='';inspectorState.query='';inspectorState.selected='';renderInspector();}else if(view){inspectorState.view=view.dataset.inspectorView;inspectorState.region='';inspectorState.query='';inspectorState.selected='';renderInspector();}else if(row){inspectorState.selected=row.dataset.inspectorSelect;renderInspector({keepPosition:true});}});
  $('contextModules').addEventListener('click',event=>{const btn=event.target.closest('[data-context-move]'),row=btn?.closest('[data-context-id]');if(!row||!['up','down'].includes(btn.dataset.contextMove))return;const rows=visualGroups(data.preview.modules,data.catalog||[]).flatMap(group=>group.rows),i=rows.findIndex(x=>x.id===row.dataset.contextId),direction=btn.dataset.contextMove==='up'?-1:1,j=i+direction;if(rows[j]&&rows[j].placement===rows[i].placement)move(row.dataset.contextId,rows[j].id);});
  $('contextModules').addEventListener('dragstart',event=>{const handle=event.target.closest('[draggable]');if(!handle)return;dragged=handle.closest('[data-context-id]').dataset.contextId;event.dataTransfer.setData('text/plain',dragged);});
@@ -123,5 +123,5 @@ export function initialize(){
  $('contextModules').addEventListener('drop',event=>{event.preventDefault();const row=event.target.closest('[data-context-id]');if(row&&dragged)move(dragged,row.dataset.contextId);dragged='';});
  $('contextModules').addEventListener('dragend',()=>{dragged='';});
  $('contextSave').addEventListener('click',async()=>{if(!draft||loading)return;const submitted=copy(draft);$('contextSave').disabled=true;try{const response=await api('/api/context/policy','POST',{policy:submitted});if(response.ok===false)throw Error(response.error);saved=submitted;render();notice(changed()?'已保存全局设置；你在保存期间继续修改的部分还没有保存。':'已保存全局设置：适用于所有私聊和群聊，从各会话的后续模型请求开始使用。组件功能与工具权限保持原样。');}catch(error){notice('保存失败：'+error.message);render();}});
- registerPageLoader('context-visual',()=>refresh(true));
+ registerPageLoader('context-visual',()=>{resetInspection();return refresh(true);});
 }

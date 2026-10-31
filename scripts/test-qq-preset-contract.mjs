@@ -109,5 +109,5 @@ console.log(`reserved2 persona prefix: ${prefix.length} characters (not a model-
 test('system preset delegates both mood forms and all send counts to current bridge owners',()=>{
  assert.match(prefix,/normal\/critical/);assert.match(prefix,/moodState/);assert.match(prefix,/replyPlan/);
  assert.match(prefix,/形态切换不是群友修改角色/);
- assert.doesNotMatch(prefix,/你只代表 DeepSeek 的正太小肥鱼|当前为「DeepSeek 正太小肥鱼」|【答信息也要软】|不突然变成正式客服|最多三条短句|故事或连续表达可 2～4 条/);
+ assert.doesNotMatch(prefix,/你只代表 DeepSeek 的AI助手|当前为「DeepSeek AI助手」|【答信息也要软】|不突然变成正式客服|最多三条短句|故事或连续表达可 2～4 条/);
 });

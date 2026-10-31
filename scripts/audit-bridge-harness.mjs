@@ -71,6 +71,10 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, typeof content === 'string' ? content : JSON.stringify(content));
   }
+  // Disable real Desktop writes before plugin startup services run, not after loadAll.
+  const registryPath=path.join(temp,'state/plugins/registry.json');fs.mkdirSync(path.dirname(registryPath),{recursive:true});
+  const registry=fs.existsSync(registryPath)?JSON.parse(fs.readFileSync(registryPath,'utf8')):{};
+  fs.writeFileSync(registryPath,JSON.stringify({...registry,disabled:[...new Set([...(registry.disabled||[]),'tool-user-checking'])]}));
   fs.mkdirSync(path.join(temp,'plugins'),{recursive:true});
   fs.copyFileSync(path.join(root,'plugins/wake-contracts.json'),path.join(temp,'plugins/wake-contracts.json'));
   for(const id of fs.readdirSync(path.join(root,'plugins/qq-components'))){
@@ -160,9 +164,9 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
       }
       if (action === 'get_friend_list') {
         return { status: 'ok', retcode: 0, data: [
-          { user_id: 123, nickname: '管理员', remark: '主人' },
-          { user_id: 20003, nickname: '艾莉哥哥', remark: '' },
-          { user_id: 20002, nickname: '十二哥哥', remark: '' },
+          { user_id: 123, nickname: '管理员', remark: '管理员' },
+          { user_id: 11004, nickname: '小周用户', remark: '' },
+          { user_id: 11005, nickname: '小林用户', remark: '' },
           { user_id: 999, nickname: '未授权联系人', remark: '' }
         ] };
       }

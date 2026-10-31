@@ -15,7 +15,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 // ── 配置区 ──────────────────────────────────────────────
-const SNOWLUMA_DIR = process.env.SNOWLUMA_DIR || 'C:/Example/Desktop/USTC GIT/DSH BOT/SnowLuma-v2.1.1-win-x64';
+const SNOWLUMA_DIR = process.env.SNOWLUMA_DIR || 'C:/FixtureHome/Desktop/Projects/DSH BOT/SnowLuma-v2.1.1-win-x64';
 const TARGET_FILE = 'index.mjs';
 const EXPECTED_SHA256 = 'E23ED3D4AA7E01E7F45400A7FFE6B0C4B67BB6D011F776F2FD04B959510435E6';
 

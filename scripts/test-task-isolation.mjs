@@ -17,7 +17,7 @@ test('task spawn uses a fresh worker and sends only its task envelope', () => ha
   assert.equal(h.calls.prompts[0].sessionId,t.sessionId);
   const text = h.calls.prompts[0].content[0].text;
   assert.match(text,/统计 fixture-project/);
-  assert.doesNotMatch(text,/哥哥|少年感|正太|小肥鱼|温柔|会话令牌|当前唤醒|沉睡|角色卡/);
+  assert.doesNotMatch(text,/用户|科普|普通|通用助手|温柔|会话令牌|当前唤醒|沉睡|角色卡/);
   assert.ok(!text.includes(token));
   assert.equal(h.calls.sent.length,0);
 }));
@@ -40,7 +40,7 @@ test('task requests missing input through the bot and can resume without a new w
   assert.equal(h.calls.created.filter(x=>x.agentPreset==='qq-task-worker').length,1);
   const delivered=h.calls.prompts.find(x=>x.sessionId===t.sessionId && x.content[0].text.includes('使用 fixture-project'));
   assert.ok(delivered);
-  assert.doesNotMatch(delivered.content[0].text,/当前唤醒|沉睡|角色卡|少年感/);
+  assert.doesNotMatch(delivered.content[0].text,/当前唤醒|沉睡|角色卡|科普/);
 }));
 
 test('terminal results survive duplicate or late task events', () => harness(async(h,token) => {
@@ -54,7 +54,7 @@ test('terminal results survive duplicate or late task events', () => harness(asy
 test('worker preset contains work instructions without chat persona and sleep protocol', () => {
   const rows=yaml.load(fs.readFileSync(new URL('../dsh/agent-presets/qq-task-worker/agent.cordis.yml',import.meta.url),'utf8'));
   const text=rows.find(x=>x.id==='persona').config.prefix;
-  assert.doesNotMatch(text,/哥哥|少年感|正太|小肥鱼|撒娇|结巴|温柔|qq_wait_for_messages|qq_set_wake_config/);
+  assert.doesNotMatch(text,/用户|科普|普通|通用助手|友好交流|结巴|温柔|qq_wait_for_messages|qq_set_wake_config/);
   assert.ok(rows.some(x=>x.id==='task-tool-restrict'));
   assert.ok(!rows.some(x=>x.id==='tool-ask-user'));
 });

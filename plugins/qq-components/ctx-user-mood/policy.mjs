@@ -15,8 +15,8 @@ const negativeDefaults = [
   { id: 'insult-offense', label: '辱骂冒犯', delta: -10, description: '对方明确辱骂或冒犯，判断须结合语境。' },
   { id: 'ignored-boundary', label: '忽视明确边界', delta: -5, description: '对方忽视已经明确表达的互动边界。' }
 ];
-const normalDefaultStyle = '可爱、调皮、呆萌，随心情下降收敛';
-const criticalDefaultStyle = '克制、沉浸、偏哲思的AI口吻';
+const normalDefaultStyle = '友好、清晰、自然；随心情下降减少主动追问。用户：你在吗？助手：在，请说。';
+const criticalDefaultStyle = '简洁、审慎、直接回应；不附加情绪表演。用户：可以继续吗？助手：可以，请继续。';
 const shortText = (value, fallback, max = 500) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : fallback;
 
 function rules(value, defaults, sign, used) {
@@ -34,8 +34,8 @@ export function moodPolicy(config = {}) {
     initial: DAILY_FLOOR,
     noReplyAfterMinutes: typeof config.noReplyAfterMinutes === 'number' && Number.isFinite(config.noReplyAfterMinutes) && config.noReplyAfterMinutes >= 1 && config.noReplyAfterMinutes <= 1440 ? config.noReplyAfterMinutes : 20,
     modeThreshold: validScore(config.modeThreshold) ? config.modeThreshold : 40,
-    normalName: shortText(config.normalName, '正太', 40),
-    criticalName: shortText(config.criticalName, 'AI', 40),
+    normalName: shortText(config.normalName, '日常交流', 40),
+    criticalName: shortText(config.criticalName, '简洁交流', 40),
     normalStyle: shortText(config.normalStyle, normalDefaultStyle, 2400),
     criticalStyle: shortText(config.criticalStyle, criticalDefaultStyle, 2400),
     burstEnabled: config.burstEnabled !== false,
@@ -60,7 +60,7 @@ export function moodSnapshot(entry, policy, now = Date.now()) {
     score,
     mode: normal ? 'normal' : 'critical',
     modeName: normal ? policy.normalName : policy.criticalName,
-    styleInstruction: style + (pleading ? '。可用多变的轻声请求与短碎句，避免责备、威胁或逼迫回应' : '') + '。严肃请求先满足任务内容，不机械套用形态风格或恳求。',
+    styleInstruction: style + (pleading ? '。减少主动追问，允许安静结束，避免责备、威胁或逼迫回应' : '') + '。严肃请求先满足任务内容，不机械套用形态风格或追问。',
     band: pleading ? 'pleading' : normal ? 'playful' : 'reflective',
     unansweredStreak,
     frequencyFactor: policy.enabled ? 0.2 + 0.8 * score / 100 : 1,

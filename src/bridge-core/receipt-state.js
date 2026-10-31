@@ -3,7 +3,7 @@ export function stampMsV2(value) {
 }
 
 export function messageFullyProcessedV2(msg) {
-  return !!msg && receiptStateV2(msg) === 'complete';
+  return !!msg && ['complete','resolved'].includes(receiptStateV2(msg));
 }
 
 // Admission is separate from QQ receipt stamps. A message can be stored for the
@@ -20,7 +20,8 @@ export function modelStateViewV2(st, { allowedSeqs } = {}) {
     get(target, field) {
       const value = Reflect.get(target, field);
       if (field === 'unread' || field === 'recentMessages') return (value || []).filter(message =>
-        isModelVisibleMessageV2(message) && (!allowedSeqs || allowedSeqs.has(message.seq)));
+        isModelVisibleMessageV2(message) && (!allowedSeqs || allowedSeqs.has(message.seq))
+        && (field==='unread'||!stampMsV2(target.modelContextSince)||Number(message.time)>=target.modelContextSince||(target.unread||[]).some(m=>Number.isSafeInteger(m.seq)&&m.seq===message.seq&&!messageFullyProcessedV2(m))));
       return value;
     },
     set(target, field, value) { return Reflect.set(target, field, value); }
@@ -39,10 +40,23 @@ export function firstPendingMessageV2(st) {
   return pending.length ? pending[0] : null;
 }
 
+// Confirmed delivery only: a resolved quote can bind a message received during
+// a running turn before its separate seen callback. Never writes receipt stamps.
+export function registerSuccessfulReplyV2(st, {replyToMessageId, at = Date.now()} = {}) {
+  const pending = new Set(Array.isArray(st.receiptSendPendingSeqs) ? st.receiptSendPendingSeqs : []);
+  const quoted = replyToMessageId == null ? '' : String(replyToMessageId).trim();
+  for (const msg of Array.isArray(st.unread) ? st.unread : []) {
+    if (!isModelVisibleMessageV2(msg) || msg.isSelf || !Number.isSafeInteger(msg.seq) || msg.seq <= 0 || stampMsV2(msg.repliedAt)) continue;
+    if (stampMsV2(msg.seenAt) || (quoted && msg.messageId != null && String(msg.messageId) === quoted)) pending.add(msg.seq);
+  }
+  st.receiptSendPendingSeqs = [...pending].sort((a,b) => a-b).slice(-200);
+  st.receiptSendPendingAt = st.receiptSendPendingSeqs.length ? at : 0;
+}
+
 /** 已接收未回复（seenAt 有、repliedAt 没有）的条数——提示词/状态接口共用。 */
 export function awaitingReplyCountV2(st) {
   return (Array.isArray(st?.unread) ? st.unread : [])
-    .filter((m) => m && stampMsV2(m.seenAt) > 0 && stampMsV2(m.repliedAt) === 0).length;
+    .filter((m) => m && stampMsV2(m.seenAt) > 0 && !messageFullyProcessedV2(m)).length;
 }
 
 /**
@@ -57,7 +71,7 @@ export function serializeUnreadMessageV2(msg) {
     ...msg,
     ...(seenAt ? { seenAt } : {}),
     ...(repliedAt ? { repliedAt } : {}),
-    awaitingReply: seenAt > 0 && repliedAt === 0
+    awaitingReply: seenAt > 0 && !messageFullyProcessedV2(msg)
   };
 }
 
@@ -153,6 +167,21 @@ export function receiptStateV2(msg) {
   const replied = stampMsV2(repliedRaw) > 0;
   if (malformed || (replied && (!seen || stampMsV2(repliedRaw) < stampMsV2(seenRaw)))) return 'anomaly';
   if (seen && replied) return 'complete';
+  if (seen && stampMsV2(msg.resolvedAt)>=stampMsV2(seenRaw) && String(msg.resolutionReason||'').trim()) return 'resolved';
   if (seen) return 'seen';
   return 'unseen';
+}
+
+// Administrative historical reconciliation, separate from physical delivery.
+// Validate the whole batch before changing any row; retain raw message history.
+export function resolveReceiptsV2(st,{seqs=[],reason='',at=Date.now(),dryRun=false}={}) {
+  if(!Array.isArray(seqs)||seqs.length>100||new Set(seqs).size!==seqs.length||seqs.some(s=>!Number.isSafeInteger(s)||s<=0))return {ok:false,status:400,error:'归档必须指定唯一的消息 seq'};
+  if(seqs.length&&String(reason).trim().length<4)return {ok:false,status:400,error:'归档须说明人工核对原因'};
+  const rows=seqs.map(seq=>(st.unread||[]).find(m=>m.seq===seq)||(st.recentMessages||[]).find(m=>m.seq===seq));
+  if(rows.some(m=>!m||m.isSelf||!['seen','resolved'].includes(receiptStateV2(m))))return {ok:false,status:409,error:'只能归档已查看的历史记录，未读或异常消息必须保留处理'};
+  if(!dryRun){for(const seq of seqs)for(const list of [st.unread,st.recentMessages])for(const m of list||[])if(m.seq===seq&&!m.resolvedAt){m.resolvedAt=at;m.resolutionReason=String(reason).trim().slice(0,500);}
+    pruneProcessedMessagesV2(st);
+    st.receiptSendPendingSeqs=(st.receiptSendPendingSeqs||[]).filter(seq=>!seqs.includes(seq));
+  }
+  return {ok:true,resolved:seqs};
 }

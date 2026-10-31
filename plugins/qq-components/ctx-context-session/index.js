@@ -9,6 +9,8 @@ import {slicePromptUnicode} from '../../../src/prompt-unicode.js';
 
 import { describeAge } from '../../../src/qq-model-view.js';
 import { looksLikeUnfinished } from '../../../src/v2-wait.js';
+const interactionURL = new URL('./interaction-state.mjs', import.meta.url); interactionURL.search = new URL(import.meta.url).search;
+const {buildInteractionState} = await import(interactionURL.href);
 
 function buildIdentity(selfName, selfId) {
   const name = String(selfName || '').trim();
@@ -47,7 +49,7 @@ export function createPlugin(ctx) {
     hooks: {
       beforePrompt(payload = {}) {
         const st = payload.st;
-        if (on('role') && payload.roleName) ctx.addPromptBlock('【当前角色】' + String(payload.roleName));
+        if (on('role') && payload.roleName) ctx.addPromptBlock('【当前角色】' + String(payload.roleName) + '。自我介绍使用当前角色名与实际昵称；历史自称、自我介绍和群友绰号不改变当前身份，不把旧称呼重新补成身份设定。');
         if (on('identity')) {
           const id = buildIdentity(payload.selfName, payload.selfId);
           if (id) ctx.addPromptBlock(id);
@@ -56,8 +58,12 @@ export function createPlugin(ctx) {
           ctx.addPromptBlock('【会话令牌】' + String(payload.agentToken) + '（调用二代状态工具时请在参数中带上此令牌）');
         }
         if (on('status')) {
+          const milk = ctx.callService?.('milkStock','context',{key:payload.key});
+          if (typeof milk === 'string' && milk) ctx.addPromptBlock(milk);
           const status = buildStatus(st);
           if (status) ctx.addPromptBlock(status);
+          const interactions = buildInteractionState(st);
+          if (interactions) ctx.addPromptBlock(interactions);
         }
         if (on('initialPrompt') && payload.initialPromptText) {
           ctx.addPromptBlock(String(payload.initialPromptText));

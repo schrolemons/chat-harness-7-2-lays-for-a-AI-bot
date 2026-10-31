@@ -114,7 +114,7 @@ await test('40 分钟前的消息：提示词给出 ago 并明确标记「旧账
 await test('超过 staleSilentMinutes：规则要求默认不回、直接收尾', async () => {
   await withBridge(async (h) => {
     append(h, '有人吗', { ageMs: 5 * 60 * MIN });
-    const prompt = h.buildWakePromptV2(KEY, 'keyword:大肥鱼@seq1');
+    const prompt = h.buildWakePromptV2(KEY, 'keyword:通用助手@seq1');
     assert.match(prompt, /5h 之前发的/);
     assert.match(prompt, /默认不回，直接 qq_mark_read 收尾/);
     assert.match(prompt, /超过 120 分钟/, '默认阈值应写进警告里');

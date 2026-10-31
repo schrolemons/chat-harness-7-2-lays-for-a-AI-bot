@@ -15,6 +15,7 @@ import {slicePromptUnicode, splitPromptUnicode} from './prompt-unicode.js';
 //   · 插件自己的持久状态在 state/plugins/<id>.json，启停/排序在 state/plugins/registry.json。
 
 import fs from 'node:fs';
+import {renderedPromptParts} from './prompt-parts.js';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -180,11 +181,13 @@ export function createPluginHost(opts = {}) {
         log: (m) => log('[plugin:' + id + '] ' + m),
         warn: (m) => { warn(id + ': ' + m); log('[plugin:' + id + '] WARN ' + m); },
         promptBlocks: [],
+        promptPlacements: [],
         promptInputChars: 0,
-        addPromptBlock(text) {
+        addPromptBlock(text,options={}) {
           const t = String(text || '').trim();
-          if (t && life.active && ctx.acceptBlocks) {ctx.promptInputChars+=t.length;ctx.promptBlocks.push(...chunks(t,ctx.promptMaxChars));}
+          if (t && life.active && ctx.acceptBlocks) {const parts=chunks(t,ctx.promptMaxChars);ctx.promptInputChars+=t.length;ctx.promptBlocks.push(...parts);ctx.promptPlacements.push(...parts.map(()=>options.placement==='stable'?'stable':'current'));}
         },
+        addPromptRule(text) { ctx.addPromptBlock(text,{placement:'stable'}); },
         askAI(prompt, askOpts = {}) {
           try { return life.active && askAI(String(prompt || ''), { ...askOpts, plugin: id, signal:life.controller.signal }); } catch { return false; }
         },
@@ -453,9 +456,9 @@ export function createPluginHost(opts = {}) {
           p.ctx.acceptBlocks=true;
           const out = invoke(p,'beforePrompt',p.hooks.beforePrompt,{ ...(payload || {}), promptBlocks: [...p.ctx.promptBlocks], priorPromptModules:blocks.map(row=>({id:row.id,text:row.text})) });
           p.ctx.acceptBlocks=false;
-          if (typeof out === 'string' && out.trim()) {p.ctx.promptInputChars+=out.trim().length;p.ctx.promptBlocks.push(...chunks(out,p.ctx.promptMaxChars));}
+          if (typeof out === 'string' && out.trim()) {const parts=chunks(out,p.ctx.promptMaxChars);p.ctx.promptInputChars+=out.trim().length;p.ctx.promptBlocks.push(...parts);p.ctx.promptPlacements.push(...parts.map(()=>'current'));}
           const raw=p.ctx.promptBlocks.join('\n\n'),own=slicePromptUnicode(raw,p.ctx.promptMaxChars);
-          blocks.push({id:p.id,name:p.manifest.name||p.id,source:'plugins/qq-components/'+p.id+'/index.js',layer:p.manifest.layer||'C',text:own,rawChars:Math.max(raw.length,p.ctx.promptInputChars),truncated:raw.length>own.length||p.ctx.promptInputChars>own.length});p.ctx.promptBlocks.length=0;p.ctx.promptInputChars=0;
+          blocks.push({id:p.id,name:p.manifest.name||p.id,source:'plugins/qq-components/'+p.id+'/index.js',layer:p.manifest.layer||'C',text:own,promptParts:renderedPromptParts(p.ctx.promptBlocks,p.ctx.promptPlacements,own),rawChars:Math.max(raw.length,p.ctx.promptInputChars),truncated:raw.length>own.length||p.ctx.promptInputChars>own.length});p.ctx.promptBlocks.length=0;p.ctx.promptPlacements.length=0;p.ctx.promptInputChars=0;
         } catch (error) {
           warnings.push('beforePrompt 失败 ' + p.id + ': ' + (error?.message ?? error));
         }
@@ -463,6 +466,7 @@ export function createPluginHost(opts = {}) {
       for (const p of plugins.values()) {
         if (p.disabled) continue;
         p.ctx.promptBlocks.length = 0;
+        p.ctx.promptPlacements.length = 0;
         p.ctx.promptInputChars = 0;
       }
       return blocks;

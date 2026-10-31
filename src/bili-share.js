@@ -18,15 +18,15 @@ const MAX_DESC_CHARS = 120;
 
 export const BILI_BV_RE = /^BV[0-9A-Za-z]{10}$/;
 
-// 选题方向（机主 2026-10-28 确认）：海洋 / 正太·少年 / 鲸鱼相关。
+// 默认公开选题；管理员可按实际用途自行修改。
 // 按天轮换，保证同一天可复现，也不会天天用同一个词。
 export const DEFAULT_BILI_KEYWORDS = [
-  '鲸鱼',
-  '海洋',
-  '少年感',
-  '海洋 纪录片',
-  '大海 治愈',
-  '少年 成长'
+  '科学',
+  '技术',
+  '科普',
+  '自然 纪录片',
+  '艺术',
+  '学习 方法'
 ];
 
 function cleanText(value, maxChars) {

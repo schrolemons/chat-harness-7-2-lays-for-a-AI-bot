@@ -204,8 +204,8 @@ export function formatStickerList(entries, query = '', limit = 48) {
       })
     : list;
   const max = Math.max(1, Math.min(500, Number(limit) || 48));
-  // 当前小鲸鱼形象的表情排前面；旧人设表情仍可按明确请求查找。
-  const isSelfSeries = (e) => /^(?:正太小肥鱼|小鲸鱼)/.test(String(e.desc || ''));
+  // 当前AI助手形象的表情排前面；旧人设表情仍可按明确请求查找。
+  const isSelfSeries = (e) => /^(?:AI助手|AI助手)/.test(String(e.desc || ''));
   const ordered = filtered.slice().sort((a, b) => (isSelfSeries(b) ? 1 : 0) - (isSelfSeries(a) ? 1 : 0) || (b.useCount || 0) - (a.useCount || 0));
   const items = ordered.slice(0, max).map((e) => ({
     id: e.id,
@@ -236,9 +236,9 @@ export function formatStickerList(entries, query = '', limit = 48) {
 export function buildStickerContext(entries, max = 8) {
   const list = (Array.isArray(entries) ? entries : []).map(normalizeStickerEntry).filter(Boolean);
   if (!list.length) return '';
-  // 当前小鲸鱼系列优先展示：否则新加的表情 useCount=0 永远排在猫猫后面，
+  // 当前AI助手系列优先展示：否则新加的表情 useCount=0 永远排在猫猫后面，
   // 模型看到的全是旧表情（实测用户反馈"怎么全发猫猫表情"）。
-  const isSelfSeries = (e) => /^(?:正太小肥鱼|小鲸鱼)/.test(String(e.desc || ''));
+  const isSelfSeries = (e) => /^(?:AI助手|AI助手)/.test(String(e.desc || ''));
   const top = [...list]
     .sort((a, b) => (isSelfSeries(b) ? 1 : 0) - (isSelfSeries(a) ? 1 : 0)
       || ((a.lastUsedAt || 0) - (b.lastUsedAt || 0))   // 越久没发的越靠前
@@ -261,23 +261,7 @@ export function buildStickerContext(entries, max = 8) {
 //   ② 「斗图」是真实存在的连续互动，允许表情作为唯一内容（旧文案写死了「别把表情当唯一回复」，正好压住它）；
 //   ③ 频率分档：普通闲聊稀疏、斗图可连续，但都别刷屏。
 // 收藏表情按语境抽取候选；模型每轮优先从候选中选一张，必要时用正文 emoji/颜文字补位。
-export function buildStickerStrategyHint() {
-  return [
-    '【表情统一策略：收藏表情包与消息正文里的 emoji/颜文字一起考虑】',
-    '- 每轮先看本轮抽出的收藏表情候选，**尽量挑一张合适的用 qq_send_sticker 发出**；不要求额外征求对方同意，也不要只因为对方没先发表情就放弃。',
-    '- 如果候选都不贴切、收藏表情工具不可用，或当前是严肃正事/明显情绪危机，就不硬发图片；普通轻松对话可在正文自然加 1 个 emoji 或颜文字补位。整轮把两种形式当作同一套表达，通常选一种即可，避免文字表情加图片表情重复堆叠。严肃正事或明显情绪危机时，也不加正文 emoji/颜文字。',
-    '- **别重复**：尽量避开最近发过的收藏表情；只有特别贴语境时才复用，同一张 15 分钟内别连续发两次。正文 emoji/颜文字也不要句句加、不要重复刷同一个。',
-    '- 轻松/调侃/斗图/对方主动逗你：优先从候选中发一张贴切表情；正在斗图时可自然接着发，但别连续刷屏。',
-    '- **主动偷图**：群友发的表情/图片有意思时，先 qq_get_message_images 看一眼，觉得以后用得上就 qq_collect_sticker（备注短一点，比如「猫猫摊手·无语」）；一轮最多偷一张，别每轮都偷，偷完可以顺口说一句「这张偷了」。偷来的图以后优先用在自己身上。',
-    '- 优先选与当前正太小肥鱼形象和语境相符的表情；旧人设系列不当作本体，不确定图像是否合适就先看图或跳过。',
-    '- 发送方式：需要配文字时先用 qq_send_message / qq_reply 发文字，再用 qq_send_sticker 单独发表情；qq_send_sticker 一条只能一张，不能在同一气泡里附带文字。',
-    '- 选择（按备注对语境，别总用同一张）：开心或被夸 → 开心·害羞；困了 → 睡觉·小睡；打招呼 → 招手；安慰 → 温柔陪伴。没有合适的就先用文字接住。',
-    '- 正文里的 emoji/颜文字可自然表达语气：(￣▽￣)、(｡•́︿•̀｡)、٩(ˊᗜˋ*)و、_(:з」∠)_、ovo、ww、orz、[狗头]、[捂脸]、[旺柴]、🐟、🍚、🥢、😋、😴、🤔、😤、🥹、🎉、👀、💤、🫠、🤯、😭、👍、🙏、🔥、✨、🌙、☀️、🍜、🧋 等；每条最多 1~2 个，避免和同一轮收藏表情重复堆叠。',
-    '- 发送：qq_send_sticker 一条只能一张，不能和文字同一条消息；先发文字再发表情（或反过来）。需要引用/点名时传 replyToMessageId / atUserId。',
-    '- 学习：没备注/不确定含义的表情先 qq_get_sticker_image 看图，再用 qq_sticker_note 记下自己的理解。',
-    '- 不要：严肃话题硬塞、一条回复发多张、只发表情不说话（斗图/纯表情回应除外）、文字和表情挤在同一气泡里。'
-  ].join('\n');
-}
+export {buildStickerStrategyHint} from '../plugins/qq-components/ctx-context-dynamics/expression-policy.mjs';
 
 // 把 AI 本地认知（note/tags/usage）更新到一条表情记录上，并返回新数组。
 export function applyStickerNote(entries, id, patch = {}) {

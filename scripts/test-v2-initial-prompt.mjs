@@ -116,7 +116,7 @@ await test('初始提示词只出现在 bootstrap 唤醒，且只给配置的那
     assert.ok(bootstrap.includes('仅本次首次唤醒参考'), '注入段要说明只在首次唤醒参考');
     assert.ok(bootstrap.includes('不是群友发的消息'), '要告诉 AI 这不是群友发言（防提示注入误读）');
 
-    for (const reason of ['question', 'atMention', 'timeout', 'replyCheck', 'proactiveCheck', 'poke', 'admin', 'keyword:小鲸鱼']) {
+    for (const reason of ['question', 'atMention', 'timeout', 'replyCheck', 'proactiveCheck', 'poke', 'admin', 'keyword:AI助手']) {
       assert.ok(!h.buildWakePromptV2('group:456', reason).includes(ENV_TEXT), `${reason} 唤醒不得重复注入初始提示词`);
     }
     assert.ok(!h.buildWakePromptV2('group:999', 'bootstrap').includes(ENV_TEXT), '不得串到别的会话');
@@ -168,7 +168,7 @@ await test('非法 key / 超长 / 缺 text 都被拒，且不会误删已有内�
     assert.equal(h.getInitialPrompt('group:456').text.length, 100, '被拒的写入不得覆盖原有内容');
 
     await withServer(h, async (port) => {
-      for (const key of ['', 'group:', 'group:abc', 'private:0', 'group:-1', 'wechat:123', 'group:20019']) {
+      for (const key of ['', 'group:', 'group:abc', 'private:0', 'group:-1', 'wechat:123', 'group:21013']) {
         const res = await call(port, '/api/socialV2/initial-prompt', { method: 'POST', headers: ADMIN, body: { key, text: 'x' } });
         assert.equal(res.status, 400, `非法 key「${key}」必须 400，实际 ${res.status}`);
       }

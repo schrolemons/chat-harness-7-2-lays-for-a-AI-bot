@@ -24,7 +24,7 @@ function buildReplyLine(payload) {
   const quietMs = Number(timing.quietMs) || 8000;
   const remaining = Math.max(0, Number(timing.remainingQuietMs) || 0);
   if (payload.autonomousNow && !payload.hasUnreadNow) {
-    return '【主动开口·不是回复】这一轮是你自己到点/想说话，**不是回复任何人**：不要用“你按/你戳/你说/你刚才/你问我/你发的”这类接话口吻，不要假装对方刚发过消息，也不要复述旧话题。直接说你此刻想说的那 1 句（可配 1 张贴语境表情）；说完并提交回执后，调用 qq_wait_for_messages 等新互动，按后台 endRound 判断继续或结束。';
+    return '【主动开口·不是回复】这一轮是你自己到点/想说话，不是假装对方刚找你。可以自然延续今天或上一段旧话题，按本轮话题选择追问或换题；历史消息按原来的时间理解，不复读旧回答，不把未回答的问题再问一遍。定时冒泡、日程和其他指定任务优先遵守各自内容要求。条数服从统一发送计划；说完并提交回执后，调用 qq_wait_for_messages 等新互动，按后台 endRound 判断继续或结束。';
   }
   return `【首回复节奏】先处理已有消息，完整的问题及时回答。需要确认对方是否继续补充时，用 qq_wait_for_quiet(quietMs=${quietMs})；从最后来信计时，合批和读提示词的耗时也算，目前还差约 ${Math.ceil(remaining / 1000)} 秒静默。已安静够久可直接回，工具也会立即返回并补上思考期间的新消息。只有明确没说完、你确实要等下文时，才用普通 messages 长等待。`;
 }
@@ -37,7 +37,7 @@ function buildReminderLine(items, key = '') {
   if (!Array.isArray(items) || !items.length) return '';
   // 隐私硬约束：日程只属于登记它的会话。私聊日程只在私聊说，绝不引导到群里。
   const isGroup = String(key || '').startsWith('group:');
-  const where = isGroup ? '在群里提醒（说清时间/地点/内容，别复述系统提示）' : '在当前私聊提醒主人本人（说清时间/地点/内容）；这是他自己的日程，不要发到群里或转告其他会话';
+  const where = isGroup ? '在群里提醒（说清时间/地点/内容，别复述系统提示）' : '在当前私聊提醒管理员本人（说清时间/地点/内容）；这是他自己的日程，不要发到群里或转告其他会话';
   return `【到点提醒｜别忘了】以下日程到点了，这一轮${where}：\n`
     + items.map((it) => '- ' + String(it?.text || it || '').slice(0, 200)).join('\n');
 }
@@ -72,6 +72,7 @@ export function createPlugin(ctx) {
     hooks: {
       beforePrompt(payload = {}) {
         if (/^(memoryWrite|selfReview|selfOptimize|slangLearn)$/.test(String(payload?.reason||''))) return '';
+        if(payload.budgetStage==='weak')return ''; // Fixed budget batches do not enter normal wake/wait loops.
         if(on('wake'))ctx.addPromptBlock(buildWakeGuidance(payload.wakeConfig || {}, payload.proactivePolicy || null));
         if (on('muted') && payload.mutedJustClearedNow) {
           ctx.addPromptBlock('【刚解除静音】对方之前说过忙/别吵/等会再聊，现在他主动找你。可以正常回，但简短一点，别提“你刚才说忙”，也别借机多聊；对方没叫你时不要再主动搭话。');

@@ -1,7 +1,7 @@
 {
   "name": "qq-launcher",
   "version": "0.2.1-r1",
-  "description": "DSH 标题栏一键启动器：在 Windows 标题栏「编辑」右侧显示小鲸鱼红绿灯，并可一键拉起 QQ / SnowLuma / 桥接",
+  "description": "DSH 标题栏一键启动器：在 Windows 标题栏「编辑」右侧显示AI助手红绿灯，并可一键拉起 QQ / SnowLuma / 桥接",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {

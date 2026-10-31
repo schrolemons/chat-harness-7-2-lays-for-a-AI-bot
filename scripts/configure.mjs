@@ -21,7 +21,7 @@ export function configure(options = {}, root = ROOT) {
   if (options.dshUrl) { const url = new URL(options.dshUrl); if (!['127.0.0.1','localhost','[::1]'].includes(url.hostname)) throw Error('Use a local DSH endpoint'); cfg.dsh.baseUrl = url.href.replace(/\/$/,''); }
   fs.writeFileSync(file, JSON.stringify(cfg,null,2)+'\n', { mode: 0o600 });
   fs.mkdirSync(path.join(root,'state'), {recursive:true,mode:0o700});
-  for (const [name,value] of Object.entries({'current-role.json':{role:'小鲸鱼',mode:'active'},'mode.json':{mode:'reserved2',closedAgentPreset:''}})) {
+  for (const [name,value] of Object.entries({'current-role.json':{role:'AI助手',mode:'active'},'mode.json':{mode:'reserved2',closedAgentPreset:''}})) {
     const target=path.join(root,'state',name);if(!fs.existsSync(target))fs.writeFileSync(target,JSON.stringify(value,null,2)+'\n',{mode:0o600});
   }
   return {configured:true,configFile:file};

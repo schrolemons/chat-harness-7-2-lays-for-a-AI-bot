@@ -1,14 +1,47 @@
 {
   "id": "life-token-budget",
   "name": "会话花费分级",
-  "version": "0.3.0",
-  "description": "按上海时间每日 22:00 结算花费；达到硬上限后停用模型，按固定词条机械回复。",
+  "version": "0.4.1",
+  "description": "会话花费分级：冷漠私聊按可配置来信条数、群聊按间隔处理；硬上限每条触发限流的固定回复，通知直投。",
   "layer": "O",
   "category": "令牌与花费",
   "order": 21,
   "main": "index.js",
   "enabled": true,
-  "hooks": ["onTick"],
-  "schedule": { "everyMs": 60000 },
-  "config": { "sessions": {}, "ownerBudgetEnabled": true, "globalHardLimitYuan": 0, "recoveryWindows": { "privateMessages": 5, "groupMessages": 5, "groupAtMessages": 5 }, "mechanicalPrivateReplies": [], "mechanicalGroupReplies": [] }
+  "hooks": [
+    "onTick"
+  ],
+  "schedule": {
+    "everyMs": 60000
+  },
+  "config": {
+    "sessions": {},
+    "ownerBudgetEnabled": true,
+    "globalHardLimitYuan": 0,
+    "recoveryWindows": {
+      "privateMessages": 5,
+      "groupMessages": 5,
+      "groupAtMessages": 5
+    },
+    "mechanicalPrivateReplies": [],
+    "mechanicalGroupReplies": [],
+    "mechanicalLimits": {
+      "minIntervalMs": 10000,
+      "maxPerMinute": 4,
+      "maxPerHour": 30
+    },
+    "privateWakeEveryMessages": 5
+  },
+  "configSchema": {
+    "mechanicalLimits": {
+      "type": "object",
+      "editable": false,
+      "description": "满额固定回复的独立防刷屏规则，由令牌与花费页面编辑。"
+    },
+    "privateWakeEveryMessages": {
+      "type": "number",
+      "editable": false,
+      "description": "全局私聊冷漠触发条数，按会话分别累计，默认5，范围1–100；由令牌与花费页面管理。"
+    }
+  }
 }

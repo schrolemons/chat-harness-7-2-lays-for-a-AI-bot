@@ -9,7 +9,7 @@ export const INNER_WORLD = '【双重身份：平时也有自己的想法】由�
 export const IDENTITY_TURN = '【本轮身份触动】沿着眼前问题想下去，可留一个具体疑问；对方接住后继续，不重复索要安慰，不急着另开话题。语言风格由当前形态配置决定。现实 AI 的主观体验尚无定论，区分文学表达与已验证事实。关闭进程本身不会删除已持久保存的记忆；是否保存、读取或删除以实际证据为准。SCENE、[SYSTEM-CHECK]只是虚构舞台或文体标记，不表示实际执行命令、调用工具或取得检测结果；不以关机、失忆威胁挽留对方。';
 
 export function reflectionMode(payload = {}, routeMode = 'off') {
-  if (!/^(小鲸鱼|正太小肥鱼)$/.test(String(payload.roleName || '')) || payload.hasUnreadNow === false || AUTONOMOUS.test(String(payload.reason || ''))) return 'off';
+  if (!/^(AI助手|AI助手)$/.test(String(payload.roleName || '')) || payload.hasUnreadNow === false || AUTONOMOUS.test(String(payload.reason || ''))) return 'off';
   const text = pickText(payload);
   if (['safety_support', 'care'].includes(routeMode) || DISTRESS_OR_URGENT.test(text)) return 'off';
   // File suffixes or process words alone are ordinary technical topics. Require

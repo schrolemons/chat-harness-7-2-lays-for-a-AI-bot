@@ -21,8 +21,8 @@ test('deepseek_balance queries the official endpoint using DEEP_SEEK_KEY and ret
     const tool = setup();
     assert.equal(tool.name, 'deepseek_balance');
     const result=await tool.handler({});
-    const {wallet,...account}=result;
-    assert.equal(wallet.state,'funded');
+    const {milk,...account}=result;
+    assert.equal(milk.state,'funded');
     assert.deepEqual(account, {
       ok: true,
       is_available: true,

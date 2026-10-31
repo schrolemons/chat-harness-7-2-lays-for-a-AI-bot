@@ -11,9 +11,9 @@ test('the real snapshot limits pending/history separately, includes bot history 
  const h=await bridgeHarness({config:{socialV2:{doubleStamp:{enabled:false},context:{recentLimit:100,unreadLimit:40,wakeMessageLimit:2,wakeRecentLimit:1,wakePendingMessageMaxChars:9,wakeHistoryMessageMaxChars:6,wakeMaxChars:8000}}}});try{
   h.setMode('reserved2');const key='private:123',st=h.getSocialV2State(key);
   h.appendSocialV2Message(key,'人','用户原文'.repeat(30),'用户原文'.repeat(30),false,false,'one');
-  const bot={seq:++st.lastUnreadSeq,isSelf:true,sender:'bot',text:'小鲸鱼回复'.repeat(20),time:Date.now()};st.recentMessages.push(bot);
+  const bot={seq:++st.lastUnreadSeq,isSelf:true,sender:'bot',text:'AI助手回复'.repeat(20),time:Date.now()};st.recentMessages.push(bot);
   const snapshot=h.buildWakeSnapshotV2(key);assert.equal(snapshot.messages.length,1);assert.equal(snapshot.messages[0].truncated,true);assert.equal(snapshot.messages[0].suppliedChars,9);assert.equal(snapshot.recent.length,1);assert.equal(snapshot.recent[0].isSelf,true);assert.equal(snapshot.recent[0].suppliedChars,6);
-  assert.equal(bot.text,'小鲸鱼回复'.repeat(20));assert.equal(st.unread[0].text,'用户原文'.repeat(30));assert(!st.unread[0].seenAt);assert(!st.unread[0].repliedAt);assert(JSON.stringify(snapshot).length<=8000);
+  assert.equal(bot.text,'AI助手回复'.repeat(20));assert.equal(st.unread[0].text,'用户原文'.repeat(30));assert(!st.unread[0].seenAt);assert(!st.unread[0].repliedAt);assert(JSON.stringify(snapshot).length<=8000);
  }finally{await h.close();}
 });
 test('weak budget keeps private/group-at/group-ordinary windows separately without forging receipt stamps',async()=>{

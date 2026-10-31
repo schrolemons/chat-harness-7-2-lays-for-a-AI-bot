@@ -17,5 +17,5 @@ test('direct bubbles personalize from structured confirmed facts without hint ec
 test('model prompt treats hint as creative instructions and includes personalized style without canned milk examples', () => {
   const f = fixture();
   const text = f.plugin.hooks.beforePrompt({ key: 'private:1', reason: 'timeBubble', st: { pendingTimeBubble: { label: '午饭', hint: '聊聊午饭后散步' } } });
-  assert.match(text, /不能照抄|不得照抄/); assert.match(text, /小林/); assert.match(text, /安静温柔/); assert.ok(!text.includes('该喝牛奶'));
+  assert.match(text, /不能照抄|不得照抄/); assert.match(text, /小林/); assert.match(text, /安静温柔/); assert.ok(!text.includes('该喝调用额度'));
 });

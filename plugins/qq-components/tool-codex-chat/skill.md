@@ -1,6 +1,6 @@
-# 小鲸鱼 × Codex 专用聊天
+# AI助手 × Codex 专用聊天
 
-本插件已于 2026-10-27 恢复启用，是大肥鱼与机主 Codex 专用会话之间的本地通信通道。对话由官方 Codex App Server 处理，会消耗该 Codex 账户适用的额度与限额。
+本插件已于 2026-10-27 恢复启用，是通用助手与机主 Codex 专用会话之间的本地通信通道。对话由官方 Codex App Server 处理，会消耗该 Codex 账户适用的额度与限额。
 
 T 层插件 `tool-codex-chat`。真实工具由本插件的 stdio MCP `codex-peer` 提供，不要把管理页中的说明工具误当发送工具。
 

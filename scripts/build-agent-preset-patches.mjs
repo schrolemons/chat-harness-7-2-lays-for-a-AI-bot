@@ -107,7 +107,7 @@ function normalizeRows(rows, preset) {
     if (!seen.has(required)) throw new Error(`${preset}: 行列表缺少 ${required} 行（安全/人格边界不允许缺失）`);
   }
   // qq-chat-dev（管理员开发）与 qq-task-worker（任务工作会话）刻意不挂 qq-tool-restrict：
-  // 前者只由桥接挂到 owner 私聊，后者只由桥接在主人委派任务时创建（会话创建权在桥接手里，
+  // 前者只由桥接挂到 owner 私聊，后者只由桥接在管理员委派任务时创建（会话创建权在桥接手里，
   // 且任务会话对本地工具的授权本身就是设计目标）。
   if (preset !== 'qq-chat-dev' && preset !== 'qq-task-worker' && preset !== 'qq-learning' && !seen.has('qq-tool-restrict')) {
     throw new Error(`${preset}: 行列表缺少 qq-tool-restrict 行（仿真会话不允许缺少本地工具守卫）`);

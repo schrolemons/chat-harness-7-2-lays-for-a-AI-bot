@@ -236,7 +236,7 @@ test('threshold zero keeps zero mood in normal mode even with unanswered streak'
   const f = await fixture(t, { modeThreshold: 0 });
   f.call('initialize', { conversations: [{ key, score: 0 }], now: T });
   f.sent(); f.call('settle', { now: T + 20 * minute });
-  assert.deepEqual([f.read().mode, f.read().modeName, f.read().band, f.read().replyCeiling], ['normal', '正太', 'playful', 2]);
+  assert.deepEqual([f.read().mode, f.read().modeName, f.read().band, f.read().replyCeiling], ['normal', '日常交流', 'playful', 2]);
 });
 
 test('explicit behavior rules enforce direction and amount while autonomous adjustments use their own cap', async t => {

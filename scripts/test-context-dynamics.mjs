@@ -24,18 +24,18 @@ const moodCfg = {
 };
 const high = build({ moodState: { score: 85, enabled: true, modeName: '明亮', styleInstruction: '可以活跃点' } });
 const low = build({ moodState: { score: 30, enabled: true, modeName: '沉静', styleInstruction: '克制沉思' } });
-check('心情好：标签+建议', high.includes('【当前形态】明亮（85/100）') && high.includes('可以活跃点'));
-check('心情低：低落+被叫回来+恢复期', low.includes('沉静（30/100）') && low.includes('克制沉思') && !low.includes('2~3'));
-check('心情低不引导傲娇', !low.includes('傲娇一点'));
-check('心情关闭：不注入', !build({ moodState: { value: 80, config: { ...moodCfg, enabled: false } } }).includes('小鲸鱼的心情'));
+check('心情好：形态与动态分数分开', high.includes('【当前形态】明亮。') && high.includes('【心情数值】85/100') && high.includes('可以活跃点'));
+check('心情低：形态与动态分数分开', low.includes('【当前形态】沉静。') && low.includes('【心情数值】30/100') && low.includes('克制沉思') && !low.includes('2~3'));
+check('心情低不引导生硬', !low.includes('生硬一点'));
+check('心情关闭：不注入', !build({ moodState: { value: 80, config: { ...moodCfg, enabled: false } } }).includes('AI助手的心情'));
 
 const stickerCfg = { enabled: true, includeInPrompt: true, sendProbability: 0.6, recentCooldownMinutes: 30, promptMaxStickers: 8 };
-const entries = [{ id: 's1', desc: '大肥鱼吃瓜', localNote: '', tags: [] }];
+const entries = [{ id: 's1', desc: '通用助手吃瓜', localNote: '', tags: [] }];
 const st = { recentStickers: [{ id: 's1', at: Date.now() - 60_000 }] };
 const noSticker = build({ st, stickerEntries: entries, stickerConfig: stickerCfg, stickerRoll: false });
 const withSticker = build({ st, stickerEntries: entries, stickerConfig: stickerCfg, stickerRoll: true });
 check('表情：旧随机值不禁止自主选择', !noSticker.includes('【本轮不带表情包】') && noSticker.includes('表情'));
-check('表情：最近发过的提示', withSticker.includes('【最近发过的表情') && withSticker.includes('大肥鱼吃瓜'));
+check('表情：最近发过的提示', withSticker.includes('【最近发过的表情') && withSticker.includes('通用助手吃瓜'));
 check('表情：策略文案', withSticker.includes('表情') && withSticker.length > 20);
 check('表情关闭：不注入', !build({ stickerConfig: { ...stickerCfg, enabled: false }, stickerRoll: true }).includes('表情'));
 

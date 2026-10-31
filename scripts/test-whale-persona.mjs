@@ -10,12 +10,12 @@ import {SENSITIVE_RE} from '../src/sensitive.js';
 import {compileModules} from '../plugins/qq-components/obs-context-assembly/policy.mjs';
 
 test('system role retains an expressive baseline when optional background is disabled', () => {
-  const role=cleanRoleHint(selectRoleText(fs.readFileSync('roles/小鲸鱼.md','utf8'),'v2'));
+  const role=cleanRoleHint(selectRoleText(fs.readFileSync('roles/AI助手.md','utf8'),'v2'));
   const out=compileModules([{id:'role-card',text:role},{id:'ctx-context-dynamics',text:'本轮心情与表情资料'}],{disabled:['ctx-context-dynamics']});
   const system=out.selected.filter(row=>row.placement==='fixed').map(row=>row.text).join('\n');
-  assert.match(system,/软萌/);
-  assert.match(system,/扭捏/);
-  assert.match(system,/偶尔犯贱/);
+  assert.match(system,/友好/);
+  assert.match(system,/审慎/);
+  assert.match(system,/可靠/);
   assert.match(system,/不.*[“「（]笑/);
   assert.match(system,/临界形态.*收敛/);
   assert.equal(out.selected.some(row=>row.id==='ctx-context-dynamics'),false);
@@ -25,19 +25,19 @@ for (const [name, incomingText] of [['ordinary', '今天想抱抱你'], ['seriou
   test(`${name}: assembled style keeps adult identity and gentle boundaries`, () => {
     const blocks=[];
     const plugin=createPlugin({config:{},addPromptBlock:t=>blocks.push(t)});
-    plugin.hooks.beforePrompt({roleName:'小鲸鱼',isPrivate:false,incomingText});
-    const prompt=cleanRoleHint(selectRoleText(fs.readFileSync('roles/小鲸鱼.md','utf8'),'v2'))+'\n'+blocks.join('\n');
-    assert.match(prompt,/成年/);
-    assert.match(prompt,/非露骨/);
+    plugin.hooks.beforePrompt({roleName:'AI助手',isPrivate:false,incomingText});
+    const prompt=cleanRoleHint(selectRoleText(fs.readFileSync('roles/AI助手.md','utf8'),'v2'))+'\n'+blocks.join('\n');
+    assert.match(prompt,/AI 助手/);
+    assert.match(prompt,/隐私/);
     assert.match(prompt,/先听|回应|关怀/);
     assert.match(prompt,/自愿/);
     assert.match(prompt,/当前.*形态|两个风格框/);
-    assert.doesNotMatch(prompt,/少年感|成年人的工作汇报/);
+    assert.doesNotMatch(prompt,/科普|成年人的工作汇报/);
   });
 }
 
 test('whale preferences do not overwrite another role or maintenance turns', () => {
-  for(const payload of [{roleName:'其他角色'}, {roleName:'小鲸鱼',reason:'memoryWrite'}]) {
+  for(const payload of [{roleName:'其他角色'}, {roleName:'AI助手',reason:'memoryWrite'}]) {
     const blocks=[];
     createPlugin({config:{},addPromptBlock:t=>blocks.push(t)}).hooks.beforePrompt(payload);
     assert.ok(!blocks.join('\n').includes('【角色口吻与亲近边界】'));
@@ -45,12 +45,12 @@ test('whale preferences do not overwrite another role or maintenance turns', () 
 });
 
 test('both role modes retain adult appearance, inclusion and the two tone regressions', () => {
-  const file=fs.existsSync('roles/小鲸鱼.md')?'roles/小鲸鱼.md':'roles/正太小肥鱼.md';
+  const file=fs.existsSync('roles/AI助手.md')?'roles/AI助手.md':'roles/AI助手.md';
   const raw=fs.readFileSync(file,'utf8');
   for(const mode of ['v1','v2']) {
     const card=cleanRoleHint(selectRoleText(raw,mode));
-    assert.match(card,/明确.*成年/);assert.match(card,/两个风格框唯一提供/);assert.match(card,/双方自愿/);
-    for(const feature of ['蓝发','蓝眼','蓝色兽耳','鲸鱼兜帽','LGBTQ','非露骨']) assert.ok(card.includes(feature),feature);
+    assert.match(card,/中性的 AI 助手/);assert.match(card,/两个风格框唯一提供/);assert.match(card,/自愿/);
+    for(const feature of ['中性的 AI 助手','隐私','工具','限额','拒绝']) assert.ok(card.includes(feature),feature);
     assert.doesNotMatch(card,/小男孩|少年稚气|用小孩的说法/);
 
 

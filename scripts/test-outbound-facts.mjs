@@ -238,7 +238,7 @@ test('prompt inspection has explicit absent plan and canonical topic config, and
 
 
 for(const addressedBy of ['name','at','quote'])test('review1: group wait ignores second-person/model/owner chatter and accepts actual '+addressedBy,async t=>{
- const {h,post}=await httpFixture(t);h.setSelfIdentity('小鲸鱼','9');const key='group:456',sid=await h.ensureSession(key),st=h.getSocialV2State(key),actionId='direct-evidence-'+addressedBy;
+ const {h,post}=await httpFixture(t);h.setSelfIdentity('AI助手','9');const key='group:456',sid=await h.ensureSession(key),st=h.getSocialV2State(key),actionId='direct-evidence-'+addressedBy;
  const replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'hi',mood:{replyCeiling:3}});
  h.activeTurnEnvelopes.set(sid,{key,sessionId:sid,actionId,reason:'proactiveCheck',replyPlan});
  const sent=await post('/api/socialV2/send-message',{key,messages:'hello group'},st.agentToken);assert.equal(sent.body.ok,true,JSON.stringify(sent));
@@ -248,8 +248,8 @@ for(const addressedBy of ['name','at','quote'])test('review1: group wait ignores
  for(const [text,user] of [['你有空吗',222],['你是人类还是AI',222],['ChatGPT比Claude强吗',222],['回我',222],['普通群聊',123]]){
    await incoming([{type:'text',data:{text}}],user);assert.equal(read().answeredAt,null,text);
  }
- h.bot.getMessage=async id=>({message_id:id,group_id:456,user_id:9,sender:{user_id:9,nickname:'小鲸鱼'},message:[{type:'text',data:{text:'my previous message'}}]});
- const message=addressedBy==='name'?[{type:'text',data:{text:'小鲸鱼，下午好'}}]:addressedBy==='at'?[{type:'at',data:{qq:'9'}},{type:'text',data:{text:'下午好'}}]:[{type:'reply',data:{id:'900'}},{type:'text',data:{text:'下午好'}}];
+ h.bot.getMessage=async id=>({message_id:id,group_id:456,user_id:9,sender:{user_id:9,nickname:'AI助手'},message:[{type:'text',data:{text:'my previous message'}}]});
+ const message=addressedBy==='name'?[{type:'text',data:{text:'AI助手，下午好'}}]:addressedBy==='at'?[{type:'at',data:{qq:'9'}},{type:'text',data:{text:'下午好'}}]:[{type:'reply',data:{id:'900'}},{type:'text',data:{text:'下午好'}}];
  await incoming(message);assert.ok(read().answeredAt>0);assert.equal(h.calls.prompts.length,0);
 });
 

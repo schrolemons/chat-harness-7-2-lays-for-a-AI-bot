@@ -1,26 +1,4 @@
-// 运行时上下文（纯函数）：参与度提示 + 时间感提示。
-// 从 bridge.js 的 formatParticipationV2 / buildTimeSenseLine 抽出，供 ctx-context-runtime 组件调用；
-// 桥接只负责传 st、directUnread（说了“你/AI”的未读数）和 wake 配置。
-
-const pad2 = (n) => String(n).padStart(2, '0');
-
-import { describeAge } from './qq-model-view.js';
-
-export function localClockText(ms) {
-  const d = new Date(Number(ms));
-  if (!Number.isFinite(d.getTime())) return '';
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
-export function timeSenseConfig(wake = {}) {
-  const boundedMin = (value, fallback, min, max) => {
-    const n = Number(value);
-    return Number.isFinite(n) && n >= min ? Math.min(max, Math.round(n)) : fallback;
-  };
-  const chatMin = boundedMin(wake.staleChatMinutes, 10, 1, 600);
-  const silentMin = Math.max(chatMin, boundedMin(wake.staleSilentMinutes, 120, 5, 2880));
-  return { chatMin, silentMin };
-}
+// 参与度统计。时间感策略的唯一拥有源是 ctx-context-runtime/time-sense.mjs。
 
 /** 参与度提示：这一小时我说了多少、群友说了多少、最近热度如何。 */
 export function buildParticipation(st, directUnread = 0, now = Date.now()) {
@@ -48,33 +26,4 @@ export function buildParticipation(st, directUnread = 0, now = Date.now()) {
 
   const burstText = fiveMinOthers.length ? `，最近5分钟群友 ${fiveMinOthers.length} 条${activeSenders ? `/${activeSenders}人` : ''}` : '';
   return `【参与度参考】你最近 1 小时说了 ${aiCount} 次，群友发了 ${otherCount} 条${burstText}。${hint}`;
-}
-
-/** 时间感：最近一条来信多久前、什么钟点，以及不同时效下该怎么接。 */
-export function buildTimeSense(st, wake = {}, options = {}) {
-  const now = typeof options.now === 'number' ? options.now : Date.now();
-  const newest = [...(Array.isArray(st?.unread) ? st.unread : [])].reverse().find((m) => m && !m.isSelf)
-    || [...(Array.isArray(st?.recentMessages) ? st.recentMessages : [])].reverse().find((m) => m && !m.isSelf)
-    || null;
-  if (!newest) return '';
-  const ageText = options.ageText || describeAge(newest.time, now);
-  if (!ageText) return '';
-  const { chatMin, silentMin } = timeSenseConfig(wake);
-  const sender = String(newest.sender || '未知');
-  const ageMin = Math.max(0, Math.floor((now - Number(newest.time)) / 60000));
-  const staleNow = ageMin >= chatMin;
-  const tooOld = ageMin >= silentMin;
-  const lines = [
-    `【时间感】先看消息多久前，再决定怎么接：现在是 ${localClockText(now)}，最近一条来自「${sender}」，是 ${ageText} 之前发的（${localClockText(newest.time)}）。`,
-    '- 消息里的 at 是北京时间、ago 是相对现在多久，判断前先确认现在几点、消息的 ago，不要凭感觉当成“刚刚”。',
-    `- ${chatMin} 分钟内（尤其几分钟内）：按实时对话接。`
-  ];
-  if (silentMin > chatMin) {
-    lines.push(`- ${chatMin}~${silentMin} 分钟：可以接，但别用“刚”“今天刚看到”这类实时口吻；先确认对方还在不在、这个话题还在不在。`);
-  }
-  lines.push(`- 超过 ${silentMin} 分钟：默认不接，直接 qq_mark_read 收尾；只有对方明确在等你/在叫你、或最后一轮提到你时才回，并且开头要有时效感（“刚看到”“刚忙完才看到”）。`);
-  if (staleNow) {
-    lines.push(`⚠️ 缓存过期提醒：最近一条消息已经是 ${ageText} 前（${tooOld ? `超过 ${silentMin} 分钟` : `超过 ${chatMin} 分钟`}），不要当新鲜消息接，也不要把别人的旧话题当成现在的新接。`);
-  }
-  return lines.join('\n');
 }

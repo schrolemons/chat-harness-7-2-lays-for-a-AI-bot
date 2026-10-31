@@ -22,10 +22,10 @@ assert.equal(budget.assess({ key: 'private:1', cost: 2, globalCost: 2 }).stage, 
 assert.equal(budget.assess({ key: 'group:2', cost: 0, globalCost: 3 }).stage, 'silent');
 assert.equal(budget.assess({ key: 'private:1', cost: 1.25, globalCost: 2.5 }).remainingYuan, 0.75);
 assert.equal(budget.assess({ key: 'private:1', cost: 1.25, globalCost: 2.5 }).globalRemainingYuan, 0.5);
-assert.equal(budget.canDispatch({ key: 'private:1', stage: 'weak', now: clock('22:00') }), true);
-budget.noteDispatch({ key: 'private:1', stage: 'weak', now: clock('22:00') });
-assert.equal(budget.canDispatch({ key: 'private:1', stage: 'weak', now: clock('22:29') }), false);
-assert.equal(budget.canDispatch({ key: 'private:1', stage: 'weak', now: clock('22:30') }), true);
+assert.equal(budget.canDispatch({ key: 'group:1', stage: 'weak', now: clock('22:00') }), true);
+budget.noteDispatch({ key: 'group:1', stage: 'weak', now: clock('22:00') });
+assert.equal(budget.canDispatch({ key: 'group:1', stage: 'weak', now: clock('22:29') }), false);
+assert.equal(budget.canDispatch({ key: 'group:1', stage: 'weak', now: clock('22:30') }), true);
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-token-budget-'));
 const file = path.join(dir, 'usage.jsonl');

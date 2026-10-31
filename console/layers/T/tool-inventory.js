@@ -55,18 +55,5 @@ export async function renderToolInventory(pluginsReady) {
   document.getElementById('toolsCatalogRefresh').onclick=loadToolCatalog;
   registerPageLoader('reference',loadToolCatalog);
   const configReady=loadConfig();
-  const balanceReady=Promise.resolve(pluginsReady||api('/api/plugins')).then(data=>{
-    const balance=data.plugins?.find(p=>p.id==='tool-deepseek-balance');
-    if(!balance)return;
-    const row=document.createElement('div');row.id='balanceToolControl';row.dataset.componentId=balance.id;
-    row.innerHTML='<label class="v2-tool-item"><input type="checkbox" id="balanceToolEnabled"'+(balance.enabled?' checked':'')+'><span><b>DeepSeek 余额查询</b><small class="meta">管理员私聊只读查询；开关即时生效。</small></span></label><span class="meta" role="status"></span>';
-    root.querySelector('[data-tool-group="读取与状态"] .tool-parameter-options').append(row);updateCounts();
-    row.querySelector('input').addEventListener('change',async event=>{
-      const input=event.target,previous=!input.checked,msg=row.querySelector('[role=status]');input.disabled=true;
-      try{const out=await api('/api/plugins/toggle','POST',{id:balance.id,enabled:input.checked});if(out.ok!==true)throw Error(out.error||'更新失败');msg.textContent=input.checked?'已启用':'已停用';}
-      catch(error){input.checked=previous;msg.textContent='更新失败：'+error.message;}
-      finally{input.disabled=false;updateCounts();}
-    });
-  }).catch(error=>{status.textContent='组件工具状态读取失败：'+error.message;});
-  await Promise.all([configReady,balanceReady]);
+  void pluginsReady;await configReady;
 }

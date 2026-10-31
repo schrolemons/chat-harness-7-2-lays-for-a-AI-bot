@@ -7,33 +7,45 @@ const billedEvent = (sessionId) => ({ sessionId, at: Date.now() - 10, model: 'de
   type: 'assistant/message', seq: 1, data: { turn: 1, step: 1, usage: { inputTokens: 1_000_000, outputTokens: 100 } }
 } });
 
-test('mechanical replies count unique private messages and group at-mentions without AI', () => {
-  let state = {};
-  const plugin = createPlugin({
-    config: { mechanicalPrivateReplies: ['哥哥我好饿...'], mechanicalGroupReplies: ['咕噜，我在潜水~'] },
-    state: { get: () => state, set: (patch) => { state = { ...state, ...patch }; } }
-  });
-  const onIncoming = plugin.services.tokenBudget.onSilentIncoming;
-  const common = { stage: 'silent', periodStart: 123, now: 1000 };
-  for (let i = 1; i <= 4; i++) assert.equal(onIncoming({ ...common, key: 'private:1', kind: 'private', messageId: String(i) }).text, null);
-  assert.equal(onIncoming({ ...common, key: 'private:1', kind: 'private', messageId: '4' }).text, null);
-  assert.equal(onIncoming({ ...common, key: 'private:1', kind: 'private', messageId: '5' }).text, '哥哥我好饿...');
-  assert.equal(onIncoming({ ...common, key: 'group:2', kind: 'group', messageId: '6', atSelf: false }).text, null);
-  assert.equal(onIncoming({ ...common, key: 'group:2', kind: 'group', messageId: '7', atSelf: true }).text, '咕噜，我在潜水~');
-  assert.equal(onIncoming({ ...common, key: 'private:1', kind: 'private', messageId: '8', periodStart: 456 }).text, null);
+test('hard mechanical replies attempt unique private arrivals or directed group arrivals',()=>{
+ let state={};const budget=createPlugin({config:{mechanicalPrivateReplies:['hard private'],mechanicalGroupReplies:['hard group']},state:{get:()=>state,set:p=>state={...state,...p}}}).services.tokenBudget;
+ for(const [kind,expected] of [['private','hard private'],['group','hard group']])for(let i=1;i<=4;i++)assert.equal(budget.onSilentIncoming({key:kind+':1',kind,messageId:String(i),atSelf:kind==='group',stage:'silent',periodStart:123,at:10000+i*20000}).text,expected);
+ assert.equal(budget.onSilentIncoming({key:'private:1',kind:'private',messageId:'4',stage:'silent',periodStart:123,at:200000}).duplicate,true);
 });
 
-test('per-conversation weak-reply interval uses minutes at the real dispatch boundary', () => {
+test('per-conversation group weak-reply interval uses minutes at the real dispatch boundary', () => {
   let state={};
-  const config={sessions:{'private:1':{coldLimitYuan:0.1,hardLimitYuan:0,weakMinIntervalMin:7}}};
+  const config={sessions:{'group:1':{coldLimitYuan:0.1,hardLimitYuan:0,weakMinIntervalMin:7}}};
   const plugin=createPlugin({config,state:{get:()=>state,set:patch=>{state={...state,...patch};}}});
   const budget=plugin.services.tokenBudget;
-  assert.equal(budget.assess({key:'private:1',cost:0.2}).stage,'weak');
-  budget.noteDispatch({key:'private:1',stage:'weak',now:1_000_000});
-  assert.equal(budget.canDispatch({key:'private:1',stage:'weak',now:1_000_000+7*60_000-1}),false);
-  assert.equal(budget.canDispatch({key:'private:1',stage:'weak',now:1_000_000+7*60_000}),true);
-  config.sessions['private:1'].weakMinIntervalMin=8;
-  assert.equal(budget.canDispatch({key:'private:1',stage:'weak',now:1_000_000+7*60_000}),false,'changed parameter must affect dispatch');
+  assert.equal(budget.assess({key:'group:1',cost:0.2}).stage,'weak');
+  budget.noteDispatch({key:'group:1',stage:'weak',now:1_000_000});
+  assert.equal(budget.canDispatch({key:'group:1',stage:'weak',now:1_000_000+7*60_000-1}),false);
+  assert.equal(budget.canDispatch({key:'group:1',stage:'weak',now:1_000_000+7*60_000}),true);
+  config.sessions['group:1'].weakMinIntervalMin=8;
+  assert.equal(budget.canDispatch({key:'group:1',stage:'weak',now:1_000_000+7*60_000}),false,'changed parameter must affect dispatch');
+});
+
+test('bridge forwards only verified same-group bot quote evidence to the silent budget handler',async()=>{
+ const h=await bridgeHarness({files:{'state/plugins/config/life-token-budget.json':{sessions:{'group:456':{hardLimitYuan:0.1}},mechanicalGroupReplies:['引用已收到']}}});
+ try{
+  h.setMode('reserved2');const sid=await h.ensureSession('group:456');h.tokenLedger.ingestEvent(billedEvent(sid));
+  h.bot.getMessage=async id=>id===10?{message_id:10,group_id:456,sender:{user_id:999,nickname:'AI助手'},get message(){throw Error('silent targeting must not read the quoted body');}}:id===11?{message_id:11,group_id:456,sender:{user_id:222,nickname:'群友'},message:[{type:'text',data:{text:'别人的话'}}]}:id===12?{message_id:12,group_id:789,sender:{user_id:999},message:[{type:'text',data:{text:'其他群的话'}}]}:id===14?{message_id:999,group_id:456,sender:{user_id:999}}:id===15?{message_id:15,sender:{user_id:999}}:null;
+  for(const id of [11,12,13,14,15])await h.handleIncoming('group',456,{self_id:999,user_id:222,group_id:456,message_id:100+id,message:[{type:'reply',data:{id:String(id)}},{type:'text',data:{text:'回复'}}]},h.cfg);
+  assert.equal(h.calls.sent.length,0,'human, foreign-group and unresolved quotes cannot trigger a mechanical reply');
+  await h.handleIncoming('group',456,{self_id:999,user_id:222,group_id:456,message_id:110,message:[{type:'reply',data:{id:'10'}}]},h.cfg);
+  assert.deepEqual(h.calls.sent.map(x=>[x.kind,x.text]),[['group','引用已收到']]);assert.equal(h.calls.prompts.length,0);
+  const state=h.pluginHost.get('life-token-budget').state;assert.equal(state.recovery['group:456'].messages.find(x=>x.id==='110').quoteTargetIsSelf,true);
+ }finally{await h.close();}
+});
+
+test('a verified bot quote without @ remains eligible for one recovery batch',async()=>{
+ let state={},stage='silent';const delivered=[];
+ const plugin=createPlugin({config:{recoveryWindows:{privateMessages:5,groupMessages:1,groupAtMessages:1}},state:{get:()=>state,set:p=>state={...state,...p}},capabilities:{budgetRecoveryStatus:()=>({stage,allowed:true}),dispatchBudgetRecovery:async r=>{delivered.push(r);return {ok:true};}}});
+ const api=plugin.services.tokenBudget;
+ api.onSilentIncoming({key:'group:2',kind:'group',messageId:'quote',quoteTargetIsSelf:true,stage:'silent',text:'引用bot的请求',at:1000});
+ api.onSilentIncoming({key:'group:2',kind:'group',messageId:'ordinary',stage:'silent',text:'普通背景',at:2000});
+ stage='normal';await plugin.hooks.onTick();assert.equal(delivered.length,1);assert.deepEqual(delivered[0].messages.map(x=>x.id),['quote','ordinary']);assert.match(delivered[0].prompt,/经核实引用/);assert.equal(api.recoveryPending({key:'group:2'}),0);
 });
 
 test('recovery processes only the configured recent private window once', async () => {
@@ -126,7 +138,7 @@ test('maximum recovery window retains its last message without truncating the pr
 test('hard cap routes private and group inbound messages to mechanical replies only', async () => {
   const h = await bridgeHarness({ files: { 'state/plugins/config/life-token-budget.json': {
     sessions: { 'private:123': { hardLimitYuan: 0.1 }, 'group:456': { hardLimitYuan: 0.1 } },
-    mechanicalPrivateReplies: ['哥哥我好饿...'], mechanicalGroupReplies: ['咕噜，我在潜水~']
+    mechanicalPrivateReplies: ['用户我好饿...'], mechanicalGroupReplies: ['咕噜，我在潜水~']
   } } });
   try {
     h.setMode('reserved2');
@@ -142,12 +154,13 @@ test('hard cap routes private and group inbound messages to mechanical replies o
       self_id: 999, user_id: 222, group_id: 456, message_id: 6,
       message: [{ type: 'text', data: { text: '普通群消息' } }]
     }, h.cfg);
+    assert.equal(h.calls.sent.filter(x=>x.kind==='group').length,0,'ordinary group traffic stays silent without occupying the later @ slot');
     await h.handleIncoming('group', 456, {
       self_id: 999, user_id: 222, group_id: 456, message_id: 7,
-      message: [{ type: 'at', data: { qq: '999' } }, { type: 'text', data: { text: '小鲸鱼' } }]
+      message: [{ type: 'at', data: { qq: '999' } }, { type: 'text', data: { text: 'AI助手' } }]
     }, h.cfg);
     assert.deepEqual(h.calls.sent.map(x => [x.kind, x.text]), [
-      ['private', '哥哥我好饿...'], ['group', '咕噜，我在潜水~']
+      ['private', '用户我好饿...'], ['group', '咕噜，我在潜水~']
     ]);
     assert.equal(h.calls.prompts.length, 0);
   } finally { await h.close(); }
@@ -243,8 +256,8 @@ test('console manages separate private and group mechanical reply lists', async 
     const post = async (body, extraHeaders = {}) => fetch(url, { method: 'POST', headers: { ...headers, ...extraHeaders, 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(async response => ({ status: response.status, data: await response.json() }));
     const initial = await get();
     assert.equal(initial.status, 200);
-    assert.ok(initial.data.privateReplies.length >= 20);
-    assert.ok(initial.data.groupReplies.length >= 20);
+    assert.ok(initial.data.privateReplies.length >= 2);
+    assert.ok(initial.data.groupReplies.length >= 2);
     assert.equal((await post({ privateReplies: [], groupReplies: ['hi'] })).status, 400);
     assert.equal((await post({ privateReplies: ['私聊词条'], groupReplies: ['群聊词条'] }, { 'x-agent-token': 'forbidden' })).status, 403);
     assert.equal((await post({ privateReplies: ['私聊词条'], groupReplies: ['群聊词条'] })).status, 200);

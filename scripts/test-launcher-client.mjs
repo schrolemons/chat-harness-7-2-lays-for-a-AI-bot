@@ -7,7 +7,7 @@ async function page(t, options = {}) {
   const nodes = new Map(), requests = [], opened = [];
   const roots = [], timers = new Set(), resizeListeners = new Set();
   let status = { light: 'red', starting: false, checks: {} }, api;
-  let settings = { configured: !options.unconfigured, botUin: options.unconfigured ? '' : '20009', ownerQQ: 234567890,
+  let settings = { configured: !options.unconfigured, botUin: options.unconfigured ? '' : '123456789', ownerQQ: 234567890,
     allow: { private: [345678901], groups: [456789012] }, revision: 'fixture' };
   const element = () => ({ style: {}, dataset: {}, handlers: {}, isConnected: true,
     children: [],
@@ -88,7 +88,7 @@ test('引导表单空值不能启动；填写后保存真实数据并继续启�
   await p.click('qq-launcher-button');
   await p.submit();
   assert.equal(p.requests.length, 0);
-  p.nodes.get('qq-launcher-bot-qq').value = '20009';
+  p.nodes.get('qq-launcher-bot-qq').value = '123456789';
   await p.submit();
   assert.deepEqual(p.requests.map(url => url.split('/').at(-1)), ['config', 'start']);
 });
@@ -139,7 +139,7 @@ test('启动、等待登录、关闭和就绪各状态只显示一份对应文�
     [{ starting: true, light: 'amber', message: '等待 QQ 登录' }, '等待登录'],
     [{ starting: true, light: 'amber', phase: 'waiting_gateway', message: 'QQ 接口有响应，但机器人账号鉴权尚未通过' }, '连接中'],
     [{ operation: 'stopping', light: 'red' }, '关闭中'],
-    [{ ready: true, light: 'green' }, '小鲸鱼']
+    [{ ready: true, light: 'green' }, 'AI助手']
   ]) {
     await p.setStatus(state);
     const live = p.roots.filter(x => x.isConnected);

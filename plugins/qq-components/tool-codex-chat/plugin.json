@@ -1,6 +1,6 @@
 {
   "id": "tool-codex-chat",
-  "name": "小鲸鱼 × Codex 专用聊天",
+  "name": "AI助手 × Codex 专用聊天",
   "version": "0.1.0",
   "description": "通过本机官方 Codex App Server 与专用聊天通信；管理端 stdio MCP，单会话串行、幂等、限额和熔断。",
   "category": "工具接口与协议",

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import crypto from 'node:crypto';
 import {planGroupWakeMigration,migrateGroupWake,RETIRED_GROUP_WAKE_FIELDS} from '../src/migrations/group-wake.mjs';
 test('old admin names and disabled triggers migrate once; explicit new values and unrelated p survive',()=>{
- const old={socialV2:{wake:{recommendedKeywords:['小鲸鱼','DS'],recommendedAtMention:false,recommendedProbability:1,recommendedHint:'别打断别人',maxWakePerMinute:2}}};
- const p=planGroupWakeMigration(old,{groupNameBonus:.25,initialProbability:.2});assert.equal(p.override.groupAtBonus,0);assert.equal(p.override.groupNameBonus,.25);assert.equal(p.override.initialProbability,.2);assert.equal(p.override.groupNames,'小鲸鱼, DS');for(const k of RETIRED_GROUP_WAKE_FIELDS)assert.equal(Object.hasOwn(p.config.socialV2.wake,k),false);assert.equal(p.config.socialV2.wake.recommendedHint,'别打断别人');assert.equal(old.socialV2.wake.recommendedProbability,1);
+ const old={socialV2:{wake:{recommendedKeywords:['AI助手','DS'],recommendedAtMention:false,recommendedProbability:1,recommendedHint:'别打断别人',maxWakePerMinute:2}}};
+ const p=planGroupWakeMigration(old,{groupNameBonus:.25,initialProbability:.2});assert.equal(p.override.groupAtBonus,0);assert.equal(p.override.groupNameBonus,.25);assert.equal(p.override.initialProbability,.2);assert.equal(p.override.groupNames,'AI助手, DS');for(const k of RETIRED_GROUP_WAKE_FIELDS)assert.equal(Object.hasOwn(p.config.socialV2.wake,k),false);assert.equal(p.config.socialV2.wake.recommendedHint,'别打断别人');assert.equal(old.socialV2.wake.recommendedProbability,1);
  assert.throws(()=>planGroupWakeMigration(old,{groupPokeBonus:2}));
 });
 function temp(){const root=fs.mkdtempSync(path.join(os.tmpdir(),'group-wake-'));fs.writeFileSync(path.join(root,'config.json'),JSON.stringify({socialV2:{wake:{recommendedKeywords:['鲸鱼']}}}));return root;}

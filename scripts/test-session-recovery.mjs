@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {observeRecovery,recoveryDecision} from '../plugins/qq-components/obs-session-recovery/policy.mjs';
 import {createPlugin} from '../plugins/qq-components/obs-session-recovery/index.js';
-const KEY='group:20012',BASE=10_000_000;
+const KEY='group:11006',BASE=10_000_000;
 const good=()=>({sessionId:'old',allowed:true,pendingCount:2,budgetStage:'normal',busy:false,quiet:false,muted:false,paused:false,transportReady:true});
 function failed(record={},turn=1,now=BASE,extra={}){
  record=observeRecovery(record,{key:KEY,sessionId:'old',seq:turn*10,type:'turn/start',turn,chatTurn:true,now});

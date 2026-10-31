@@ -1,5 +1,6 @@
 // Canonical page and source mount; internal helpers do not create cards.
 export default {
+  "tool-deepseek-balance":{"page":"operations","selector":"#balanceToolControl"},
   "obs-session-recovery":{"page":"operations","selector":"[data-component-slot=\"obs-session-recovery\"]"},
   "obs-context-assembly": {"presentation":"internal","page":"context-visual"},
   "life-token-budget": {

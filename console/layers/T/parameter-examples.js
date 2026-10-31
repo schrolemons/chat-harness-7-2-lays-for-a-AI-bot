@@ -22,7 +22,7 @@ export default {
     "injectPrompt": "关闭后不额外注入组件索引提示，不会删除实际注册的工具。"
   },
   "tool-user-checking": {
-    "noteFileName": "填小鲸鱼想说的话.txt：悄悄话、故障待处理和恢复记录都追加到这一个文件。",
+    "noteFileName": "填AI助手想说的话.txt：悄悄话、故障待处理和恢复记录都追加到这一个文件。",
     "maxNoteChars": "设为500：单条便签最多约500字；故障摘要过长会缩短，不会拆坏emoji。"
   }
 };

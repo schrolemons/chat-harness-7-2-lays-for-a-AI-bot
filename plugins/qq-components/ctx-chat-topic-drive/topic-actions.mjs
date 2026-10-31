@@ -1,6 +1,10 @@
+const openingURL = new URL('./opening-topic.mjs', import.meta.url); openingURL.search = new URL(import.meta.url).search;
+const {openingGuidance} = await import(openingURL.href);
 const defaults = { followupWeight: .5, newTopicWeight: .2, followUpCooldownMinutes: 8, newTopicCooldownMinutes: 45, newTopicMaxPerHour: 2 };
 const NUDGE = /(?:还在[吗嘛么]?|在不在|怎么不说话|怎么不回|回我一下|说句话|人呢|有人吗)/;
 const validKey = key => /^(private|group):\d+$/.test(String(key || ''));
+const directQuestion = text => /[?？]|(?:吗|么|呢)[呀啊嘛]?[。！!]*$/.test(String(text || '').trim());
+const reject = reason => ({ok:false,reason,...(reason==='question_already_asked'?{hint:'本次主动开口已经问过一个问题；不要改写重试、换话题或换发送工具，等用户真实回应后再接。'}:reason==='new_topic_already_chosen'?{hint:'本次主动开口已经选定一个话题；不要改话题ID重试，也不追加另一个开场问题。'}:{})});
 export function createTopicActions(ctx, raw = {}) {
   const cfg = { ...defaults, ...raw }, get = () => ctx.state.get();
   function validateConfig(patch = {}) {
@@ -15,7 +19,10 @@ export function createTopicActions(ctx, raw = {}) {
   const topic = key => String(drive(key).currentTopicId || drive(key).lastTopicId || 'current');
   function allowed(key, kind, topicId, episodeId, now) {
     const d = drive(key);
-    if (d.episodes?.[episodeId]?.[kind]) return '';
+    if (d.episodes?.[episodeId]?.[kind]) {
+      const chosenTopic = d.episodes[episodeId].topicId || d.lastTopicId;
+      return kind === 'newTopic' && chosenTopic && chosenTopic !== topicId ? 'new_topic_already_chosen' : '';
+    }
     if (kind === 'followup') {
       const last = d.followupByTopic ? d.followupByTopic[topicId] : d.driveFollowUpAt;
       return last && now - last < cfg.followUpCooldownMinutes * 60000 ? 'followup_cooldown' : '';
@@ -23,6 +30,24 @@ export function createTopicActions(ctx, raw = {}) {
     if (d.driveNewTopicAt && now - d.driveNewTopicAt < cfg.newTopicCooldownMinutes * 60000) return 'new_topic_cooldown';
     if ((d.driveNewTopicTimes || []).filter(t => t > now - 3600000).length >= cfg.newTopicMaxPerHour) return 'new_topic_hour_limit';
     return '';
+  }
+  function opening({ key, scope, hasContext = false, now = Date.now(), random = Math.random } = {}) {
+    if (!validKey(key) || !scope || !validateConfig().ok) return { action: 'none', reason: 'invalid_opening' };
+    const previous = get().openingChoices?.[key], currentGeneration = generation(key);
+    if (previous?.scope === scope) return previous.generation === currentGeneration ? previous
+      : { action: 'none', reason: 'incoming_superseded', guidance: '本轮已经收到新来信，原主动开聊选择不再执行；先回应最近消息，按公共等待机制继续，不重抽开聊话题。' };
+    const episode = 'opening:' + scope;
+    const a = hasContext && !allowed(key, 'followup', topic(key), episode, now) ? cfg.followupWeight : 0;
+    const b = !allowed(key, 'newTopic', topic(key), episode, now) ? cfg.newTopicWeight : 0;
+    const total = a + b, followupProbability = total ? a / total : 0, newTopicProbability = total ? b / total : 0;
+    const action = !total ? 'none' : !a ? 'newTopic' : !b ? 'followup' : random() < followupProbability ? 'followup' : 'newTopic';
+    const choice = { scope, generation: currentGeneration, action, followupProbability, newTopicProbability, at: now };
+    choice.guidance = openingGuidance(choice);
+    const choices = { ...(get().openingChoices || {}), [key]: choice };
+    const keys = Object.keys(choices);
+    if (keys.length > 1000) keys.sort((x,y) => choices[x].at - choices[y].at).slice(0, keys.length - 1000).forEach(k => delete choices[k]);
+    ctx.state.set({ openingChoices: choices });
+    return choice;
   }
   function afterWait({ key, scope, seq = 0, emptyWaits, endRound, now = Date.now(), random = Math.random } = {}) {
     if (!validKey(key) || !scope || endRound !== false || !validateConfig().ok) return { action: 'wait' };
@@ -49,9 +74,15 @@ export function createTopicActions(ctx, raw = {}) {
     if (!semantic) return { ok: true, ordinary: true };
     const actionId = cross ? episodeId || operationId : bound ? choice.id : String(episodeId || operationId) + ':topic';
     const selectedTopic = String(topicId || choice?.topicId || topic(key));
+    if (semantic === 'newTopic' && Object.values(get().topicLeases || {}).some(lease => lease.key === key
+      && lease.generation === generation(key) && lease.episodeId === actionId && lease.kind === 'newTopic' && lease.topicId !== selectedTopic)) {
+      return reject('new_topic_already_chosen');
+    }
+    const asksQuestion=semantic==='followup'||directQuestion(text),episode=drive(key).episodes?.[actionId];
+    if(asksQuestion&&((episode?.questionSent&&episode.questionGeneration===generation(key))||Object.values(get().topicLeases||{}).some(lease=>lease.key===key&&lease.generation===generation(key)&&lease.episodeId===actionId&&lease.asksQuestion)))return reject('question_already_asked');
     const reason = cross ? '' : allowed(key, semantic, selectedTopic, actionId, now);
-    if (reason) return { ok: false, reason };
-    const lease = { ok: true, id: operationId, key, generation: generation(key), kind: semantic, topicId: selectedTopic, episodeId: actionId, isProactive: true, timeoutAction: !cross && bound };
+    if (reason) return reject(reason);
+    const lease = { ok: true, id: operationId, key, generation: generation(key), kind: semantic, topicId: selectedTopic, episodeId: actionId, asksQuestion, isProactive: true, timeoutAction: !cross && bound };
     ctx.state.set({ topicLeases: { ...(get().topicLeases || {}), [operationId]: lease } });
     return lease;
   }
@@ -84,5 +115,5 @@ export function createTopicActions(ctx, raw = {}) {
     ctx.state.set({topicChoices:{...(get().topicChoices||{}),[key]:{...closed,id:scope+':ended',scope,seq,generation:generation(key),reason:'round_ended',at:Date.now()}}});
     return closed;
   }
-  return { validateConfig, afterWait, endWait, reserve, authorize, release, delivered, incoming };
+  return { validateConfig, opening, afterWait, endWait, reserve, authorize, release, delivered, incoming };
 }

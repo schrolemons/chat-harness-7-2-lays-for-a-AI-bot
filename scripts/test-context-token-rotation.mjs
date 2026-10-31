@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {contextParts,refillContext} from '../plugins/qq-components/obs-context-assembly/refill.mjs';
 
 test('rotating credentials belong to current request state, while identity stays stable',()=>{
- const parts=contextParts({id:'ctx-context-session',text:'【当前角色】小鲸鱼\n\n【你的身份】QQ助手\n\n【会话令牌】new-test-token\n\n【此刻状态】未读6条'});
+ const parts=contextParts({id:'ctx-context-session',text:'【当前角色】AI助手\n\n【你的身份】QQ助手\n\n【会话令牌】new-test-token\n\n【此刻状态】未读6条'});
  assert.doesNotMatch(parts.stable,/会话令牌|new-test-token/);
- assert.match(parts.stable,/小鲸鱼/);assert.match(parts.current,/会话令牌.*new-test-token/);
+ assert.match(parts.stable,/AI助手/);assert.match(parts.current,/会话令牌.*new-test-token/);
 });
 
 test('resumed legacy prefix loses its stale token and latest snapshot carries only new token',()=>{

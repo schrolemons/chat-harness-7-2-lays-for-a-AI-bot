@@ -8,8 +8,8 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: qq-task-worker
-        name: QQ 任务工作会话（正太小肥鱼 + 本地工具）
-        description: 正太小肥鱼在 DSH 里开出的独立任务会话：本地开发工具 + 联网检索，完成主人委派的任务；会话对用户在 DSH 界面可见，可中途提问；结果由桥接带回 QQ 转达。
+        name: QQ 任务工作会话（AI助手 + 本地工具）
+        description: AI助手在 DSH 里开出的独立任务会话：本地开发工具 + 联网检索，完成管理员委派的任务；会话对用户在 DSH 界面可见，可中途提问；结果由桥接带回 QQ 转达。
         order: 13
         plugins:
           - id: persona

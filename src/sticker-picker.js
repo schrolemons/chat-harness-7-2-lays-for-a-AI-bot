@@ -8,7 +8,7 @@
 
 const CONTEXT_RULES = [
   { re: /(吃|饭|饿|馋|鸡腿|奶茶|夜宵|外卖|午饭|晚饭|早饭)/, tags: ['吃', '馋', '饭'], weight: 3 },
-  { re: /(牛奶|大海|海洋|泡泡|浪花)/, tags: ['牛奶', '鲸鱼', '海洋', '泡泡'], weight: 2 },
+  { re: /(调用额度|大海|海洋|泡泡|浪花)/, tags: ['调用额度', '鲸鱼', '海洋', '泡泡'], weight: 2 },
   { re: /(没钱|穷|贵|花钱|涨|账单|工资)/, tags: ['钱', '心疼', '要米'], weight: 3 },
   { re: /(哈哈|笑死|草|离谱|乐|绷不住|难绷)/, tags: ['笑', '乐', '吃瓜'], weight: 2 },
   { re: /(累|困|睡|摸鱼|躺|加班|熬夜)/, tags: ['睡', '累', '摸鱼', '躺'], weight: 3 },
@@ -67,8 +67,8 @@ export function pickStickers(opts = {}) {
       if (tagHit) { score += rule.weight; reasons.push('语境贴合'); break; }
     }
     // 本体系列优先（默认形象）
-    if (/^大肥鱼/.test(e.desc)) continue; // 旧人设系列只在明确点名时手动选择
-    if (/^(?:正太小肥鱼|小鲸鱼)/.test(e.desc)) score += 1;
+    if (/^通用助手/.test(e.desc)) continue; // 旧人设系列只在明确点名时手动选择
+    if (/^(?:AI助手|AI助手)/.test(e.desc)) score += 1;
     // 越久没用越靠前；用得太多的轻微降权
     const ageMin = e.lastUsedAt ? (now - e.lastUsedAt) / 60000 : 100000;
     score += Math.min(2, ageMin / 1440);

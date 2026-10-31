@@ -24,7 +24,8 @@ test('real bridge refresh route is signed, session-bound, read-only and does not
   for(const row of[...st.unread,...st.recentMessages])if(row.seq===seq){row.seenAt=101;row.repliedAt=102;}st.lastReadThroughSeq=seq;
   const response=await post({sessionId,envelope});assert.equal(response.status,200);
   const result=await response.json(),packet=decodePacket(result.envelope,secretFor(h.temp),sessionId);
-  assert.equal(packet.key,key);assert.equal(packet.modules.find(row=>row.id==='role-card').text,'保持原始角色');
+  assert.equal(packet.key,key);const role=packet.modules.find(row=>row.id==='role-card');
+  assert.equal(role.chatExpressionBaseText,'保持原始角色');assert.equal(role.parts.find(part=>part.id==='role-card:original').text,'保持原始角色');assert(role.text.startsWith('保持原始角色\n\n'));assert.match(role.text,/当前形态/,'selected live voice joins the original role without rewriting it');
   assert(!packet.modules.some(row=>row.id==='ctx-context-dynamics'&&row.text==='旧心情'),'uses live owner hooks, not stale capture');
   const snapshot=JSON.parse(packet.modules.find(row=>row.id==='message-snapshot').text);assert.equal(snapshot.receiptIndex[0].seq,seq);assert.equal(snapshot.receiptIndex[0].seenAt,101);assert.equal(snapshot.receiptIndex[0].repliedAt,102);assert.equal(snapshot.receiptIndex[0].text,undefined);assert.equal(snapshot.messages[0].text,'真实正文');assert.equal(st.unread[0].seenAt,101,'read-only refresh does not acknowledge messages');
   const latest=compose();assert.equal((await post({sessionId,envelope})).status,403,'superseded batch cannot refresh');

@@ -1,7 +1,7 @@
 {
   "id": "tool-user-checking",
   "name": "自查与桌面便签",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "同一开关管理只读状态、悄悄话与故障便签。持续模型故障和自动恢复失败直接追加到桌面，去重并保留恢复进展；不依赖LLM，不覆盖原文件。",
   "category": "工具",
   "order": 41,
@@ -17,7 +17,7 @@
   ],
   "schedule":{"everyMs":60000},
   "config": {
-    "noteFileName": "小鲸鱼想说的话.txt",
+    "noteFileName": "AI助手想说的话.txt",
     "maxNoteChars": 500
   },
   "layer": "C"

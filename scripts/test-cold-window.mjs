@@ -54,8 +54,7 @@ async function open(t) {
 }
 function add(h, key, count, mentions = false) {
   for (let i = 1; i <= count; i++) {
-    h.appendSocialV2Message(key, 'fixture', 'm' + i, 'm' + i, false, false, 'fixture-' + key + '-' + i, [], '789', []);
-    h.getSocialV2State(key).recentMessages.at(-1).atSelf = mentions && i % 2 === 0;
+    h.appendSocialV2Message(key, 'fixture', 'm' + i, 'm' + i, false, false, 'fixture-' + key + '-' + i, [], '789', [], undefined, mentions && i % 2 === 0);
   }
 }
 
@@ -86,7 +85,7 @@ test('weak agent unread/recent/wait and plugin prompt all share one window; admi
 });
 
 test('hard cap gives agents empty views; normal stage does not acquire a cold window limit', async t => {
-  const { h, api, stage } = await open(t), key = 'private:123'; add(h, key, 10);
+  const { h, api, stage } = await open(t), key = 'private:123'; stage('normal'); add(h, key, 10);
   stage('silent');
   assert.equal((await api('/api/socialV2/unread?key=' + key + '&limit=100', key)).messages.length, 0);
   assert.equal((await api('/api/socialV2/recent?key=' + key + '&limit=100', key)).messages.length, 0);

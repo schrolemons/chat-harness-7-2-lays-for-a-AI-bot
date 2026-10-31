@@ -23,7 +23,7 @@ export function planConversationDrive(opts = {}) {
   const incoming = unread.at(-1) || [...recent].reverse().find(m => m && !m.isSelf);
   const lastSelf = [...recent].reverse().find(m => m?.isSelf), text = textOf(incoming);
   if (CLOSING.test(text) || (text.length <= cfg.deadEndShortChars && ACK.test(text))) return none;
-  const style = opts.mood?.styleInstruction ? `当前形态「${String(opts.mood.modeName || '')}」：${opts.mood.styleInstruction}。` : '';
+  const style = opts.mood?.styleInstruction ? `遵循系统中当前形态「${String(opts.mood.modeName || '')}」与完整示范；不在这里另附一套风格。` : '';
   if (opts.needsClarification === true && incoming) return { kind: 'followup', reason: 'clarification', patch: {}, line: `【任务澄清】${style}先回答已确定部分，只询问完成用户实际请求所缺的必要信息；这不要求附加社交问题。` };
   const unanswered = (lastSelf && /[?？]/.test(textOf(lastSelf)) && (!incoming || timeOf(lastSelf) >= timeOf(incoming)))
     || (st.lastQuestionAt && (!incoming || st.lastQuestionAt >= timeOf(incoming)));

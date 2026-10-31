@@ -3,7 +3,7 @@
 <p class="meta">窗口内的话题与印象、需要跟进的事务、会话事实分别维护；稳定人物资料在“会话背景”统一管理。</p>
 <details class="settings-group" open><summary><span class="layer-tag" data-layer="C">C</span>轻量记忆（话题 / 待说想法 / 当前小上下文窗口内对用户的行为印象）</summary><div class="settings-content">
       <div class="row">
-        <input type="text" id="v2MemoryKey" placeholder="group:20009" style="flex:1">
+        <input type="text" id="v2MemoryKey" placeholder="group:21008" style="flex:1">
         <button id="v2MemoryLoad" class="small">加载记忆</button>
         <button id="v2MemoryClearAll" class="small danger">清空此会话轻量记忆</button>
         <span class="meta" id="v2MemoryMsg"></span>
@@ -36,15 +36,15 @@
         <div class="setting-field"><label for="v2ContextUnreadLimit">常规未完成处理队列（条）</label><input type="number" id="v2ContextUnreadLimit" min="1" style="width:80px"><small class="parameter-example" data-example-for="v2ContextUnreadLimit">例：设为30：未完成队列包含未读和已读未回复，最多保留最近30条，超出时较早消息移出队列；移出不代表已回复，仍可能在最近消息中回查。</small></div>
         <div class="setting-field"><label for="v2ContextWindow">临时行为印象窗口（条）</label><input type="number" id="v2ContextWindow" min="1" style="width:80px"><small class="parameter-example" data-example-for="v2ContextWindow">例：设为20：按最近20条消息中的发言者和印象更新时间，筛选本轮临时行为印象；不限制模型的全部聊天历史。</small></div>
       </div>
-<p class="meta">自动附带条数限制新增批次的补入量，不截断DSH已有会话历史；工具循环不反复复制同一批消息。</p><div class="context-limits-grid"><div class="setting-field"><label for="context-wakeRecentLimit">自动补带近期历史上限（条）</label><input id="context-wakeRecentLimit" type="number" min="0" max="100" value="4" step="1" style="width:110px"><small>包含人类与小鲸鱼的消息；不是整份DSH历史上限。</small></div>
+<p class="meta">自动附带条数限制新增批次的补入量，不截断DSH已有会话历史；工具循环不反复复制同一批消息。</p><div class="context-limits-grid"><div class="setting-field"><label for="context-wakeRecentLimit">自动补带近期历史上限（条）</label><input id="context-wakeRecentLimit" type="number" min="0" max="100" value="4" step="1" style="width:110px"><small>包含人类与AI助手的消息；不是整份DSH历史上限。</small></div>
 <div class="setting-field"><label for="context-wakeHistoryMessageMaxChars">单条历史文字上限（字符）</label><input id="context-wakeHistoryMessageMaxChars" type="number" min="0" max="20000" value="0" step="1" style="width:110px"><small>0不截断；只影响自动附带，存储原文不变。</small></div>
 <div class="setting-field"><label for="context-wakeMessageLimit">自动带入待处理消息上限（条）</label><input id="context-wakeMessageLimit" type="number" min="1" max="100" value="12" step="1" style="width:110px"><small>按双戳识别未完成项，条数与总字符预算同时生效。</small></div>
 <div class="setting-field"><label for="context-wakePendingMessageMaxChars">单条待处理文字上限（字符）</label><input id="context-wakePendingMessageMaxChars" type="number" min="0" max="20000" value="0" step="1" style="width:110px"><small>0不截断；节选会标truncated，不能把节选当作完整原文。</small></div>
 <div class="setting-field"><label for="context-wakeMaxChars">常规消息快照总上限（字符）</label><input id="context-wakeMaxChars" type="number" min="500" max="20000" value="6000" step="1" style="width:110px"><small>包括收件回查、待处理、近期历史及快照元数据，不是整份模型请求。</small></div>
 <div class="setting-field"><label for="context-weakWakeMaxChars">预算受限快照总上限（字符）</label><input id="context-weakWakeMaxChars" type="number" min="500" max="20000" value="1800" step="1" style="width:110px"><small>使用低预算窗口时的自动消息快照上限。</small></div>
 </div><p class="meta" id="contextReceiptRange">收件回查：触发来信之前最近N条非bot入站消息，再加触发这条。含已处理项供核对，不含bot自己的回复；独立于补带历史条数，共享快照字符预算。</p>
-<h4>预算达到限制时的未完成处理窗口</h4><p class="meta">复用令牌/费用预算机制，私聊与群聊两类分别保留最新窗口；群聊@和普通来信独立计数。正常状态仍用上面的常规队列。移出窗口不代表已回复。</p>
-<div class="row"><label>私聊（条）<input id="usageRecoveryPrivate" type="number" min="1" max="30" value="5" style="width:80px"></label><label>群聊@（条）<input id="usageRecoveryGroupAt" type="number" min="1" max="30" value="5" style="width:80px"></label><label>群聊普通（条）<input id="usageRecoveryGroup" type="number" min="1" max="30" value="5" style="width:80px"></label><button id="usageRecoverySave" class="small primary" data-save-action>保存预算受限消息窗口</button><span id="contextBudgetWindowsMsg" class="meta" role="status"></span></div>
+<h4>预算达到限制时的未完成处理窗口</h4><p class="meta">复用令牌/费用预算机制，私聊与群聊两类分别保留最新窗口；群聊 @／引用bot 和普通来信独立计数。正常状态仍用上面的常规队列。移出窗口不代表已回复。</p>
+<div class="row"><label>私聊（条）<input id="usageRecoveryPrivate" type="number" min="1" max="30" value="5" style="width:80px"></label><label>群聊 @／引用bot（条）<input id="usageRecoveryGroupAt" type="number" min="1" max="30" value="5" style="width:80px"></label><label>群聊普通（条）<input id="usageRecoveryGroup" type="number" min="1" max="30" value="5" style="width:80px"></label><button id="usageRecoverySave" class="small primary" data-save-action>保存预算受限消息窗口</button><span id="contextBudgetWindowsMsg" class="meta" role="status"></span></div>
       <div class="affairs-budget-row">
         <label for="v2AffairsBudget">事务预算（字符）</label><input type="number" id="v2AffairsBudget" min="200" max="10000" step="1" required disabled aria-describedby="v2AffairsBudgetHelp">
         <button class="small primary" type="button" id="v2AffairsBudgetSave" data-save-action disabled>保存全局事务预算</button><span class="meta" id="v2AffairsBudgetMsg" role="status"></span>

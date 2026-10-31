@@ -7,7 +7,7 @@ test('private entry guidance contains private decisions and never uses the group
  const text=plugin().hooks.wakeTail({key:'private:1',reason:'private',triggeredLine:''});assert.match(text,/私聊/);assert(!/群里在聊什么|群聊正热|没人叫你/.test(text));assert.match(text,/qq_wait_for_messages/);
 });
 test('group entry retains group action guidance while the shared protocol moves to the stable prefix',()=>{
- const text=plugin().hooks.wakeTail({key:'group:1',reason:'probability',triggeredLine:''});assert.match(text,/群里在聊什么/);
+ const text=plugin().hooks.wakeTail({key:'group:1',reason:'probability',triggeredLine:''});assert.match(text,/【行动前｜群聊】/);assert.match(text,/优先回复本次@、点名、提问或拍一拍/);
  const rows=frameModules({prompt:text,snapshot:{messages:[{seq:1,text:'hi'}],recent:[]}}),compiled=compileModules(rows);
- const protocol=compiled.selected.find(row=>row.id==='session-protocol'),task=compiled.selected.find(row=>row.id==='wake-action');assert.equal(protocol.placement,'stable');assert.match(protocol.text,/messageId/);assert(!task.text.includes('【多条未读'));assert.match(task.text,/群里在聊什么/);
+ const protocol=compiled.selected.find(row=>row.id==='session-protocol'),task=compiled.selected.find(row=>row.id==='wake-action');assert.equal(protocol.placement,'stable');assert.match(protocol.text,/messageId/);assert(!task.text.includes('【多条未读'));assert.match(task.text,/【行动前｜群聊】/);
 });

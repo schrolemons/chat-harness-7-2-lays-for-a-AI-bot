@@ -530,8 +530,8 @@ export function createPlugin(ctx) {
             : '';
           return '- ' + scheduleLine(it) + repeat;
         });
-        ctx.addPromptBlock('【日程安排（未来 ' + horizonDays + ' 天）】\n' + lines.join('\n')
-          + '\n间歇提醒仍在进行时，用户只有明确说“我已经去做这事了”才算确认；随后用 qq_schedule(action="complete", key, id) 完成本次日程。修改用 qq_schedule(action="update")，取消用 action="cancel"。不要把沉默、感谢或“知道了”当作完成。');
+        ctx.addPromptBlock('【日程维护规则】间歇提醒仍在进行时，用户只有明确说“我已经去做这事了”才算确认；随后用 qq_schedule(action="complete", key, id) 完成本次日程。修改用 qq_schedule(action="update")，取消用 action="cancel"。不要把沉默、感谢或“知道了”当作完成。',{placement:'stable'});
+        ctx.addPromptBlock('【日程安排（未来 ' + horizonDays + ' 天）】\n' + lines.join('\n'));
         return '';
       }
     }

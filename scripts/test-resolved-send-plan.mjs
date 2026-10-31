@@ -14,13 +14,16 @@ test('one frozen welcome plan serves prompt and all multipart entrances',()=>{
   const {svc,plugin}=fixture(); assert.ok(svc,'replyPlan service');
   const plan=svc.resolve({key,turnId:'turn1',incomingText:'你好',mood,now});
   assert.equal(plan.maxMessages,3); assert.equal(plan.detailLevel,'expanded');
-  assert.equal(plugin.hooks.beforePrompt({replyPlan:plan}),plan.line);
+  assert.ok(plugin.hooks.beforePrompt({replyPlan:plan}).startsWith(plan.line+'\n'));
+  assert.match(plugin.hooks.beforePrompt({replyPlan:plan}),/已成功发送 0 条/);
   for(const [i,kind] of ['text','image','voice'].entries()){
     assert.equal(svc.reserve({key,plan,operationId:`p${i}`,kind,now}).ok,true);
     assert.equal(svc.commit({key,operationId:`p${i}`,sentAt:now+i,deliveryId:`d${i}`}).ok,true);
   }
   assert.equal(svc.reserve({key,plan,operationId:'fourth',kind:'sticker',now}).reason,'turn_limit');
   assert.equal(svc.reserve({key:'private:456',plan,operationId:'cross-target',kind:'text',now}).reason,'turn_limit');
+  assert.match(plugin.hooks.beforePrompt({replyPlan:plan}),/已成功发送 3 条/);
+  assert.match(plugin.hooks.beforePrompt({replyPlan:plan}),/最多还可发送 0 条/);
 });
 test('serious and phi caps survive welcome; mood ceiling and exact zero timing apply',()=>{
   const {svc}=fixture({intervalMinMs:0,intervalMaxMs:0});assert.ok(svc);
@@ -55,3 +58,5 @@ test('requested delays use the same bounds; no-turn agents fail closed',()=>{
   assert.equal(svc.delay({plan,requested:0}),10);assert.equal(svc.delay({plan,requested:1000}),20);
   assert.equal(svc.reserve({key,plan:{...plan,turnId:''},operationId:'x',now}).reason,'turn_required');
 });
+
+test('cold group ten-reply batch waits at the shared minute cap without losing its remaining allowance',()=>{const {svc}=fixture({intervalMinMs:0,intervalMaxMs:0,longGapProbability:0,maxSendPerMinute:8,maxSendPerHour:100});const group='group:456',plan=svc.resolve({key:group,turnId:'cold-ten',budgetStage:'weak',batchMessageCount:10,mood,now});assert.equal(plan.maxMessages,10);let clock=now;for(let n=1;n<=10;n++){const operationId='cold-'+n,r=svc.reserve({key:group,plan,operationId,now:clock});assert.equal(r.ok,true);if(n===9)assert.equal(r.waitMs,60001);clock+=r.waitMs;svc.commit({key:group,operationId,sentAt:clock,deliveryId:operationId});}assert.equal(svc.remaining({key:group,plan}),0);assert.equal(svc.preview({key:group,now:clock}).minute,2);});

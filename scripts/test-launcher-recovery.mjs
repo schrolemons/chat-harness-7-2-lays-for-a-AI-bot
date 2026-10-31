@@ -45,11 +45,11 @@ test('初始化尚未写锁时，仍能识别当前桥接和相对路径启动�
 test('冷启动启用 QQ 自动加载，并把隐藏进程预加载器传入 SnowLuma', () => {
   const previousUin = process.env.QQL_BOT_UIN;
   process.env.QQL_BOT_UIN = '987654321'; // Stale inherited value must not beat the saved setting.
-  const launch = buildSnowLaunch('C:/SnowLuma/launcher.bat', '20009');
+  const launch = buildSnowLaunch('C:/SnowLuma/launcher.bat', '123456789');
   if (previousUin === undefined) delete process.env.QQL_BOT_UIN; else process.env.QQL_BOT_UIN = previousUin;
-  assert.equal(launch.options.env.QQL_BOT_UIN, '20009');
+  assert.equal(launch.options.env.QQL_BOT_UIN, '123456789');
   assert.equal(launch.options.env.SNOWLUMA_HOOK_AUTOLOAD, '0');
-  assert.equal(launch.options.env.SNOWLUMA_BRIDGE_UIN, '20009');
+  assert.equal(launch.options.env.SNOWLUMA_BRIDGE_UIN, '123456789');
   assert.equal(launch.options.windowsHide, true);
   assert.equal(launch.options.detached, process.platform !== 'win32');
   assert.equal(launch.args[0], '--import');
@@ -61,7 +61,7 @@ test('SnowLuma 未登录时等待恢复，不能因旧的 90 秒阈值提前退�
   const phases = [];
   const ok = await ensureSnowLuma({ snowluma: { launcherPath: 'fixture/launcher.bat' } }, {
     info: async () => ({ ok: elapsed >= 100_000, nickname: 'fixture' }),
-    botUin: '20009',
+    botUin: '123456789',
     exists: () => true,
     stopStale: async () => true,
     launch: async () => { starts++; return new EventEmitter(); },
@@ -78,7 +78,7 @@ test('SnowLuma 异步启动失败立即报告，不抛未处理 error 或等待�
   const child = new EventEmitter();
   let elapsed = 0;
   assert.equal(await ensureSnowLuma({ snowluma: { launcherPath: 'fixture/launcher.bat' } }, {
-    info: async () => ({ ok: false }), exists: () => true, botUin: '20009',
+    info: async () => ({ ok: false }), exists: () => true, botUin: '123456789',
     stopStale: async () => true, launch: async () => child,
     sleep: async ms => { elapsed += ms; child.emit('error', Error('spawn denied')); },
     now: () => elapsed, progress: () => {}

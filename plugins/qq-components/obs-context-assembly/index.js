@@ -5,10 +5,9 @@ import {randomUUID} from 'node:crypto';
 import {encodePacket,decodePacket} from './packet.mjs';
 
 
-import {prioritizeChatExpression} from './chat-expression.mjs';
 import {REFRESH_MODULE_IDS} from './refill.mjs';
 const owned=file=>{const url=new URL(file,import.meta.url);url.search=new URL(import.meta.url).search;return import(url.href);};
-const [{moduleCatalog,completeModuleSlots},{compileModules,normalizePolicy},{readPolicy,secretFor,recordEvidence,readEvidence,listAssemblies},{enrichRequestProvenance},{frameModules},{refreshReceiptIndex}]=await Promise.all(['./catalog.mjs','./policy.mjs','./store.mjs','./provenance.mjs','./frame.mjs','./message-snapshot.mjs'].map(owned));
+const [{prioritizeChatExpression},{moduleCatalog,completeModuleSlots},{compileModules,normalizePolicy},{readPolicy,secretFor,recordEvidence,readEvidence,listAssemblies},{enrichRequestProvenance},{frameModules},{refreshReceiptIndex}]=await Promise.all(['./chat-expression.mjs','./catalog.mjs','./policy.mjs','./store.mjs','./provenance.mjs','./frame.mjs','./message-snapshot.mjs'].map(owned));
 export function createPlugin(ctx){
  const secret=secretFor(ctx.root),catalog=moduleCatalog(ctx.root);
  const runtime=ctx.runtime||{},seeds=runtime.contextSeeds||(runtime.contextSeeds=new Map());

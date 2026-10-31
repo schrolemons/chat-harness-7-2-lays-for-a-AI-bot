@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { startConsoleFixture } from './console-ui-fixture.mjs';
 const require = createRequire(import.meta.url), { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const executablePath = [path.join(process.env.PROGRAMFILES || '', 'Google/Chrome/Application/chrome.exe'), path.join(process.env['PROGRAMFILES(X86)'] || '', 'Microsoft/Edge/Application/msedge.exe')].find(fs.existsSync);
-const fixture = await startConsoleFixture(), group = 'group:20009';
+const fixture = await startConsoleFixture(), group = 'group:21008';
 const artifact = path.resolve('state/audits/knowledge-quota-20261030'); fs.mkdirSync(artifact, { recursive: true });
 let browser;
 try {
@@ -21,7 +21,7 @@ try {
   assert.equal(await picker.evaluate(el => el.tagName), 'SELECT');
   assert.match(await panel.innerText(), /管理员提问不计数/);
   await picker.selectOption(group); await panel.locator('.quota-row').filter({ hasText: group }).waitFor();
-  const request = (messageId, userId = '20013') => ({ key: group, plainContent: '这个算法为什么正确？', messageId, userId, reason: 'question' });
+  const request = (messageId, userId = '200002') => ({ key: group, plainContent: '这个算法为什么正确？', messageId, userId, reason: 'question' });
   const counts = [];
   for (let index = 1; index <= 3; index++) {
     assert.equal(fixture.quotaService.evaluate(request('browser-' + index)).action, 'allow');
@@ -38,9 +38,9 @@ try {
   await panel.getByText('最近识别记录', { exact: true }).click();
   assert.match(await panel.innerText(), /规则兜底/);
   const values = await picker.locator('option').evaluateAll(options => options.map(option => option.value));
-  assert(values.includes(group) && values.includes('private:20012'));
-  await picker.selectOption('private:20012');
-  await page.waitForFunction(() => document.querySelector('.quota-row code')?.textContent === 'private:20012');
+  assert(values.includes(group) && values.includes('private:21001'));
+  await picker.selectOption('private:21001');
+  await page.waitForFunction(() => document.querySelector('.quota-row code')?.textContent === 'private:21001');
   assert.equal(await panel.locator('.quota-row span b').first().innerText(), '0');
   await picker.selectOption('__manual__');
   const resets = fixture.requests.filter(x => x.body?.tool === 'knowledge_quota' && x.body.input?.action === 'reset').length;
@@ -48,7 +48,7 @@ try {
   assert.equal(fixture.requests.filter(x => x.body?.tool === 'knowledge_quota' && x.body.input?.action === 'reset').length, resets, 'Empty manual key must not reset all sessions');
   assert.equal(fixture.quotaService.usage(group).used, 3);
   fixture.quotaService.reset(group); fixture.componentFixtures.get('ctx-knowledge-quota').config.countBy = 'user';
-  fixture.quotaService.evaluate(request('user-1', '20013')); fixture.quotaService.evaluate(request('user-2', '300003'));
+  fixture.quotaService.evaluate(request('user-1', '200002')); fixture.quotaService.evaluate(request('user-2', '300003'));
   await picker.selectOption(group);
   await page.waitForFunction(() => document.querySelectorAll('.quota-row').length === 2);
   assert.match(await panel.innerText(), /按发言人/);

@@ -25,7 +25,7 @@ test('one-time migration preserves origin and meaning while retiring single-sour
 test('three real components respect independent zero caps and persist source changes',async()=>{
  for(const [kind,file,record]of [
  ['term','ctx-interest-terms/index.js',{id:'t',term:'独立词条',topic:'测试',summary:'TERM_DEFINITION',status:'confirmed',sourceKeys:['group:10001']}],
- ['alias','ctx-member-alias/index.js',{id:'a',alias:'独立昵称',qq:'20009',status:'confirmed',sourceKeys:['group:10001']}]
+ ['alias','ctx-member-alias/index.js',{id:'a',alias:'独立昵称',qq:'123456789',status:'confirmed',sourceKeys:['group:10001']}]
  ]){
    const {createPlugin}=await import('../plugins/qq-components/'+file);let state={entries:[record]};
    const ctx={config:{injectMax:0,autoExtract:false},runtime:{},signal:new AbortController().signal,isActive:()=>true,state:{get:()=>structuredClone(state),set:p=>Object.assign(state,structuredClone(p))},capabilities:{},registerTool:()=>{},warn:()=>{},log:()=>{}};

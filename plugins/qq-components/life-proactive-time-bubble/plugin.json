@@ -2,7 +2,7 @@
   "id": "life-proactive-time-bubble",
   "name": "时间冒泡",
   "version": "0.1.0",
-  "description": "由小鲸鱼根据本人私聊分享的作息和饮食习惯规划冒泡时段；服从锁定、免打扰、会话状态与每日次数上限。",
+  "description": "由AI助手根据本人私聊分享的作息和饮食习惯规划冒泡时段；服从锁定、免打扰、会话状态与每日次数上限。",
   "category": "生命周期与编排",
   "order": 40,
   "tags": [

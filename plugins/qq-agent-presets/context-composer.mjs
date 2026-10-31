@@ -1,3 +1,4 @@
+import {compactFailedToolHistory} from '../qq-components/obs-context-assembly/failure-history.mjs';
 import {splitMessageSnapshot} from '../qq-components/obs-context-assembly/message-snapshot.mjs';
 import {previewRequestMessage,previewRequestBlocks,previewRequestToolResults} from '../qq-components/obs-context-assembly/request-view.mjs';
 import {observeModuleDelivery} from '../qq-components/obs-context-assembly/knowledge.mjs';
@@ -12,6 +13,7 @@ import {replaceSurface} from '../qq-components/obs-context-assembly/history.mjs'
 import {refillContext,contextParts,withoutSessionCredentials,retireDialogueTasks,CONTEXT_STATE_RULE,SESSION_CREDENTIAL_RULE} from '../qq-components/obs-context-assembly/refill.mjs';
 import {prioritizeChatExpression} from '../qq-components/obs-context-assembly/chat-expression.mjs';
 import {refreshContextPacket} from './context-refresh.mjs';
+import {installSendFailureGuard} from '../qq-components/ctx-chat-reply-shape/request-guard.mjs';
 export const name='qq-context-composer';
 const OWN='qq-context-current';
 function texts(message){return (message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n');}
@@ -20,6 +22,7 @@ function knownSeqs(session){const seen=new Set();for(const e of session.snapshot
 function knownDialogueSeqs(session){const seen=new Set();for(const event of session.snapshotEvents()){const source=event?.data?.source?.kind==='qq-context-stable'?event.data.source.baseSource:event?.data?.source;if(event?.type==='user/message'&&source?.kind==='qq-context-dialogue')for(const seq of source.dialogueSeqs||[])seen.add(seq);}return seen;}
 function retireCurrent(session,position,replace=replaceSurface){for(const seq of [...session.surface.nodes]){const e=session.eventAt(seq);if(e?.type==='user/message'&&[OWN,'qq-context-update','qq-context-latest','qq-context-task'].includes(e.data.source?.kind))replace(session,seq,{...e.data,content:[],source:{...e.data.source,kind:'qq-context-retired'}},position);}}
 export function apply(ctx,config={}) {
+ installSendFailureGuard(ctx);
  const root=config.root||path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
  const secret=secretFor(root),states=new Map(),agents=new Map(),resumeIds=new Set(),tombstones=new Map(),activities=new Map();
  const activityFor=agent=>{
@@ -48,6 +51,7 @@ export function apply(ctx,config={}) {
  };
  ctx.on('agent/request',async({agent,turn,step},next)=>{
   const session=agent?.session;if(session){const queued=tombstones.get(session.id);tombstones.delete(session.id);for(const [seq,message] of queued||[]){if(session.surface.nodes.includes(seq))replaceSurface(session,seq,message,{turn,step});}}
+  if(session)compactFailedToolHistory(session,{turn,step},replaceSurface,{keep:2});
   return next();
  });
  const ready=agent=>{if(!agent?.session?.id)return;agents.set(agent.session.id,agent);try{recordEvidence(root,agent.session.id,'consumer',{sessionId:agent.session.id,pid:process.pid,at:Date.now(),version:3});}catch{/* No readiness acknowledgement: bridge keeps its working fallback. */}};
@@ -59,7 +63,7 @@ export function apply(ctx,config={}) {
   if(!packet)return;
   const old=states.get(agent.session.id);
   if(old?.nonce===packet.nonce)return;
-  states.set(agent.session.id,{...packet,envelope:texts(message),compiled:compileModules(prioritizeChatExpression(packet.modules),readPolicy(root),packet.scene)});
+  states.set(agent.session.id,{...packet,envelope:texts(message),compiled:compileModules(prioritizeChatExpression(packet.modules,readPolicy(root)),readPolicy(root),packet.scene)});
   // A signed local checkpoint survives compaction without promoting a summary
   // into authoritative instructions. Clear/startup never reuse this checkpoint.
   try{writeJson(evidenceFile(root,agent.session.id,'packet'),{envelope:texts(message)});}catch{/* Current admission stays valid even if its optional checkpoint cannot persist. */}
@@ -67,10 +71,10 @@ export function apply(ctx,config={}) {
  // Rehydrate from original durable inbox events when an existing session is resumed.
  function stateFor(agent){
   let state=states.get(agent.session.id);if(states.has(agent.session.id))return state;
-  if(resumeIds.has(agent.session.id)){const envelope=readEvidence(root,agent.session.id,'packet')?.envelope,packet=decodePacket(envelope,secret,agent.session.id);if(packet){state={...packet,envelope,compiled:compileModules(prioritizeChatExpression(packet.modules),readPolicy(root),packet.scene)};states.set(agent.session.id,state);return state;}}
+  if(resumeIds.has(agent.session.id)){const envelope=readEvidence(root,agent.session.id,'packet')?.envelope,packet=decodePacket(envelope,secret,agent.session.id);if(packet){state={...packet,envelope,compiled:compileModules(prioritizeChatExpression(packet.modules,readPolicy(root)),readPolicy(root),packet.scene)};states.set(agent.session.id,state);return state;}}
   for(const e of agent.session.snapshotEvents().toReversed()){
    const candidates=e.type==='user/message'?[e.data]:e.type==='agent/inbox/spliced'?e.data.inserted||[]:[];
-   for(const m of candidates){const packet=decodePacket(texts(m),secret,agent.session.id);if(packet){state={...packet,envelope:texts(m),compiled:compileModules(prioritizeChatExpression(packet.modules),readPolicy(root),packet.scene)};states.set(agent.session.id,state);return state;}}
+   for(const m of candidates){const packet=decodePacket(texts(m),secret,agent.session.id);if(packet){state={...packet,envelope:texts(m),compiled:compileModules(prioritizeChatExpression(packet.modules,readPolicy(root)),readPolicy(root),packet.scene)};states.set(agent.session.id,state);return state;}}
   }
   states.set(agent.session.id,null);return null;
  }
@@ -78,7 +82,7 @@ export function apply(ctx,config={}) {
   const result=await next(),agent=scope.agent;
   if(!agent)return result;
   const state=stateFor(agent);if(!state||!readPolicy(root).enabled)return result;
-  state.compiled=compileModules(prioritizeChatExpression(state.modules),readPolicy(root),state.scene);
+  state.compiled=compileModules(prioritizeChatExpression(state.modules,readPolicy(root)),readPolicy(root),state.scene);
   const fixed=state.compiled.selected.filter(x=>x.placement==='fixed');
   // Preserve all framework sections/permissions. Only signed administrator-owned
   // role/background sources become instruction sections; memory stays user data.
@@ -97,7 +101,7 @@ export function apply(ctx,config={}) {
    if(fresh?.modules){state.modules=fresh.modules;state.contextRefresh={status:'fresh',at:Date.now()};}
    else throw Error('刷新没有返回组件资料');
   }catch(error){if(payload.signal?.aborted)throw error;state.modules=withoutSessionCredentials(state.modules);state.contextRefresh={status:'stale',at:Date.now(),reason:String(error.message||error).slice(0,160)};}
-  state.compiled=compileModules(prioritizeChatExpression(state.modules),policy,state.scene);
+  state.compiled=compileModules(prioritizeChatExpression(state.modules,readPolicy(root)),policy,state.scene);
   let entered=false;const seen=knownSeqs(agent.session),seenDialogue=knownDialogueSeqs(agent.session),messages=[];
   for(const message of decision.messages){
    const packet=decodePacket(texts(message),secret,agent.session.id);

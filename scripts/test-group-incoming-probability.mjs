@@ -1,22 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 let model={};try{model=await import('../plugins/qq-components/life-wake-reasons/group-wake.mjs');}catch(e){if(e.code!=='ERR_MODULE_NOT_FOUND')throw e;}
-const policy={groupAtBonus:.5,groupNameBonus:.3,groupQuestionBonus:.2,groupPokeBonus:.6,groupNames:'小鲸鱼, DS'};
+const policy={groupAtBonus:.5,groupNameBonus:.3,groupQuestionBonus:.2,groupPokeBonus:.6,groupNames:'AI助手, DS'};
 
 test('only starting a group conversation draws stage probability plus the largest wake bonus',()=>{
- const decision=model.evaluateGroupIncoming({key:'group:1',p:.2,policy,event:{atMention:true,text:'小鲸鱼'},random:()=>.69});assert.equal(decision.probability,.7);assert.equal(decision.accepted,true);
+ const decision=model.evaluateGroupIncoming({key:'group:1',p:.2,policy,event:{atMention:true,text:'AI助手'},random:()=>.69});assert.equal(decision.probability,.7);assert.equal(decision.accepted,true);
  const ongoing=model.evaluateGroupIncoming({key:'group:1',p:0,awake:true,policy,event:{text:'接着聊'},random:()=>{throw Error('awake conversation never rolls');}});assert.equal(ongoing.accepted,true);assert.equal(ongoing.phase,'conversation');
 });
 test('group arrival takes the largest matched q and rolls exactly once',()=>{
  assert.equal(typeof model.evaluateGroupIncoming,'function');let calls=0;
- const result=model.evaluateGroupIncoming({key:'group:1',p:.2,policy,event:{atMention:true,text:'小鲸鱼'},random:()=>{calls++;return .49;}});
+ const result=model.evaluateGroupIncoming({key:'group:1',p:.2,policy,event:{atMention:true,text:'AI助手'},random:()=>{calls++;return .49;}});
  assert.equal(result.accepted,true);assert.equal(result.probability,.7);assert.equal(result.extraProbability,.5);assert.equal(calls,1);assert.deepEqual(result.matched,['atMention','nameMention']);
 });
 test('private arrivals bypass the lottery; limits stay with the bridge admission gates',()=>{
  assert.equal(typeof model.evaluateGroupIncoming,'function');const result=model.evaluateGroupIncoming({key:'private:1',p:0,policy,random:()=>{throw Error('private must not roll');}});assert.equal(result.accepted,true);assert.equal(result.reason,'private');
 });
 test('names come only from administrator fields, with short Latin word boundaries',()=>{
- assert.equal(typeof model.evaluateGroupIncoming,'function');for(const [text,q] of [['DS 在吗',.3],['ADSL 网络',0],['小鲸鱼你好',.3],['机器人自己的其他昵称',0]]){const result=model.evaluateGroupIncoming({key:'group:1',p:.1,policy,event:{text},random:()=>.99});assert.equal(result.extraProbability,q,text);}
+ assert.equal(typeof model.evaluateGroupIncoming,'function');for(const [text,q] of [['DS 在吗',.3],['ADSL 网络',0],['AI助手你好',.3],['机器人自己的其他昵称',0]]){const result=model.evaluateGroupIncoming({key:'group:1',p:.1,policy,event:{text},random:()=>.99});assert.equal(result.extraProbability,q,text);}
 });
 test('bonus applies to directed questions and pokes targeting the bot; q=0 adds nothing',()=>{
  assert.equal(typeof model.evaluateGroupIncoming,'function');const decide=event=>model.evaluateGroupIncoming({key:'group:1',p:.2,policy,event,random:()=>.99});assert.equal(decide({question:true}).extraProbability,.2);assert.equal(decide({poke:true,targetIsSelf:true}).extraProbability,.6);assert.equal(decide({poke:true,targetIsSelf:false}).extraProbability,0);assert.equal(model.evaluateGroupIncoming({key:'group:1',p:.2,policy:{...policy,groupAtBonus:0},event:{atMention:true},random:()=>.3}).accepted,false);
@@ -39,7 +39,7 @@ test('service captures opening stage and caches its one lottery across reset and
 
 test('directed question matching uses configured names, @ facts and directed phrasing, not a hardcoded old persona',()=>{
  const decide=text=>model.evaluateGroupIncoming({key:'group:1',p:0,policy:{...policy,groupNameBonus:0,groupQuestionBonus:.8},event:{text},random:()=>.1});
- assert.equal(decide('小鲸鱼午饭吃了吗？').extraProbability,.8);assert.equal(decide('你能解释一下吗').extraProbability,.8);assert.equal(decide('小明午饭吃了吗？').extraProbability,0);assert.equal(decide('大肥鱼吃了吗？').extraProbability,0);
+ assert.equal(decide('AI助手午饭吃了吗？').extraProbability,.8);assert.equal(decide('你能解释一下吗').extraProbability,.8);assert.equal(decide('小明午饭吃了吗？').extraProbability,0);assert.equal(decide('通用助手吃了吗？').extraProbability,0);
 });
 
 test('bounded incoming audit retains most recent events even when numeric message IDs are out of order',()=>{

@@ -1,6 +1,6 @@
-# 小鲸鱼工具注册合同
+# AI助手工具注册合同
 
-小鲸鱼自己的 MCP 定义以 `src/tools/servers.js` 为目录；DSH 内置工具、系统执行和浏览器宿主能力不归这个目录注册。新增工具不可只往前端加名称。
+AI助手自己的 MCP 定义以 `src/tools/servers.js` 为目录；DSH 内置工具、系统执行和浏览器宿主能力不归这个目录注册。新增工具不可只往前端加名称。
 
 1. **组件工具**：在 `plugins/qq-components/<id>/index.js` 使用 `ctx.registerTool(name, { description, schema, handler })`。宿主负责生命周期、启停、重载与实际工具注册。实现必须经桥接能力访问 QQ/DSH，不私连协议。
 2. **MCP 工具**：在对应 server 中注册真实 schema 和 handler。若新增 server，声明其名称、脚本、所属层和 `audience`，更新负责安装该 server 的安装器及对应 preset 范围。QQ 配置开关只在 `src/tools/flags.js` 声明一次，MCP 注册与控制台共同使用。
