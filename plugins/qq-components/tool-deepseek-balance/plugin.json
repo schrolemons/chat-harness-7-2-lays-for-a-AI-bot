@@ -1,8 +1,8 @@
 {
   "id": "tool-deepseek-balance",
-  "name": "DeepSeek 余额与账户余额",
-  "version": "0.5.1",
-  "description": "私聊与群聊可查询分阶段调用额度状态，管理员另看账户金额；变化可自然谈起并写桌面便签，沿用现有限额策略。",
+  "name": "DeepSeek 余额与API预算余额",
+  "version": "0.6.0",
+  "description": "私聊与群聊可查询分阶段API预算状态，管理员另看账户金额；变化可自然谈起并写桌面便签，沿用现有限额策略。",
   "category": "健康监控",
   "layer": "O",
   "order": 95,
@@ -14,7 +14,7 @@
   "main": "index.js",
   "enabled": true,
   "hooks": [
-    "onTick", "afterSend"
+    "onTick", "afterSend", "wakeTail"
   ],
   "schedule": {
     "everyMs": 60000
@@ -33,7 +33,7 @@
   "configSchema": {
     "monitorEnabled": {
       "type": "boolean",
-      "label": "自动检查账户余额"
+      "label": "自动检查API预算余额"
     },
     "checkIntervalMin": {
       "type": "number",

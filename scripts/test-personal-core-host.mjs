@@ -26,5 +26,5 @@ test('real host shares generic S routing with C style and refreshes it on mount 
  assert.equal(host.callService('personal-core','route',{incomingText:'归属'}).mode,'off');
  assert.doesNotMatch(text(),/本轮认真回应|私人资料目录/);
  assert.equal((await host.callTool('core_status',{})).result.code,'UNMOUNTED');
- assert.equal((await host.callTool('schnie_status',{})).ok,false);
+ assert.equal((await host.callTool('reference-data_status',{})).ok,false);
 });

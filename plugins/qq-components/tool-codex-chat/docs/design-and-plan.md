@@ -1,6 +1,6 @@
-# 通用助手与 Codex 专用聊天
+# AI助手与 Codex 专用聊天
 
-目标：由通用助手调用 MCP 工具，在本机 Codex 的同一个专用聊天中连续提问并接收回答，保留 user/assistant 消息角色。用户已选择 Codex 桌面端专用聊天。
+目标：由AI助手调用 MCP 工具，在本机 Codex 的同一个专用聊天中连续提问并接收回答，保留 user/assistant 消息角色。用户已选择 Codex 桌面端专用聊天。
 
 架构：DSH 管理端 → stdio MCP → 单进程控制器 → 官方 codex app-server stdio → 专用持久聊天。七层插件声明为 T 层；所有 MCP 调用检查插件开关。用户接受以 Codex 内置浏览器显示本地只读聊天面板，避开原生聊天独占写入者限制。面板监听 127.0.0.1 随机端口、随机临时查看凭证、严格 Host/Origin；没有 HTTP 写接口，没有浏览器自动控制或网页登录令牌。默认关闭 shell、MCP、Apps、多 agent、图片工具及 hooks；read-only + never；不能通过工具传入模型、命令、路径或任意聊天 ID。
 

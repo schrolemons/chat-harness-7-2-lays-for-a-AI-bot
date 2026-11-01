@@ -223,7 +223,6 @@ function loadSlangConfig() {
     document.getElementById('slangCooldown').value = c.extractCooldownMs ?? 300000;
     document.getElementById('slangThresholds').value = (c.inferenceThresholds || [2, 4, 8]).join(', ');
     document.getElementById('slangInjectMax').value = c.injectMax ?? 8;
-    document.getElementById('slangLearnerPreset').value = c.learnerPreset || 'qq-chat';
     document.getElementById('slangWorkspaceTitle').value = c.workspaceTitle || 'QQ 黑话学习';
     document.getElementById('slangAutoResearch').checked = c.autoResearch !== false;
   }).catch(() => {});
@@ -378,7 +377,6 @@ document.getElementById('slangConfigSave').addEventListener('click', async () =>
     extractCooldownMs: Number(document.getElementById('slangCooldown').value) || 300000,
     inferenceThresholds: document.getElementById('slangThresholds').value.split(/[,，\s]+/).map(Number).filter(Boolean),
     injectMax: Number(document.getElementById('slangInjectMax').value),
-    learnerPreset: document.getElementById('slangLearnerPreset').value.trim(),
     workspaceTitle: document.getElementById('slangWorkspaceTitle').value.trim(),
     autoResearch: document.getElementById('slangAutoResearch').checked
   });

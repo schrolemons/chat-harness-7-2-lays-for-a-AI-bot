@@ -25,6 +25,12 @@
 - 不重启 DSH；不碰与桥接无关的系统目录；不为改而改。
 
 ## 配置
+
+### Codex 修正接口
+
+Codex 扫描、修复反馈之前先 GET 修正接口检查 `enabled === true`；提交前复查。未勾选时立即停止并要求用户到 O层 → 日记、日报与反馈 → 反馈工具参数 勾选并保存“启用 Codex 修正接口”，等待用户开启后再检查。不得自行开启、直接扫描 state 或走其它接口绕过；鉴权失败或状态未知同样停止。该开关不替代 Bot 自查与普通反馈的独立权限。
+
+O层「日记与反馈 → 反馈工具参数」的“启用 Codex 修正接口”对应本组件 `codexRepairEnabled`，默认关闭。启用后由现有管理员控制台鉴权访问 `GET/POST /api/socialV2/self-review-feedback/repairs`；普通QQ agent token始终拒绝。提交编号、修复说明、验证依据与runId，一次结案、自动计算统一统计并补写现有`_optimization.md`；规范见 `docs/guides/CODEX_REPAIR_API.md`。支持dryRun，全批验证、相同批次重试幂等；日志写失败保留待同步批次并返回503，不能宣称整个收尾成功。
 自查间隔和修复上限统一由控制台「自我更新」设置管理：
 - `socialV2.selfReview.intervalHours`：定期扫描间隔，默认 6 小时。
 - `socialV2.selfReview.maxSelfFixesPerRound`：自我发现与工具反馈每轮最多修复数。

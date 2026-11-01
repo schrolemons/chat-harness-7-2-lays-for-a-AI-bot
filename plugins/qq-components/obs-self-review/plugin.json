@@ -16,7 +16,8 @@
     "onIncoming",
     "beforePrompt"
   ],
-  "config": {},
+  "config": {"codexRepairEnabled":false},
+  "configSchema":{"codexRepairEnabled":{"type":"boolean"}},
   "layer": "O",
   "wakeReasons": [
     "selfReview",

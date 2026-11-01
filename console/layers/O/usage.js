@@ -2,11 +2,13 @@
 import { api, esc } from '../../shared/api.js';
 import { showConsoleToast } from '../../shared/navigation.js';
 import { refreshUsageChart } from './usage-chart.js';
+import { mountBudgetCycle } from './budget-cycle.js';
 // layers/O/usage: explicit imports; initialize is called in the application startup order.
 
 
 
 let usageSelectedKey;
+let budgetCycleControl;
 
 let usageConversationsCache;
 
@@ -137,7 +139,7 @@ async function refreshUsageBudgets() {
     document.getElementById('usageGlobalTurns').textContent = usageNum(global.turns);
     document.getElementById('usageGlobalCost').textContent = money(global.cost);
     const globalInput = document.getElementById('usageGlobalLimit');
-    if (document.activeElement !== globalInput) globalInput.value = Number(global.limit) || 0;
+    if (document.activeElement !== globalInput && !globalInput.dataset.dirty) globalInput.value = Number(global.limit) || 0;
     const windows = result.recoveryWindows || {};
     document.getElementById('usageBudgetWindowSummary').textContent = `当前冷漠消息窗口：私聊${Number(windows.privateMessages)||5}条；群聊普通${Number(windows.groupMessages)||5}条 + @／引用bot消息${Number(windows.groupAtMessages)||5}条。触发条数与消息窗口分别设置`;
     for (const [id, field] of [['usageRecoveryPrivate', 'privateMessages'], ['usageRecoveryGroup', 'groupMessages'], ['usageRecoveryGroupAt', 'groupAtMessages']]) {
@@ -285,6 +287,7 @@ async function refreshUsage() {
     void refreshUsageBudgets();
     void refreshUsageMechanicalReplies();
     void refreshPrivateWakeRule();
+    void budgetCycleControl?.refresh();
     renderUsagePrices(r.priceTable ? { ...r.priceTable, nowTier: r.nowTier } : null);
     syncUsageKeySelect((r.conversations || []).map(c => String(c.key ?? '')));
     msg.textContent = `✅ 已同步于 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`;
@@ -334,6 +337,8 @@ function refreshUsageDashboard() {
 }
 
 export function initialize() {
+budgetCycleControl=mountBudgetCycle({onSaved:refreshUsageBudgets});
+document.getElementById('usageGlobalLimit').addEventListener('input',event=>{event.target.dataset.dirty='true';});
 usageSelectedKey = '';
 usageConversationsCache = [];
 document.getElementById('usageOwnerBudgetEnabled').addEventListener('change', (event) => { event.target.dataset.dirty = 'true'; });
@@ -392,6 +397,7 @@ document.getElementById('usageGlobalSave').addEventListener('click', async (even
   button.disabled = true;
   try {
     await api('/api/tokens/budgets/global', 'POST', { globalHardLimitYuan: Number(document.getElementById('usageGlobalLimit').value) });
+    delete document.getElementById('usageGlobalLimit').dataset.dirty;
     button.blur();
     msg.textContent = '统一上限已保存'; msg.className = 'meta ok';
     await refreshUsageBudgets();

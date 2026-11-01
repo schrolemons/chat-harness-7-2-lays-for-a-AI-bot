@@ -21,6 +21,7 @@ NAV_ICON_PATHS = {
   "codex-peer": "<rect x=\"2\" y=\"4\" width=\"8\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"13\" width=\"8\" height=\"7\" rx=\"1.5\"/><path d=\"M14 6h5v4m-3-3 3 3M10 18H5v-4m3 3-3-3\"/>",
   "injection-lab": "<path d=\"M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1 2h14a1.3 1.3 0 0 0 1-2L14 9V3M7 15h10M10 18h.01M14 12h.01\"/>",
   "environment-chat": "<path d=\"M21 11a8 8 0 0 1-8 8H7l-4 2V9a7 7 0 0 1 7-7h4a7 7 0 0 1 7 7Z\"/>",
+  "environment-presets": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M7 7h10M7 12h10M7 17h6\"/>",
   "environment-admin": "<path d=\"m12 3-8 3v6c0 5 8 9 8 9s8-4 8-9V6Z\"/><path d=\"m9 12 2 2 4-4\"/>",
   "environment-web": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M3 8h18m-8 4 5 2-3 1-1 3Z\"/>",
   "environment-watch": "<path d=\"M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>",

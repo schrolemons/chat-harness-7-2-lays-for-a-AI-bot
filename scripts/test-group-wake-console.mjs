@@ -10,10 +10,10 @@ test('L0 q and L1 p are separate partial forms; each save preserves fresh fields
  const guidance=await page.locator('#section-setting-l-0').innerText();assert.ok(guidance.includes('私聊来信100%'));assert.ok(guidance.includes('最终70%'));assert.ok(guidance.includes('不再抽签'));
  assert.deepEqual((await incoming.locator('[data-config-key]').evaluateAll(els=>els.map(e=>e.dataset.configKey))).sort(),['groupAtBonus','groupNameBonus','groupQuestionBonus','groupPokeBonus','groupNames'].sort());assert.equal(await incoming.locator('.comp-enabled').count(),0);
  assert.equal(await page.locator('#v2RecProb,#v2RecAt,#v2WakeDefaultMode').count(),0);
- await incoming.locator('[data-config-key="groupAtBonus"] input').fill('0');await incoming.locator('[data-config-key="groupNames"] input').fill('鲸鱼, DS');
+ await incoming.locator('[data-config-key="groupAtBonus"] input').fill('0');await incoming.locator('[data-config-key="groupNames"] input').fill('助手, DS');
  await page.request.post(fixture.url+'/api/plugins/config',{data:{id:'life-wake-reasons',config:{initialProbability:.42}}});
  const saved=page.waitForResponse(r=>r.url().endsWith('/api/plugins/config')&&r.request().postDataJSON()?.id==='life-wake-reasons');await page.locator('#section-setting-l-0 .v2-save').click();await saved;
- let writes=fixture.requests.filter(r=>r.path==='/api/plugins/config'&&r.body.id==='life-wake-reasons');assert.equal(writes.at(-1).body.config.groupAtBonus,0);assert.equal(writes.at(-1).body.config.groupNames,'鲸鱼, DS');assert.equal(writes.at(-1).body.config.initialProbability,.42);
+ let writes=fixture.requests.filter(r=>r.path==='/api/plugins/config'&&r.body.id==='life-wake-reasons');assert.equal(writes.at(-1).body.config.groupAtBonus,0);assert.equal(writes.at(-1).body.config.groupNames,'助手, DS');assert.equal(writes.at(-1).body.config.initialProbability,.42);
  await page.locator('#mainNav [data-view="setting-l-1"]').click();await proactive.locator('.comp-save').waitFor();await proactive.locator('details').evaluateAll(els=>els.forEach(e=>e.open=true));assert.equal(await proactive.locator('[data-config-key^="group"]').count(),0);
  await proactive.locator('[data-config-key="initialProbability"] input').fill('0.35');await page.request.post(fixture.url+'/api/plugins/config',{data:{id:'life-wake-reasons',config:{groupAtBonus:.75}}});
  const savedP=page.waitForResponse(r=>r.url().endsWith('/api/plugins/config')&&r.request().postDataJSON()?.id==='life-wake-reasons');await proactive.locator('.comp-save').click();await savedP;

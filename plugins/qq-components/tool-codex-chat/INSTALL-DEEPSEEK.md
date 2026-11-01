@@ -21,7 +21,7 @@ AI助手保留自己的 DSH 人格和上下文；Codex 使用独立的专用上�
 当前桥接工程根目录：
 
 ```text
-C:\FixtureHome\Desktop\Projects\DSH BOT\qq-bridge-0.2.1-r1\qq-bridge-0.2.1-r1
+C:/Example/qq-bridge\qq-bridge-0.2.1-r1
 ```
 
 插件目录是工程根目录下：
@@ -48,7 +48,7 @@ plugins/qq-components/tool-codex-chat/
 在 PowerShell 中：
 
 ```powershell
-$pluginDir = 'C:\FixtureHome\Desktop\Projects\DSH BOT\qq-bridge-0.2.1-r1\qq-bridge-0.2.1-r1\plugins\qq-components\tool-codex-chat'
+$pluginDir = 'C:/Example/qq-bridge\qq-bridge-0.2.1-r1\plugins\qq-components\tool-codex-chat'
 Set-Location -LiteralPath $pluginDir
 node install.mjs --dry-run
 node install.mjs
@@ -59,7 +59,7 @@ node install.mjs
 使用其他 profile 时指定其绝对目录：
 
 ```powershell
-node install.mjs --profile 'C:\FixtureHome\.dsh\profiles\desktop'
+node install.mjs --profile 'C:/Example\.dsh\profiles\desktop'
 ```
 
 若未找到 Codex，使用 `--codex-path` 指向本机官方 `codex.exe`。不要下载来源不明的替代程序，也不要把此参数交给聊天工具动态设置。

@@ -11,7 +11,7 @@ export function hasReplyContent({st = {}, selfName = '', selfId = '', roleName =
       || m.quoted?.text || /\[引用/.test(String(m.text || ''))) return true;
     text = text.replace(/\[CQ:at,qq=(\d+)(?:,[^\]]*)?\]/g, (raw, id) => id === String(selfId) ? '' : raw).trim();
     for (const name of names) text = text.replace(new RegExp('^@?' + escapeRegex(name) + '[\\s!?？！，。~～]*$'), '').trim();
-    // QQ may render a group card with an extra prefix (e.g. @DeepSeekAI助手).
+    // QQ may render a group card with an extra prefix (e.g. @AI助手).
     // Require structured self-target evidence and a known name suffix; never
     // discard an arbitrary @token or words following the name.
     if(m.atSelf===true&&(text==='@'||names.some(name=>new RegExp('^@[^@\\s]*'+escapeRegex(name)+'[\\s!?？！，。~～]*$').test(text))))return false;

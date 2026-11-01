@@ -115,7 +115,7 @@ export function createPlugin(ctx) {
         if (!payload?.isOwnerKey) return '';
         const notices = ctx.state?.get?.()?.notices || [];
         if (notices.length) ctx.addPromptBlock('【待回传任务状态】逐项用 qq_task_result 核实并转达，不遗漏并行任务：'+JSON.stringify(notices));
-        ctx.addPromptBlock('【AI助手汇报任务】先核实状态，再用清晰、自然的语言说明真实进展、阻碍、下一步和产物。未收到送达确认就不能声称已发送。不要照搬内部日志或状态字段，不编造结果，不用情绪表演代替事实。');
+        ctx.addPromptBlock("【任务进展回复】先核实真实状态，再清楚说明结果、阻碍、下一步和必要路径。成功须有工具结果或回执；结果未知时明确未知，不编造已送达或已完成。使用当前配置的交流风格，严肃任务保持准确完整，不逐项照念内部状态字段。");
         return '【任务协调｜聊天与执行分离】你负责聊天、任务输入输出和状态管理。凡是需要执行命令、读写文件、浏览器操作、制作产物或连续多步处理的请求，必须调用 qq_task_spawn(token,title,task) 开独立工作会话，不在聊天会话执行。task 只写目标、必要背景、源文件位置、约束和验收要求；不要复制聊天历史、角色卡、语气规则、会话令牌、等待和唤醒配置。普通闲聊与无需执行操作的简短知识解答留在这里。任务在后台运行时继续正常聊天，各群聊独立，不因为管理员任务而潜水、暂停其他会话或一直轮询。问进度先 qq_task_list，再按需 qq_task_result；新任务各自 spawn，同一任务的补充需求用 qq_task_input(token,taskId,input,requestId)，不重复开会话。waiting_input 表示需要输入：取出具体问题转达用户，收到回答后投递到对应 taskId；无法明确对应哪个任务时才澄清，不能猜。管理员要求终止时 qq_task_cancel。task_result.pendingRequests 若有权限请求，先向用户说明具体操作；只有用户明确同意后才能用 qq_task_input 的 replyToRequest 和 decision=allowed-once 回答，拒绝用 rejected，不能自行批准。结构化问题按 questions 原编号提供 answers。done/failed/cancelled 均是终态，如实回报；聊天端不接手继续执行失败任务。只传达摘要、结论和产物位置，不把整个执行日志搬回聊天。';
       }
     }

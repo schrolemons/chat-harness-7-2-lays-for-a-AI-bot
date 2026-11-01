@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseEnabledScripts, parseWatchUrls, parseScriptPaths } from './monitor-config.mjs';
 import { leaseActive } from '../../../scripts/campus-browser-session.mjs';
+const recoveryURL=new URL('./login-recovery.mjs',import.meta.url);recoveryURL.search=new URL(import.meta.url).search;
+const {createLoginRecovery,validateLoginPolicy}=await import(recoveryURL.href);
+const BOOT_ID=process.pid+':'+performance.timeOrigin;
 
 function readJson(file, fallback = {}) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -26,6 +29,8 @@ function parseBbCourses(lines) {
 
 export function createPlugin(ctx) {
   const cfg = ctx.config || {};
+  const recovery=createLoginRecovery(ctx.root,{config:cfg});
+  recovery.beginBoot(BOOT_ID);
   const fast = Math.max(1, Number(cfg.fastCheckMinutes) || 1) * 60000;
   const full = Math.max(1, Number(cfg.fullCheckMinutes) || 30) * 60000;
   const base = readJson(path.join(ctx.root, 'campus-watch.json'));
@@ -37,6 +42,9 @@ export function createPlugin(ctx) {
     (course.pages || []).map(page => [course.name, course.courseId, page.label, page.contentId].join('|'))) : [];
   const bbCourses = parseBbCourses(cfg.bbCoursesConfigured === true ? cfg.bbCourses :
     ((cfg.bbCourses || []).length ? cfg.bbCourses : legacyBbLines));
+  const lectureUrl=cfg.lecturesPortalUrl||base.lectures?.portalUrl;
+  const lectureSites=()=>enabledScripts.has('lectures')&&(cfg.lecturesEnabled===true||cfg.lecturesEnabled!==false&&base.lectures?.enabled===true)&&lectureUrl?[{name:'讲座平台',url:lectureUrl}]:[];
+  const knownSites=()=>(cfg.webWatchEnabled===false?[]:watchUrls).concat(enabledScripts.has('blackboard')?bbCourses.flatMap(course=>(course.pages||[]).map(p=>({name:course.name+'·'+p.label,url:`https://example.invalid/webapps/blackboard/content/listContent.jsp?course_id=${course.courseId}&content_id=${p.contentId}&mode=reset`}))):[],lectureSites());
   ctx.state.set({ watchUrls: watchUrls.map(s => s.name + ' | ' + s.url), bbCourses: legacyBbLines });
 
   ctx.registerTool('campus_watch_status', {
@@ -51,24 +59,42 @@ export function createPlugin(ctx) {
         return { path: script, description, health: cfg.scriptCollabEnabled === false || !scriptPaths.includes(script) ? 'paused' : recent ? (beat.ok === false ? 'red' : beat.mode === 'fallback' ? 'fallback' : 'green') : Number(beat.at)>0 ? 'stale' : 'unknown', checkedAt: beat.at || null, hint: beat.hint || (recent ? '最近有运行心跳' : '尚未接入运行心跳') };
       });
       const bbSites = bbCourses.flatMap(course => (course.pages || []).map(p => {
-        const url = `https://portal.example.invalid/webapps/blackboard/content/listContent.jsp?course_id=${course.courseId}&content_id=${p.contentId}&mode=reset`;
+        const url = `https://example.invalid/webapps/blackboard/content/listContent.jsp?course_id=${course.courseId}&content_id=${p.contentId}&mode=reset`;
         return { name: `${course.name}·${p.label}`, url, health: state.monitorHealth?.[url] || null };
       }));
       const sites = (cfg.webWatchEnabled === false ? [] : watchUrls.map(site => ({ ...site, health: state.monitorHealth?.[site.url] || null })))
-        .concat(enabledScripts.has('blackboard') ? bbSites : []);
-      return { ok: true, sites, scripts, enabledScripts: [...enabledScripts] };
+        .concat(enabledScripts.has('blackboard') ? bbSites : [],lectureSites().map(site=>({...site,health:state.monitorHealth?.[site.url]||null})));
+      return { ok: true, sites:sites.map(site=>{const entry=recovery.get(site.url),health={...(site.health||{})};if(['waiting','paused'].includes(entry.phase))health.auth='red';else if(entry.phase==='needed')health.auth='unknown';else if(entry.recoveredAt>Number(health.checkedAt||0))health.auth='green';return {...site,health,loginRecovery:{...entry,...recovery.policy}};}), scripts, enabledScripts: [...enabledScripts] };
     }
   });
+  // Admin intent travels through the existing admin-only config route, never an AI tool.
+  const validateConfig=config=>{
+    const checked=validateLoginPolicy(config),request=config.manualRetry;
+    if(request?.nonce&&request.nonce!==ctx.state.get().lastRetryNonce){
+      if(typeof request.nonce!=='string'||request.nonce.length>80||!knownSites().some(site=>site.url===request.url))checked.errors.push('只能重新监管已配置的网址');
+    }
+    return {...checked,ok:checked.errors.length===0};
+  };
+  if(cfg.manualRetry?.nonce&&cfg.manualRetry.nonce!==ctx.state.get().lastRetryNonce&&validateConfig(cfg).ok){
+      recovery.retry(cfg.manualRetry.url,knownSites().find(site=>site.url===cfg.manualRetry.url)?.name);ctx.state.set({lastFastAt:0,lastFullAt:0,lastRetryNonce:cfg.manualRetry.nonce});
+      const busy=leaseActive(path.join(ctx.root,'state','login-window.lock'))||leaseActive(path.join(ctx.root,'state','campus-watch.lock'));
+      if(!busy)ctx.capabilities?.spawnCampusWatch?.(['--force','--retry-url',cfg.manualRetry.url]);
+  }
 
-  return { hooks: { onTick({ now = Date.now() } = {}) {
-    const hasWebWork = cfg.webWatchEnabled !== false && watchUrls.length > 0;
+  return { validateConfig,hooks: { onTick({ now = Date.now() } = {}) {
+    if(recovery.pendingNotices().length&&typeof ctx.capabilities?.sendNotificationDetailed==='function'){
+      void (async()=>{for(const item of recovery.pendingNotices()){try{const key='private:'+String(ctx.capabilities.getOwnerQQ?.()||'');const result=await ctx.capabilities.sendNotificationDetailed(key,item.text,{items:[item],operationId:item.id,sourceAt:item.sourceAt,expiresAt:item.expiresAt});recovery.noticeResult(item.id,result?.ok===true,result?.reason||'');}catch(error){recovery.noticeResult(item.id,false,error.message);break;}}})().catch(error=>ctx.warn?.('登录提示处理失败：'+error.message));
+    }
+    const hasWebWork = cfg.webWatchEnabled !== false && watchUrls.some(site=>recovery.canCheck(site.url,now));
     const hasScriptWork = cfg.scriptCollabEnabled !== false && scriptPaths.length > 0;
-    const hasLectureWork = enabledScripts.has('lectures') && (cfg.lecturesEnabled === true || cfg.lecturesEnabled !== false && base.lectures?.enabled === true);
-    const hasLegacyWork = enabledScripts.has('blackboard') && bbCourses.length > 0 || hasLectureWork;
+    const hasLectureWork = enabledScripts.has('lectures') && (cfg.lecturesEnabled === true || cfg.lecturesEnabled !== false && base.lectures?.enabled === true)&&(!lectureUrl||recovery.canCheck(lectureUrl,now));
+    const hasLegacyWork = knownSites().some(site=>!watchUrls.includes(site)&&recovery.canCheck(site.url,now)) || hasLectureWork;
     if (!hasWebWork && !hasScriptWork && !hasLegacyWork) return;
     const spawn = ctx.capabilities?.spawnCampusWatch;
     if (typeof spawn !== 'function') return;
     if (leaseActive(path.join(ctx.root, 'state', 'login-window.lock')) || leaseActive(path.join(ctx.root, 'state', 'campus-watch.lock'))) return;
+    const pending=knownSites().find(site=>{const entry=recovery.get(site.url);return entry.phase==='needed'&&entry.requestedAt&&entry.requestedUrl===site.url;});
+    if(pending){spawn(['--force','--retry-url',pending.url]);return;}
     const s = ctx.state.get(), t = Number(now) || Date.now();
     if (s.lastFastAt && t - s.lastFastAt < fast) return;
     const needFull = !s.lastFullAt || t - s.lastFullAt >= full;

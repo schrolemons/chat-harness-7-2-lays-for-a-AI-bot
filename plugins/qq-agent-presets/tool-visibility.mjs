@@ -1,3 +1,4 @@
+import { isAdminToolName } from '../../src/tools/admin-policy.js';
 import { WHALE_MCP_SERVERS } from '../../src/tools/servers.js';
 const excludedPrefixes = [...WHALE_MCP_SERVERS.filter(server=>server.audience==='admin').map(server=>`mcp__${server.name}__`), 'mcp__playwright__'];
 
@@ -10,7 +11,7 @@ export function installWhaleToolVisibility(ctx) {
     applying=true;
     try {
       for(const tool of ctx.tools.schemas()) {
-        if(!excludedPrefixes.some(prefix=>tool.name.startsWith(prefix)) || restricted.has(tool.name))continue;
+        if(!isAdminToolName(tool.name) && !excludedPrefixes.some(prefix=>tool.name.startsWith(prefix)) || restricted.has(tool.name))continue;
         try{ctx.tools.restrict({deny:[tool.name]});restricted.add(tool.name);}catch{}
       }
     }finally{applying=false;}

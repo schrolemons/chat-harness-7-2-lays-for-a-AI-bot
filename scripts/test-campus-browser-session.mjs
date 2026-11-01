@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { acquireLease, leaseActive, classifySnapshot, ensureSessionBrowser, handoffToHeadless, restoreCookies, selectLoginTargets } from './campus-browser-session.mjs';
+import { acquireLease, leaseActive, classifyNavigation, classifySnapshot, ensureSessionBrowser, handoffToHeadless, restoreCookies, selectLoginTargets } from './campus-browser-session.mjs';
 
 function temporary(t) { const root = fs.mkdtempSync(path.join(os.tmpdir(), 'campus-session-')); t.after(() => fs.rmSync(root, { recursive: true, force: true })); return root; }
 
@@ -120,4 +120,8 @@ test('simultaneous processes recovering one abandoned lease have only one succes
   fs.writeFileSync(start, 'go'); await Promise.all(exits);
   assert.equal(outputs.filter(output => output.includes('acquired')).length, 1);
   assert.equal(leaseActive(file), false);
+});
+
+test('navigation failure and HTTP errors cannot reuse the previous same-host page as successful content',()=>{
+ const snapshot={url:'https://example.test/old',text:'previous content'};assert.equal(classifyNavigation(snapshot,'https://example.test/new',{navigationSucceeded:false}),'unavailable');assert.equal(classifyNavigation(snapshot,'https://example.test/new',{httpStatus:503}),'unavailable');assert.equal(classifyNavigation(snapshot,'https://example.test/new',{httpStatus:401}),'login');assert.equal(classifyNavigation({url:'https://identity.test/login',text:'请登录'},'https://example.test/new',{navigationSucceeded:false}),'login');
 });

@@ -15,10 +15,8 @@ test('each source has a separate block and normal chat excludes display diary an
     persistentMemory: { text: '【重要事实】\n- 用户原话\n【用户画像】\n- 今日比较忙\n【日记】\n展示日记', updatedAt: now },
     affairsContext: { text: '[事务ID] 等报告结果' }, midTermText: '不再读取的旧笔记' });
   const all = blocks.join('\n');
-  assert.equal(blocks.length, 4);
-  assert.match(blocks[1], /当前事务/);
-  assert.match(blocks[2], /每轮复核/);
-  assert.match(blocks[3], /持久化会话记忆/);
+  assert.equal(blocks.length, 5);
+  for(const label of ['当前事务','事务数据规则','每轮复核','持久化会话记忆'])assert.ok(blocks.some(block=>block.includes(label)),label);
   for (const value of ['周末去哪玩', '加班到几点', '本轮说话急', '用户原话', '等报告结果']) assert.ok(all.includes(value));
   for (const value of ['窗口外印象', '展示日记', '不再读取的旧笔记']) assert.ok(!all.includes(value));
 });

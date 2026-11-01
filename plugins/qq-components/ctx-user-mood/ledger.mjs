@@ -15,7 +15,7 @@ function loadLedger(raw) {
 function conversation(ledger, key, policy, now) {
   return ledger.conversations[key] ||= {
     score: policy.initial, baseScore: policy.initial, unansweredStreak: 0, updatedAt: now,
-    lastRecoveryDay: recoveryDay(now), humanAt: null, directedAt: null, userAt: {}, lastUnansweredAt: null
+    lastRecoveryDay: recoveryDay(now, policy), humanAt: null, directedAt: null, userAt: {}, lastUnansweredAt: null
   };
 }
 
@@ -60,11 +60,12 @@ export function createMoodLedger(ctx, getPolicy) {
     for (const wait of due) {
       const entry = conversation(ledger, wait.key, policy, now);
       const before = entry.score;
-      entry.score = clamp(entry.score - UNANSWERED_PENALTY);
+      const penalty = validScore(wait.noReplyPenalty) ? wait.noReplyPenalty : UNANSWERED_PENALTY;
+      entry.score = clamp(entry.score - penalty);
       entry.updatedAt = now;
       wait.settledAt = now;
-      wait.penalty = UNANSWERED_PENALTY;
-      recordHistory(entry, { at: now, source: 'unanswered', before, reason: '会话型主动消息到期未获回应', proactiveId: wait.proactiveId, dueAt: wait.dueAt });
+      wait.penalty = penalty;
+      recordHistory(entry, { at: now, source: 'unanswered', before, noReplyPenalty: penalty, reason: '会话型主动消息到期未获回应', proactiveId: wait.proactiveId, dueAt: wait.dueAt });
       if (wait.lateReplyAt != null) {
         wait.answeredAt = wait.lateReplyAt;
         wait.firstReplyAt ??= wait.lateReplyAt;
@@ -190,7 +191,7 @@ export function createMoodLedger(ctx, getPolicy) {
         const replies = facts.filter(fact => fact.at >= sentAt && (key.startsWith('private:') || fact.directedAtBot === true || (target != null && fact.userId === target)));
         const answeredAt = replies.find(fact => fact.at < dueAt)?.at ?? null;
         const lateReplyAt = answeredAt == null ? replies.find(fact => fact.at >= dueAt)?.at ?? null : null;
-        const wait = { key, proactiveId: String(proactiveId), wakeReason, targetUserId: target, targetFromAt: target == null ? null : sentAt, deliveryIds: [String(deliveryId)], sentAt, dueAt, answeredAt, firstReplyAt: answeredAt, settledAt: null, ...(lateReplyAt == null ? {} : { lateReplyAt }) };
+        const wait = { key, proactiveId: String(proactiveId), wakeReason, targetUserId: target, targetFromAt: target == null ? null : sentAt, deliveryIds: [String(deliveryId)], sentAt, dueAt, noReplyPenalty: policy.noReplyPenalty, answeredAt, firstReplyAt: answeredAt, settledAt: null, ...(lateReplyAt == null ? {} : { lateReplyAt }) };
         ledger.waits[waitId] = wait;
         const knownAt = facts.reduce((latest, fact) => Math.max(latest, fact.at), Math.max(sentAt, entry.updatedAt ?? sentAt));
         settleDue(ledger, policy, knownAt);

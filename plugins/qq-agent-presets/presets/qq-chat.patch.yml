@@ -8,8 +8,8 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: qq-chat
-        name: QQ 聊天角色
-        description: 桥接到 QQ 群的聊天智能体。性格/说话方式在 agent.cordis.yml 的 persona 段自定义。
+        name: AI助手一代聊天
+        description: 控制一代聊天与仿真协议：文本自动转发、空格分条和静默标记。
         order: 10
         plugins:
           - id: persona

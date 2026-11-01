@@ -1,4 +1,5 @@
 import {repairPromptUnicode} from './prompt-unicode.js';
+import {createTitledSession} from './session-titles.js';
 // Node 环境的 DSH Web API 客户端。
 // 兼容 DSH 0.1.2-alpha.1 引入、并在 0.1.5-rc.1 上复核通过的协议：
 // 1. RPC 方法从点号改为斜杠（host.describe -> host/describe 等）；
@@ -324,6 +325,8 @@ export class NodeApiClient extends AbstractApiClient {
     // 期望 follow 的会话集合：**跨重连保留**。DSH 重启或 WS 中断后必须重放，
     // 否则已有会话再也收不到 session 事件（turn/end 丢失 → QQ 上永远没有回复，且无报错）。
     this._desiredFollows = new Set();
+    const createSession=this.sessions.create;
+    this.sessions.create=(payload,signal)=>createTitledSession(this,createSession,payload,signal);
   }
 
   /** Node 没有 location；把 base 固定为配置的 DSH 地址（回环地址天然通过 /api 信任栅栏）。 */

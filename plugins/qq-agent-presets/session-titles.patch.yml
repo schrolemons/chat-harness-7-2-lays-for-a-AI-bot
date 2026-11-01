@@ -1,0 +1,3 @@
+- insert:
+    - id: whale-session-title-fallback
+      name: qq-agent-presets/session-title-fallback.mjs

@@ -28,7 +28,7 @@ async function persistPageConfig(btn) {
         if (sync.ok === false) throw Error(sync.error || '记忆写入上限同步失败');
       }
       if (slots.length) msg.textContent = '✅ 页面设置与补充参数已保存';
-    } catch (error) { msg.textContent = '部分参数未保存：' + error.message; msg.className = 'meta err'; }
+    } catch (error) { msg.textContent = '部分参数未保存：' + error.message; msg.classList.remove('ok'); msg.classList.add('meta','err'); }
     // Keep unsaved values on other pages; saving this page must not reset their drafts.
   }
 }

@@ -8,15 +8,16 @@ const DEFINITIONS = {
   'qq-chat': {label:'AI助手一代聊天',group:'按模式自动使用',description:'一代仿真聊天预设，由桥接按运行模式选择。'},
   'qq-chat-v2': {label:'AI助手二代仿真',group:'按模式自动使用',description:'二代仿真专用，自主读消息、用工具发言和等待；由桥接按模式选择。'},
   'qq-task-worker': {label:'独立任务执行',group:'后台专用',description:'AI助手处理委派任务时创建的独立工作会话，不是日常聊天入口。'},
-  'qq-learning': {label:'知识学习与核实',group:'后台专用',description:'后台学习、核实公开知识；不接入聊天人格、QQ 发送或本机执行。'},
+  'qq-learning': {label:"后台学习（黑话／词条／绰号）",group:'后台专用',description:"黑话、词条和绰号学习共用 qq-learning 预设及同一个后台学习会话，串行执行各自任务；各组件的素材、审核规则与数据独立管理。仅允许后台抽取、分类和公开资料检索，不发送 QQ 或执行本机命令。"},
   'campus-summary': {label:'网页更新整理',group:'后台专用',description:'整理监控网页差异；无工具，不发送消息，不读取聊天历史。'}
 };
 export function presetInfo(preset) {
   const p=typeof preset==='string'?{id:preset}:preset;
-  return {...p,...(DEFINITIONS[p.id]||{label:p.name||'自定义预设',group:'自定义',description:p.description||'用途由此自定义预设声明；请核对其工具与权限。'})};
+  const fallback=DEFINITIONS[p.id]||{label:'自定义预设',group:'自定义',description:'用途由此自定义预设声明。'};
+  return {...p,...fallback,label:p.name||fallback.label,description:p.description||fallback.description};
 }
 export function presetChoices(presets,showAll=false,selected='') {
   const unique=new Map(presets.map(p=>[p.id,presetInfo(p)]));
   if(selected&&!unique.has(selected))unique.set(selected,{id:selected,label:'当前配置（DSH 未列出）',group:'当前设置',description:'DSH 暂未列出这个预设，请先核对是否已安装。'});
-  return [...unique.values()].filter(p=>showAll||p.group==='常用'||p.group==='自定义'||p.id===selected);
+  return [...unique.values()];
 }

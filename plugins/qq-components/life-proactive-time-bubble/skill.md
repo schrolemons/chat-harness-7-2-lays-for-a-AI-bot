@@ -1,7 +1,9 @@
 # skill：时间冒泡（time-bubble）
 
 ## 它解决什么
-桥接按分会话时段安排一次「主动开口」。AI助手可在本人私聊明确分享或修改作息/饮食时间后，通过 `time_bubble_manage` 查看并调整该 session 的计划。
+桥接按分会话时段安排一次「主动开口」。AI助手可在本人私聊明确分享作息，或跨多天真实主动来信形成可靠活跃窗口后，通过 `time_bubble_manage` 查看并调整该 session 的计划。
+
+观察模式及日期范围、原文来源、例外和不确定性先写入本人档案 `chat_activity_pattern` 字符串扩展字段；不把观察当作本人确认的起床/睡眠时间，不以单晚熬夜、测试或被动应答建模。缺少完整原文先查回，只有本人明确确认才将作息事实写入 routine_food。先读计划及锁定状态，只改本会话未锁定项，仍受每日上限、冷却和免打扰约束；不为补样本增加主动联系。详细提取规则与冒泡简要指导共用 activity-pattern-policy.mjs，避免两份长规则重复注入。
 
 ## 什么时候被调用
 `beforePrompt` 且 `reason === "timeBubble"`：桥接已经把 `pendingTimeBubble = { label, hint }` 准备好。

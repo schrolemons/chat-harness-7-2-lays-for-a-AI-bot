@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+import {startConsoleFixture} from './console-ui-fixture.mjs';
+const fixture=await startConsoleFixture();
+const browser=await chromium.launch({headless:true,channel:'msedge'});
+try {
+  const page=await browser.newPage();
+  const errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/api/presets',route=>route.fulfill({json:{presets:[{id:'cordis',name:'DSH 插件与配置开发',isDefault:true},{id:'custom-powerful',name:'自建强力助手',description:'用户自己的预设'},{id:'qq-learning',name:'知识与黑话学习'}]}}));
+  await page.goto(fixture.url+'/#environment-admin');
+  await page.waitForFunction(()=>document.querySelector('#v2AdminDevPreset option[value="custom-powerful"]'));
+  assert.equal(await page.locator('#closedPreset,#showAllPresets,#slangLearnerPreset,#simPromptPreset').count(),0);
+  assert.equal(await page.locator('#v2AdminDevPreset option').count(),4);
+  assert.match(await page.locator('#envAdminPresetExample').textContent(),/cordis/);
+  await page.locator('#v2AdminDevPreset').selectOption('custom-powerful');
+  await page.locator('#v2AdminDevEnabled').check();
+  await page.locator('#envAdminControls .v2-save').click();
+  await page.waitForFunction(()=>document.querySelector('#envAdminControls .v2-save-msg').textContent.includes('保存'));
+  assert.equal(fixture.state.v2.adminDev.preset,'custom-powerful');
+  assert.equal(fixture.state.v2.adminDev.enabled,true);
+  await page.locator('#v2AdminDevPreset').selectOption('');
+  await page.locator('#envAdminControls .v2-save').click();
+  await page.waitForTimeout(200);
+  assert.equal(fixture.state.v2.adminDev.preset,'');
+  fixture.state.mode='reserved';
+  await page.reload();
+  await page.waitForFunction(()=>document.getElementById('simPromptMode').textContent.includes('一代'));
+  await page.waitForFunction(()=>document.getElementById('simPromptText').value.includes('一代'));
+  fixture.state.mode='reserved2';
+  await page.reload();
+  await page.waitForFunction(()=>document.getElementById('simPromptMode').textContent.includes('二代'));
+  await page.waitForFunction(()=>document.getElementById('simPromptText').value.includes('二代'));
+  assert.deepEqual(errors,[]);
+  console.log('PASS full custom dropdown, unified admin save/default, hidden dedicated bindings, prompt follows v1/v2, zero page errors');
+} finally {await browser.close();await fixture.close();}

@@ -20,7 +20,7 @@ test('every static local module import resolves inside the complete distribution
  assert.deepEqual(missing,[]);
 });
 test('all packaged components load, including general reference and Codex Peer support',async()=>{
- const host=createPluginHost({root,capabilities:{}});try{const summary=await host.loadAll();assert.ok(summary.count>=40);assert.deepEqual(summary.warnings,[]);assert.ok(host.hasService('personal-core','status'));assert.ok(!host.hasService('schnie','status'));assert.ok(host.hasService('admin-dev','line'));}finally{await host.dispose();}
+ const host=createPluginHost({root,capabilities:{}});try{const summary=await host.loadAll();assert.ok(summary.count>=40);assert.deepEqual(summary.warnings,[]);assert.ok(host.hasService('personal-core','status'));assert.ok(!host.hasService('reference-data','status'));assert.ok(host.hasService('admin-dev','line'));}finally{await host.dispose();}
 });
 test('public S ships unmounted and only the separate fictional example is readable',()=>{
  const dir=path.join(root,'plugins/qq-components/personal-core'),config=JSON.parse(fs.readFileSync(path.join(dir,'plugin.json'))).config;
@@ -40,10 +40,10 @@ test('empty local configuration and two installations preserve a separate DSH pr
   const configured=configure({owner:'10001',snowlumaDir:snow},fakeRoot);assert.equal(configured.configured,true);const cfg=JSON.parse(fs.readFileSync(path.join(fakeRoot,'config.json')));assert.equal(cfg.allowAllWhenEmpty,false);assert.deepEqual(cfg.allow.private,['10001']);assert.equal(cfg.snowluma.accessToken,'');
   fs.mkdirSync(profile,{recursive:true});fs.writeFileSync(path.join(profile,'package.json'),JSON.stringify({name:'test-profile',private:true,dsh:{profile:{bundles:[]}}}));fs.writeFileSync(path.join(profile,'cordis.patch.yml'),'- insert:\n    - id: keep-existing\n      name: example-existing\n');
   for(let i=0;i<2;i++){const result=spawnSync(process.execPath,['scripts/install.mjs','--profile','desktop'],{cwd:root,encoding:'utf8',windowsHide:true,env:{...process.env,DSH_HOME:home}});assert.equal(result.status,0,result.stderr||result.stdout);}
-  const doc=yaml.load(fs.readFileSync(path.join(profile,'cordis.patch.yml'),'utf8')),entries=doc.flatMap(row=>row.insert||[]),ids=entries.map(e=>e.id);
-  assert.ok(ids.includes('keep-existing'));for(const id of ['qq-launcher','mcp-snowluma','mcp-snowluma-host','mcp-web-search-safe','mcp-playwright','mcp-bridge-health','mcp-personal-core','preset-campus-summary'])assert.equal(ids.filter(value=>value===id).length,1,id);assert(!ids.includes('mcp-schnie-private-phi'));
+  const doc=yaml.load(fs.readFileSync(path.join(profile,'cordis.patch.yml'),'utf8')),bundled=yaml.load(fs.readFileSync(path.join(root,'cordis.patch.yml'),'utf8')),entries=[...doc,...bundled].flatMap(row=>row.insert||[]),ids=entries.map(e=>e.id);
+  assert.ok(ids.includes('keep-existing'));for(const id of ['qq-launcher','mcp-snowluma','mcp-snowluma-host','mcp-web-search-safe','mcp-playwright','mcp-bridge-health','mcp-personal-core','preset-campus-summary'])assert.equal(ids.filter(value=>value===id).length,1,id);assert(!ids.includes('mcp-reference-data-private-phi'));
   for(const e of entries){for(const arg of e.config?.args||[])if(path.isAbsolute(arg)&&/\.(?:mjs|js)$/.test(arg))assert.ok(fs.existsSync(arg),e.id+' missing entry');}
-  for(const name of ['qq-agent-presets','qq-mode-console','qq-launcher'])assert.ok(fs.realpathSync(path.join(profile,'node_modules',name)).startsWith(root));
+  for(const name of ['qq-bridge'])assert.ok(fs.realpathSync(path.join(profile,'node_modules',name)).startsWith(root));
   const pkg=JSON.parse(fs.readFileSync(path.join(profile,'package.json')));assert.equal(new Set(pkg.dsh.profile.bundles).size,pkg.dsh.profile.bundles.length);
  }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });

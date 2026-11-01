@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createPlugin } from '../plugins/qq-components/life-campus-watch/index.js';
+import {createLoginRecovery} from '../plugins/qq-components/life-campus-watch/login-recovery.mjs';
 import { acquireLease } from './campus-browser-session.mjs';
 
 function setup(t, config = {}) {
@@ -35,4 +36,9 @@ test('web-only monitoring does not spawn minute browser checks between full chec
 test('active monitor lease suppresses overlap even after the former lease TTL', t => {
   const { root, runs, plugin } = setup(t); const file = path.join(root, 'state', 'campus-watch.lock'); const release = acquireLease(file);
   fs.utimesSync(file, new Date(0), new Date(0)); plugin.hooks.onTick({ now: 1800000000000 }); assert.equal(runs.length, 0); release();
+});
+
+test('a queued manual retry bypasses the normal interval and checks only its selected URL after the lease clears',t=>{
+ const {root,runs,plugin}=setup(t,{fullCheckMinutes:30});const now=1800000000000;plugin.hooks.onTick({now});
+ const release=acquireLease(path.join(root,'state','campus-watch.lock'));createLoginRecovery(root).retry('https://example.invalid/','示例');plugin.hooks.onTick({now:now+1000});assert.equal(runs.length,1);release();plugin.hooks.onTick({now:now+2000});assert.deepEqual(runs[1],['--force','--retry-url','https://example.invalid/']);
 });

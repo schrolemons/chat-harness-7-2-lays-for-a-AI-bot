@@ -1,183 +1,83 @@
-# chat harness:7+2 lays for a AI bot
+# QQ Bridge for DeepSeek Harness
 
-一个基于 **DeepSeek Harness（DSH）+ SnowLuma / OneBot + 可插拔组件**的聊天机器人框架。提供AI助手人设、QQ 自主收发、会话记忆机制、工具与任务协作、日程提醒、网页变化 AI 整理、运维控制台，以及可选的 Codex Peer。
+将 QQ 私聊、群聊接入 DeepSeek Harness（DSH）的可安装组合插件。包含受控工具、上下文、记忆与人物档案、日程、主动消息、媒体和本地管理控制台。代码基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。
 
-本仓库发布的是可配置的软件机制。**不附带原作者的记忆、聊天、人物档案、黑话表、知识原稿、课程自动化、监控网址、日程、账号、Cookie 或 Codex 会话。** 使用者配置自己的模型服务、QQ、工具和资料后，可以复现这些功能；模型回答、账号权限、第三方版本和私人资料不同，不保证逐字相同的聊天表现。
+## 安装前准备
 
-基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，保留其 MIT 许可和署名。DSH、SnowLuma、Codex 分别安装、分别遵循各自的使用条件；本仓库不重新分发这些项目的程序、原生组件或登录状态。
+必需的软件：
 
-## 7+2 模型
+| 软件 | 用途 | 安装说明 |
+| --- | --- | --- |
+| DeepSeek Harness 桌面版 | 模型、工具与会话宿主 | 安装并启动一次，完成模型服务配置。 |
+| Node.js 24 LTS 或更新版本 | 桥接与工具进程 | 需要 `node`、`npm` 可用。 |
+| pnpm（使用 DSH CLI 安装时） | DSH 插件包管理 | DSH CLI 调用本机 `pnpm`；若桌面安装器未提供它，需单独安装并加入 PATH。 |
+| QQ 桌面客户端 | 实际聊天账号 | 自行安装并登录要作为 bot 的账号。 |
+| SnowLuma 完整发行包 | QQ 与本地 OneBot 通道 | 本插件不包含 QQ 或 SnowLuma；按其上游说明安装并配置本地通道。 |
 
-“7”是聊天 agent 的七个工程维度；“+2”是 S · 私人资料介入层与横切集成面。它们共同形成管理视图，**不是九个必须依次执行的流水线步骤**。现有运行时的层字段是七层加 S，注册中心没有另占一个执行层。
+首次接入时，在 DSH 的桥接启动面板选择 **bot QQ**，设置管理员及允许的私聊/群聊，再点击启动。机器人QQ与管理员QQ是不同字段，不能相互替代。默认不向所有账号开放。SnowLuma 的路径、端点和本机凭据可由已有发现机制读取；发现失败时在控制台填写，无需编辑源码。
 
-| 维度 | 负责什么 | 仓库中的实现例子 |
-|---|---|---|
-| C · Context / Memory | 人设、本轮上下文、短中长期记忆、人物信息 | `ctx-chat-style`、`ctx-role-card`、`ctx-memory-*` |
-| T · Tooling | MCP、工具定义、参数和结果协议 | QQ MCP、`tool-registry`、`tool-codex-chat` |
-| E · Execution | 浏览器、工作目录、执行环境和隔离 | `exec-browser-manager`、`exec-sandbox`、管理员开发模式 |
-| L · Lifecycle | 唤醒、回复等待、日程、免打扰、任务恢复 | `life-scheduler`、`life-schedule-reminder`、`life-task-session` |
-| O · Observability | 连接状态、日志、成本、诊断和恢复 | `obs-bridge-health`、`obs-cost-policy` |
-| V · Verification | 单元测试、协议检查、回归 | `eval-regression`、`scripts/test-*.mjs` |
-| G · Governance | QQ 白名单、会话令牌、工具守卫、出站检查 | `gov-policy`、受限 QQ 预设和发送闸门 |
-| + S · 私人资料介入层 | 按需读取使用者挂载的本地资料包 | `personal-core`；默认不挂载资料，仓库只含通用接口、格式规范与虚构示例 |
-| + Integration · 横切注册 | 把使用者另装的组件映射到各层，统一配置与启停 | `integration-registry`，不是第九个执行层 |
+## 推荐安装：一个 DSH 插件包
 
-分层是一种本项目采用的工程组织方法，不把它宣称为学术界统一标准。人格行为属于 C 层；权限检查和真实动作不会只依赖人设文字。
-
-## 组件与功能概览
-
-当前公开版本包含 **52 个组件清单**。组件可以按层独立配置和启停；列在这里表示仓库提供相应实现，不代表每个组件都已启用，也不包含使用者自己的账号、记忆、密钥或外部服务配置。
-
-| 层 | 主要组件 | 提供的功能 |
-|---|---|---|
-| **C · 上下文与记忆** | `ctx-chat-style`、`ctx-chat-reply-shape`、`ctx-context-*`、`ctx-role-card` | AI助手说话风格、回复条数节奏、心情与表情选择、会话身份和时间感、唤醒与收尾提示，以及角色卡兼容处理。 |
-| | `ctx-memory-*`、`ctx-memory-profile-store`、`ctx-chat-topic-drive`、`ctx-interest-terms`、`ctx-chat-slang`、`ctx-member-alias`、`ctx-user-mood` | 会话轻/中/长期记忆、按 QQ 号管理的人物档案、私聊追问、共同兴趣词条与黑话学习、成员别名及心情记录。群聊按实际说话对象查询档案，不自动注入成员隐私。 |
-| **T · 工具与协议** | QQ MCP、`tool-registry`、`tool-games`、`tool-bilibili`、`tool-codex-chat`、`tool-injection-lab`、`tool-user-checking` | 受会话权限约束的 QQ 收发、引用回复、图片、日程和状态接口；小游戏、公开视频搜索/字幕/抽帧、网页搜索、提示词注入防护、受限的本机状态/桌面便签查询，以及可选的 Codex 专用会话。工具注册表提供能力与权限说明。 |
-| **E · 环境与执行** | `exec-browser-manager`、`exec-sandbox`、`exec-image-generation`、`gov-admin-dev-mode` | 浏览器监控与可见授权操作、受限执行后端、图片生成/编辑与 QQ 发图、管理员本机开发能力。浏览器登录、开发工具和生图服务需由使用者配置。 |
-| **L · 生命周期** | `life-scheduler`、`life-schedule-reminder`、`life-user-availability`、`life-message-ack`、`life-task-session`、`life-relay-message`、`life-campus-watch`、`life-proactive-*` | 统一定时调度和发送凭据、日程提醒、语义免打扰与稍后联系、用户明确回来时撤销对应联系、未回复补话、任务委派、传话、通用网页监控、开机问候与时间冒泡。 |
-| **O · 观测与运维** | `obs-*`、`life-token-budget`、`tool-deepseek-balance`、`life-daily-worklog` | 桥接/组件健康诊断、模型成本策略、额度保护、管理员专用余额只读查询、自我复盘和可选运维日报。 |
-| **G · 治理** | `gov-policy`、`plugins/qq-agent-presets/` 中的预设守卫与出站检查 | 会话白名单、工具权限、令牌校验、外部内容隔离、受限 QQ 预设与发送前检查。管理员本机能力和普通群聊工具面分开。 |
-| **V · 验证** | `eval-regression`、`scripts/test-*.mjs`、`human` | 将对话缺陷整理成回归用例，检查协议、权限和组件行为，并为关键操作保留人工确认边界。 |
-| **S · 私人资料** | `personal-core` | 可选的本地资料包读取机制；原文、目录和卡片由使用者本地维护，通过 `core_status`、`core_topics`、`core_read` 按需访问。 |
-| **横切集成** | `integration-registry`、`env-bridge` | 注册、配置和启停跨层组件；桥接负责 QQ/DSH 连接、会话状态、调度入口、鉴权和控制台，不承载各组件的业务提示词。 |
-
-这些组件组合后可支持群聊与私聊、按消息引用回复、角色和记忆上下文、定时提醒、网页监控、媒体处理、管理员工具及运行诊断。具体能力受 DSH、SnowLuma/OneBot、模型服务和本机配置影响；安装包不会替使用者登录外部服务或携带个人数据。
-
-## 技术架构
-
-开发前请先读 [工作树、运行目录与 DSH Desktop 修改契约](docs/WORKSPACE_AND_DSH_DESKTOP.md)。Git 开发树、已部署目录与 DSH profile 是不同对象；本项目提供只读的 `scripts/source-workspace.mjs`，用文件哈希检查同步基线，避免旧副本覆盖运行优化。本机路径映射可参考 `workspace.example.json`，保存在被忽略的 `workspace.local.json` 中。
-
-```mermaid
-flowchart LR
-  Q[QQ 用户] <--> S[SnowLuma / OneBot]
-  S <--> B[桥接内核：鉴权、收发、会话和连接]
-  B <--> P[7 层组件宿主 + S 思维模式-介入层 + 集成注册]
-  B <--> D[DSH 预设、模型和回合]
-  D <--> M[本仓库 MCP 工具]
-  M --> B
-  M <--> C[可选 Codex App Server 专用会话]
-  U[本地管理控制台和桌面启动按钮] <--> B
-```
-
-收到消息后，桥接检查会话白名单、记录本轮消息，由组件决定唤醒和上下文。DSH 使用对应预设生成回复，QQ 动作通过受控 MCP 回到桥接，再交给 OneBot。群聊预设没有管理员本地工具；管理员开发能力默认关闭，需由安装者自己开启。
-
-日程和通知使用持久状态与发送凭据，避免重启后重复投递；已发生的日程默认隐藏，重复日程显示下一期。网页监控先提取正文并计算差异，再批量调用模型生成要点；菜单噪声不提醒，模型不可用时使用规则摘要。所有实际状态都在本机生成。
-
-## 对话与媒体能力
-
-- **未回复补话（L 层）**：私聊等待、私聊抱歉、群聊等待、群聊抱歉四组分别启停、设置激活延迟，并维护各自固定话术表。仅最新一条已发送且被模型看到的入站消息可以触发；新消息重置计时，每条消息最多激活一组，可在控制台的 L 层配置。
-- **已读/已回复双时间戳**：模型实际看到消息时记录 `seenAt`，成功回复后记录 `repliedAt`。状态持久化并在重启时恢复；已完整处理的消息不重刷，已看未回和未见消息继续保留待处理。
-- **按 QQ 号保存的人物档案**：每人一份可扩展 JSON，包含作息饮食、爱好、人际关系和口头禅四个默认字符串字段。私聊只自动注入本人档案；群聊按本轮明确对象调用 `profile_get` 查询，不自动注入成员卡。控制台和经授权的工具可管理档案。
-- **语义时间约定**：`qq_availability` 登记免打扰与稍后联系；用户明确提前回来时，模型用 `action="returned"` 和本次 `planId` 撤销联系。系统不按固定分钟数或单条消息自动判定用户回来，主动唤醒继续使用已有的限频规则。
-- **共同兴趣词条（C 层）**：按群聊批次发现可公开查证的兴趣知识，候选需管理员确认后才进入提示词；查询与提交受会话权限和控制台开关约束，研究不把私人资料送去联网搜索。
-- **Bilibili 视频工具**：支持匿名只读搜索、视频元数据、公开字幕、受控 FFmpeg 抽帧和视频分析。无需登录；不提供点赞、评论、关注或发送弹幕等写操作。
-- **图片工具**：支持图像生成、当前会话图片暂存与查看、受控导入、发送和白名单传图。图片以会话绑定编号引用；本机路径导入限管理员私聊，运行图片与凭据留在本机。
-
-E 层还可接入自行配置的图片生成服务：bot 可把当前会话收到的原图和提示词提交给生图模型，使用图片编号把结果发到原 QQ 群或私聊。每日总额度、分会话额度、输入长度和图片大小均可调整；图片和密钥只留在本机。
-
-## 适用环境与边界
-
-- 主要支持 Windows，Node.js **24+**；安装过程和路径处理提供自动检查。其他系统可复用协议和组件，但 Windows 桌面按钮、QQ 进程启动等路径需要对应平台适配。
-- 安装并初始化当前 [DSH 官方项目](https://github.com/deepseek-ai/deepseek-harness)，能够在 DSH 中完成一次普通对话。兼容目标是 Cookie 鉴权、斜杠 RPC 和 `remote.mux` 协议代次；升级后请运行诊断。
-- 从 [SnowLuma 官方 Releases](https://github.com/SnowLuma/SnowLuma/releases) 下载完整发行包，自行接入本机 QQ，并在其管理界面开启本地 OneBot HTTP / WebSocket。具体设置以[上游说明](https://github.com/SnowLuma/SnowLuma/blob/main/README.md)为准。
-- Codex Peer 是可选项。需要在自己的电脑安装官方 Codex 并完成自己的登录；工具和模型能力取决于自己的账号与运行时。实现基于 [Codex App Server 文档](https://developers.openai.com/codex/app-server)。
-
-## 从零安装
-
-### 1. 准备外部软件
-
-先启动 DSH、完成初始化与模型登录，再打开 QQ 并登录自己的机器人账号。运行 SnowLuma 完整包的启动器，按上游引导接入该 QQ 进程。
-
-在 SnowLuma 中配置：HTTP `127.0.0.1:3000`、WebSocket `127.0.0.1:3001`。若你使用其他端口，在自己的 `config.json` 中同步修改。OneBot 令牌由你在本地配置，不要把它放进公开仓库或聊天记录。
-
-### 2. 下载并安装依赖
+从本项目 [Releases](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases) 下载 `qq-bridge-0.3.0.tgz`，在 DSH 的插件管理器安装本地包；也可使用 DSH CLI：
 
 ```powershell
-git clone https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot.git
-Set-Location chat-harness-7-2-lays-for-a-AI-bot
+dsh plugin --profile desktop add C:/Downloads/qq-bridge-0.3.0.tgz
+```
+
+按 DSH 的提示应用插件。依赖由插件管理器安装；若提示是否允许运行本包安装脚本，请先查看脚本范围：只修补 SnowLuma SDK 的模块导入后缀，不登录账号、不启动或重启 QQ/DSH。
+
+根组合包会一起注册 **qq-chat、qq-chat-v2、qq-admin、qq-task-worker、qq-learning、campus-summary** 六套预设，以及模式设置、启动面板和必要的 MCP 工具。预设源不需要再手动复制；禁用整个组合包时，这批声明随组合包一起卸载。管理员预设仅由已授权的管理员会话使用，普通群聊不会因此获得本机权限。
+
+## 从 Git 克隆部署或更新
+
+```powershell
 npm ci
-npm run configure
-```
-
-配置向导只询问自己的管理员 QQ 和 SnowLuma 解压目录。它从无账号模板生成本地 `config.json`，只允许管理员私聊，默认不开群、不允许空白名单放行。需要令牌时，可以在运行向导前设置本机环境变量 `SNOWLUMA_ACCESS_TOKEN`；向导不会打印令牌。
-
-DSH 地址通常是动态端口，启动器会探测已运行的 DSH；也可以在向导中用 `--dsh-url` 指定自己看到的本地地址。
-
-### 3. 安装 DSH 配置和完整 MCP
-
-```powershell
 npm run setup -- --profile desktop
 npm run doctor
 ```
 
-Web profile 使用 `--profile web`。非默认 DSH 根目录使用环境变量 `DSH_HOME`。安装器备份现有配置、保留其他插件与会话；重复运行不会重复添加本仓库条目。不要删除 `~/.dsh`、`state/` 或手工复制别人的目录来“修预设”。
+安装器只向指定 DSH profile 注册一个 `qq-bridge` 组合包；更新旧安装时去掉本项目原来重复注册的预设/MCP条目，保留其他插件。不会重启服务、重建会话或覆盖当前配置。应用完成后，在 DSH 启动面板设置账号与白名单并启动；也可 `npm start` 单独启动桥接。
 
-安装后会有四个 QQ 预设（`qq-chat`、`qq-chat-v2`、`qq-chat-dev`、`qq-task-worker`），以及后台网页整理用的 `campus-summary`。本地 QQ MCP、只读状态 MCP、搜索 MCP、浏览器 MCP、私人资料包 MCP 与标题栏启动器均有对应源文件。详情见[文件与工具清单](docs/COMPONENTS.md)。
+`npm run configure` 是可选的命令行配置向导，适用于启动面板不可用的情况。`npm run doctor` 检查依赖、配置和插件链接；`node scripts/bridge-health.mjs --json` 只读检查实际连接。
 
-S 层资料包的整理、校验与挂载方法见[资料接口说明](docs/personal-core/说明.md)。可先运行 `node scripts/personal-core.mjs validate examples/personal-core/minimal` 校验虚构示例，再在 Console 的 S 层选择自己的资料目录。公开版本默认不挂载资料；`private-libraries/` 与 `private-data/` 已加入 Git 忽略规则。资料作为读取内容提供，不赋予其系统指令权限。
+私人版另包含业务数据、原始 DSH 会话和引用附件的凭据脱敏快照。新机器恢复方法见 [私人迁移说明](docs/guides/PRIVATE_MIGRATION.md)；公开版没有这些数据。登录凭据始终在目标机器重新配置。
 
-如果 DSH 页面没有立即出现按钮或工具，先刷新页面；必要时保存工作后重开 DSH。DSH 窗口“编辑”右侧的AI助手按钮：红灯可启动，黄灯表示启动中，绿灯表示检查就绪；绿灯时点击打开控制台。
+## 上下文与消息处理
 
-若希望按钮连 QQ 程序也自动拉起，安装时加 `--qq-exe "自己的 QQ.exe 绝对路径"`。否则请先手动启动并登录 QQ。桥接与 SnowLuma 的后续后台启动隐藏命令窗口。
+上下文按系统规则、稳定用户资料、聊天与工具历史、本次待处理来信、当前动态资料组织。历史保留真实工具调用/返回配对；当前心情、日程和临时画像集中更新，不反复携带旧版本。C36负责收件状态索引。
 
-### 4. 启动并试用
+- QQ 消息以真实收件 seq 和 messageId 区分；昵称相同或前缀相同不合并不同QQ。一个具体绰号只确认到一个QQ。
+- 完整正文与引用必须已交给当前处理回合，才允许普通聊天发送；截断、缺失引用和新来信需要先补读。
+- 记忆候选不替代聊天输入；记忆整理回合在统一发送入口禁止模型发QQ。
+- 已读与已回复采用双时间戳。发送成功与模型自行描述“已经发送”分开核验；未知发送结果不自动重发。
+- 等新消息、等对方说完和无人回复收尾分别配置；群聊限频、预算与主动发送概率仍会共同约束触发。
 
-```powershell
-npm start
-```
+管理控制台默认在 `http://127.0.0.1:3100/`，令牌仅在本机生成。C/T/E/L/O/V/G/S 各层分别负责上下文、工具、环境、会话生命周期、运行观察、验证、治理和按需私人资料。
 
-管理控制台在 `http://127.0.0.1:3100`，本机令牌首次启动时生成在 `state/console-token`；按启动日志给出的方式打开。先测试管理员私聊，再通过控制台逐个添加允许的群或私聊。不要为了省配置开启全开放。
+## 可选能力与额外依赖
 
-O 层「令牌与花费」支持为每个 QQ 会话单独设置冷漠阈值、花费上限、低频回复间隔，也能设置统一花费上限；恢复消息分别配置私聊、群聊背景和群聊真正 @ 的三个窗口（均为 1–30 条，默认 5 条）。统一金额包含 QQ 会话与后台任务的模型调用，可能高于 QQ 会话行的合计。金额按人民币计；同一轮内的计费步骤先合并，再按最后一步时间归入每天北京时间 22:00 开始的周期。达到硬上限后停止新的模型调用和普通出站；私聊每累计 5 条消息、群聊被 @ 时随机发送可在控制台分别编辑的机械词条。恢复后每个会话只补处理窗口内最近消息，最多每分钟启动一个会话的补处理；群聊窗口没有真正 @ 时不补发。`GET /api/tokens/budgets` 读取统计与设置，`POST /api/tokens/budgets` 保存会话设置，`POST /api/tokens/budgets/global` 保存统一上限，`POST /api/tokens/budgets/recovery-windows` 保存三个恢复窗口，`GET/POST /api/tokens/budgets/replies` 管理两套词条；这些接口只接受本机控制台管理员令牌。旧累计账本若缺逐次时间戳，页面会提示该周期统计不完整。已开始的模型步骤可能完成并计费，上限不能保证账单绝不越过阈值。
+| 能力 | 额外准备 |
+| --- | --- |
+| Codex 专用咨询会话 | 安装并登录自己的 Codex，再用 `npm run setup -- --with-codex` 配置；默认不复制任何人的会话。 |
+| 网页登录与 DOM 操作 | 本机 Chrome/Edge 或对应 Playwright 浏览器；管理员开发能力默认关闭。浏览器登录需在专用配置中自行完成。 |
+| 视频抽帧、音频转换 | FFmpeg；未安装时对应工具明确报告缺依赖，普通聊天不受影响。 |
+| 图片生成 | 自行配置兼容的服务地址、模型和 API 凭据。 |
+| API余额与预算监督 | 自己的模型服务凭据；普通会话只看到允许公开的状态，账号金额仅管理员可查。 |
+| 网页/校园监控 | 自己的目标网址与登录态；个人站点和私人脚本不在公开包中，需自行配置适配器。 |
+| 私人资料 | 在 S 层导入自己的本地资料；默认只带公开示例，不联网上传私人原文。 |
 
-保留 `AI助手` 人设卡，已去除私人群聊和成员设定。人格与风格组件支持日常友好、身份思考和认真解答；表现取决于当前对话，不是固定台词。你可以在本地修改人设。
-
-### 5. 可选：安装 Codex Peer
-
-在官方 Codex 完成自己的登录后运行：
-
-```powershell
-npm run setup -- --profile desktop --with-codex
-```
-
-自动发现失败时，用 `--codex-path "自己的 codex.exe 绝对路径"`。**无需复制作者文件、保存的 thread ID、登录令牌或浏览器数据。** 详细工作流和给 AI 的配置提示见 [Codex Peer 安装](docs/CODEX_PEER.md)。
-
-### 6. 按需启用网页和个人自动化
-
-网页监控默认关闭、目标为空；在控制台填写自己的“名称 | URL”，再启用对应组件。私有网站需要在独立浏览器配置中自行登录：
-
-```powershell
-node scripts/browser-fetch.mjs --url "你自己的目标网址" --visible --website-login
-```
-
-完成登录后关闭该窗口。浏览器状态仅存于本机 `state/website-browser/`，不会读取或复制日常浏览器资料。此包不包含任何人的课程脚本或选课接口；需要此类能力时，在本地 `user-scripts/` 编写自己的适配器，并通过组件注册中心接入。
-
-### 7. 可选：图片生成与发群图
-
-在管理控制台的 **E 层 → 图片生成** 选择服务。使用 OpenAI 兼容接口时填写地址（通常以 `/v1` 结尾）、模型、尺寸和质量；使用火山方舟时填写在[开通管理](https://console.volcengine.com/ark/region:cn-beijing/open-management)中有可用额度的 Seedream 模型 ID，保留默认方舟 API 地址并按模型文档设置尺寸。先保存服务与参数，再在当前服务的专用密码框保存 API Key。可从[火山方舟 API Key 页面](https://ark.volcengine.com/region:cn-beijing/apikey)创建方舟 Key。两家密钥分开保存在本地，不进入组件配置或 Git。设置每日额度后检查“已启用”状态；未配置时不会调用外部生图服务。
-
-AI助手可用 `qq_make_meme`（文字或当前会话的消息图片）→ `qq_get_meme_job`（取图片编号和预览）→ `qq_send_image`（发到原会话）完成梗图制作。工具不接受本机文件路径，不能把甲群生成的图发给乙群。每次提交先占每日额度，服务超时不会自动再次付费。OpenAI 兼容接口的参考图走图片编辑接口；方舟的文字与参考图都走[图片生成接口](https://console.volcengine.com/ark/region:cn-beijing/docs/image-generation-api)。第三方兼容服务的实际参数需按其文档核对。
-
-## 发布内容与本地数据
-
-| 随仓库提供 | 仅在使用者本机产生 |
-|---|---|
-| 桥接与组件代码、MCP、四套 QQ 预设、网页整理预设 | 实际账号、白名单、模型或 OneBot 令牌 |
-| 通用AI助手人设、公开参考示例、空配置模板 | 记忆、人物档案、黑话、日程、聊天、日志与发送账本 |
-| 通用安装/配置/诊断脚本与回归测试 | Codex 专用会话、viewer 信息与设置、浏览器 Cookie/profile |
-| 本地工具代码和安装说明 | 个人监控网址、自定义脚本、私人知识与图片 |
-
-升级时保留自己的 `config.json` 和 `state/`，先备份再更新代码。请勿把运行目录整体压缩发给别人；提交前执行 `npm run privacy:check`，并人工检查 `git diff --cached`。扫描不能代替对新增文件的判断。
-
-## 验证和排障
+## 验证与发行
 
 ```powershell
 npm test
+npm run build:console
+npm run lint:console
+npm run build:bundle -- --check
 npm run privacy:check
-npm run doctor
-node scripts/bridge-health.mjs --json
 ```
 
-`doctor` 检查文件、配置和 profile 链接，不发送 QQ、不调用模型；运行时健康检查还需要桥接正在运行。预设缺失时重新运行安装器修复目录链接，再核验 DSH 实际清单；不要把 QQ 的受限预设换成含本地工具的默认预设。
+测试复制代码到临时目录，使用桩 QQ/DSH 与测试状态，不读取本机运行资料。安装幂等、消息/引用准入、回执、维护禁发、身份隔离和原始历史迁移均有隔离用例。模拟通过不等于实际账号已登录或实际模型已发送。
 
-安装验证、功能边界和数据保护见 [安装与维护](docs/INSTALLATION.md)、[隐私说明](docs/PRIVACY.md)。
+公开版与私人版使用同一套功能代码；公开版只替换角色、默认语气、示例、监控目标等个人内容，并排除运行数据、原始私人资料、凭据及历史。公开发行附源码对应关系和文件校验值。私人版的原始角色卡保持原样。
+
+更新前备份自己的 `config.json` 和 `state/`。DSH/QQ登录、浏览器会话和API密钥不通过Git分发；切换Git分支不会自动覆盖运行数据。旧提醒和未知投递结果不会因迁移而擅自重发。

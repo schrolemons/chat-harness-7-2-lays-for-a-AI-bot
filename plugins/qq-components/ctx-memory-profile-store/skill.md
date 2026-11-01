@@ -23,3 +23,5 @@
 - 每个字段只写档案对象本人资料。人际关系可记录该人与他人的关系和本人明确表达的互动边界，不得复制关系对象自己的资料。
 - 作息饮食只会自动注入本人私聊。作息冒泡服务从 routine_food 字符串读取时间；显示名和会话关联保存在同一 JSON 的 people 元数据中。
 - 档案可先于好友关系建立，也不会因群聊/私聊 session 不同而重复。
+## 可用度作息证据
+`profileStore.availabilityRoutine({key})` 只读本人私聊档案，返回 wake/sleep/work 的解析项和原依据；未知对象不创建档案，群聊返回 null。该服务不使用默认冒泡时段，不修改作息，不直接断言用户当前有空。睡眠评估到期由 life-wake-reasons 决定。聊天活动观察以 chat_activity_pattern 扩展字段单独保存，不冒充 routine_food 中的确认事实。

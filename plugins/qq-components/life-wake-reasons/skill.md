@@ -67,4 +67,11 @@ proactive.incoming 只在尚未开启群聊会话时，以当前静默主动阶�
 L0只编辑 groupAtBonus/groupNameBonus/groupQuestionBonus/groupPokeBonus/groupNames；L1编辑静默主动配置。两处按字段合并新鲜配置，不覆盖彼此。旧 recommended*、per-session triggers 与 active 不再作为运行标准；一次性迁移备份原配置，保留显式定时等待。
 
 ## 聊天意愿与心情的共同缩放
+
+睡眠评估只描述该段睡眠：`setWillingness` 可附 `assessment:{kind:'sleep'|'busy'|'available'|'other',untilISO?}`，经 MCP/当前会话鉴权传入；untilISO仅用于用户明确给出的睡眠结束时间，带时区且晚于评估时间，不猜时长。旧版评估仅对模型已记录的明确睡觉依据作兼容识别，混合忙碌/失眠/午睡依据不按普通夜间作息自动恢复。
+
+组件通过 `profileStore.availabilityRoutine` 只读本人私聊档案的结构化作息；不读其他群成员，不用默认时间冒泡或宵禁结束时间冒充起床证据。明确睡眠结束时间优先；否则要求起床时段可解析且无模糊/冲突。越过边界且无当前免打扰、确认的工作时段时，取消该旧睡眠降分，采用可配置 initialWillingness 作为中性基线（不降低已有高分），标记 sleep-expired。原 lastAI、边界来源、旧值和恢复值均保留。下一次AI新评估覆盖它，其他忙碌评估不自动恢复。
+
+没有可靠边界时保留数值并标 review.required，在已有模型请求的 beforePrompt 中要求结合真实上下文复核，不另发模型请求或问候；已过期后的中性值也不代表已确认有空。概率、深度、条数通过同一 availability 服务读取有效值；心情和风格不变。刷新只重算受旧睡眠降分影响的区间，复用原 jitter、静默起点与阶段，公共闸门和已接受回合不变；availability/preview保持只读，实际刷新才持久化恢复。
+
 聊天意愿W表示用户客观可用的时间和精力；心情M表示bot主观上是否喜欢与对方交流，只有M决定语言风格。共享ctx-chat-reply-shape/engagement.mjs：F=(0.2+0.8M/100)×(0.2+0.8W/100)。心情组件停用时心情因子为1。随机主动的阶段概率为min(Pmax,P0+nΔP)×F；未唤醒的群聊来信可在此阶段概率上叠加最大触发加成，已经醒着时不再抽签，最大静默兜底仍不绕公共闸门。条数采用max(1,ceil(基础上限×F))再收紧至心情/正式模式上限。深度在F≥0.75、≥0.45、≥0.2、其余分别为expanded、balanced、concise、brief；内容完整性优先。

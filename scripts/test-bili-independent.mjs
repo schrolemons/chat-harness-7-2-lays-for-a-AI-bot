@@ -5,8 +5,8 @@ import {createOutboundTransport} from '../src/outbound-context.js';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
 
 const now=Date.parse('2026-10-30T09:00:00+08:00');
-const config={keywords:['海洋','鲸鱼'],topicUploaders:[{topic:'鲸鱼',uploader:'关联作者',weight:2}],maxItems:2};
-const video=(suffix,uploader='新作者')=>({bvid:'BV1xx411c7m'+suffix,title:'海洋里的鲸鱼',description:'海洋与鲸鱼的记录',uploader});
+const config={keywords:['海洋','助手'],topicUploaders:[{topic:'助手',uploader:'关联作者',weight:2}],maxItems:2};
+const video=(suffix,uploader='新作者')=>({bvid:'BV1xx411c7m'+suffix,title:'海洋里的助手',description:'海洋与助手的记录',uploader});
 function fixture(search,samples=[0.9,0.9,0,0]){
  let state={},plan;const queries=[];let draws=0;
  const plugin=createPlugin({config:{},registerTool(){},state:{get:()=>structuredClone(state),set:p=>{state={...state,...p};}},capabilities:{readBiliSharePlan:()=>plan}},
@@ -20,9 +20,9 @@ test('each video slot uses a fresh topic and uploader draw; independent draws ma
  const f=fixture(async()=>({status:'ok',items:[]}));
  const plan=f.service.draw({key:'private:123',date:'2026-10-30',at:now,config});
  assert.equal(f.draws,4);
- assert.deepEqual(plan.draws.map(x=>[x.topic,x.preferredUploader]),[['鲸鱼','关联作者'],['海洋','']]);
+ assert.deepEqual(plan.draws.map(x=>[x.topic,x.preferredUploader]),[['助手','关联作者'],['海洋','']]);
  const repeated=fixture(async()=>({status:'ok',items:[]}),[0.9,0.9,0.9,0.9]);
- assert.deepEqual(repeated.service.draw({key:'private:123',date:'2026-10-30',at:now,config}).draws.map(x=>x.topic),['鲸鱼','鲸鱼']);
+ assert.deepEqual(repeated.service.draw({key:'private:123',date:'2026-10-30',at:now,config}).draws.map(x=>x.topic),['助手','助手']);
 });
 
 test('targeted candidate is selected by verified author; base slot excludes configured authors and duplicate videos',async()=>{
@@ -30,7 +30,7 @@ test('targeted candidate is selected by verified author; base slot excludes conf
  const raw=f.service.draw({key:'private:123',date:'2026-10-30',at:now,config});
  const plan=await f.service.resolve({plan:raw});
  assert.deepEqual(plan.items.map(x=>x.bvid),['BV1xx411c7mE','BV1xx411c7mF']);
- assert.deepEqual(f.queries,['鲸鱼 关联作者','海洋']);
+ assert.deepEqual(f.queries,['助手 关联作者','海洋']);
  assert.equal(f.draws,4,'searching must not reroll any slot');
  f.setPlan(plan);
  assert.equal(f.service.validateOutbound({key:'private:123',reason:'newsShare',text:'https://www.bilibili.com/video/BV1xx411c7mD'}).ok,false);
@@ -139,7 +139,7 @@ test('actual daily timer persists one independent plan before search and does no
   const first=scheduled;first.run();
   for(let i=0;i<50&&!st.pendingBiliShare?.resolved;i++)await new Promise(resolve=>setTimeout(resolve,10));
   assert.equal(st.pendingBiliShare?.resolved,true);assert.equal(st.pendingBiliShare.draws.length,2);
-  assert.deepEqual(JSON.parse(JSON.stringify(st.pendingBiliShare.draws.map(x=>x.topic))),['鲸鱼','海洋']);
+  assert.deepEqual(JSON.parse(JSON.stringify(st.pendingBiliShare.draws.map(x=>x.topic))),['助手','海洋']);
   assert.equal(st.pendingBiliShare.items.length,2);assert.equal(f.draws,4);
   first.run();await new Promise(resolve=>setTimeout(resolve,10));
   assert.deepEqual(calls.filter(method=>['draw','resolve'].includes(method)),['draw','resolve']);

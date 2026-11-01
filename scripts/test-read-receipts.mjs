@@ -22,13 +22,14 @@ const CONFIG = { socialV2: {
 async function open({ savedState } = {}) {
   const h = await bridgeHarness({
     config: CONFIG,
-    files: savedState ? { 'state/social-v2.json': savedState } : undefined,
+    files: { ...(savedState?{ 'state/social-v2.json': savedState }:{}),'state/plugins/config/ctx-chat-reply-shape.json':{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0} },
   });
   h.setMode('reserved2');
   const server = h.startConsoleServer();
   if (!server.listening) await new Promise((resolve) => server.once('listening', resolve));
   const port = server.address().port;
-  const call = async (route, { body, query = '', token, agent = true } = {}) => {if(agent && /send-message|send-burst|reply$|\/api\/send\//.test(route))await fixtureReplyTurn(h,KEY);return new Promise((resolve, reject) => {
+  // Model reads happen inside the same admitted turn as its later sends.
+  const call = async (route, { body, query = '', token, agent = true } = {}) => {if(agent)await fixtureReplyTurn(h,KEY);return new Promise((resolve, reject) => {
     const st = h.getSocialV2State(KEY);
     // 控制台服务端即使对 agent 调用也会先过 x-console-token 鉴权，缺了就是 401。
     const headers = { 'x-console-token': 'fixture-console-token' };
@@ -131,8 +132,12 @@ await test('messages-purpose wait remains available after the reply receipt clos
 await test('a message returned by wait is persisted as seen before the next receipt report', async () => {
   const c = await open();
   try {
-    const waiting = c.call('wait', { body: { purpose: 'messages', timeoutMs: 800 } });
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    const waiting = c.call('wait', { body: { purpose: 'messages', timeoutMs: 2000 } });
+    // Admission can take longer than an arbitrary sleep on a busy test host.
+    // Deliver the new message only after the real HTTP handler holds its lease.
+    const deadline = Date.now() + 3500;
+    while (!c.h.activeWaits.has(KEY) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(c.h.activeWaits.has(KEY), 'the wait must have started before simulating arrival');
     const seq = c.append('arrived during wait');
     const result = await waiting;
     assert.equal(result.status, 200, JSON.stringify(result.data));
@@ -239,12 +244,15 @@ await test('a delegated send records reply evidence on the conversation that rec
 });
 
 // ── 2. 回复只盖「本轮看过的」：新到的消息不跟着变成已回复 ────────────────────
-await test('a reply does not stamp a newer message the model never saw', async () => {
+await test('a reply waits for a newer complete body and only stamps explicitly reported replies', async () => {
   const c = await open();
   try {
     c.append('seen one');
     assert.equal((await c.call('unread')).status, 200);
     c.append('unseen new arrival');
+    const blocked = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply' } });
+    assert.notEqual(blocked.status,200);assert.match(blocked.data.error,/message_context_pending/);
+    await c.call('unread');
     const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply' } });
     assert.equal(sent.status, 200);
     const report = await c.call('/api/socialV2/receipt-report', { body: { conversationId: KEY, receipts: [{ seq: 1, status: 'replied' }] } });
@@ -409,15 +417,16 @@ await test('a seen status report does not erase confirmed delivery evidence befo
   } finally { await c.close(); }
 });
 
-await test('an actual quoted send binds its precise incoming message before the seen callback catches up', async () => {
+await test('an actual quoted send binds only its fully read precise incoming message', async () => {
   const c = await open();
   try {
     c.append('arrived inside a running turn');
     for(const row of [...c.st().unread,...c.st().recentMessages])if(row.seq===1)row.messageId='123001';
+    await c.call('unread');
     const sent=await c.call('send-message',{body:{messages:'reply with exact quote',replyToMessageId:'1'}});
     assert.equal(sent.status,200,JSON.stringify(sent.data));
-    assert.deepEqual(Array.from(c.st().receiptSendPendingSeqs),[1],'quote records the successful target without forging a read stamp');
-    assert.ok(!Number(c.st().unread[0].seenAt));assert.ok(!Number(c.st().unread[0].repliedAt));
+    assert.deepEqual(Array.from(c.st().receiptSendPendingSeqs),[1],'quote records only the successfully delivered target');
+    assert.ok(Number(c.st().unread[0].seenAt)>0);assert.ok(!Number(c.st().unread[0].repliedAt));
     c.append('later unrelated message');await c.call('unread');
     const denied=await c.call('receipt-report',{body:{receipts:[{seq:2,status:'replied'}]}});assert.equal(denied.status,409);
     const replied=await c.call('receipt-report',{body:{receipts:[{seq:1,status:'replied'}]}});assert.equal(replied.status,200,JSON.stringify(replied.data));

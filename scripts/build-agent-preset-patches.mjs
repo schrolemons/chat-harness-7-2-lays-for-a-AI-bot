@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {adminPersonaPrefix} from '../plugins/qq-agent-presets/admin-protocol.mjs';
 // build-agent-preset-patches.mjs — 把 dsh/agent-presets/<preset>/ 的 preset 源文件
 // 渲染成 DSH 0.1.7 的 bundle patch 文件（plugins/qq-agent-presets/presets/<preset>.patch.yml）。
 //
@@ -24,7 +25,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, '..');
 
 /** 由桥接托管的 preset（顺序即 patch 层顺序）。 */
-export const PRESETS = ['qq-chat', 'qq-chat-v2', 'qq-chat-dev', 'qq-task-worker', 'qq-learning'];
+export const PRESETS = ['qq-chat', 'qq-chat-v2', 'qq-admin', 'qq-task-worker', 'qq-learning'];
 
 /** preset 行 id：与 config.id（桥接解析的 preset 名）区分开，方便在 profile patch 里按行定位。 */
 export function presetRowId(name) {
@@ -109,7 +110,7 @@ function normalizeRows(rows, preset) {
   // qq-chat-dev（管理员开发）与 qq-task-worker（任务工作会话）刻意不挂 qq-tool-restrict：
   // 前者只由桥接挂到 owner 私聊，后者只由桥接在管理员委派任务时创建（会话创建权在桥接手里，
   // 且任务会话对本地工具的授权本身就是设计目标）。
-  if (preset !== 'qq-chat-dev' && preset !== 'qq-task-worker' && preset !== 'qq-learning' && !seen.has('qq-tool-restrict')) {
+  if (preset !== 'qq-admin' && preset !== 'qq-chat-dev' && preset !== 'qq-task-worker' && preset !== 'qq-learning' && !seen.has('qq-tool-restrict')) {
     throw new Error(`${preset}: 行列表缺少 qq-tool-restrict 行（仿真会话不允许缺少本地工具守卫）`);
   }
   if(preset === 'qq-learning' && !seen.has('learning-tool-restrict'))throw new Error('qq-learning 缺少只读学习守卫');
@@ -125,6 +126,11 @@ export function renderPatch(name) {
     if (meta[field] === undefined) throw new Error(`${name}: preset.yml 缺少 ${field}`);
   }
   const plugins = normalizeRows(readYaml(path.join(dir, 'agent.cordis.yml')), name);
+  if (name === 'qq-admin') {
+    const persona=plugins.find(row=>row.id==='persona');
+    const v2=readYaml(path.join(sourceDirFor('qq-chat-v2'),'agent.cordis.yml')).find(row=>row.id==='persona');
+    persona.config.prefix=adminPersonaPrefix(persona.config.prefix,v2.config.prefix);
+  }
   const row = {
     id: presetRowId(name),
     name: '@deepseek-ai/dsh-agent-preset',

@@ -1,28 +1,7 @@
-
 import { api } from '../../shared/api.js';
 import { updateOverview, setConnectionError } from '../../shared/navigation.js';
-import {presetChoices,presetInfo} from './preset-catalog.js';
-let presetRows=[];
-function renderPresetChoices(selected) {
-  const select=document.getElementById('closedPreset');
-  if(!select)return;
-  select.replaceChildren(new Option('跟随 DSH 默认（推荐）',''));
-  const groups=new Map();
-  for(const p of presetChoices(presetRows,document.getElementById('showAllPresets')?.checked,selected)){
-    if(!groups.has(p.group)){const group=document.createElement('optgroup');group.label=p.group;groups.set(p.group,group);select.append(group);}
-    const option=new Option(p.label+' · '+p.id,p.id);option.title=p.description;groups.get(p.group).append(option);
-  }
-  select.value=selected;
-  updatePresetHelp();
-}
-function updatePresetHelp(mode) {
-  const select=document.getElementById('closedPreset'),help=document.getElementById('closedPresetHelp');
-  if(!select||!help)return;
-  const p=presetRows.find(p=>p.id===select.value)||{id:select.value};
-  help.textContent=select.value?presetInfo(p).description:'使用 DSH 当前声明的默认预设，通常无需另选。';
-  const scope=document.getElementById('closedPresetScope');
-  if(scope&&mode)scope.textContent=mode==='closed-agent'?'作用范围：当前管理员封闭 Agent 模式。切换选项后立即保存。':'作用范围：仅封闭 Agent 模式；当前聊天或仿真模式的预设由桥接自动选择。';
-}
+import { refreshAdminPresets } from '../E/admin-presets.js';
+import { followSimulationMode } from '../C/preset-prompt.js';
 // layers/O/status: explicit imports; initialize is called in the application startup order.
 
 
@@ -86,26 +65,20 @@ async function refresh() {
     const modeLabel = s.mode === 'reserved' ? '一代仿真模式' : s.mode === 'reserved2' ? '二代仿真模式' : s.mode === 'closed-agent' ? '封闭 Agent' : '聊天模式';
     updateOverview(s, modeLabel);
     document.getElementById('activity').textContent = s.activity || '（空）';
-    const presetSel = document.getElementById('closedPreset');
-    if (presetSel && document.activeElement !== presetSel) renderPresetChoices(s.closedAgentPreset || '');
-    updatePresetHelp(s.mode);
+    followSimulationMode(s.mode);
   } catch (e) { document.getElementById('statusText').textContent = '连接中断 · 请检查桥接服务'; setConnectionError(e); }
 }
 
 async function refreshPresets() {
   try {
-    const r = await api('/api/presets');
-    presetRows=r.presets||[];
-    renderPresetChoices(document.getElementById('closedPreset').value);
-    refresh();
+    await refreshAdminPresets();
   } catch {}
 }
 
 async function saveMode(mode) {
   // 不再硬编码 'router-standard'（DSH 0.1.5 已无此 preset）；
   // 留空表示让桥接使用 DSH 自己声明的默认 preset。
-  const preset = document.getElementById('closedPreset').value || '';
-  const r = await api('/api/mode', 'POST', { mode, closedAgentPreset: preset });
+  const r = await api('/api/mode', 'POST', { mode });
   if (r.ok) {
     refresh();
     // 桥接会把模式写穿到 DSH 设置；写穿失败时本地值会在下一次 5 秒轮询被覆盖回滚。
@@ -119,8 +92,5 @@ async function saveMode(mode) {
   return r;
 }
 
-export function initialize() {
-  document.getElementById('showAllPresets')?.addEventListener('change',()=>renderPresetChoices(document.getElementById('closedPreset').value));
-  document.getElementById('closedPreset')?.addEventListener('change',()=>updatePresetHelp());
-}
+export function initialize() {}
 export { fmtAgoMs, renderSnowlumaHealth, refresh, refreshPresets, saveMode };

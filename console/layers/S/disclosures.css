@@ -23,4 +23,5 @@
 #section-layer-s [data-config-key=libraryDir] input{width:min(520px,100%)!important}
 #section-layer-s .core-preparation-guide ol{padding-left:20px;font-size:13px;line-height:1.8}
 #section-layer-s .core-preparation-guide pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+#section-layer-s .core-preparation-guide .core-package-tree{white-space:pre;overflow-wrap:normal;overflow-x:auto;line-height:1.8}
 @media(max-width:640px){#section-layer-s .core-mount-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}

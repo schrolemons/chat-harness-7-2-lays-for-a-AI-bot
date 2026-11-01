@@ -8,8 +8,8 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: qq-learning
-        name: QQ 共同知识学习
-        description: 中性后台知识工作，仅允许公开联网检索，不接入聊天人格、QQ发送或本机执行。
+        name: 后台学习（黑话／词条／绰号）
+        description: 黑话、词条和绰号学习共用 qq-learning 预设及同一个后台学习会话，串行执行各自任务；各组件的素材、审核规则与数据独立管理。仅允许后台抽取、分类和公开资料检索，不发送 QQ 或执行本机命令。
         order: 14
         plugins:
           - id: persona

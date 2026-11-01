@@ -73,6 +73,13 @@ export function classifySnapshot(snapshot, requestedUrl) {
   return 'ready';
 }
 
+export function classifyNavigation(snapshot,requestedUrl,{navigationSucceeded=true,httpStatus=200}={}){
+  const status=classifySnapshot(snapshot,requestedUrl);
+  if(status==='login'||httpStatus===401)return 'login';
+  if(!navigationSucceeded||httpStatus>=400)return 'unavailable';
+  return status;
+}
+
 export function selectLoginTargets(request, fallback = []) {
   const sanitize = items => (Array.isArray(items) ? items : []).filter(item => {
     try { return ['https:', 'http:'].includes(new URL(item?.url).protocol); } catch { return false; }

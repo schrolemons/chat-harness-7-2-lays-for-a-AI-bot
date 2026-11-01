@@ -3,18 +3,14 @@ const {createReplyThrottle,privateWakeEveryMessages}=await import(throttleURL.hr
 import {messageFullyProcessedV2} from '../../../src/bridge-core/receipt-state.js';
 import { DEFAULT_PRIVATE_REPLIES, DEFAULT_GROUP_REPLIES } from './default-replies.js';
 
-const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
+const periodURL=new URL('./budget-period.mjs',import.meta.url);periodURL.search=new URL(import.meta.url).search;
+const {periodStart,resetTime,validResetTime,DAY_MS}=await import(periodURL.href);
+export {periodStart};
 const MAX_RECOVERY_MESSAGES = 30;
 const directedAtBot = message => message?.atSelf === true || message?.quoteTargetIsSelf === true;
 
-export function periodStart(now = Date.now()) {
-  const local = new Date(now + SHANGHAI_OFFSET_MS);
-  const start = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 22) - SHANGHAI_OFFSET_MS;
-  return now < start ? start - DAY_MS : start;
-}
-
 export function createPlugin(ctx) {
+  const cycleStart=now=>periodStart(now,resetTime(ctx.config));
   function ownerPolicy() {
     const ownerQQ = String(ctx.capabilities?.getOwnerQQ?.() ?? '');
     return { key: /^[1-9]\d*$/.test(ownerQQ) ? 'private:' + ownerQQ : null,
@@ -74,7 +70,7 @@ export function createPlugin(ctx) {
     return { key, ...limits, exempt, cost: spent, globalCost: allSpent, globalHardLimitYuan,
       remainingYuan: !exempt && limits.hardLimitYuan > 0 ? Math.max(0, limits.hardLimitYuan - spent) : null,
       globalRemainingYuan: globalHardLimitYuan > 0 ? Math.max(0, globalHardLimitYuan - allSpent) : null,
-      stage, periodStart: periodStart(now), resetAt: periodStart(now) + DAY_MS };
+      stage, periodStart: cycleStart(now), resetAt: cycleStart(now) + DAY_MS };
   }
   const throttle=createReplyThrottle(ctx,{policy,isExempt});
   const {canDispatch,noteDispatch,observeIncoming,visibleThrough,claimWeakBatch,releaseWeakBatch,mechanicalLimits}=throttle;
@@ -144,14 +140,14 @@ export function createPlugin(ctx) {
     }
   }
   return {
-    validateConfig(config){if(config.privateWakeEveryMessages!==undefined&&(!Number.isInteger(config.privateWakeEveryMessages)||config.privateWakeEveryMessages<1||config.privateWakeEveryMessages>100))return {ok:false,errors:['私聊冷漠触发条数必须为1–100的整数']};const v=config.mechanicalLimits;if(v===undefined)return {ok:true};const ok=v&&Number.isInteger(v.minIntervalMs)&&v.minIntervalMs>=1000&&v.minIntervalMs<=3600000&&Number.isInteger(v.maxPerMinute)&&v.maxPerMinute>=1&&v.maxPerMinute<=60&&Number.isInteger(v.maxPerHour)&&v.maxPerHour>=1&&v.maxPerHour<=1000;return {ok:!!ok,errors:ok?[]:['机械回复间隔和分钟/小时上限必须为有效正整数']};},
+    validateConfig(config){if(config.dailyResetTime!==undefined&&!validResetTime(config.dailyResetTime))return {ok:false,errors:['额度重置时间必须为北京时间HH:mm（00:00–23:59）']};if(config.privateWakeEveryMessages!==undefined&&(!Number.isInteger(config.privateWakeEveryMessages)||config.privateWakeEveryMessages<1||config.privateWakeEveryMessages>100))return {ok:false,errors:['私聊冷漠触发条数必须为1–100的整数']};const v=config.mechanicalLimits;if(v===undefined)return {ok:true};const ok=v&&Number.isInteger(v.minIntervalMs)&&v.minIntervalMs>=1000&&v.minIntervalMs<=3600000&&Number.isInteger(v.maxPerMinute)&&v.maxPerMinute>=1&&v.maxPerMinute<=60&&Number.isInteger(v.maxPerHour)&&v.maxPerHour>=1&&v.maxPerHour<=1000;return {ok:!!ok,errors:ok?[]:['机械回复间隔和分钟/小时上限必须为有效正整数']};},
     services: { tokenBudget: { policy, assess, canDispatch, noteDispatch, observeIncoming, visibleThrough, claimWeakBatch, releaseWeakBatch, mechanicalLimits, onSilentIncoming,
       authorizeMechanicalSend:({key,now}={})=>throttle.reserveMechanical({key,now,physical:true}),
       noteMechanicalResult({key,messageId,sent}={}){if(sent!==true)return;const recovery=ctx.state.get().recovery||{},value=recovery[key];if(!value)return;ctx.state.set({recovery:{...recovery,[key]:{...value,messages:value.messages.map(m=>m.id===String(messageId)?{...m,mechanicalAnswered:true}:m)}}});}, recoveryWindows, selectWindow, ownerPolicy,
       recoveryPrompt: ({ key, messages } = {}) => recoveryPrompt(key, messages),
       recoveryPending: ({ key } = {}) => (ctx.state.get().recovery?.[String(key)]?.messages || []).length,
       mechanicalReplies: () => ({ private: entries('private'), group: entries('group') }),
-      period: ({ now = Date.now() } = {}) => ({ since: periodStart(now), until: now, resetAt: periodStart(now) + DAY_MS }) } },
+      period: ({ now = Date.now() } = {}) => ({ since: cycleStart(now), until: now, resetAt: cycleStart(now) + DAY_MS, dailyResetTime:resetTime(ctx.config), timeZone:'Asia/Shanghai' }) } },
     hooks: { async onTick(){throttle.scheduleGroups();await recoverPending();}, beforePrompt(payload = {}) {
       if (payload.budgetStage !== 'weak') return '';
       return String(payload.key).startsWith('private:')?`【固定低频批次】这是累计${privateWakeEveryMessages(ctx.config?.privateWakeEveryMessages)}条来信后的固定唤醒，不走概率抽签。把本次窗口合并成一次简短回复，提交真实回执后结束本轮；不追问、不发新话题、不再调用等待工具。`:'【固定低频批次】这是群聊间隔到点检查，不走概率抽签。仅处理本次快照窗口内的消息；相近内容合并，不同对象按消息准确引用。按实际发送回执结清本批后结束，不追问、不发新话题、不调用等待工具；窗口外和未成功回复的消息保留待处理。';

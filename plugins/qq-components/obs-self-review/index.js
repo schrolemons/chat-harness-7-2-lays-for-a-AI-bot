@@ -1,4 +1,6 @@
 // 自我更新、自我发现与三类反馈的统一处理队列。
+const repairURL=new URL('./repair-batch.mjs',import.meta.url);repairURL.search=new URL(import.meta.url).search;
+const {createRepairBatchService}=await import(repairURL.href);
 const REVIEW_RULES = [
   '1. 先核验证据；问题复核时已无法再现，可记为已由人工或其他工具修复，并说明“复核未再现”。',
   '2. 只修功能/代码/配置；能改配置就不改代码。',
@@ -146,7 +148,9 @@ export function createPlugin(ctx) {
     }
     const events=s.queueEvents.slice(eventStart); persist(s); return { updated, events, reason:updated?'已记录本轮处理结果':'本轮没有匹配条目' };
   };
+  const repairs=createRepairBatchService({enabled:()=>ctx.config?.codexRepairEnabled===true,getState,allEntries,record,persist});
   return { services: { selfReviewFeedback: {
+    ...repairs,
     beginResearch({id='',claimId=''}={}) {
       const s=getState(), item=allEntries(s).find(x=>x.id===String(id)), claim=String(claimId||'');
       if(!item)return {ok:false,error:'未找到该反馈'};

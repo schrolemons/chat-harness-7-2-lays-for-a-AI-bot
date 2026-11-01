@@ -6,7 +6,7 @@ const {createMilkSocial,milkConversationRule,milkVoice,milkChangeGuidance,validM
 export function createMilkMonitor(ctx,{query,clock=Date.now}){
  let local={},inflight=null;const deliveryMetas=new Map();
  const read=()=>ctx.state?.get?.().milk||local;
- const write=patch=>{local={...read(),...patch};ctx.state?.set?.({milk:local});for(const [id,meta] of deliveryMetas)if(local.pendingAlert?.id!==id)meta.expiresAt=0;return local;};
+ const write=patch=>{local={...read(),...patch};ctx.state?.set?.({milk:local});for(const [id,meta] of deliveryMetas)if(local.pendingAlert?.id!==id&&local.scheduledNotice?.id!==id){meta.expiresAt=0;deliveryMetas.delete(id);}return local;};
  const alive=()=>!ctx.signal?.aborted;
  const social=createMilkSocial({read,write,clock,currentStock:()=>selectedStock(read().lastSuccess,milkPolicy(ctx.config))});
  // The bridge rechecks this same expiry object at the physical send boundary.
@@ -14,25 +14,33 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
  async function deliver(now){
   const pending=read().pendingAlert;if(!pending||!alive())return;
   if(now>pending.expiresAt){write({pendingAlert:null});return;}
-  const owner=String(ctx.capabilities?.getOwnerQQ?.()||'');if(!/^[1-9]\d*$/.test(owner)||typeof ctx.capabilities?.sendNotificationDetailed!=='function')return;
   if(deliveryMetas.has(pending.id))return;
-  const meta={id:pending.id,sourceAt:pending.sourceAt,expiresAt:pending.expiresAt,reason:'milkStock'};deliveryMetas.set(pending.id,meta);
-  let result;try{result=await ctx.capabilities.sendNotificationDetailed('private:'+owner,pending.text,meta);}catch{if(alive()&&read().pendingAlert?.id===pending.id)write({pendingAlert:null,lastNoticeAt:now,noticeUnconfirmed:true});return;}finally{deliveryMetas.delete(pending.id);}
+  if(read().scheduledNotice?.id===pending.id){write({pendingAlert:null});return;} // Crash/reload after dispatch: outcome may be unknown.
+  const owner=String(ctx.capabilities?.getOwnerQQ?.()||'');if(!/^[1-9]\d*$/.test(owner)||typeof ctx.capabilities?.requestScheduledConversation!=='function')return;
+  const key='private:'+owner;
+  const meta={...pending,key,allowedKinds:['text'],plugin:'tool-deepseek-balance',signal:ctx.signal,reason:'milkStock',onDelivered:fact=>{
+   if(!alive()||meta.expiresAt<clock()||fact?.key!==key||fact?.success!==true||read().scheduledNotice?.id!==pending.id||read().scheduledNotice.status==='sent')return;
+   write({scheduledNotice:{...read().scheduledNotice,status:'sent',sentAt:fact.sentAt},lastNoticeAt:fact.sentAt||clock(),noticeUnconfirmed:false});
+   social.sent({key,success:true,messages:[fact.text]});
+  }};deliveryMetas.set(pending.id,meta);
+  // Persist before dispatch. An accepted/unknown model request is never replayed as a fixed notice.
+  write({scheduledNotice:{...pending,key,status:'dispatching'}});
+  let result;try{result=await ctx.capabilities.requestScheduledConversation(key,meta);}catch{if(alive()&&read().pendingAlert?.id===pending.id)write({pendingAlert:null,scheduledNotice:{...read().scheduledNotice,status:'uncertain'},lastNoticeAt:now,noticeUnconfirmed:true});return;}
   if(!alive()||read().pendingAlert?.id!==pending.id)return;
-  if(result?.ok===true||result?.reason==='already_sent')write({pendingAlert:null,lastNoticeAt:now,lastNoticeKind:pending.kind});
-  else if(['claimed','uncertain','sent'].includes(result?.receiptStatus))write({pendingAlert:null,lastNoticeAt:now,lastNoticeKind:pending.kind,noticeUnconfirmed:result.receiptStatus!=='sent'});
+  if(result?.ok===true)write({pendingAlert:null,scheduledNotice:{...read().scheduledNotice,status:read().scheduledNotice.status==='sent'?'sent':'accepted'},lastNoticeAt:now,lastNoticeKind:pending.kind});
+  else {deliveryMetas.delete(pending.id);meta.expiresAt=0;write({scheduledNotice:null});}
  }
  async function refresh({notify=false,now=clock()}={}){
   if(inflight)return inflight;
   const old=read();if(old.lastAttemptAt&&now-old.lastAttemptAt<15000)return old.lastResult;
   inflight=(async()=>{
-   write({lastAttemptAt:now});let result;try{result=await query();}catch{result={ok:false,error:'账户余额查询暂时失败。'};}
+   write({lastAttemptAt:now});let result;try{result=await query();}catch{result={ok:false,error:'API预算余额查询暂时失败。'};}
    if(!alive())return {ok:false,error:'组件已停用，忽略迟到的余额结果。'};
    const current=read(),c=milkPolicy(ctx.config);
    if(result?.ok!==true){
     const failures=(current.failures||0)+1;
-    const pending=notify&&failures>=3&&(!current.lastNoticeAt||now-current.lastNoticeAt>=c.notificationCooldownMin*60000)?{id:'milk-stock:'+randomUUID(),kind:'query_failed',stage:'unknown',text:'账户余额连续核对失败，当前余额未核实。这不表示调用额度归零；请检查余额接口或本机密钥配置。',sourceAt:now,expiresAt:now+2*3600000}:null;
-    write({lastResult:result,lastError:{at:now,message:result?.error||'余额查询失败'},failures,pendingAlert:pending,nextCheckAt:now+Math.min(30,c.checkIntervalMin*2**Math.min(3,failures-1))*60000});return result;
+    const pending=notify&&failures>=3&&(!current.lastNoticeAt||now-current.lastNoticeAt>=c.notificationCooldownMin*60000)?{id:'milk-stock:'+randomUUID(),kind:'query_failed',stage:'unknown',text:'API预算余额连续核对失败，当前余额未核实。这不表示API预算归零；请检查余额接口或本机密钥配置。',sourceAt:now,expiresAt:now+2*3600000}:null;
+    write({lastResult:result,lastError:{at:now,message:result?.error||'余额查询失败'},failures,pendingAlert:pending,scheduledNotice:null,nextCheckAt:now+Math.min(30,c.checkIntervalMin*2**Math.min(3,failures-1))*60000});return result;
    }
    const previous=current.lastSuccess,stock=selectedStock(result,c),change=stockChange(previous,{...result,stock},c)||(current.failures>=3&&stock.stage!=='unknown'?{kind:'query_restored',urgent:true,stock}:null);
    const event=change?{...change,id:'milk:'+randomUUID(),at:now}:null;
@@ -42,13 +50,19 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
    let pending=current.pendingAlert;
    if(pending&&pending.stage!==stock.stage)pending=null;
    if(c.monitorEnabled&&event&&(event.urgent||!current.lastNoticeAt||now-current.lastNoticeAt>=c.notificationCooldownMin*60000))pending={id:'milk-stock:'+randomUUID(),kind:event.kind,stage:stock.stage,text:stockNotice(event),sourceAt:now,expiresAt:now+2*3600000};
-   write({lastResult:out,lastSuccess:sample,lastError:null,failures:0,nextCheckAt:now+c.checkIntervalMin*60000,pendingAlert:pending});
+   const scheduledNotice=current.scheduledNotice?.stage===stock.stage&&!event?current.scheduledNotice:null;
+   write({lastResult:out,lastSuccess:sample,lastError:null,failures:0,nextCheckAt:now+c.checkIntervalMin*60000,pendingAlert:pending,scheduledNotice});
    social.observe(event,now);
    return out;
   })().finally(()=>{inflight=null;});const result=await inflight;if(notify)await deliver(now);return result;
  }
  async function queryResult(){const result=await refresh();if(!result?.ok)return result;const stock=selectedStock(result,milkPolicy(ctx.config));return stock.stage===result.milk?.stock?.stage?result:{...result,milk:{...result.milk,stock,change:null}};}
  return {query:queryResult,async queryFor({key}={}){if(!validMilkKey(key))return {ok:false,error:'无效会话'};const result=await queryResult();return key==='private:'+String(ctx.capabilities?.getOwnerQQ?.()||'')?result:social.publicResult(result,key);},sent:payload=>social.sent(payload),noteStatus:payload=>social.noteStatus(payload),noteWritten:payload=>social.noteWritten(payload),async tick({now=clock()}={}){const c=milkPolicy(ctx.config);if(!c.monitorEnabled||!alive())return;if(!read().nextCheckAt||now>=read().nextCheckAt)await refresh({notify:true,now});else await deliver(now);},
+  wakeTail({key,reason,scheduledEvent}={}){
+   const n=read().scheduledNotice;
+   if(reason!=='milkStock'||!alive()||key!=='private:'+String(ctx.capabilities?.getOwnerQQ?.()||'')||n?.id!==scheduledEvent?.id||scheduledEvent.expiresAt<clock())return '';
+   return '【定时主动会话：API预算告警】这次由API预算定时核对事件触发，不是用户来信，也不抽主动概率。已核实的事件事实：'+n.text+'\n'+milkVoice+'\n'+milkChangeGuidance+'\n沿用当前人设卡、对话示范和心情，用发送工具只发一条短句，像自己惦记API预算那样说，不照读技术通知。查询失败只说未核实，不说归零。无需再查余额，不额外发图片、表情或追问，不处理或标记无关的待处理消息；核实本条实际发送结果后直接结束。成功发送才算一次主动会话并刷新主动概率模型；接收请求不等于已送达。';
+  },
   status(){const st=read(),maxAge=Math.max(15,milkPolicy(ctx.config).checkIntervalMin*3)*60000;return {...st,lastSuccess:st.lastSuccess?{...st.lastSuccess,stock:selectedStock(st.lastSuccess,milkPolicy(ctx.config))}:undefined,fresh:!!st.lastSuccess&&!st.lastError&&clock()-st.lastSuccess.at<=maxAge};},
   context({key}={}){
    if(!validMilkKey(key))return '';
@@ -61,7 +75,7 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
    else if(!st.fresh)snapshot='上次余额核对已过期或查询失败，当前存量未核实；不按旧余额断言归零或刚充值。';
    else if(milkPresentation(st.lastSuccess).state==='unknown')snapshot='最近查询未获得可确认的金额，当前存量未知，不当作0。';
    else snapshot=st.lastSuccess.balance_infos.map(row=>row.currency+' '+row.total_balance).join('；')+'；核对时间 '+new Date(st.lastSuccess.at).toISOString()+'；账户'+(st.lastSuccess.is_available?'可用':'不可用')+'。这是上次核对的快照，不是本轮实时查询。';
-   return shared+'\n【管理员专属账户余额快照（DeepSeek API余额）】'+snapshot;
+   return shared+'\n【管理员专属API预算余额快照（DeepSeek API余额）】'+snapshot;
   }
  };
 }

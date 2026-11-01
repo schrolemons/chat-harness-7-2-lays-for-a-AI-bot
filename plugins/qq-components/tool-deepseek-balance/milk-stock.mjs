@@ -29,8 +29,8 @@ export function selectedStock(account,config={}){
 export function milkPresentation({is_available,balance_infos=[]}={}){
  const amounts=balance_infos.map(row=>/^[A-Z]{3,8}$/.test(String(row.currency))?compare(row.total_balance,'0'):null);
  const state=amounts.some(value=>value===1)?'funded':amounts.length&&amounts.every(value=>value!==null&&value<=0)?'empty':'unknown';
- return {perspective:'我的账户余额',state,feeling:state==='empty'?'额度已耗尽':state==='funded'?'额度可用':'先核实存量',
-  responseGuidance:'按本次核实的账户余额、变化和可用状态说明当前额度情况；需要报数时带币种，不混算币种，不把失败或未知说成零余额，不编造充值明细。'+(state==='empty'?'已确认额度耗尽，需要补充调用额度后才能继续调用。':state==='funded'?'已确认存在可用余额。':'当前无法确认余额。')+(is_available===false?'当前账户不可用；不可用不等于余额为零。':'')+'不自动修改心情或现有限额，不索取充值、不拟人化为饥饿。'};
+ return {perspective:'当前API预算余额',state,feeling:state==='empty'?'说明预算不足、可以补充API预算或暂停调用':state==='funded'?'确认当前可用、可以继续调用':'先核实存量',
+  responseGuidance:'DeepSeek API余额就是AI助手的API预算余额。按本次已核实的金额、变化和账户可用状态自然接话；需要报数时带币种，核对时间按语境说明，不逐项播报字段或照抄变化通知。普通形态可自然确认恢复可用或轻轻说明预算不足，AI形态简明客观。'+(state==='empty'?"当前已核实预算用尽，应说明预算不足，并提示可以补充API预算或暂停调用。":state==='funded'?"已确认还有API预算；余额充足时确认当前可用，可以继续调用，偏低时减少非必要请求。":'当前无法确认，不把查询失败或缺失数据说成API预算为零。')+(is_available===false?'接口报告当前账户不可用，需另行说明；不可用不等于API预算归零。':'')+'不混算币种，不换算成未经核实的调用次数，不编造实际计费结果；不自动修改心情分、聊天意愿或额度策略，不机械照抄句式。'};
 }
 function relativeChange(before,after){
  const x=decimal(before),y=decimal(after);if(!x||!y)return {baseline:'unknown',percent:null};
@@ -56,5 +56,5 @@ export function stockNotice(event){
  const amount=event.stock?.currency+' '+event.stock?.amount;
  // Factual no-LLM health receipt only. Persona wording is generated from prompts.
  const label={super_abundant:'超级富足',low:'偏少',critical:'见底',empty:'空了',unavailable:'账户不可用',recovered:'补充后恢复',replenished:'补充',drop:'明显减少',query_restored:'查询恢复'}[event.kind]||'已核实';
- return '账户余额'+label+'：'+amount+'。'+(event.delta!=null?'净变化 '+event.delta+'。':'')+(event.kind==='replenished'&&['critical','low'].includes(event.stock?.stage)?'补充后仍处于'+(event.stock.stage==='critical'?'见底':'低库存')+'区间。':'')+(event.kind==='unavailable'?'接口报告当前账户不可用；不等于存量为零。':'');
+ return 'API预算余额'+label+'：'+amount+'。'+(event.delta!=null?'净变化 '+event.delta+'。':'')+(event.kind==='replenished'&&['critical','low'].includes(event.stock?.stage)?'补充后仍处于'+(event.stock.stage==='critical'?'见底':'低库存')+'区间。':'')+(event.kind==='unavailable'?'接口报告当前账户不可用；不等于存量为零。':'');
 }

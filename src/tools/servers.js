@@ -1,7 +1,7 @@
 // Whale-owned MCP processes. DSH built-ins and browser/OS tools are not registered here.
 export const WHALE_MCP_SERVERS = [
   { id:'mcp-snowluma', name:'snowluma', script:'src/mcp-snowluma-safe.js', layer:'T', audience:'qq', toolCallTimeoutMs:725000 },
-  { id:'mcp-snowluma-host', name:'snowluma-host', script:'src/mcp-host-server.js', layer:'T', audience:'qq' },
+  { id:'mcp-snowluma-host', name:'snowluma-host', script:'src/mcp-host-server.js', layer:'T', audience:'admin' },
   { id:'mcp-web-search-safe', name:'web-search-safe', script:'src/mcp-web-search-safe.js', layer:'T', audience:'qq' },
   { id:'mcp-games', name:'games', script:'src/mcp-games.mjs', layer:'T', audience:'qq' },
   { id:'mcp-personal-core', name:'personal-core', script:'plugins/qq-components/personal-core/mcp.mjs', layer:'S', audience:'qq' },

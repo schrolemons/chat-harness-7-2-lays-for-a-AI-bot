@@ -51,8 +51,8 @@
           list.dataset.sessions = "1";
           const fill2 = () => {
             const kind = kindId ? document.getElementById(kindId)?.value : null;
-            const rows = opaque ? sessions.map((s) => [s.sessionId || s.id, s.key]) : keys.filter((k) => !kind || k.startsWith(kind + ":")).map((k) => [kindId ? k.split(":").slice(1).join(":") : k, k]);
-            list.replaceChildren(...rows.filter((r) => r[0]).map(([v, label2]) => new Option(label2 || v, v)));
+            const rows2 = opaque ? sessions.map((s) => [s.sessionId || s.id, s.key]) : keys.filter((k) => !kind || k.startsWith(kind + ":")).map((k) => [kindId ? k.split(":").slice(1).join(":") : k, k]);
+            list.replaceChildren(...rows2.filter((r) => r[0]).map(([v, label2]) => new Option(label2 || v, v)));
           };
           fill2();
           if (kindId) document.getElementById(kindId)?.addEventListener("change", fill2);
@@ -66,8 +66,8 @@
         select.setAttribute("aria-label", "选择已有会话");
         const fill = () => {
           const kind = kindId ? document.getElementById(kindId)?.value : null;
-          const rows = opaque ? sessions.map((s) => [s.sessionId || s.id, s.key]) : keys.filter((k) => !kind || k.startsWith(kind + ":")).map((k) => [k, k]);
-          select.replaceChildren(new Option("选择已有会话…", ""), ...rows.filter((r) => r[0]).map(([v, label2]) => new Option(label2 || v, v)));
+          const rows2 = opaque ? sessions.map((s) => [s.sessionId || s.id, s.key]) : keys.filter((k) => !kind || k.startsWith(kind + ":")).map((k) => [k, k]);
+          select.replaceChildren(new Option("选择已有会话…", ""), ...rows2.filter((r) => r[0]).map(([v, label2]) => new Option(label2 || v, v)));
         };
         fill();
         if (kindId) document.getElementById(kindId)?.addEventListener("change", fill);
@@ -144,9 +144,9 @@
     const reason = !allowed ? "O 层已关闭，本轮不发送本模块。" : report.limit === 0 ? "默认注入上限为0，仅保留按需查询。" : report.eligible === 0 ? "没有适用于此会话的已确认资料，不从其他会话补数。" : report.limited > 0 ? "有" + report.limited + "条适用资料因上限未入选。" : "";
     return '<div class="context-knowledge-stats">' + pairs.map(([title, count]) => "<span>" + esc(title) + " <strong>" + esc(count ?? "未知") + "</strong></span>").join("") + '</div><p class="context-knowledge-note">' + esc(evidence) + "。" + esc(reason) + '</p><p class="context-knowledge-note">筛除：未确认 ' + esc(report.total - report.confirmed) + " 条 · 确认但内容不完整 " + esc(report.unusable) + " 条 · 不适用当前会话 " + esc(report.outOfScope) + ' 条。<a href="#' + esc(report.page) + '">调整' + esc(report.name) + "来源与上限</a></p>" + (report.selected?.length ? '<details class="context-knowledge-selection"><summary>查看' + (actual2 ? "当时" : "当前策略") + "入选的 " + report.selected.length + " 条资料</summary><ul>" + report.selected.map((entry) => "<li><strong>" + esc(label(entry)) + "</strong><span>" + esc(value(entry)) + "</span></li>").join("") + "</ul></details>" : "");
   }
-  function visualGroups(rows, catalog = []) {
+  function visualGroups(rows2, catalog = []) {
     const numbers = new Map(catalog.map((row, index) => [row.id, index]));
-    return [["fixed", CONTEXT_LAYER_NAMES.system, "系统硬规则与角色原文，位于请求前部。"], ["stable", CONTEXT_LAYER_NAMES.stable, "放在 user 资料前缀；内容变化时更新。"], ["current", CONTEXT_LAYER_NAMES.dynamic, "每次请求在业务消息末尾提供一份最新资料；排序仅调整本组内部。"]].map(([id, name, description]) => ({ id, name, description, rows: rows.filter((row) => row.id !== "obs-context-assembly" && (row.placement || "current") === id).map((row) => ({ ...row, index: numbers.get(row.id) })) }));
+    return [["fixed", CONTEXT_LAYER_NAMES.system, "系统硬规则与角色原文，位于请求前部。"], ["stable", CONTEXT_LAYER_NAMES.stable, "放在 user 资料前缀；内容变化时更新。"], ["current", CONTEXT_LAYER_NAMES.dynamic, "每次请求在业务消息末尾提供一份最新资料；排序仅调整本组内部。"]].map(([id, name, description]) => ({ id, name, description, rows: rows2.filter((row) => row.id !== "obs-context-assembly" && (row.placement || "current") === id).map((row) => ({ ...row, index: numbers.get(row.id) })) }));
   }
 
   // console/layers/O/context-message-body.js
@@ -197,15 +197,15 @@
     while (match = marker.exec(text)) {
       const start = match.index + match[1].length, jsonStart = marker.lastIndex, end = jsonContainerEnd(text, jsonStart);
       if (end < 0) continue;
-      let rows;
+      let rows2;
       try {
-        rows = JSON.parse(text.slice(jsonStart, end));
+        rows2 = JSON.parse(text.slice(jsonStart, end));
       } catch {
         continue;
       }
-      if (match[2].includes("当轮规则") && rows && Array.isArray(rows.messages)) rows = [...Array.isArray(rows.recent) ? rows.recent : [], ...Array.isArray(rows.receiptWindow) ? rows.receiptWindow : [], ...rows.messages];
-      if (!Array.isArray(rows) || rows.some((row) => !row || typeof row !== "object" || Array.isArray(row))) continue;
-      blocks.push({ start, end, heading: match[2], rows });
+      if (match[2].includes("当轮规则") && rows2 && Array.isArray(rows2.messages)) rows2 = [...Array.isArray(rows2.recent) ? rows2.recent : [], ...Array.isArray(rows2.receiptWindow) ? rows2.receiptWindow : [], ...rows2.messages];
+      if (!Array.isArray(rows2) || rows2.some((row) => !row || typeof row !== "object" || Array.isArray(row))) continue;
+      blocks.push({ start, end, heading: match[2], rows: rows2 });
       marker.lastIndex = end;
     }
     return blocks;
@@ -257,8 +257,8 @@
   function waitResultParts(message2) {
     return capturedToolResults(message2).filter((result) => waitTools.has(String(result.name || "").split("__").at(-1)) && !result.isError && result.data?.ok !== false && result.data && !result.data.error && ["arrived", "endRound", "quiet", "waitedMs", "newMessages"].some((key2) => Object.hasOwn(result.data, key2)));
   }
-  function qqMessagesHtml(rows, { businessBySeq } = {}) {
-    return '<div class="context-qq-messages">' + rows.map((row) => {
+  function qqMessagesHtml(rows2, { businessBySeq } = {}) {
+    return '<div class="context-qq-messages">' + rows2.map((row) => {
       const state = classifyReceipt(row);
       const resolved = businessBySeq?.get(row.seq);
       const label2 = resolved ? resolved.windowLabel + " · " + resolved.stateLabel : state === "self" ? "QQ 历史消息 · bot" : state === "complete" ? "QQ 历史消息 · 处理完成" : state === "resolved" ? "QQ 历史消息 · 管理归档" : ["seen", "unseen"].includes(state) ? "QQ 未处理消息 · " + (state === "seen" ? "已读待处理" : "未读") : "QQ 消息（状态未知）";
@@ -278,8 +278,8 @@
       const actions = { followup: "继续旧话题追问", newTopic: "开启新话题", wait: "继续等待" };
       const action = data2.endRound === true ? "结束本轮" : data2.arrived === true ? "处理收到的来信" : actions[data2.action] || (data2.purpose === "reply" ? data2.quiet ? "回应现有消息" : "判断是否继续等对方说完" : "返回建议（分支未记录）");
       const advice = [...new Set([data2.guidance, data2.hint].filter((value2) => typeof value2 === "string" && value2.trim()))];
-      const rows = Array.isArray(data2.newMessages) ? data2.newMessages.filter((row) => row && typeof row === "object" && !Array.isArray(row)) : [];
-      return '<section class="context-record-part context-wait-decision"><h4>等待判定</h4><p><code>' + esc(name) + "</code> · 对应调用 " + esc(toolCallId || "未记录") + '</p><dl class="context-detail-fields">' + fields.join("") + '</dl></section><section class="context-record-part context-action-advice"><h4>下一步行动建议 · ' + esc(action) + "</h4><p>工具建议，不是已发送的 QQ 消息。</p>" + advice.map((value2) => "<pre>" + esc(value2) + "</pre>").join("") + (data2.reason ? "<p>原因：<code>" + esc(data2.reason) + "</code></p>" : "") + '</section><section class="context-record-part"><h4>工具返回的 QQ 消息 · ' + rows.length + " 条</h4>" + (data2.partial === true ? "<p>结果有截断。</p>" : "") + qqMessagesHtml(rows, { businessBySeq: message2.qqBySeq }) + "</section>";
+      const rows2 = Array.isArray(data2.newMessages) ? data2.newMessages.filter((row) => row && typeof row === "object" && !Array.isArray(row)) : [];
+      return '<section class="context-record-part context-wait-decision"><h4>等待判定</h4><p><code>' + esc(name) + "</code> · 对应调用 " + esc(toolCallId || "未记录") + '</p><dl class="context-detail-fields">' + fields.join("") + '</dl></section><section class="context-record-part context-action-advice"><h4>下一步行动建议 · ' + esc(action) + "</h4><p>工具建议，不是已发送的 QQ 消息。</p>" + advice.map((value2) => "<pre>" + esc(value2) + "</pre>").join("") + (data2.reason ? "<p>原因：<code>" + esc(data2.reason) + "</code></p>" : "") + '</section><section class="context-record-part"><h4>工具返回的 QQ 消息 · ' + rows2.length + " 条</h4>" + (data2.partial === true ? "<p>结果有截断。</p>" : "") + qqMessagesHtml(rows2, { businessBySeq: message2.qqBySeq }) + "</section>";
     }).join("");
   }
   function dialogueParts(message2) {
@@ -312,8 +312,8 @@
     const origin = inputOrigin(message2), evidence = message2.provenance, parts = dialogueParts(message2), changes = (message2.contentBlocks || evidence?.toolChanges || []).filter((block) => ["tool-addition", "tool-removal"].includes(block.type));
     let html = waitDetails(message2) + (origin ? '<div class="context-record-origin"><strong>' + esc(origin.title) + "</strong><p>" + esc(origin.description) + "</p><small>识别依据：" + esc(origin.evidence) + "</small></div>" : "");
     for (const result of messageReadParts(message2)) {
-      const rows = result.data.messages.filter((row) => row && typeof row === "object" && !Array.isArray(row));
-      html += '<section class="context-record-part"><h4>聊天记录 · ' + rows.length + " 条</h4>" + qqMessagesHtml(rows, { businessBySeq: message2.qqBySeq }) + "</section>";
+      const rows2 = result.data.messages.filter((row) => row && typeof row === "object" && !Array.isArray(row));
+      html += '<section class="context-record-part"><h4>聊天记录 · ' + rows2.length + " 条</h4>" + qqMessagesHtml(rows2, { businessBySeq: message2.qqBySeq }) + "</section>";
     }
     if (message2.triggerInfo) {
       const trigger = message2.triggerInfo;
@@ -660,7 +660,7 @@
       const recordId = validSeq ? row.seq : Number.isSafeInteger(row.dialogueSeq) ? "dialogue:" + row.dialogueSeq : row.messageId ? "id:" + row.messageId : "unsequenced:" + message2.position + ":" + unsequenced++;
       const old = records.get(recordId), next = classifyReceipt(row), ranks = { unknown: 0, pending: 1, unseen: 2, seen: 3, complete: 4, resolved: 4, self: 4, anomaly: 5 };
       const position = message2.position, proof = { position, label: label2 };
-      const selected2 = !old || next !== "unknown" && (authoritative || ranks[next] >= ranks[old.receiptState]);
+      const selected3 = !old || next !== "unknown" && (authoritative || ranks[next] >= ranks[old.receiptState]);
       const { text: capturedText, quoted: quoted2 } = messageBodyParts(row);
       const saved2 = old || { recordId, seq: validSeq ? row.seq : void 0, text: "", record: {}, sourcePositions: [], evidence: [], receiptState: "unknown" };
       if (!receiptOnly && (capturedText.trim() || quoted2) && capturedText.length >= saved2.text.length) {
@@ -672,7 +672,7 @@
       } else saved2.record = { ...row, ...saved2.record };
       if (!saved2.sourcePositions.includes(position)) saved2.sourcePositions.push(position);
       saved2.evidence.push(proof);
-      if (selected2) {
+      if (selected3) {
         saved2.receiptState = next;
         saved2.receiptEvidence = proof;
       }
@@ -691,8 +691,8 @@
         const data2 = result.data, name = short3(result.name);
         if (!data2 || result.isError || data2.ok === false || data2.error || data2.key && request.key && data2.key !== request.key) continue;
         if (readers.has(name)) {
-          const rows = toolMessageRows(name, data2);
-          for (const row of rows) {
+          const rows2 = toolMessageRows(name, data2);
+          for (const row of rows2) {
             if (!row || typeof row !== "object") continue;
             const pendingEvidence = name === "qq_get_unread_messages" || ["qq_wait_for_messages", "qq_wait_for_quiet"].includes(name) && data2.arrived === true;
             record2(name === "qq_get_my_recent_messages" ? { ...row, isSelf: true } : pendingEvidence && classifyReceipt(row) === "unknown" ? { ...row, receiptState: "pending" } : row, message2, "工具读取 " + name);
@@ -714,7 +714,7 @@
       if (!batches.has(position)) batches.set(position, []);
       batches.get(position).push(row);
     }
-    const orderedRecords = [...batches].sort(([a], [b]) => a - b).flatMap(([, rows]) => rows.every((row) => Number.isSafeInteger(row.record.dialogueSeq)) ? rows.sort((a, b) => a.record.dialogueSeq - b.record.dialogueSeq) : rows.every((row) => Number.isSafeInteger(row.seq)) ? rows.sort((a, b) => a.seq - b.seq) : rows.sort((a, b) => a.bodyOrder - b.bodyOrder));
+    const orderedRecords = [...batches].sort(([a], [b]) => a - b).flatMap(([, rows2]) => rows2.every((row) => Number.isSafeInteger(row.record.dialogueSeq)) ? rows2.sort((a, b) => a.record.dialogueSeq - b.record.dialogueSeq) : rows2.every((row) => Number.isSafeInteger(row.seq)) ? rows2.sort((a, b) => a.seq - b.seq) : rows2.sort((a, b) => a.bodyOrder - b.bodyOrder));
     const qq = orderedRecords.map((row, index) => {
       const region = ["complete", "resolved", "self"].includes(row.receiptState) ? "history" : ["seen", "unseen", "pending"].includes(row.receiptState) ? "arrivals" : "unknown";
       const dialogueSeq = Number.isSafeInteger(row.record.dialogueSeq) ? row.record.dialogueSeq : null, numberLabel = row.seq ? "收件 seq " + row.seq : (row.record.isSelf ? "bot QQ 消息" : "QQ 消息（无收件 seq）") + (row.record.at ? " · " + row.record.at : "");
@@ -741,6 +741,7 @@
     proactiveCheck: ["静默后的主动检查", "统一静默调度到达检查点，按主动概率及约束提供主动会话机会。"],
     replyCheck: ["回复后的来信检查", "发送后的检查任务检查是否有新来信；不是无条件再次发送。"],
     timeBubble: ["定时冒泡", "定时冒泡任务达到计划时间并通过执行条件。"],
+    milkStock: ["API预算告警主动会话", "定时核对发现有效API预算告警后直接交给 LLM 说一句，不抽主动概率；实际发送成功后刷新主动状态。"],
     reminder: ["日程提醒", "日程任务到期，进入对应提醒处理。"],
     memoryWrite: ["后台记忆整理", "后台任务整理会话记忆，不是用户的新聊天。"],
     bootstrap: ["首次开始处理", "桥接为会话建立初始处理。"],
@@ -863,10 +864,10 @@
     const marker = ["【QQ 收件状态】", "【本次消息快照】"].find((value2) => String(text).includes(value2)), body = marker ? String(text).slice(String(text).indexOf(marker) + marker.length).trim() : String(text).trim();
     const data2 = parse2(body) || parse2(body.split("\n")[0]);
     if (!data2 || Array.isArray(data2) || typeof data2 !== "object") return "";
-    const rows = /* @__PURE__ */ new Map();
-    for (const row of [...Array.isArray(data2.receipts) ? data2.receipts : [], ...Array.isArray(data2.receiptWindow) ? data2.receiptWindow : []]) if (Number.isSafeInteger(row?.seq)) rows.set(row.seq, row);
-    if (!rows.size) return "";
-    return '<details class="context-receipts"><summary>收件状态明细 · ' + rows.size + ' 条</summary><p>仅表示这份请求携带的处理状态；有状态不代表本次携带了消息正文。</p><div class="context-receipt-table"><table><thead><tr><th>原始收件 seq</th><th>处理状态</th></tr></thead><tbody>' + [...rows].sort(([a], [b]) => a - b).map(([seq, row]) => "<tr><td>" + seq + "</td><td>" + esc(labels[classifyReceipt(row)] || "状态未知") + "</td></tr>").join("") + "</tbody></table></div><details><summary>原始收件字段</summary><pre>" + esc(body) + "</pre></details></details>";
+    const rows2 = /* @__PURE__ */ new Map();
+    for (const row of [...Array.isArray(data2.receipts) ? data2.receipts : [], ...Array.isArray(data2.receiptWindow) ? data2.receiptWindow : []]) if (Number.isSafeInteger(row?.seq)) rows2.set(row.seq, row);
+    if (!rows2.size) return "";
+    return '<details class="context-receipts"><summary>收件状态明细 · ' + rows2.size + ' 条</summary><p>仅表示这份请求携带的处理状态；有状态不代表本次携带了消息正文。</p><div class="context-receipt-table"><table><thead><tr><th>原始收件 seq</th><th>处理状态</th></tr></thead><tbody>' + [...rows2].sort(([a], [b]) => a - b).map(([seq, row]) => "<tr><td>" + seq + "</td><td>" + esc(labels[classifyReceipt(row)] || "状态未知") + "</td></tr>").join("") + "</tbody></table></div><details><summary>原始收件字段</summary><pre>" + esc(body) + "</pre></details></details>";
   }
 
   // console/layers/O/context-inspector.js
@@ -889,9 +890,9 @@
       return { ...row, ...row.toolResults ? { toolResults: row.toolResults.map((result) => ({ ...result, name: result.name || callNames.get(result.toolCallId) })) } : {}, key: "message:" + index, position: index + 1, kind, name: row.source === "qq-context-latest" ? "当前补充资料（仅最新状态）" : region === "dynamic" ? "组件状态快照（" + (!hasUpdateEvidence ? "有效性未采集" : effectiveComponents.length ? effectiveComponents.length < row.contextUpdates.length ? "部分仍有效" : "最新版本" : "已被后续更新取代") + "）" : name, region, effectiveComponents, withdrawnComponents, stateLabel, superseded };
     });
   }
-  function filterEntries(rows, { query = "", kind = "", region = "" } = {}) {
+  function filterEntries(rows2, { query = "", kind = "", region = "" } = {}) {
     const needle = query.trim().toLocaleLowerCase();
-    return rows.filter((row) => (!region || row.region === region) && (!kind || row.kind === kind) && (!needle || [row.name, row.id, row.text, row.source, row.componentNumber ? "C" + String(row.componentNumber).padStart(2, "0") : "", JSON.stringify(row.toolCalls || []), JSON.stringify(row.toolResults || [])].join(" ").toLocaleLowerCase().includes(needle))).map((row, index) => ({ ...row, listNumber: index + 1 }));
+    return rows2.filter((row) => (!region || row.region === region) && (!kind || row.kind === kind) && (!needle || [row.name, row.id, row.text, row.source, row.componentNumber ? "C" + String(row.componentNumber).padStart(2, "0") : "", JSON.stringify(row.toolCalls || []), JSON.stringify(row.toolResults || [])].join(" ").toLocaleLowerCase().includes(needle))).map((row, index) => ({ ...row, listNumber: index + 1 }));
   }
   function componentAvailability(row) {
     if (row.relatedStyleText) return "当前心情、形态与风格已放入系统提示";
@@ -924,19 +925,19 @@
     const confirmedStyle = moodStyle?.text?.trim() && (request.messages || []).some((m) => m.text?.includes(moodStyle.text.trim())) ? moodStyle.text : "";
     const components = catalog.map((slot, index) => ({ ...slot, ...modules.get(slot.id), ...slot.id === "ctx-context-dynamics" && confirmedStyle ? { relatedStyleText: confirmedStyle } : {}, notCaptured: !modules.has(slot.id) || modules.get(slot.id)?.notCaptured === true, key: "component:" + slot.id, position: index + 1, componentNumber: index + 1, kind: "component", name: slot.name && slot.name !== slot.id ? slot.name : modules.get(slot.id)?.name || slot.id }));
     const all = state.view === "tools" ? tools : state.view === "components" ? components : ordered;
-    const rows = filterEntries(all, { query: state.query, kind: state.view === "messages" ? state.kind : "", region: state.view === "messages" ? state.region : "" });
-    const selected2 = rows.find((row) => row.key === state.selected) || rows.find((row) => row.source === "qq-context-current" && row.contextNonce === request.nonce) || rows[0];
-    const relations = traceRelations(request, messages, business), related = relations.byEntry.get(selected2?.key) || /* @__PURE__ */ new Set();
+    const rows2 = filterEntries(all, { query: state.query, kind: state.view === "messages" ? state.kind : "", region: state.view === "messages" ? state.region : "" });
+    const selected3 = rows2.find((row) => row.key === state.selected) || rows2.find((row) => row.source === "qq-context-current" && row.contextNonce === request.nonce) || rows2[0];
+    const relations = traceRelations(request, messages, business), related = relations.byEntry.get(selected3?.key) || /* @__PURE__ */ new Set();
     const hint = (row) => [...relations.byEntry.get(row.key) || []].filter((key2) => key2.startsWith("qq:")).slice(0, 4).map((key2) => business.records.find((record2) => record2.key === key2)?.seq).filter(Boolean).map((seq) => "收件 seq " + seq).join("、");
     const nav = [["messages", raw ? "原始消息" : "业务分区", ordered.length], ["tools", "工具列表", tools.length], ["components", "组件来源", components.length]];
     const navHtml = '<div class="context-inspector-nav" role="group" aria-label="请求查看内容">' + nav.map(([id, name, count]) => '<button type="button" data-inspector-view="' + id + '" aria-pressed="' + (state.view === id) + '">' + name + " <span>" + count + "</span></button>").join("") + "</div>";
     const shortcuts = '<div class="context-source-shortcuts"><span>动态资料定位</span>' + dynamicSources.filter(([id]) => catalog.some((row) => row.id === id)).map(([id, label2]) => '<button type="button" data-inspector-component="' + id + '">' + label2 + "</button>").join("") + "</div>";
-    const mapping = state.view === "components" ? '<label class="context-component-lookup">按组件名称定位到固定编号<select id="contextComponentLookup"><option value="">选择组件…</option>' + components.map((row) => '<option value="' + esc(row.id) + '"' + (selected2?.id === row.id ? " selected" : "") + ">" + String(row.componentNumber).padStart(2, "0") + " ｜ " + esc(row.name) + "</option>").join("") + "</select></label>" : "";
+    const mapping = state.view === "components" ? '<label class="context-component-lookup">按组件名称定位到固定编号<select id="contextComponentLookup"><option value="">选择组件…</option>' + components.map((row) => '<option value="' + esc(row.id) + '"' + (selected3?.id === row.id ? " selected" : "") + ">" + String(row.componentNumber).padStart(2, "0") + " ｜ " + esc(row.name) + "</option>").join("") + "</select></label>" : "";
     const controls = '<div class="context-inspector-controls"><label class="context-search"><span>搜索' + (state.view === "messages" ? "本次请求" : state.view === "tools" ? "工具" : "组件") + '</span><input id="contextInspectorSearch" type="search" value="' + esc(state.query) + '" placeholder="名称、正文或调用 ID"></label>' + (state.view === "messages" ? '<label><span>类型</span><select id="contextInspectorKind"><option value="">全部类型</option>' + Object.entries(KIND_LABELS).filter(([kind]) => !["definition", "component"].includes(kind)).map(([kind, label2]) => '<option value="' + kind + '"' + (state.kind === kind ? " selected" : "") + ">" + label2 + "</option>").join("") + "</select></label>" : "") + "</div>";
-    const sequenceHtml = (items2, caption2) => '<div class="context-sequence" role="group" aria-label="' + (state.view === "messages" ? raw ? "按请求顺序排列的消息" : "按处理状态排列的消息" : state.view === "tools" ? "本次请求的工具定义" : "40 个组件来源") + '"><div class="context-sequence-caption">' + caption2 + " <span>" + items2.length + " 项</span></div>" + items2.map((row) => '<button type="button" class="context-sequence-row context-family-' + timelineFamily(row) + (timelineFamily(row) === "message" && messageIsOutgoing(row) ? " is-message-outgoing" : "") + (row.kind === "qq" ? row.record.isSelf ? " is-qq-self" : " is-qq-human" : ["call", "result"].includes(row.kind) ? " is-tool-step" : "") + (related.has(row.key) ? " is-related" : "") + '" data-inspector-select="' + esc(row.key) + '" data-entry-kind="' + row.kind + '" data-request-position="' + row.position + '" aria-pressed="' + (row.key === selected2?.key) + '"><span class="context-sequence-number" title="' + esc(state.view === "messages" ? receiptSequence(row) ? "QQ 收件 seq " + receiptSequence(row) : timelineFamily(row) === "message" ? "原记录未采集 QQ 收件 seq" : "协议记录，无 QQ 收件 seq" : "目录编号") + '"' + (receiptSequence(row) ? ' data-qq-seq="' + receiptSequence(row) + '"' : "") + ">" + (state.view === "messages" ? receiptSequence(row) ?? (timelineFamily(row) === "message" ? "未记录" : "·") : String(row.listNumber).padStart(3, "0")) + '</span><span class="context-sequence-main">' + (row.kind === "qq" ? '<span class="context-kind context-kind-qq">' + esc(row.windowLabel) + "</span>" : badge(row.kind)) + (row.kind === "qq" ? '<span class="context-window-badge">' + esc(row.stateLabel) + "</span>" : row.componentNumber ? '<span class="context-component-code">组件 ' + String(row.componentNumber).padStart(2, "0") + "</span>" : row.role ? '<span class="context-protocol-role">' + esc(row.role) + "</span>" : "") + (hint(row) ? '<span class="context-link-hint">关联 ' + esc(hint(row)) + "</span>" : "") + '<strong class="' + (row.superseded ? "context-superseded-title" : "") + '" title="' + esc(row.name || row.id) + '">' + esc(listName(row)) + "</strong>" + (timelineFamily(row) === "message" ? '<span class="context-chat-sender">' + esc(messageActor(row)) + (row.record?.at || row.at ? " · " + esc(row.record?.at || row.at) : "") + (row.targetKey ? " · " + esc(row.crossSession ? (row.sourceKey || "来源会话") + " → " + row.targetKey : row.targetKey) : "") + "</span>" : "") + quotePreview(row) + '<span class="context-sequence-preview">' + esc(raw ? String(row.text || "结构化记录").replace(/\s+/g, " ").slice(0, 100) : timelinePreview(row)) + '</span></span><span class="context-sequence-size">' + (row.text?.length || 0).toLocaleString() + "</span></button>").join("") + (items2.length ? "" : '<p class="context-empty">没有匹配项。</p>') + "</div>";
+    const sequenceHtml = (items2, caption2) => '<div class="context-sequence" role="group" aria-label="' + (state.view === "messages" ? raw ? "按请求顺序排列的消息" : "按处理状态排列的消息" : state.view === "tools" ? "本次请求的工具定义" : "40 个组件来源") + '"><div class="context-sequence-caption">' + caption2 + " <span>" + items2.length + " 项</span></div>" + items2.map((row) => '<button type="button" class="context-sequence-row context-family-' + timelineFamily(row) + (timelineFamily(row) === "message" && messageIsOutgoing(row) ? " is-message-outgoing" : "") + (row.kind === "qq" ? row.record.isSelf ? " is-qq-self" : " is-qq-human" : ["call", "result"].includes(row.kind) ? " is-tool-step" : "") + (related.has(row.key) ? " is-related" : "") + '" data-inspector-select="' + esc(row.key) + '" data-entry-kind="' + row.kind + '" data-request-position="' + row.position + '" aria-pressed="' + (row.key === selected3?.key) + '"><span class="context-sequence-number" title="' + esc(state.view === "messages" ? receiptSequence(row) ? "QQ 收件 seq " + receiptSequence(row) : timelineFamily(row) === "message" ? "原记录未采集 QQ 收件 seq" : "协议记录，无 QQ 收件 seq" : "目录编号") + '"' + (receiptSequence(row) ? ' data-qq-seq="' + receiptSequence(row) + '"' : "") + ">" + (state.view === "messages" ? receiptSequence(row) ?? (timelineFamily(row) === "message" ? "未记录" : "·") : String(row.listNumber).padStart(3, "0")) + '</span><span class="context-sequence-main">' + (row.kind === "qq" ? '<span class="context-kind context-kind-qq">' + esc(row.windowLabel) + "</span>" : badge(row.kind)) + (row.kind === "qq" ? '<span class="context-window-badge">' + esc(row.stateLabel) + "</span>" : row.componentNumber ? '<span class="context-component-code">组件 ' + String(row.componentNumber).padStart(2, "0") + "</span>" : row.role ? '<span class="context-protocol-role">' + esc(row.role) + "</span>" : "") + (hint(row) ? '<span class="context-link-hint">关联 ' + esc(hint(row)) + "</span>" : "") + '<strong class="' + (row.superseded ? "context-superseded-title" : "") + '" title="' + esc(row.name || row.id) + '">' + esc(listName(row)) + "</strong>" + (timelineFamily(row) === "message" ? '<span class="context-chat-sender">' + esc(messageActor(row)) + (row.record?.at || row.at ? " · " + esc(row.record?.at || row.at) : "") + (row.targetKey ? " · " + esc(row.crossSession ? (row.sourceKey || "来源会话") + " → " + row.targetKey : row.targetKey) : "") + "</span>" : "") + quotePreview(row) + '<span class="context-sequence-preview">' + esc(raw ? String(row.text || "结构化记录").replace(/\s+/g, " ").slice(0, 100) : timelinePreview(row)) + '</span></span><span class="context-sequence-size">' + (row.text?.length || 0).toLocaleString() + "</span></button>").join("") + (items2.length ? "" : '<p class="context-empty">没有匹配项。</p>') + "</div>";
     const caption = state.view === "messages" ? raw ? "原始请求顺序 · QQ 仅显示真实收件 seq" : "聊天与工具时间线 · QQ 使用原始收件 seq" : state.view === "tools" ? "实际 tools 字段" : "固定组件目录";
     const legend = state.view === "messages" ? '<div class="context-card-legend" aria-label="记录颜色"><span><i class="message"></i>QQ 消息</span><span><i class="context"></i>系统与上下文</span><span><i class="tool"></i>工具调用与返回</span></div>' : "";
-    const list = sequenceHtml(rows, caption);
+    const list = sequenceHtml(rows2, caption);
     const isTimeline = state.view === "messages" && !raw;
     const historyHumans = business.records.filter((row) => !row.record.isSelf && row.region === "history").length;
     const historyBots = business.records.filter((row) => row.record.isSelf && row.region === "history").length;
@@ -944,43 +945,43 @@
     const missingPending = business.receiptIndexes.filter((row) => ["seen", "unseen", "pending"].includes(row.receiptState)).length;
     const windowNote = state.view === "messages" && !raw && ["history", "arrivals"].includes(state.region) ? '<div class="context-window-summary">' + (state.region === "history" ? "用户原文 " + historyHumans + " 条 · bot 消息 " + historyBots + " 条" + (!historyHumans ? "。这份请求未携带已处理的用户消息正文；不从实时聊天记录补入。" : "") : "待处理用户原文 " + pendingHumans + " 条" + (missingPending ? "；另有 " + missingPending + " 条只有收件状态，正文未包含在这份请求中。" : !pendingHumans ? "。这份请求未携带待处理消息正文，不表示桥接队列已清空。" : "")) + "</div>" : "";
     let detail = '<p class="context-empty">没有可查看的记录。</p>';
-    if (state.view === "messages" && state.region === "arrivals" && !rows.length) detail = '<section class="context-record-part"><h3>本请求中未找到待处理来信</h3><p>仅依据所选快照；状态不完整的消息在“状态待核实”，不推断实时队列已经清空。</p></section>';
-    if (selected2) {
-      const calls = [...(selected2.toolCalls || []).map((c) => "<div><dt>调用工具</dt><dd>" + esc(c.name) + " · " + esc(c.id) + "</dd></div>"), ...(selected2.toolResults || []).map((c) => "<div><dt>对应调用</dt><dd>" + esc(c.name || "") + " · " + esc(c.toolCallId) + "</dd></div>")].join("");
-      detail = '<header class="context-detail-heading">' + badge(selected2.kind) + '<h3 class="' + (selected2.superseded ? "context-superseded-title" : "") + '">' + esc(selected2.name || selected2.id) + "</h3><p>" + (selected2.kind === "qq" ? esc(selected2.windowLabel) : selected2.kind === "component" ? selected2.componentNumber ? "组件 C" + String(selected2.componentNumber).padStart(2, "0") : "附加规则" : selected2.kind === "definition" ? "本次请求的工具定义" : ["delivery", "quote", "forwarded"].includes(selected2.kind) ? "从工具返回提取 · 原始位置 " + (selected2.resultPosition || Math.floor(selected2.position)) : "原始请求位置 " + selected2.position + " / " + messages.length) + " · " + (selected2.text?.length || 0).toLocaleString() + " 个文本字符</p></header>";
-      if (!["component", "definition", "qq", "quote", "delivery", "forwarded"].includes(selected2.kind)) detail += recordDetails({ ...selected2, qqBySeq: business.bySeq, triggerInfo: triggerMechanism(selected2, request) });
-      detail += traceHtml(outputTrace(selected2, messages, request));
+    if (state.view === "messages" && state.region === "arrivals" && !rows2.length) detail = '<section class="context-record-part"><h3>本请求中未找到待处理来信</h3><p>仅依据所选快照；状态不完整的消息在“状态待核实”，不推断实时队列已经清空。</p></section>';
+    if (selected3) {
+      const calls = [...(selected3.toolCalls || []).map((c) => "<div><dt>调用工具</dt><dd>" + esc(c.name) + " · " + esc(c.id) + "</dd></div>"), ...(selected3.toolResults || []).map((c) => "<div><dt>对应调用</dt><dd>" + esc(c.name || "") + " · " + esc(c.toolCallId) + "</dd></div>")].join("");
+      detail = '<header class="context-detail-heading">' + badge(selected3.kind) + '<h3 class="' + (selected3.superseded ? "context-superseded-title" : "") + '">' + esc(selected3.name || selected3.id) + "</h3><p>" + (selected3.kind === "qq" ? esc(selected3.windowLabel) : selected3.kind === "component" ? selected3.componentNumber ? "组件 C" + String(selected3.componentNumber).padStart(2, "0") : "附加规则" : selected3.kind === "definition" ? "本次请求的工具定义" : ["delivery", "quote", "forwarded"].includes(selected3.kind) ? "从工具返回提取 · 原始位置 " + (selected3.resultPosition || Math.floor(selected3.position)) : "原始请求位置 " + selected3.position + " / " + messages.length) + " · " + (selected3.text?.length || 0).toLocaleString() + " 个文本字符</p></header>";
+      if (!["component", "definition", "qq", "quote", "delivery", "forwarded"].includes(selected3.kind)) detail += recordDetails({ ...selected3, qqBySeq: business.bySeq, triggerInfo: triggerMechanism(selected3, request) });
+      detail += traceHtml(outputTrace(selected3, messages, request));
       if (related.size) {
         const targets = [...related].map((key2) => business.entries.find((row) => row.key === key2)).filter(Boolean);
-        detail += '<section class="context-related-links"><strong>关联轨迹</strong>' + targets.map((row) => '<button type="button" data-inspector-related="' + esc(row.key) + '">' + esc(relations.labels.get(selected2.key + "|" + row.key) || "关联") + " · " + esc(row.kind === "qq" ? row.numberLabel + (row.seq ? " · 收件 seq " + row.seq : "") : "原始位置 " + (row.resultPosition || Math.floor(row.position))) + "</button>").join("") + "</section>";
+        detail += '<section class="context-related-links"><strong>关联轨迹</strong>' + targets.map((row) => '<button type="button" data-inspector-related="' + esc(row.key) + '">' + esc(relations.labels.get(selected3.key + "|" + row.key) || "关联") + " · " + esc(row.kind === "qq" ? row.numberLabel + (row.seq ? " · 收件 seq " + row.seq : "") : "原始位置 " + (row.resultPosition || Math.floor(row.position))) + "</button>").join("") + "</section>";
       }
-      if (selected2.kind === "component") {
-        detail += componentGuide(selected2);
-        const locations = messages.filter((message2) => message2.effectiveComponents.includes(selected2.id));
-        if (locations.length) detail += '<p class="context-detail-note">当前状态位置：' + locations.map((message2) => '<button type="button" data-inspector-message="' + esc(message2.key) + '">消息 ' + message2.position + (message2.withdrawnComponents.includes(selected2.id) ? " · 已撤回" : " · 当前有效") + "</button>").join(" ") + "</p>";
-        const related2 = selected2.id === "ctx-context-dynamics" ? modules.get("role-card")?.parts?.find((p) => p.id === "ctx-context-dynamics:expression") : null;
-        detail += '<p class="context-detail-note">' + esc(componentAvailability(selected2)) + "。" + (!selected2.relatedStyleText && selected2.included === false && selected2.reason ? "记录原因：" + esc(selected2.reason) + "。" : "") + "这是所选请求当时的快照。</p>";
-        if (related2?.text && selected2.relatedStyleText) detail += '<div class="context-text-frame context-tone-4"><div class="context-frame-label"><strong>05 · 系统提示中的当前心情、形态与风格</strong></div><pre>' + esc(selected2.relatedStyleText) + '</pre></div><p class="context-detail-note"><button type="button" data-inspector-component="role-card">定位到 01 · 系统提示中的放置位置</button></p>';
-        if (!selected2.text?.trim() && ["memoryWrite", "selfReview", "selfOptimize", "userFeedbackReview", "slangLearn"].includes(request.scene) && ["ctx-context-dynamics", "life-schedule-reminder"].includes(selected2.id)) detail += '<p class="context-detail-note">这次是后台整理任务，心情和日程组件按场景跳过。</p>';
-        if (!selected2.relatedStyleText || selected2.text?.trim()) detail += renderComponent(selected2);
-      } else if (selected2.kind === "qq") detail += processingRecordHtml(selected2);
-      else if (["delivery", "forwarded", "quote"].includes(selected2.kind)) detail += extractedMessageDetails(selected2);
+      if (selected3.kind === "component") {
+        detail += componentGuide(selected3);
+        const locations = messages.filter((message2) => message2.effectiveComponents.includes(selected3.id));
+        if (locations.length) detail += '<p class="context-detail-note">当前状态位置：' + locations.map((message2) => '<button type="button" data-inspector-message="' + esc(message2.key) + '">消息 ' + message2.position + (message2.withdrawnComponents.includes(selected3.id) ? " · 已撤回" : " · 当前有效") + "</button>").join(" ") + "</p>";
+        const related2 = selected3.id === "ctx-context-dynamics" ? modules.get("role-card")?.parts?.find((p) => p.id === "ctx-context-dynamics:expression") : null;
+        detail += '<p class="context-detail-note">' + esc(componentAvailability(selected3)) + "。" + (!selected3.relatedStyleText && selected3.included === false && selected3.reason ? "记录原因：" + esc(selected3.reason) + "。" : "") + "这是所选请求当时的快照。</p>";
+        if (related2?.text && selected3.relatedStyleText) detail += '<div class="context-text-frame context-tone-4"><div class="context-frame-label"><strong>05 · 系统提示中的当前心情、形态与风格</strong></div><pre>' + esc(selected3.relatedStyleText) + '</pre></div><p class="context-detail-note"><button type="button" data-inspector-component="role-card">定位到 01 · 系统提示中的放置位置</button></p>';
+        if (!selected3.text?.trim() && ["memoryWrite", "selfReview", "selfOptimize", "userFeedbackReview", "slangLearn"].includes(request.scene) && ["ctx-context-dynamics", "life-schedule-reminder"].includes(selected3.id)) detail += '<p class="context-detail-note">这次是后台整理任务，心情和日程组件按场景跳过。</p>';
+        if (!selected3.relatedStyleText || selected3.text?.trim()) detail += renderComponent(selected3);
+      } else if (selected3.kind === "qq") detail += processingRecordHtml(selected3);
+      else if (["delivery", "forwarded", "quote"].includes(selected3.kind)) detail += extractedMessageDetails(selected3);
       else {
-        const structured = dialogueParts(selected2) || waitResultParts(selected2).length || messageReadParts(selected2).length || selected2.source === "tool-registry" && (selected2.contentBlocks || selected2.provenance?.toolChanges || []).some((block) => ["tool-addition", "tool-removal"].includes(block.type)) || business.entries.some((row) => ["quote", "delivery", "forwarded"].includes(row.kind) && row.resultPosition === selected2.position);
-        const body = selected2.kind === "definition" ? '<pre class="context-tool-schema">' + esc(selected2.text) + "</pre>" : '<div class="context-detail-text">' + renderText(selected2.text || "", request.modules || [], catalog, selected2) + "</div>";
-        detail += '<dl class="context-detail-fields"><div><dt>消息角色</dt><dd>' + esc(selected2.role || "未记录") + "</dd></div><div><dt>来源</dt><dd>" + esc(selected2.source || (selected2.kind === "definition" ? "tools 字段" : "未记录")) + "</dd></div>" + calls + "</dl>" + (structured ? '<details class="context-raw-record"><summary>完整请求原文（保留原始字段与顺序）</summary>' + body + "</details>" : body);
+        const structured = dialogueParts(selected3) || waitResultParts(selected3).length || messageReadParts(selected3).length || selected3.source === "tool-registry" && (selected3.contentBlocks || selected3.provenance?.toolChanges || []).some((block) => ["tool-addition", "tool-removal"].includes(block.type)) || business.entries.some((row) => ["quote", "delivery", "forwarded"].includes(row.kind) && row.resultPosition === selected3.position);
+        const body = selected3.kind === "definition" ? '<pre class="context-tool-schema">' + esc(selected3.text) + "</pre>" : '<div class="context-detail-text">' + renderText(selected3.text || "", request.modules || [], catalog, selected3) + "</div>";
+        detail += '<dl class="context-detail-fields"><div><dt>消息角色</dt><dd>' + esc(selected3.role || "未记录") + "</dd></div><div><dt>来源</dt><dd>" + esc(selected3.source || (selected3.kind === "definition" ? "tools 字段" : "未记录")) + "</dd></div>" + calls + "</dl>" + (structured ? '<details class="context-raw-record"><summary>完整请求原文（保留原始字段与顺序）</summary>' + body + "</details>" : body);
       }
-      if (selected2.source === "qq-context-current") detail += '<p class="context-detail-note">这是旧版按桥接批次提供的背景快照；不会按新版规则改写这份历史证据。</p>';
-      if (selected2.region === "stable") detail += '<p class="context-detail-note">稳定资料以 user 角色提供，独立于系统硬规则；首次放入消息前部，内容变化时才更新。</p>';
-      if (selected2.region === "dynamic") detail += '<p class="context-detail-note">' + (selected2.source === "qq-context-latest" ? "这是所选请求的完整当前资料；旧状态仅保存在运行日志，不在新版请求中反复携带。未列出的组件本次没有有效补充，不表示底层数据已删除。" : esc(selected2.stateLabel) + "。" + (selected2.effectiveComponents.length ? "本条仍有效的组件：" + selected2.effectiveComponents.map(esc).join("、") + "。" : "") + "这是旧版追加式记录；同组件以最后一次更新为准，旧状态保留在历史原位置。") + "</p>";
-      if (selected2.id === "ctx-chat-topic-drive" && selected2.kind === "component") detail += '<p class="context-detail-note">C10 展示请求前提供的会话推进建议。等待超时后的追问或换题建议位于 qq_wait_for_messages 工具返回中，请在“聊天与工具历史”查看对应返回；它们不会重复标为 C10 正文。</p>';
-      if (selected2.kind === "assistant") detail += '<p class="context-detail-note">内部输出与 QQ 消息分别核验；保存和投递以对应回执为准。</p>';
+      if (selected3.source === "qq-context-current") detail += '<p class="context-detail-note">这是旧版按桥接批次提供的背景快照；不会按新版规则改写这份历史证据。</p>';
+      if (selected3.region === "stable") detail += '<p class="context-detail-note">稳定资料以 user 角色提供，独立于系统硬规则；首次放入消息前部，内容变化时才更新。</p>';
+      if (selected3.region === "dynamic") detail += '<p class="context-detail-note">' + (selected3.source === "qq-context-latest" ? "这是所选请求的完整当前资料；旧状态仅保存在运行日志，不在新版请求中反复携带。未列出的组件本次没有有效补充，不表示底层数据已删除。" : esc(selected3.stateLabel) + "。" + (selected3.effectiveComponents.length ? "本条仍有效的组件：" + selected3.effectiveComponents.map(esc).join("、") + "。" : "") + "这是旧版追加式记录；同组件以最后一次更新为准，旧状态保留在历史原位置。") + "</p>";
+      if (selected3.id === "ctx-chat-topic-drive" && selected3.kind === "component") detail += '<p class="context-detail-note">C10 展示请求前提供的会话推进建议。等待超时后的追问或换题建议位于 qq_wait_for_messages 工具返回中，请在“聊天与工具历史”查看对应返回；它们不会重复标为 C10 正文。</p>';
+      if (selected3.kind === "assistant") detail += '<p class="context-detail-note">内部输出与 QQ 消息分别核验；保存和投递以对应回执为准。</p>';
     }
     const toolsNote = state.view === "tools" ? '<p class="context-tools-note">工具定义来自所选请求独立的 tools 字段，与系统提示、messages 消息列表并列。这里的分区位置不表示模型内部的编码顺序。</p>' : "";
     const regions = '<div class="context-layer-controls" role="group" aria-label="其他查看范围"><button type="button" data-inspector-region="" aria-pressed="' + (!state.region && state.view === "messages") + '">全部内容 · ' + ordered.length + ' 项</button><button type="button" data-inspector-region="tools" aria-pressed="' + (state.view === "tools") + '">工具定义 · ' + tools.length + " 个（独立 tools 字段）</button>" + (business.counts.unknown ? '<button type="button" data-inspector-region="unknown" aria-pressed="' + (state.region === "unknown" && state.view === "messages") + '">处理状态待核实 · ' + business.counts.unknown + " 条</button>" : "") + '</div><div class="context-layout-map" role="group" aria-label="五层上下文结构">' + Object.entries(REGION_LABELS).map(([id, label2]) => '<button type="button" data-inspector-region="' + id + '" aria-pressed="' + (state.region === id && state.view === "messages") + '"><strong>' + label2 + '</strong><span class="context-layer-summary">' + esc(CONTEXT_LAYER_SUMMARIES[id]) + '</span><span class="context-layer-count">' + (raw ? messages : business.entries).filter((row) => row.region === id).length + " 项</span></button>").join("") + "</div>";
     const layout = '<div class="context-layout-switch" role="group" aria-label="查看方式"><button type="button" data-inspector-layout="business" aria-pressed="' + !raw + '">按处理状态</button><button type="button" data-inspector-layout="raw" aria-pressed="' + raw + '">原始请求顺序</button><span>' + (raw ? "保留实际装填顺序，QQ seq 可能因分批补入而回跳。" : "历史窗口 " + business.counts.completed + " 条 · 未处理窗口 " + business.counts.pending + " 条" + (business.counts.unknown ? " · 待核实 " + business.counts.unknown + " 条" : "") + "。工具记录保留配对。") + "</span></div>";
     const refresh3 = request.layoutVersion >= 2 ? '<p class="context-refresh-note">' + esc(request.contextRefresh?.status === "fresh" ? "支持逐请求更新的组件已刷新" : request.contextRefresh?.status === "stale" ? "资料刷新失败" : "未采集刷新结果") + " · " + (request.layoutVersion >= 3 ? "当前资料集中在末尾；原始记录与工具配对保留。" : "旧版追加式记录。") + "</p>" : '<p class="context-refresh-note">旧版采集；按原始证据展示。</p>';
-    return contextLayerGuide() + layout + regions + refresh3 + navHtml + shortcuts + mapping + toolsNote + controls + windowNote + legend + '<div class="context-inspector-split' + (isTimeline ? " has-timeline" : "") + '">' + list + '<section class="context-detail context-family-' + timelineFamily(selected2 || {}) + '" aria-label="选中项详情" data-inspector-detail="' + esc(selected2?.key || "") + '">' + detail + "</section></div>";
+    return contextLayerGuide() + layout + regions + refresh3 + navHtml + shortcuts + mapping + toolsNote + controls + windowNote + legend + '<div class="context-inspector-split' + (isTimeline ? " has-timeline" : "") + '">' + list + '<section class="context-detail context-family-' + timelineFamily(selected3 || {}) + '" aria-label="选中项详情" data-inspector-detail="' + esc(selected3?.key || "") + '">' + detail + "</section></div>";
   }
 
   // console/layers/O/context-request-stages.js
@@ -1075,18 +1076,18 @@
     $("contextDraftTab").setAttribute("aria-pressed", String(!actual));
     $("contextActualTab").setAttribute("aria-pressed", String(actual));
     const stages = data.requestStages || data.request?.requestStages || [{ kind: "initial", label: "本轮初始请求", request: null }, { kind: "previous", label: "上一次请求", request: null }, { kind: "current", label: "当前请求（旧记录）", request: data.request }];
-    const options = requestStageOptions(stages), selected2 = options.find((option) => option.aliases.includes(selectedRequestId)) || options.find((option) => option.kind === "current") || options.at(-1);
-    selectedRequestId = selected2?.kind || "";
-    const request = selected2?.request, preview = data.preview;
+    const options = requestStageOptions(stages), selected3 = options.find((option) => option.aliases.includes(selectedRequestId)) || options.find((option) => option.kind === "current") || options.at(-1);
+    selectedRequestId = selected3?.kind || "";
+    const request = selected3?.request, preview = data.preview;
     $("contextRequestPicker").hidden = !actual;
     $("contextRequestDiff").hidden = !actual;
     $("contextRequestSelect").replaceChildren(...options.length ? options.map((option) => new Option(option.label, option.kind)) : [new Option("尚无模型调用记录", "")]);
     $("contextRequestSelect").value = selectedRequestId;
     $("contextRequestSelect").disabled = !options.length;
     $("contextRequestSummary").textContent = requestStageSummary(request);
-    const olderKind = selectedRequestId === "current" ? "previous" : "initial", older = selected2?.aliases.includes(olderKind) ? void 0 : stages.find((stage) => stage.kind === olderKind)?.request;
-    const delta = selected2?.aliases.includes("initial") ? null : compareRequests(older, request), join = (items2) => items2.length ? items2.map((item) => esc(item.name || item)).join("、") : "无";
-    $("contextRequestDiff").innerHTML = delta ? "<strong>" + (selectedRequestId === "current" ? "最新调用与上一次调用比较" : "上一次调用与首次调用比较") + "</strong><p>工具新增：" + join(delta.toolsAdded) + "；移除：" + join(delta.toolsRemoved) + "；用途或参数说明变化：" + join(delta.toolsChanged) + "</p><p>模块变化：" + join(delta.modulesChanged) + "；消息字符变化 " + (delta.messageCharsDelta >= 0 ? "+" : "") + delta.messageCharsDelta + "；工具说明字符变化 " + (delta.toolCharsDelta >= 0 ? "+" : "") + delta.toolCharsDelta + "</p>" : selected2?.aliases.includes("initial") ? "这是本次处理的首次模型调用，保留作比较基线；相同请求已合并展示。" : "上一次调用尚未采集，无法比较；缺失记录不补造。";
+    const olderKind = selectedRequestId === "current" ? "previous" : "initial", older = selected3?.aliases.includes(olderKind) ? void 0 : stages.find((stage) => stage.kind === olderKind)?.request;
+    const delta = selected3?.aliases.includes("initial") ? null : compareRequests(older, request), join = (items2) => items2.length ? items2.map((item) => esc(item.name || item)).join("、") : "无";
+    $("contextRequestDiff").innerHTML = delta ? "<strong>" + (selectedRequestId === "current" ? "最新调用与上一次调用比较" : "上一次调用与首次调用比较") + "</strong><p>工具新增：" + join(delta.toolsAdded) + "；移除：" + join(delta.toolsRemoved) + "；用途或参数说明变化：" + join(delta.toolsChanged) + "</p><p>模块变化：" + join(delta.modulesChanged) + "；消息字符变化 " + (delta.messageCharsDelta >= 0 ? "+" : "") + delta.messageCharsDelta + "；工具说明字符变化 " + (delta.toolCharsDelta >= 0 ? "+" : "") + delta.toolCharsDelta + "</p>" : selected3?.aliases.includes("initial") ? "这是本次处理的首次模型调用，保留作比较基线；相同请求已合并展示。" : "上一次调用尚未采集，无法比较；缺失记录不补造。";
     if (request && Number.isSafeInteger(request.turn)) $("contextRequestDiff").innerHTML += '<p class="meta">日志定位：DSH 内部回合 ' + esc(request.turn) + (Number.isSafeInteger(request.step) ? " / 步骤 " + esc(request.step) : "") + "。这是内部处理编号，与消息条数、工具调用次数分别计数。</p>";
     $("contextRequestDiff").innerHTML = "<summary>查看本次请求的变化</summary><div>" + $("contextRequestDiff").innerHTML + "</div>";
     if (actual && data.capture?.nonce && request?.nonce && data.capture.nonce !== request.nonce) notice("这份请求使用的是另一批背景快照。下方按该次实际请求自己的组件记录展示。");
@@ -1151,10 +1152,10 @@
         saved = copy(response.policy);
         draft = copy(saved);
       }
-      const selected2 = key2;
+      const selected3 = key2;
       $("contextSession").replaceChildren(new Option("选择要查看的私聊或群聊…", ""), ...(response.sessions || []).map((s) => new Option(s.key, s.key)));
-      $("contextSession").value = selected2;
-      if (!selected2 && response.sessions?.length) {
+      $("contextSession").value = selected3;
+      if (!selected3 && response.sessions?.length) {
         $("contextSession").value = response.sessions[0].key;
         loading = false;
         await refresh(true);
@@ -1188,15 +1189,15 @@
   }
   function move(id, target) {
     if (!data?.preview || actual) return;
-    const rows = visualGroups(data.preview.modules, data.catalog || []).flatMap((group) => group.rows), from = rows.findIndex((x) => x.id === id), to = rows.findIndex((x) => x.id === target);
+    const rows2 = visualGroups(data.preview.modules, data.catalog || []).flatMap((group) => group.rows), from = rows2.findIndex((x) => x.id === id), to = rows2.findIndex((x) => x.id === target);
     if (from < 0 || to < 0 || from === to) return;
-    if (rows[from].placement !== rows[to].placement) {
+    if (rows2[from].placement !== rows2[to].placement) {
       notice("请在同一装填层内调序：系统规则、稳定资料、动态资料各有固定位置。");
       return;
     }
-    const [item] = rows.splice(from, 1);
-    rows.splice(to, 0, item);
-    draft.order = rows.map((x) => x.id);
+    const [item] = rows2.splice(from, 1);
+    rows2.splice(to, 0, item);
+    draft.order = rows2.map((x) => x.id);
     void project();
   }
   function initialize3() {
@@ -1302,8 +1303,8 @@
     $("contextModules").addEventListener("click", (event) => {
       const btn = event.target.closest("[data-context-move]"), row = btn?.closest("[data-context-id]");
       if (!row || !["up", "down"].includes(btn.dataset.contextMove)) return;
-      const rows = visualGroups(data.preview.modules, data.catalog || []).flatMap((group) => group.rows), i = rows.findIndex((x) => x.id === row.dataset.contextId), direction = btn.dataset.contextMove === "up" ? -1 : 1, j = i + direction;
-      if (rows[j] && rows[j].placement === rows[i].placement) move(row.dataset.contextId, rows[j].id);
+      const rows2 = visualGroups(data.preview.modules, data.catalog || []).flatMap((group) => group.rows), i = rows2.findIndex((x) => x.id === row.dataset.contextId), direction = btn.dataset.contextMove === "up" ? -1 : 1, j = i + direction;
+      if (rows2[j] && rows2[j].placement === rows2[i].placement) move(row.dataset.contextId, rows2[j].id);
     });
     $("contextModules").addEventListener("dragstart", (event) => {
       const handle = event.target.closest("[draggable]");
@@ -1346,7 +1347,8 @@
 
   // console/layers/L/proactive-preview.js
   var time = (value2) => value2 ? new Date(value2).toLocaleString("zh-CN", { hour12: false }) : "—";
-  var sources = { default: "默认值（尚无 AI 评估）", ai: "AI 评估", activity: "旧活动评分（待重新评估）", purpose: "旧发送评分（待重新评估）" };
+  var sources = { default: "默认值（尚无 AI 评估）", ai: "AI 评估", "sleep-expired": "旧睡眠评估已到期", activity: "旧活动评分（待重新评估）", purpose: "旧发送评分（待重新评估）" };
+  var reviews = { "sleep-end-unconfirmed": "起床边界未确认，待模型复核", "sleep-evidence-expired": "旧睡眠依据已到期，待模型复核", "current-quiet-plan": "当前仍有免打扰约定", "confirmed-working-window": "当前处于已确认工作时段", "sleep-period-active": "仍在本次睡眠有效期内" };
   async function refreshProactivePreview() {
     const root = document.getElementById("proactivePreview");
     try {
@@ -1356,7 +1358,7 @@
         const p = row.proactive;
         if (!p) return '<div class="runtime-preview"><b>' + esc(row.key) + "</b><p>主动组件未启用或判定不可用</p></div>";
         const interval = p.effectiveInterval;
-        return '<div class="runtime-preview"><b>' + esc(row.key) + '</b><dl class="runtime-facts"><dt>当前会话</dt><dd>' + esc(p.conversationAwake === true ? "已唤醒：接收、回复与等待中" : p.conversationAwake === false ? "未开启：使用主动概率与唤醒加成" : "运行进程尚未提供会话状态") + "</dd>" + (p.lastIncomingDecision ? "<dt>最近群聊来信</dt><dd>" + esc((p.lastIncomingDecision.phase === "conversation" ? "会话中：不抽签，继续接收" : "开启会话：p=" + Math.round(p.lastIncomingDecision.baseProbability * 100) + "% + q=" + Math.round(p.lastIncomingDecision.extraProbability * 100) + "% → " + Math.round(p.lastIncomingDecision.probability * 100) + "% · " + (p.lastIncomingDecision.accepted ? "通过" : "未通过")) + " · " + time(p.lastIncomingDecision.at)) + "</dd>" : "") + "<dt>静默主动阶段</dt><dd>" + esc(p.stage ?? "—") + "</dd><dt>无人来信时的主动概率</dt><dd>" + esc(p.effectiveProbability == null ? "—" : (p.effectiveProbability * 100).toFixed(1) + "%") + "</dd><dt>聊天意愿（用户忙闲）</dt><dd>" + esc(p.willingness ?? "—") + " / 100 · " + esc(sources[p.source] || p.source || "未知来源") + "</dd><dt>上次 AI 评估</dt><dd>" + esc(p.lastAI ? p.lastAI.value + " · " + p.lastAI.reason + " · " + time(p.lastAI.at) : "尚无 AI 评估") + "</dd><dt>实际检验区间</dt><dd>" + esc(interval ? interval.minMinutes + "–" + interval.maxMinutes + " 分钟" : "—") + "</dd><dt>下次判定</dt><dd>" + esc(time(p.nextAt)) + "</dd><dt>阻断 / 暂停</dt><dd>" + esc(p.blockedReason || (row.paused ? "已暂停" : "无")) + "</dd><dt>当前状态</dt><dd>" + esc([p.phase, p.intent, p.lastFinishedReason].filter(Boolean).join(" · ") || "—") + "</dd></dl></div>";
+        return '<div class="runtime-preview"><b>' + esc(row.key) + '</b><dl class="runtime-facts"><dt>当前会话</dt><dd>' + esc(p.conversationAwake === true ? "已唤醒：接收、回复与等待中" : p.conversationAwake === false ? "未开启：使用主动概率与唤醒加成" : "运行进程尚未提供会话状态") + "</dd>" + (p.lastIncomingDecision ? "<dt>最近群聊来信</dt><dd>" + esc((p.lastIncomingDecision.phase === "conversation" ? "会话中：不抽签，继续接收" : "开启会话：p=" + Math.round(p.lastIncomingDecision.baseProbability * 100) + "% + q=" + Math.round(p.lastIncomingDecision.extraProbability * 100) + "% → " + Math.round(p.lastIncomingDecision.probability * 100) + "% · " + (p.lastIncomingDecision.accepted ? "通过" : "未通过")) + " · " + time(p.lastIncomingDecision.at)) + "</dd>" : "") + "<dt>静默主动阶段</dt><dd>" + esc(p.stage ?? "—") + "</dd><dt>无人来信时的主动概率</dt><dd>" + esc(p.effectiveProbability == null ? "—" : (p.effectiveProbability * 100).toFixed(1) + "%") + "</dd><dt>聊天意愿（用户忙闲）</dt><dd>" + esc(p.willingness ?? "—") + " / 100 · " + esc(sources[p.source] || p.source || "未知来源") + "</dd><dt>上次 AI 评估</dt><dd>" + esc(p.lastAI ? p.lastAI.value + " · " + p.lastAI.reason + " · " + time(p.lastAI.at) : "尚无 AI 评估") + "</dd>" + (p.review ? "<dt>评估有效性</dt><dd>" + esc(reviews[p.review.reason] || "待复核") + (p.review.boundary ? " · " + esc(time(p.review.boundary)) : "") + "</dd>" : "") + "<dt>实际检验区间</dt><dd>" + esc(interval ? interval.minMinutes + "–" + interval.maxMinutes + " 分钟" : "—") + "</dd><dt>下次判定</dt><dd>" + esc(time(p.nextAt)) + "</dd><dt>阻断 / 暂停</dt><dd>" + esc(p.blockedReason || (row.paused ? "已暂停" : "无")) + "</dd><dt>当前状态</dt><dd>" + esc([p.phase, p.intent, p.lastFinishedReason].filter(Boolean).join(" · ") || "—") + "</dd></dl></div>";
       }).join("") || '<p class="meta">暂无会话</p>';
     } catch (error) {
       root.textContent = "读取失败：" + error.message;
@@ -1396,9 +1398,9 @@
     if (out.ok === false || out.result?.ok === false) throw Error(out.error || out.result?.error || "操作失败");
     return out.result || out;
   }
-  function learningEvidence(rows) {
-    if (!rows?.length) return '<div class="meta">暂无采集语境；此记录可能来自手动维护。</div>';
-    return "<details><summary>查看采集语境（" + rows.length + '）</summary><ul class="learning-evidence">' + rows.map((e) => "<li><small>" + esc(e.key || "手动") + " · " + esc(e.time ? new Date(e.time).toLocaleString() : "") + "</small><p>" + esc(e.text || "") + "</p></li>").join("") + "</ul></details>";
+  function learningEvidence(rows2) {
+    if (!rows2?.length) return '<div class="meta">暂无采集语境；此记录可能来自手动维护。</div>';
+    return "<details><summary>查看采集语境（" + rows2.length + '）</summary><ul class="learning-evidence">' + rows2.map((e) => "<li><small>" + esc(e.key || "手动") + " · " + esc(e.time ? new Date(e.time).toLocaleString() : "") + "</small><p>" + esc(e.text || "") + "</p></li>").join("") + "</ul></details>";
   }
   function learningLinks(urls) {
     return (urls || []).map((value2) => {
@@ -1416,7 +1418,7 @@
   // console/layers/C/terms.js
   function initialize6() {
     (() => {
-      let entries = [], config = {}, active = "candidate", selected2 = /* @__PURE__ */ new Set();
+      let entries = [], config = {}, active = "candidate", selected3 = /* @__PURE__ */ new Set();
       const msg = document.getElementById("termsMsg");
       const statuses = { candidate: "待审核", confirmed: "已确认", rejected: "已拒绝" }, researchLabels = { pending: "待研究", running: "研究中", researched: "已取得公开来源", failed: "研究失败", manual: "手动编辑", rejected: "已拒绝" };
       function search() {
@@ -1433,11 +1435,11 @@
         for (const e of shown) {
           const actions = active === "candidate" ? '<button class="small" data-term-edit="' + esc(e.id) + '">查看 / 编辑</button><button class="small primary" data-term-confirm="' + esc(e.id) + '" ' + (!e.summary ? 'disabled title="确认前需要摘要"' : "") + '>确认</button><details class="compact-actions"><summary>更多</summary><div class="compact-actions-menu"><button class="small" data-term-research="' + esc(e.id) + '" ' + (e.research?.status === "running" ? "disabled" : "") + '>研究来源</button><button class="small" data-term-reject="' + esc(e.id) + '">拒绝</button></div></details>' : active === "confirmed" ? '<button class="small" data-term-edit="' + esc(e.id) + '">编辑</button><button class="small danger" data-term-reject="' + esc(e.id) + '">撤销确认</button>' : '<button class="small" data-term-restore="' + esc(e.id) + '">恢复候选</button>';
           const unverified = active === "candidate" && !e.sources?.length, sourceStatus = e.research?.status === "failed" ? "研究失败：" + (e.research.error || "未取得摘要") : e.research?.status === "running" ? "正在研究" : e.research?.status === "pending" ? "待研究" : "未附参考来源";
-          html += '<tr data-term-id="' + esc(e.id) + '"><td>' + (active !== "rejected" ? '<input type="checkbox" data-term-select="' + esc(e.id) + '" ' + (selected2.has(e.id) ? "checked" : "") + ">" : "—") + "</td><td><b>" + esc(e.term) + '</b><br><span class="' + (active === "candidate" ? "pill b" : active === "confirmed" ? "pill g" : "pill r") + '">' + statuses[active] + "</span></td><td>" + esc(e.count || 1) + "</td><td>" + sourceKeysMarkup(e) + "</td><td>" + (unverified && e.summary ? '<span class="meta">待核实摘要：</span>' : "") + esc(e.summary || "待补充摘要") + '<br><span class="meta">' + esc(e.topic || "未分类") + " · " + esc(e.category || "兴趣知识") + " · " + esc(researchLabels[e.research?.status] || "未研究") + "</span></td><td>" + (e.sources?.length ? learningLinks(e.sources) : '<span class="meta">' + esc(sourceStatus) + "</span>") + "</td><td>" + learningEvidence(e.evidence) + '</td><td class="row">' + actions + "</td></tr>";
+          html += '<tr data-term-id="' + esc(e.id) + '"><td>' + (active !== "rejected" ? '<input type="checkbox" data-term-select="' + esc(e.id) + '" ' + (selected3.has(e.id) ? "checked" : "") + ">" : "—") + "</td><td><b>" + esc(e.term) + '</b><br><span class="' + (active === "candidate" ? "pill b" : active === "confirmed" ? "pill g" : "pill r") + '">' + statuses[active] + "</span></td><td>" + esc(e.count || 1) + "</td><td>" + sourceKeysMarkup(e) + "</td><td>" + (unverified && e.summary ? '<span class="meta">待核实摘要：</span>' : "") + esc(e.summary || "待补充摘要") + '<br><span class="meta">' + esc(e.topic || "未分类") + " · " + esc(e.category || "兴趣知识") + " · " + esc(researchLabels[e.research?.status] || "未研究") + "</span></td><td>" + (e.sources?.length ? learningLinks(e.sources) : '<span class="meta">' + esc(sourceStatus) + "</span>") + "</td><td>" + learningEvidence(e.evidence) + '</td><td class="row">' + actions + "</td></tr>";
         }
         box.innerHTML = html + "</table>";
         box.querySelectorAll("[data-term-select]").forEach((cb) => cb.addEventListener("change", () => {
-          cb.checked ? selected2.add(cb.dataset.termSelect) : selected2.delete(cb.dataset.termSelect);
+          cb.checked ? selected3.add(cb.dataset.termSelect) : selected3.delete(cb.dataset.termSelect);
         }));
         box.querySelectorAll("[data-term-edit]").forEach((b) => b.addEventListener("click", () => edit2(entries.find((e) => e.id === b.dataset.termEdit))));
         for (const [attr, tool, label2] of [["research", "term_research", "研究完成，结果仍待管理员审核"], ["confirm", "term_confirm", "词条已确认"], ["reject", "term_reject", "词条已拒绝"]]) box.querySelectorAll("[data-term-" + attr + "]").forEach((b) => b.addEventListener("click", async () => {
@@ -1518,13 +1520,13 @@
       for (const status of ["candidate", "confirmed"]) document.getElementById("terms" + status[0].toUpperCase() + status.slice(1) + "SelectAll").addEventListener("change", (event) => {
         const q = status === "candidate" ? search() : "";
         for (const e of entries.filter((x) => x.status === status && (!q || [x.term, x.topic, x.category, x.summary, ...x.sourceKeys || [], ...x.aliases || [], ...x.sources || [], ...(x.evidence || []).map((y) => y.text)].join(" ").toLowerCase().includes(q)))) {
-          if (event.target.checked) selected2.add(e.id);
-          else selected2.delete(e.id);
+          if (event.target.checked) selected3.add(e.id);
+          else selected3.delete(e.id);
         }
         render2();
       });
       document.getElementById("termsResearchSelected").addEventListener("click", async (event) => {
-        const button = event.currentTarget, targets = [...selected2].map((id) => entries.find((e) => e.id === id)).filter((e) => e?.status === "candidate" && e.research?.status !== "running");
+        const button = event.currentTarget, targets = [...selected3].map((id) => entries.find((e) => e.id === id)).filter((e) => e?.status === "candidate" && e.research?.status !== "running");
         if (!targets.length) {
           msg.textContent = "请先勾选待审核词条";
           return;
@@ -1539,11 +1541,11 @@
             try {
               await learningCall("term_research", { id: entry.id });
               success++;
-              selected2.delete(entry.id);
+              selected3.delete(entry.id);
             } catch (error) {
               failed++;
               errors.push(entry.term + "：" + error.message);
-              selected2.delete(entry.id);
+              selected3.delete(entry.id);
             }
           }
           msg.textContent = "批量研究完成：成功 " + success + " 条，失败 " + failed + " 条；研究结果仍需管理员确认。" + (errors.length ? " " + errors.join("；") : "");
@@ -1555,19 +1557,19 @@
         }
       });
       async function rejectSelected(status) {
-        for (const id of selected2) {
+        for (const id of selected3) {
           if (entries.some((x) => x.id === id && x.status === status)) try {
             await learningCall("term_reject", { id });
           } catch (error) {
             msg.textContent = error.message;
           }
         }
-        selected2.clear();
+        selected3.clear();
         await loadTerms(false);
       }
       document.getElementById("termsConfirmSelected").addEventListener("click", async () => {
         let confirmed = 0, skipped = 0;
-        for (const id of selected2) {
+        for (const id of selected3) {
           const e = entries.find((x) => x.id === id);
           if (e?.status !== "candidate") continue;
           if (!e.summary) {
@@ -1581,7 +1583,7 @@
             skipped++;
           }
         }
-        selected2.clear();
+        selected3.clear();
         msg.textContent = "批量确认 " + confirmed + " 条；" + skipped + " 条缺少摘要或确认失败，请单独编辑。";
         await loadTerms(false);
       });
@@ -1674,48 +1676,123 @@
     "qq-chat": { label: "AI助手一代聊天", group: "按模式自动使用", description: "一代仿真聊天预设，由桥接按运行模式选择。" },
     "qq-chat-v2": { label: "AI助手二代仿真", group: "按模式自动使用", description: "二代仿真专用，自主读消息、用工具发言和等待；由桥接按模式选择。" },
     "qq-task-worker": { label: "独立任务执行", group: "后台专用", description: "AI助手处理委派任务时创建的独立工作会话，不是日常聊天入口。" },
-    "qq-learning": { label: "知识学习与核实", group: "后台专用", description: "后台学习、核实公开知识；不接入聊天人格、QQ 发送或本机执行。" },
+    "qq-learning": { label: "后台学习（黑话／词条／绰号）", group: "后台专用", description: "黑话、词条和绰号学习共用 qq-learning 预设及同一个后台学习会话，串行执行各自任务；各组件的素材、审核规则与数据独立管理。仅允许后台抽取、分类和公开资料检索，不发送 QQ 或执行本机命令。" },
     "campus-summary": { label: "网页更新整理", group: "后台专用", description: "整理监控网页差异；无工具，不发送消息，不读取聊天历史。" }
   };
   function presetInfo(preset) {
     const p = typeof preset === "string" ? { id: preset } : preset;
-    return { ...p, ...DEFINITIONS[p.id] || { label: p.name || "自定义预设", group: "自定义", description: p.description || "用途由此自定义预设声明；请核对其工具与权限。" } };
+    const fallback = DEFINITIONS[p.id] || { label: "自定义预设", group: "自定义", description: "用途由此自定义预设声明。" };
+    return { ...p, ...fallback, label: p.name || fallback.label, description: p.description || fallback.description };
   }
-  function presetChoices(presets, showAll = false, selected2 = "") {
-    const unique = new Map(presets.map((p) => [p.id, presetInfo(p)]));
-    if (selected2 && !unique.has(selected2)) unique.set(selected2, { id: selected2, label: "当前配置（DSH 未列出）", group: "当前设置", description: "DSH 暂未列出这个预设，请先核对是否已安装。" });
-    return [...unique.values()].filter((p) => showAll || p.group === "常用" || p.group === "自定义" || p.id === selected2);
+
+  // console/layers/E/admin-presets.js
+  var rows = [];
+  var selected = "";
+  function help() {
+    const select = document.getElementById("v2AdminDevPreset");
+    const target = document.getElementById("envAdminPresetExample");
+    if (!select || !target) return;
+    const row = rows.find((p) => p.id === select.value);
+    const current = rows.find((p) => p.isDefault);
+    target.textContent = select.value ? row ? presetInfo(row).description : "当前预设尚未由 DSH 列出，请确认已安装。" : "跟随 DSH 默认" + (current ? "：" + presetInfo(current).label + " · " + current.id : "（等待 DSH 返回默认项）") + "。控制基础指令与可用工具。";
+  }
+  function renderAdminPresets(value2 = selected) {
+    const select = document.getElementById("v2AdminDevPreset");
+    if (!select) return;
+    selected = value2;
+    select.replaceChildren(new Option("跟随 DSH 默认", ""));
+    for (const row of rows) {
+      const info = presetInfo(row), option = new Option(info.label + " · " + row.id + (row.broken ? "（不可用）" : ""), row.id);
+      option.title = row.broken ? "不可用：" + row.broken : info.description;
+      option.disabled = Boolean(row.broken);
+      select.append(option);
+    }
+    if (value2 && !rows.some((p) => p.id === value2)) select.append(new Option("当前配置（DSH 未列出） · " + value2, value2));
+    select.value = value2;
+    select.onchange = () => {
+      selected = select.value;
+      help();
+    };
+    help();
+  }
+  async function refreshAdminPresets() {
+    try {
+      const data2 = await api("/api/presets");
+      if (!Array.isArray(data2.presets)) throw Error(data2.error || "目录返回不完整");
+      rows = data2.presets;
+      renderAdminPresets();
+    } catch (error) {
+      const target = document.getElementById("envAdminPresetExample");
+      if (target) target.textContent = "预设目录读取失败：" + error.message + "。重新进入本页可重试。";
+    }
+  }
+
+  // console/layers/C/preset-prompt.js
+  var simPromptOriginal;
+  var simPromptPreset;
+  function setSimMsg(text, ok) {
+    const el3 = document.getElementById("simPromptMsg");
+    el3.textContent = text;
+    el3.className = ok === void 0 ? "meta" : ok ? "meta ok" : "meta err";
+  }
+  function setSimEditing(editing) {
+    const area = document.getElementById("simPromptText");
+    area.readOnly = !editing;
+    area.classList.toggle("editing", editing);
+    document.getElementById("simPromptEdit").disabled = editing;
+    document.getElementById("simPromptSave").disabled = !editing;
+    document.getElementById("simPromptCancel").disabled = !editing;
+  }
+  async function refreshSimPrompt() {
+    if (!simPromptPreset) {
+      document.getElementById("simPromptText").value = "";
+      setSimEditing(false);
+      document.getElementById("simPromptEdit").disabled = true;
+      setSimMsg("管理员环境使用所选 DSH 预设；请在 DSH 中查看其配置。");
+      return;
+    }
+    setSimMsg("读取中…");
+    const requested = simPromptPreset;
+    try {
+      const r = await api("/api/preset/sim-prompt?preset=" + encodeURIComponent(requested));
+      if (requested !== simPromptPreset) return;
+      const area = document.getElementById("simPromptText");
+      if (!r.ok) {
+        area.value = "";
+        setSimMsg(r.error || "读取失败", false);
+        document.getElementById("simPromptStatus").textContent = "不可用";
+        return;
+      }
+      simPromptOriginal = r.content;
+      area.value = r.content;
+      setSimEditing(false);
+      setSimMsg("");
+      const status = r.status || {};
+      document.getElementById("simPromptStatus").textContent = `${status.label || simPromptPreset} · ${r.chars} 字符${status.installed ? " · 已同步到 DSH" : " · 尚未同步到 DSH"}`;
+      document.getElementById("simPromptWarnings").textContent = (r.warnings || []).length ? "⚠️ " + r.warnings.join("；") : "";
+      document.getElementById("simPromptRestart").textContent = "改动写入该代预设的源文件并同步到 DSH 的 preset 目录；preset 由 DSH 在会话创建时装配，因此新会话会自动用新版，正在进行的 QQ 会话需重置该会话或重启 DSH。";
+    } catch (error) {
+      setSimMsg("读取失败：" + (error?.message ?? error), false);
+    }
+  }
+  function initialize7() {
+    simPromptOriginal = "";
+    simPromptPreset = "qq-chat-v2";
+  }
+  function setSimPromptOriginal(value2) {
+    simPromptOriginal = value2;
+  }
+  function followSimulationMode(mode) {
+    const preset = mode === "reserved2" ? "qq-chat-v2" : mode === "reserved" || mode === "chat" ? "qq-chat" : null;
+    const label2 = document.getElementById("simPromptMode");
+    if (label2) label2.textContent = preset === "qq-chat-v2" ? "当前模式：二代仿真；编辑本模式的行为与工具协议。" : preset ? "当前模式：一代／聊天；编辑本模式的行为与工具协议。" : "当前模式：管理员助手；预设由管理员环境选择。";
+    if (simPromptPreset !== preset) {
+      simPromptPreset = preset;
+      void refreshSimPrompt();
+    }
   }
 
   // console/layers/O/status.js
-  var presetRows = [];
-  function renderPresetChoices(selected2) {
-    const select = document.getElementById("closedPreset");
-    if (!select) return;
-    select.replaceChildren(new Option("跟随 DSH 默认（推荐）", ""));
-    const groups = /* @__PURE__ */ new Map();
-    for (const p of presetChoices(presetRows, document.getElementById("showAllPresets")?.checked, selected2)) {
-      if (!groups.has(p.group)) {
-        const group = document.createElement("optgroup");
-        group.label = p.group;
-        groups.set(p.group, group);
-        select.append(group);
-      }
-      const option = new Option(p.label + " · " + p.id, p.id);
-      option.title = p.description;
-      groups.get(p.group).append(option);
-    }
-    select.value = selected2;
-    updatePresetHelp();
-  }
-  function updatePresetHelp(mode) {
-    const select = document.getElementById("closedPreset"), help = document.getElementById("closedPresetHelp");
-    if (!select || !help) return;
-    const p = presetRows.find((p2) => p2.id === select.value) || { id: select.value };
-    help.textContent = select.value ? presetInfo(p).description : "使用 DSH 当前声明的默认预设，通常无需另选。";
-    const scope = document.getElementById("closedPresetScope");
-    if (scope && mode) scope.textContent = mode === "closed-agent" ? "作用范围：当前管理员封闭 Agent 模式。切换选项后立即保存。" : "作用范围：仅封闭 Agent 模式；当前聊天或仿真模式的预设由桥接自动选择。";
-  }
   function fmtAgoMs(ms) {
     if (ms === null || ms === void 0 || ms === "") return "未知";
     const n = Number(ms);
@@ -1774,9 +1851,7 @@
       const modeLabel = s.mode === "reserved" ? "一代仿真模式" : s.mode === "reserved2" ? "二代仿真模式" : s.mode === "closed-agent" ? "封闭 Agent" : "聊天模式";
       updateOverview(s, modeLabel);
       document.getElementById("activity").textContent = s.activity || "（空）";
-      const presetSel = document.getElementById("closedPreset");
-      if (presetSel && document.activeElement !== presetSel) renderPresetChoices(s.closedAgentPreset || "");
-      updatePresetHelp(s.mode);
+      followSimulationMode(s.mode);
     } catch (e) {
       document.getElementById("statusText").textContent = "连接中断 · 请检查桥接服务";
       setConnectionError(e);
@@ -1784,16 +1859,12 @@
   }
   async function refreshPresets() {
     try {
-      const r = await api("/api/presets");
-      presetRows = r.presets || [];
-      renderPresetChoices(document.getElementById("closedPreset").value);
-      refresh2();
+      await refreshAdminPresets();
     } catch {
     }
   }
   async function saveMode(mode) {
-    const preset = document.getElementById("closedPreset").value || "";
-    const r = await api("/api/mode", "POST", { mode, closedAgentPreset: preset });
+    const r = await api("/api/mode", "POST", { mode });
     if (r.ok) {
       refresh2();
       if (r.dshSynced === false) {
@@ -1804,9 +1875,7 @@
     }
     return r;
   }
-  function initialize7() {
-    document.getElementById("showAllPresets")?.addEventListener("change", () => renderPresetChoices(document.getElementById("closedPreset").value));
-    document.getElementById("closedPreset")?.addEventListener("change", () => updatePresetHelp());
+  function initialize8() {
   }
 
   // console/layers/C/persona.js
@@ -1921,7 +1990,7 @@
       document.getElementById("roleList").textContent = "加载失败：" + (error?.message ?? error);
     }
   }
-  function initialize8() {
+  function initialize9() {
     roleEditorState = { mode: "new", name: "" };
     roleCache = [];
     roleInjectMax = 6e3;
@@ -1979,16 +2048,11 @@
     } catch {
     }
   }
-  function initialize9() {
+  function initialize10() {
     document.querySelectorAll("#modeRow button").forEach((b) => b.addEventListener("click", async () => {
       if (b.disabled) return;
       await saveMode(b.dataset.mode);
     }));
-    document.getElementById("closedPreset").addEventListener("change", async () => {
-      const active = document.querySelector("#modeRow button.active");
-      const mode = active ? active.dataset.mode : "chat";
-      await saveMode(mode);
-    });
   }
 
   // console/layers/E/voice.js
@@ -2022,7 +2086,7 @@
     const dryRun = document.getElementById("voiceSendDryRun").checked;
     const pick = document.querySelector('input[name="voicePick"]:checked');
     if (!target) {
-      msg.textContent = "❌ 请填发送目标（如 group:21005）";
+      msg.textContent = "❌ 请填发送目标（如 group:40001）";
       msg.className = "meta err";
       return;
     }
@@ -2051,7 +2115,7 @@
       msg.className = "meta err";
     }
   }
-  function initialize10() {
+  function initialize11() {
     voiceEntries = [];
     voiceLibraryLoaded = false;
   }
@@ -2066,7 +2130,7 @@
     } catch {
     }
   }
-  function initialize11() {
+  function initialize12() {
     document.getElementById("v2PauseBtn").addEventListener("click", async () => {
       await api("/api/socialV2/activity", "POST", { paused: true });
       refreshV2Activity();
@@ -2157,7 +2221,7 @@
     document.getElementById("socialMsg").className = r.ok ? "meta ok" : "meta err";
     refreshSocialStatus();
   }
-  function initialize12() {
+  function initialize13() {
     document.getElementById("socialSave").addEventListener("click", async () => {
       const n = (id) => Number(document.getElementById(id).value);
       const r = await api("/api/social", "POST", {
@@ -2429,13 +2493,12 @@
       document.getElementById("slangCooldown").value = c.extractCooldownMs ?? 3e5;
       document.getElementById("slangThresholds").value = (c.inferenceThresholds || [2, 4, 8]).join(", ");
       document.getElementById("slangInjectMax").value = c.injectMax ?? 8;
-      document.getElementById("slangLearnerPreset").value = c.learnerPreset || "qq-chat";
       document.getElementById("slangWorkspaceTitle").value = c.workspaceTitle || "QQ 黑话学习";
       document.getElementById("slangAutoResearch").checked = c.autoResearch !== false;
     }).catch(() => {
     });
   }
-  function initialize13() {
+  function initialize14() {
     document.querySelectorAll("#section-slang .slang-tab").forEach((btn) => btn.addEventListener("click", () => setSlangTab(btn.dataset.slangTab)));
     document.getElementById("slangSearchCand").addEventListener("input", renderSlangPanel);
     document.getElementById("slangSearchConfirmed").addEventListener("input", renderSlangPanel);
@@ -2644,7 +2707,6 @@
         extractCooldownMs: Number(document.getElementById("slangCooldown").value) || 3e5,
         inferenceThresholds: document.getElementById("slangThresholds").value.split(/[,，\s]+/).map(Number).filter(Boolean),
         injectMax: Number(document.getElementById("slangInjectMax").value),
-        learnerPreset: document.getElementById("slangLearnerPreset").value.trim(),
         workspaceTitle: document.getElementById("slangWorkspaceTitle").value.trim(),
         autoResearch: document.getElementById("slangAutoResearch").checked
       });
@@ -2655,11 +2717,368 @@
     });
   }
 
+  // console/layers/T/tool-presentation.js
+  var TOOL_PRESENTATION = {
+    learningSources: { group: "记忆、心情与排程", label: "调整知识适用来源", example: "例：高频用到某条确认资料时，把当前会话加入默认注入名单；不确认候选。" },
+    aliasQuery: { group: "知识与反馈", label: "查询成员绰号", example: "例：按完整QQ号查询已确认称呼；跨来源不返回原始聊天证据。" },
+    aliasSubmit: { group: "知识与反馈", label: "提交绰号候选", example: "例：发现新称呼后提交候选，仍由管理员确认。" },
+    "status": {
+      "group": "读取与状态",
+      "label": "连接状态",
+      "example": "例：开启并保存后，可读取QQ连接与账号状态；仍受会话权限与额度约束。"
+    },
+    "getPrompt": {
+      "group": "读取与状态",
+      "label": "当前角色与规则",
+      "example": "例：开启并保存后，可查看本轮角色、参数指引和允许工具；仍受会话权限与额度约束。"
+    },
+    "getUnread": {
+      "group": "读取与状态",
+      "label": "未处理来信",
+      "example": "例：开启并保存后，可读取尚未完成处理的消息；仍受会话权限与额度约束。"
+    },
+    "getRecent": {
+      "group": "读取与状态",
+      "label": "最近聊天",
+      "example": "例：开启并保存后，可读取当前会话的近期消息；仍受会话权限与额度约束。"
+    },
+    "socialState": {
+      "group": "读取与状态",
+      "label": "会话状态",
+      "example": "例：开启并保存后，可查看当前会话状态与唤醒条件；仍受会话权限与额度约束。"
+    },
+    "getMyRecent": {
+      "group": "读取与状态",
+      "label": "bot 最近发言",
+      "example": "例：开启并保存后，可核对bot刚才实际发过的内容；仍受会话权限与额度约束。"
+    },
+    "getMessageDetail": {
+      "group": "读取与状态",
+      "label": "消息与引用详情",
+      "example": "例：开启并保存后，可按真实消息ID查看单条及引用关系；仍受会话权限与额度约束。"
+    },
+    "getActiveMembers": {
+      "group": "读取与状态",
+      "label": "近期活跃成员",
+      "example": "例：开启并保存后，可查看当前会话近期参与者；仍受会话权限与额度约束。"
+    },
+    "getGroupMembers": {
+      "group": "读取与状态",
+      "label": "群成员列表",
+      "example": "例：开启并保存后，可读取当前群成员信息；仍受会话权限与额度约束。"
+    },
+    "sendBurst": {
+      "group": "回复、等待与收尾",
+      "label": "分条发送",
+      "example": "例：开启并保存后，可按当前发送计划分成多条发出；仍受会话权限与额度约束。"
+    },
+    "sendMessage": {
+      "group": "回复、等待与收尾",
+      "label": "发送聊天消息",
+      "example": "例：开启并保存后，可在当前权限和发送计划内发言；仍受会话权限与额度约束。"
+    },
+    "waitMessages": {
+      "group": "回复、等待与收尾",
+      "label": "等待新消息与确认说完",
+      "example": "例：开启并保存后，可分别使用等新消息、等对方说完两个工具；仍受会话权限与额度约束。"
+    },
+    "markRead": {
+      "group": "回复、等待与收尾",
+      "label": "标记已读与收尾",
+      "example": "例：开启并保存后，可声明看过消息并完成相应回合收尾；仍受会话权限与额度约束。"
+    },
+    "reportReceipts": {
+      "group": "回复、等待与收尾",
+      "label": "逐条处理回报",
+      "example": "例：开启并保存后，可按真实消息ID回报处理结果；仍受会话权限与额度约束。"
+    },
+    "setWakeConfig": {
+      "group": "回复、等待与收尾",
+      "label": "设置唤醒与意愿",
+      "example": "例：开启并保存后，可设置下一次唤醒条件或评估聊天意愿；仍受会话权限与额度约束。"
+    },
+    "mood": {
+      "group": "记忆、心情与排程",
+      "label": "调整心情",
+      "example": "例：开启并保存后，可按add或dec提交有依据的心情调整；仍受会话权限与额度约束。"
+    },
+    "taskNote": {
+      "group": "记忆、心情与排程",
+      "label": "当前事务",
+      "example": "例：开启并保存后，可查看或更新任务、承诺和安排的状态；仍受会话权限与额度约束。"
+    },
+    "memory": {
+      "group": "记忆、心情与排程",
+      "label": "窗口轻量记忆",
+      "example": "例：开启并保存后，可维护当前话题、待说想法与临时印象；仍受会话权限与额度约束。"
+    },
+    "schedule": {
+      "group": "记忆、心情与排程",
+      "label": "日程提醒",
+      "example": "例：开启并保存后，可登记和管理属于当前会话的日程；仍受会话权限与额度约束。"
+    },
+    "timeBubbleManage": {
+      "group": "记忆、心情与排程",
+      "label": "定时冒泡",
+      "example": "例：开启并保存后，可管理允许修改的定时主动时段；仍受会话权限与额度约束。"
+    },
+    "availability": {
+      "group": "记忆、心情与排程",
+      "label": "免打扰与稍后联系",
+      "example": "例：开启并保存后，可登记或调整用户明确表达的时间意愿；仍受会话权限与额度约束。"
+    },
+    "slangQuery": {
+      "group": "知识与反馈",
+      "label": "查询黑话",
+      "example": "例：开启并保存后，可查询已确认的黑话含义；仍受会话权限与额度约束。"
+    },
+    "slangSubmit": {
+      "group": "知识与反馈",
+      "label": "提交黑话候选",
+      "example": "例：开启并保存后，可把陌生表达提交为待审核候选；仍受会话权限与额度约束。"
+    },
+    "termQuery": {
+      "group": "知识与反馈",
+      "label": "查询兴趣知识",
+      "example": "例：开启并保存后，可查找已确认的兴趣词条与来源；仍受会话权限与额度约束。"
+    },
+    "termSubmit": {
+      "group": "知识与反馈",
+      "label": "提交兴趣候选",
+      "example": "例：开启并保存后，可把待核实的知识提交为候选；仍受会话权限与额度约束。"
+    },
+    "feedback": {
+      "group": "知识与反馈",
+      "label": "报告问题",
+      "example": "例：开启并保存后，可记录失败、异常或需要修复的问题；仍受会话权限与额度约束。"
+    },
+    "sendVoice": {
+      "group": "图片、语音与文件",
+      "label": "语音库与语音发送",
+      "example": "例：开启并保存后，可查询语音素材并按权限发送；仍受会话权限与额度约束。"
+    },
+    "sendFile": {
+      "group": "图片、语音与文件",
+      "label": "发送文件",
+      "example": "例：开启并保存后，可在管理员权限内发送允许的本地文件；仍受会话权限与额度约束。"
+    },
+    "sendPoke": {
+      "group": "图片、语音与文件",
+      "label": "拍一拍",
+      "example": "例：开启并保存后，可向允许的对象发送拍一拍；仍受会话权限与额度约束。"
+    },
+    "getImages": {
+      "group": "图片、语音与文件",
+      "label": "读取消息图片",
+      "example": "例：开启并保存后，可取得真实消息所附的图片；仍受会话权限与额度约束。"
+    },
+    "imageGeneration": {
+      "group": "图片、语音与文件",
+      "label": "图片生成",
+      "example": "例：开启并保存后，可按生图服务设置和额度发起生成；仍受会话权限与额度约束。"
+    },
+    "imageTransfer": {
+      "group": "图片、语音与文件",
+      "label": "图片取回与转发",
+      "example": "例：开启并保存后，可在当前范围内处理已生成或暂存图片；仍受会话权限与额度约束。"
+    },
+    "getForwardMsg": {
+      "group": "图片、语音与文件",
+      "label": "合并转发内容",
+      "example": "例：开启并保存后，可读取真实合并转发消息；仍受会话权限与额度约束。"
+    },
+    "listStickers": {
+      "group": "图片、语音与文件",
+      "label": "收藏表情列表",
+      "example": "例：开启并保存后，可查询可用的收藏表情；仍受会话权限与额度约束。"
+    },
+    "getStickerImage": {
+      "group": "图片、语音与文件",
+      "label": "查看收藏表情",
+      "example": "例：开启并保存后，可读取选定表情的图像；仍受会话权限与额度约束。"
+    },
+    "sendSticker": {
+      "group": "图片、语音与文件",
+      "label": "发送收藏表情",
+      "example": "例：开启并保存后，可按发送计划发出一个表情；仍受会话权限与额度约束。"
+    },
+    "collectSticker": {
+      "group": "图片、语音与文件",
+      "label": "收藏表情",
+      "example": "例：开启并保存后，可按收藏频率限制收录表情；仍受会话权限与额度约束。"
+    },
+    "getSelfImage": {
+      "group": "图片、语音与文件",
+      "label": "角色自身形象",
+      "example": "例：开启并保存后，可取得允许使用的角色图像；仍受会话权限与额度约束。"
+    },
+    "stickerNote": {
+      "group": "图片、语音与文件",
+      "label": "表情含义与标签",
+      "example": "例：开启并保存后，可维护表情的语境含义；仍受会话权限与额度约束。"
+    },
+    "setStickerRemark": {
+      "group": "图片、语音与文件",
+      "label": "修改表情备注",
+      "example": "例：开启并保存后，可在有权限时修改收藏备注；仍受会话权限与额度约束。"
+    }
+  };
+
+  // src/tools/flags.js
+  var TOOL_CONFIG_FLAGS = {
+    qq_status: "status",
+    qq_get_prompt: "getPrompt",
+    qq_get_unread_messages: "getUnread",
+    qq_get_recent_messages: "getRecent",
+    qq_social_state: "socialState",
+    qq_mark_read: "markRead",
+    qq_report_message_receipts: "reportReceipts",
+    qq_set_wake_config: "setWakeConfig",
+    qq_mood: "mood",
+    qq_send_burst: "sendBurst",
+    qq_send_message: "sendMessage",
+    qq_wait_for_messages: "waitMessages",
+    qq_wait_for_quiet: "waitMessages",
+    qq_report_feedback: "feedback",
+    qq_get_my_recent_messages: "getMyRecent",
+    qq_get_message_detail: "getMessageDetail",
+    qq_get_active_members: "getActiveMembers",
+    qq_get_group_members: "getGroupMembers",
+    qq_task_note: "taskNote",
+    qq_memory_append: "memory",
+    qq_memory_query: "memory",
+    qq_memory_remove: "memory",
+    qq_memory_clear: "memory",
+    qq_schedule: "schedule",
+    time_bubble_manage: "timeBubbleManage",
+    qq_availability: "availability",
+    qq_slang_query: "slangQuery",
+    qq_slang_submit: "slangSubmit",
+    qq_alias_query: "aliasQuery",
+    qq_alias_submit: "aliasSubmit",
+    qq_knowledge_sources: "learningSources",
+    qq_term_query: "termQuery",
+    qq_term_submit: "termSubmit",
+    qq_send_voice: "sendVoice",
+    qq_send_file: "sendFile",
+    qq_list_voices: "sendVoice",
+    // 下面这些曾经漏登记。漏一个不是"多注册一个工具"那么轻：桥接那边按 `v2ToolEnabled(flag)`
+    // 在**调用期**一律 403，而这里不登记就等于"控制台显示已关闭、模型每次请求仍收到它的完整
+    // 描述与参数 schema，然后调用它、再拿到 403"——既白烧 token（本文件开头 176 行起就是为省这份
+    // token 才改注册期过滤的），又诱导模型误调。`qq_set_sticker_remark` 默认就是 `false`
+    // （见 bridge.js 的 socialV2.tools 默认表），所以此前它一直是"默认关闭却仍然可见"。
+    qq_send_poke: "sendPoke",
+    qq_get_message_images: "getImages",
+    qq_make_meme: "imageGeneration",
+    qq_get_meme_job: "imageGeneration",
+    qq_send_image: "imageTransfer",
+    qq_list_staged_images: "imageTransfer",
+    qq_import_image: "imageTransfer",
+    qq_relay_image: "imageTransfer",
+    qq_get_forward_msg: "getForwardMsg",
+    qq_list_stickers: "listStickers",
+    qq_get_sticker_image: "getStickerImage",
+    qq_send_sticker: "sendSticker",
+    qq_collect_sticker: "collectSticker",
+    qq_get_self_image: "getSelfImage",
+    qq_sticker_note: "stickerNote",
+    qq_set_sticker_remark: "setStickerRemark"
+  };
+
+  // console/layers/T/tool-inventory.js
+  function toolRows(tools) {
+    const name = (tool) => tool.name || String(tool.qualifiedName || "").split("__").slice(2).join("__");
+    return [...tools].sort((a, b) => name(a).localeCompare(name(b), "en", { sensitivity: "base", numeric: true }) || String(a.server).localeCompare(String(b.server))).map((tool) => '<div class="tool-reference-item"><code title="' + esc(tool.qualifiedName) + '">' + esc(name(tool)) + "</code><span>" + esc(tool.description) + "<br><small>" + esc(tool.server) + " · " + (tool.botInjectedSessions || 0) + " 个聊天会话有注入记录</small></span></div>").join("");
+  }
+  function toolCatalogStatus(catalog) {
+    const visible = catalog.tools.filter((t) => t.audience === "qq" && t.registered && t.botInjectedSessions > 0);
+    const leaked = catalog.tools.filter((t) => t.audience === "admin" && t.botInjectedSessions > 0);
+    const removed = catalog.tools.filter((t) => t.audience === "qq" && !t.registered && t.botInjectedSessions > 0);
+    const failed = (catalog.servers || []).filter((s) => s.ok === false);
+    const problem = leaked.length || removed.length || failed.length;
+    const text = visible.length + " 个聊天工具有实际注入记录；依据会话最新 request/header。" + (catalog.stale ? " 工具注册或实现输入有变化，当前版本待核验；请运行 audit:tools。已有注入记录仍有效，不能据此判为漏注入。" : " 当前注册已核验。") + (removed.length ? " " + removed.length + " 个历史注入工具当前未注册，需核查注册与会话工具面。" : "") + (leaked.length ? " 当前历史工具面仍含 " + leaked.length + " 个管理工具；过滤修复需刷新对应 preset 后在下一轮请求核验。" : "") + (failed.length ? " " + failed.length + " 个 MCP 注册核验失败。" : "") + (catalog.evidenceError ? " " + catalog.evidenceError : "");
+    return { text, tone: problem ? "err" : catalog.stale || catalog.evidenceError ? "" : "ok" };
+  }
+  async function loadToolCatalog() {
+    const root = document.getElementById("toolReferenceRoot");
+    const status = document.getElementById("toolsCatalogStatus");
+    try {
+      const catalog = await api("/api/tools/catalog");
+      if (!catalog.ok) throw Error(catalog.error || "注册表读取失败");
+      const visible = catalog.tools.filter((tool) => tool.audience === "qq" && tool.registered && tool.botInjectedSessions > 0);
+      const pending = catalog.tools.filter((tool) => tool.audience === "qq" && (!tool.registered || !tool.botInjectedSessions));
+      const admin = catalog.tools.filter((tool) => tool.audience === "admin");
+      root.innerHTML = toolRows(visible) || '<p class="meta">尚无真实请求的注入证据。</p>';
+      document.getElementById("toolPendingRoot").innerHTML = toolRows(pending) || '<p class="meta">无待注入工具。</p>';
+      document.getElementById("toolAdminRoot").innerHTML = toolRows(admin);
+      root.dataset.loaded = "1";
+      document.dispatchEvent(new CustomEvent("console:tool-catalog-updated"));
+      const summary = toolCatalogStatus(catalog);
+      status.textContent = summary.text;
+      status.className = "meta" + (summary.tone ? " " + summary.tone : "");
+      return catalog;
+    } catch (error) {
+      root.innerHTML = '<div class="err">工具注册读取失败：' + esc(error.message) + "</div>";
+      status.textContent = "未取得工具注入证据";
+      return null;
+    }
+  }
+  async function renderToolInventory(pluginsReady) {
+    const groups = /* @__PURE__ */ new Map();
+    for (const [name, flag] of Object.entries(TOOL_CONFIG_FLAGS)) {
+      if (!groups.has(flag)) groups.set(flag, []);
+      groups.get(flag).push(name);
+    }
+    const root = document.getElementById("v2Tools");
+    const sections = /* @__PURE__ */ new Map();
+    for (const [flag, names2] of groups) {
+      const view = TOOL_PRESENTATION[flag] || { group: "其他能力", label: names2.join(" / "), example: "调整后需保存，并刷新对应MCP工具清单。" };
+      if (!sections.has(view.group)) sections.set(view.group, []);
+      sections.get(view.group).push({ flag, names: names2, ...view });
+    }
+    root.dataset.loaded = "0";
+    root.innerHTML = [...sections].map(([title, items2]) => '<details class="tool-parameter-group tool-switch-group" data-tool-group="' + esc(title) + '"><summary><span>' + esc(title) + '</span><small class="meta" data-tool-group-count></small></summary><div class="tool-parameter-options">' + items2.map(({ flag, names: names2, label: label2, example }) => '<label class="v2-tool-item"><input type="checkbox" disabled data-v2-tool="' + esc(flag) + '"><span><b>' + esc(label2) + '</b><small class="meta tool-call-names">' + esc(names2.join(" / ")) + '</small><small class="parameter-example">' + esc(example) + "</small></span></label>").join("") + "</div></details>").join("");
+    const save2 = document.querySelector("#section-v2-t .v2-save"), status = document.getElementById("toolSwitchStatus"), retry = document.getElementById("toolSwitchRetry");
+    save2.disabled = true;
+    const updateCounts = () => root.querySelectorAll(".tool-parameter-group").forEach((group) => {
+      const all = group.querySelectorAll('.v2-tool-item input[type="checkbox"]');
+      group.querySelector("[data-tool-group-count]").textContent = root.dataset.loaded === "1" ? "已启用 " + [...all].filter((x) => x.checked).length + " / " + all.length : all.length + " 项 · 读取中";
+    });
+    updateCounts();
+    root.onchange = updateCounts;
+    const loadConfig = async () => {
+      status.textContent = "读取开关状态…";
+      retry.hidden = true;
+      try {
+        const out = await api("/api/socialV2/config");
+        if (out.ok !== true || !out.config || typeof out.config !== "object") throw Error(out.error || "未取得当前配置");
+        root.querySelectorAll("[data-v2-tool]").forEach((input) => {
+          input.checked = out.config.tools?.[input.dataset.v2Tool] !== false;
+          input.disabled = false;
+        });
+        root.dataset.loaded = "1";
+        save2.disabled = false;
+        status.textContent = "";
+        updateCounts();
+      } catch (error) {
+        status.textContent = "开关读取失败：" + error.message;
+        retry.hidden = false;
+      }
+    };
+    retry.onclick = loadConfig;
+    document.getElementById("toolsCatalogRefresh").onclick = loadToolCatalog;
+    registerPageLoader("reference", loadToolCatalog);
+    const configReady = loadConfig();
+    void pluginsReady;
+    await configReady;
+  }
+
   // console/shared/accessibility.js
   var primaryActions;
   var searchInput;
   var searchResults;
   var featureIndex;
+  var catalogSearchLoad;
   function closeConsoleSearch() {
     searchResults.hidden = true;
     searchInput.setAttribute("aria-expanded", "false");
@@ -2667,7 +3086,7 @@
   var modalPreviousFocus;
   var slangOverlay;
   var tokenToggle;
-  function initialize14() {
+  function initialize15() {
     document.querySelectorAll("input,select,textarea").forEach((input) => {
       if (input.labels?.length || input.hasAttribute("aria-label")) return;
       let label2 = input.previousElementSibling;
@@ -2701,14 +3120,20 @@
         if (label2) featureIndex.push({ page, label: label2.trim(), target: el3 });
       });
     });
-    searchInput.addEventListener("input", () => {
+    const renderSearch = () => {
       const query = searchInput.value.trim().toLowerCase();
       searchResults.replaceChildren();
       if (!query) return closeConsoleSearch();
-      const matches = featureIndex.filter((entry) => (consolePages[entry.page][0] + entry.label + entry.target.id).toLowerCase().includes(query)).slice(0, 12);
+      const toolEntries = [...document.querySelectorAll("#section-reference .tool-reference-item")].map((target) => ({
+        page: "reference",
+        label: target.querySelector("code")?.textContent || "",
+        target,
+        keywords: target.textContent + " " + (target.querySelector("code")?.title || "")
+      }));
+      const matches = [...featureIndex, ...toolEntries].filter((entry) => (consolePages[entry.page][0] + entry.label + entry.target.id + (entry.keywords || "")).toLowerCase().includes(query)).slice(0, 12);
       if (!matches.length) {
         const empty = document.createElement("p");
-        empty.textContent = "未找到匹配功能，试试「唤醒」「白名单」或「表情」。";
+        empty.textContent = "未找到匹配的功能、参数或工具。";
         searchResults.append(empty);
       }
       matches.forEach((entry) => {
@@ -2743,6 +3168,19 @@
       });
       searchResults.hidden = false;
       searchInput.setAttribute("aria-expanded", "true");
+    };
+    searchInput.addEventListener("input", () => {
+      renderSearch();
+      if (searchInput.value.trim() && document.getElementById("toolReferenceRoot")?.dataset.loaded !== "1" && !catalogSearchLoad) {
+        catalogSearchLoad = loadToolCatalog().finally(() => {
+          catalogSearchLoad = null;
+        });
+      }
+    });
+    document.addEventListener("console:tool-catalog-updated", () => {
+      const wasOpen = !searchResults.hidden;
+      renderSearch();
+      if (!wasOpen) closeConsoleSearch();
     });
     searchInput.addEventListener("keydown", (event) => {
       if (event.key === "Escape") closeConsoleSearch();
@@ -2820,9 +3258,9 @@
       el3.hidden = el3.dataset.page !== page;
     });
     document.querySelectorAll("#mainNav [data-view]").forEach((button) => {
-      const selected2 = button.dataset.view === page;
-      button.classList.toggle("active", selected2);
-      if (selected2) button.setAttribute("aria-current", "page");
+      const selected3 = button.dataset.view === page;
+      button.classList.toggle("active", selected3);
+      if (selected3) button.setAttribute("aria-current", "page");
       else button.removeAttribute("aria-current");
     });
     document.getElementById("breadcrumbPage").textContent = consolePages[page][0];
@@ -2884,7 +3322,7 @@
     alert2.textContent = error.message === "未授权" ? "访问令牌无效或已取消输入。请使用启动日志中的控制台链接重新打开。" : "无法连接桥接服务，当前显示的是上次同步结果。请检查桥接是否运行，再点击右上角刷新。";
     alert2.hidden = false;
   }
-  function initialize15() {
+  function initialize16() {
     consolePages = {
       "context-visual": ["可视化 context", "可视化 context", "选择发给 AI 的背景信息，调整顺序，并查看上次实际发送的内容。"],
       "setting-c-0": ["心情与表情", "心情与表情", "设置双形态、心情加减规则和欢迎冷却；查看真实结算。"],
@@ -2912,6 +3350,7 @@
       access: ["访问与安全", "明确边界，安心连接。", "管理允许对话的对象、管理员权限与控制台访问凭证。"],
       operations: ["调试与运维", "让桥接，始终井然有序。", "测试消息、引导 AI，或维护桥接进程与会话工作区。"],
       "environment-chat": ["普通聊天环境", "普通聊天环境", "管理普通聊天可用的会话辅助功能。"],
+      "environment-presets": ["预设总览", "预设总览", "只读查看每种会话的预设、工具配置与编辑入口。"],
       "environment-admin": ["管理员环境", "管理员环境", "管理员私聊的开发模式与预设。"],
       "environment-web": ["网站操控", "网站操控", "管理打开网页、点击按钮、填写表单等通用网页操作。"],
       "environment-watch": ["网页监督", "网页监督", "设置监控网址、检查间隔及监控时的浏览器运行方式。"],
@@ -3089,7 +3528,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       document.getElementById("usageChart").textContent = `走势读取失败：${error?.message || "未知错误"}`;
     }
   }
-  function initialize16() {
+  function initialize17() {
     usageChartHours = 24;
     usageChartMetric = "cost";
     usageChartData = null;
@@ -3109,8 +3548,82 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     });
   }
 
+  // console/layers/O/budget-cycle.js
+  var valid = (value2) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value2);
+  function mountBudgetCycle({ onSaved }) {
+    const input = document.getElementById("usageBudgetResetTime"), button = document.getElementById("usageBudgetResetSave");
+    const message2 = document.getElementById("usageBudgetResetMsg"), summary = document.getElementById("usageBudgetCycleSummary");
+    let loaded = false, dirty3 = false, saving2 = false, request = null, revision2 = 0;
+    const render2 = (value2) => {
+      summary.textContent = `每天 ${value2}（北京时间）开始新额度周期。`;
+    };
+    input.addEventListener("input", () => {
+      dirty3 = true;
+    });
+    async function refresh3() {
+      if (saving2) return;
+      if (request) return request;
+      const ticket = ++revision2;
+      request = (async () => {
+        try {
+          const result = await api("/api/plugins/detail?id=life-token-budget");
+          if (ticket !== revision2) return;
+          if (!result.ok || !result.plugin?.config) throw Error(result.error || "未取得额度配置");
+          const value2 = result.plugin.config.dailyResetTime ?? "22:00";
+          if (!valid(value2)) throw Error("额度重置时间格式无效");
+          loaded = true;
+          render2(value2);
+          if (!dirty3) input.value = value2;
+          input.disabled = false;
+          button.disabled = false;
+        } catch (error) {
+          if (ticket === revision2) {
+            message2.textContent = "读取失败：" + error.message;
+            message2.className = "meta err";
+            input.disabled = !loaded;
+            button.disabled = !loaded;
+          }
+        }
+      })().finally(() => {
+        request = null;
+      });
+      return request;
+    }
+    button.addEventListener("click", async () => {
+      if (!loaded || saving2) return;
+      const value2 = input.value;
+      if (!valid(value2)) {
+        message2.textContent = "请选择00:00–23:59之间的时间";
+        message2.className = "meta err";
+        return;
+      }
+      saving2 = true;
+      revision2++;
+      input.disabled = true;
+      button.disabled = true;
+      try {
+        const result = await api("/api/plugins/config", "POST", { id: "life-token-budget", config: { dailyResetTime: value2 } });
+        if (!result.ok) throw Error(result.error || "配置校验失败");
+        dirty3 = false;
+        render2(value2);
+        message2.textContent = "每日额度重置时间已保存，本周期已按新时间重算";
+        message2.className = "meta ok";
+        await onSaved();
+      } catch (error) {
+        message2.textContent = "保存失败：" + error.message;
+        message2.className = "meta err";
+      } finally {
+        saving2 = false;
+        input.disabled = false;
+        button.disabled = false;
+      }
+    });
+    return { refresh: refresh3 };
+  }
+
   // console/layers/O/usage.js
   var usageSelectedKey;
+  var budgetCycleControl;
   var usageConversationsCache;
   function usageNum(n) {
     const v = Number(n) || 0;
@@ -3210,7 +3723,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     try {
       const result = await api("/api/tokens/budgets");
       if (ticket !== budgetRefreshRevision || box.contains(document.activeElement) || box.querySelector("[data-budget-dirty]")) return;
-      const rows = result.rows || [];
+      const rows2 = result.rows || [];
       const ownerEnabled = result.owner?.budgetEnabled !== false;
       const ownerInput = document.getElementById("usageOwnerBudgetEnabled");
       if (document.activeElement !== ownerInput && !ownerInput.dataset.dirty) ownerInput.checked = ownerEnabled;
@@ -3219,7 +3732,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       document.getElementById("usageGlobalTurns").textContent = usageNum(global.turns);
       document.getElementById("usageGlobalCost").textContent = money(global.cost);
       const globalInput = document.getElementById("usageGlobalLimit");
-      if (document.activeElement !== globalInput) globalInput.value = Number(global.limit) || 0;
+      if (document.activeElement !== globalInput && !globalInput.dataset.dirty) globalInput.value = Number(global.limit) || 0;
       const windows = result.recoveryWindows || {};
       document.getElementById("usageBudgetWindowSummary").textContent = `当前冷漠消息窗口：私聊${Number(windows.privateMessages) || 5}条；群聊普通${Number(windows.groupMessages) || 5}条 + @／引用bot消息${Number(windows.groupAtMessages) || 5}条。触发条数与消息窗口分别设置`;
       for (const [id, field] of [["usageRecoveryPrivate", "privateMessages"], ["usageRecoveryGroup", "groupMessages"], ["usageRecoveryGroupAt", "groupAtMessages"]]) {
@@ -3227,11 +3740,11 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         if (input && document.activeElement !== input) input.value = Number(windows[field]) || 5;
       }
       document.getElementById("usageGlobalState").textContent = global.reached ? "已触发预算静默：私聊可机械回复，群聊仅 @／引用bot 时回复" + (ownerEnabled ? "" : "；owner 私聊豁免") : global.remaining == null ? "未设统一上限" : `统一剩余 ${money(global.remaining)}`;
-      box.innerHTML = rows.length ? '<table><thead><tr><th>会话与状态</th><th class="num">本周期花费 / 剩余</th><th>冷漠阈值（元）</th><th>满额阈值（元）</th><th>冷漠回复规则</th><th>保存</th></tr></thead><tbody>' + rows.map((row) => {
+      box.innerHTML = rows2.length ? '<table><thead><tr><th>会话与状态</th><th class="num">本周期花费 / 剩余</th><th>冷漠阈值（元）</th><th>满额阈值（元）</th><th>冷漠回复规则</th><th>保存</th></tr></thead><tbody>' + rows2.map((row) => {
         const status = row.exempt ? "管理员豁免" : row.stage === "silent" ? "满额·固定回复" : row.stage === "weak" ? "冷漠·固定批次" : "正常";
         return `<tr data-budget-key="${esc(row.key)}"><td><div>${esc(row.key)}</div><small class="meta">${usageNum(row.turns)}轮 · ${status}${Number(row.recoveryPending) > 0 ? " · 待补" + usageNum(row.recoveryPending) + "条" : ""}</small></td><td class="num"><div>已用 ${money(row.cost)}${row.partial ? ' <span title="部分历史用量无法按时段归属">*</span>' : ""}</div><small class="meta">剩余 ${row.remainingYuan == null ? "不限" : money(row.remainingYuan)}</small></td><td><input type="number" min="0" step="0.01" value="${Number(row.coldLimitYuan) || 0}" aria-label="${esc(row.key)} 冷漠阈值"></td><td><input type="number" min="0" step="0.01" value="${Number(row.hardLimitYuan) || 0}" aria-label="${esc(row.key)} 满额阈值"></td><td>${row.exempt ? '<span class="meta">不适用（管理员豁免）</span>' : row.key.startsWith("private:") ? '<button type="button" class="budget-rule-link" data-budget-private-rule title="继承上方已保存的全局私聊触发条数，点击修改">' + privateWakeRuleLabel() + "</button>" : '<label class="budget-interval">每 <input type="number" min="1" max="1440" step="1" value="' + (Number(row.weakMinIntervalMin) || 30) + '" aria-label="' + esc(row.key) + ' 冷漠检查间隔"> 分钟检查</label>'}</td><td><button class="small primary" data-budget-save data-save-action>保存此会话额度</button></td></tr>`;
       }).join("") + "</tbody></table>" : '<div class="empty-state">暂无可配置的会话；有 QQ 会话后会自动列出。</div>';
-      if (rows.some((row) => row.partial)) {
+      if (rows2.some((row) => row.partial)) {
         msg.textContent = "* 部分旧用量只有累计值，无法准确归入本周期；额度判断基于有时间戳的调用。";
         msg.className = "meta";
       } else if (!msg.classList.contains("ok")) {
@@ -3290,17 +3803,17 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   function renderUsageTurns(r) {
     const box = document.getElementById("usageTurns");
     const scope = document.getElementById("usageTurnScope");
-    const rows = r.turns || [];
+    const rows2 = r.turns || [];
     const sym = r.symbol || "¥";
     if (scope) {
-      scope.textContent = `${esc(r.key || "")} ｜ 共 ${rows.length} 轮可追溯 ｜ 已归属 ${usageMoney(r.attributedCost, sym)}` + (Number(r.unattributedCost) > 0 ? ` ｜ 未逐轮归属 ${usageMoney(r.unattributedCost, sym)}` : "");
+      scope.textContent = `${esc(r.key || "")} ｜ 共 ${rows2.length} 轮可追溯 ｜ 已归属 ${usageMoney(r.attributedCost, sym)}` + (Number(r.unattributedCost) > 0 ? ` ｜ 未逐轮归属 ${usageMoney(r.unattributedCost, sym)}` : "");
     }
-    if (!rows.length) {
+    if (!rows2.length) {
       box.innerHTML = '<span class="meta">该会话还没有可追溯的逐轮记录（只有累计值）。</span>';
       return;
     }
     let html = '<table><tr><th class="num">轮次</th><th>结束时间</th><th class="num">步数</th><th class="num">未命中输入</th><th class="num">命中输入</th><th class="num">命中率</th><th class="num">输出</th><th class="num">花费</th><th>时段</th></tr>';
-    for (const t of rows) {
+    for (const t of rows2) {
       const b = t.buckets || {};
       html += `<tr><td class="num">#${esc(t.turn)}</td><td>${esc(usageTime(t.endedAt))}</td><td class="num">${usageNum(t.steps)}</td><td class="num">${usageNum(b.cacheMiss)}</td><td class="num">${usageNum(b.cacheHit)}</td><td class="num">${usagePct(usageRate(b))}</td><td class="num">${usageNum(b.output)}</td><td class="num">${usageMoney(t.cost, sym)}</td><td>${usageTierTag(t.tier)}</td></tr>`;
     }
@@ -3357,6 +3870,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       void refreshUsageBudgets();
       void refreshUsageMechanicalReplies();
       void refreshPrivateWakeRule();
+      void budgetCycleControl?.refresh();
       renderUsagePrices(r.priceTable ? { ...r.priceTable, nowTier: r.nowTier } : null);
       syncUsageKeySelect((r.conversations || []).map((c) => String(c.key ?? "")));
       msg.textContent = `✅ 已同步于 ${(/* @__PURE__ */ new Date()).toLocaleTimeString("zh-CN", { hour12: false })}`;
@@ -3400,7 +3914,11 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     });
     return usageDashboardRefresh;
   }
-  function initialize17() {
+  function initialize18() {
+    budgetCycleControl = mountBudgetCycle({ onSaved: refreshUsageBudgets });
+    document.getElementById("usageGlobalLimit").addEventListener("input", (event) => {
+      event.target.dataset.dirty = "true";
+    });
     usageSelectedKey = "";
     usageConversationsCache = [];
     document.getElementById("usageOwnerBudgetEnabled").addEventListener("change", (event) => {
@@ -3488,6 +4006,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       button.disabled = true;
       try {
         await api("/api/tokens/budgets/global", "POST", { globalHardLimitYuan: Number(document.getElementById("usageGlobalLimit").value) });
+        delete document.getElementById("usageGlobalLimit").dataset.dirty;
         button.blur();
         msg.textContent = "统一上限已保存";
         msg.className = "meta ok";
@@ -3651,7 +4170,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   // console/layers/C/affairs.js
   var labels2 = { needs_review: "待核实", pending: "待处理", doing: "进行中", waiting: "等待结果", done: "已完成", cancelled: "已取消", superseded: "被替代" };
   var el2 = (id) => document.getElementById(id);
-  var selected = null;
+  var selected2 = null;
   var offset = 0;
   var total = 0;
   var sequence = 0;
@@ -3662,7 +4181,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     el2("v2AffairEditorMsg").textContent = text;
   };
   function edit(item = null, show = true) {
-    selected = item;
+    selected2 = item;
     el2("v2AffairEditorMsg").textContent = "";
     for (const [field, id] of [["title", "Title"], ["detail", "Detail"], ["nextAction", "NextAction"], ["source", "Source"]]) el2("v2Affair" + id).value = item?.[field] || "";
     el2("v2AffairStatus").value = item?.status || "pending";
@@ -3723,7 +4242,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       source: el2("v2AffairSource").value,
       status: el2("v2AffairStatus").value,
       priority: Number(el2("v2AffairPriority").value),
-      ...selected ? { id: selected.id, expectedRevision: selected.revision } : {}
+      ...selected2 ? { id: selected2.id, expectedRevision: selected2.revision } : {}
     };
     if (!payload.title) {
       message("请填写事项标题");
@@ -3735,7 +4254,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       if (!result.ok) throw new Error(result.error || "保存失败");
       if (requestKey !== key()) return;
       el2("v2AffairEditor").close();
-      selected = null;
+      selected2 = null;
       await load();
       message("已保存");
     } catch (error) {
@@ -3744,7 +4263,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       el2("v2AffairsSave").disabled = false;
     }
   }
-  function initialize18() {
+  function initialize19() {
     initializeAffairsBudget(async () => {
       if (!key()) return false;
       const refreshed = await load();
@@ -3809,7 +4328,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     msg.textContent = r.generated ? "已生成随机令牌，当前页面已自动使用。可点击显示后复制。" : "已保存新令牌";
     msg.className = "meta ok";
   }
-  function initialize19() {
+  function initialize20() {
     document.getElementById("consoleTokenSave").addEventListener("click", () => changeConsoleToken(false));
     document.getElementById("consoleTokenRandom").addEventListener("click", () => changeConsoleToken(true));
   }
@@ -3871,7 +4390,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   async function saveSecurityField(field, value2, button, msg) {
     return saveSecurityPayload({ [field]: value2 }, button, msg);
   }
-  function initialize20() {
+  function initialize21() {
     document.getElementById("secInterceptNotifySave").addEventListener("click", () => saveSecurityField(
       "interceptNotify",
       document.getElementById("secInterceptNotify").checked,
@@ -3901,14 +4420,14 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   }
 
   // console/layers/V/page.js
-  function initialize21() {
+  function initialize22() {
     const load2 = () => componentUI.renderLayer("V", "vLayerRoot");
     registerPageLoader("layer-v", load2);
     document.getElementById("vLayerRefresh").addEventListener("click", load2);
   }
 
   // console/layers/S/page.js
-  function initialize22() {
+  function initialize23() {
     const load2 = () => componentUI.renderLayer("S", "sLayerRoot");
     registerPageLoader("layer-s", load2);
     document.getElementById("sLayerRefresh").addEventListener("click", load2);
@@ -3964,7 +4483,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     }
   }
   var gamesRegistry;
-  function initialize23() {
+  function initialize24() {
     gamesParameterLabels = {
       sides: ["骰子面数", 2, 20],
       maxAttempts: ["最大作答次数", 1, 10]
@@ -4014,54 +4533,6 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     loadGames();
   }
 
-  // console/layers/C/preset-prompt.js
-  var simPromptOriginal;
-  var simPromptPreset;
-  function setSimMsg(text, ok) {
-    const el3 = document.getElementById("simPromptMsg");
-    el3.textContent = text;
-    el3.className = ok === void 0 ? "meta" : ok ? "meta ok" : "meta err";
-  }
-  function setSimEditing(editing) {
-    const area = document.getElementById("simPromptText");
-    area.readOnly = !editing;
-    area.classList.toggle("editing", editing);
-    document.getElementById("simPromptEdit").disabled = editing;
-    document.getElementById("simPromptSave").disabled = !editing;
-    document.getElementById("simPromptCancel").disabled = !editing;
-  }
-  async function refreshSimPrompt() {
-    simPromptPreset = document.getElementById("simPromptPreset").value || "qq-chat-v2";
-    setSimMsg("读取中…");
-    try {
-      const r = await api("/api/preset/sim-prompt?preset=" + encodeURIComponent(simPromptPreset));
-      const area = document.getElementById("simPromptText");
-      if (!r.ok) {
-        area.value = "";
-        setSimMsg(r.error || "读取失败", false);
-        document.getElementById("simPromptStatus").textContent = "不可用";
-        return;
-      }
-      simPromptOriginal = r.content;
-      area.value = r.content;
-      setSimEditing(false);
-      setSimMsg("");
-      const status = r.status || {};
-      document.getElementById("simPromptStatus").textContent = `${status.label || simPromptPreset} · ${r.chars} 字符${status.installed ? " · 已同步到 DSH" : " · 尚未同步到 DSH"}`;
-      document.getElementById("simPromptWarnings").textContent = (r.warnings || []).length ? "⚠️ " + r.warnings.join("；") : "";
-      document.getElementById("simPromptRestart").textContent = "改动写入该代预设的源文件并同步到 DSH 的 preset 目录；preset 由 DSH 在会话创建时装配，因此新会话会自动用新版，正在进行的 QQ 会话需重置该会话或重启 DSH。";
-    } catch (error) {
-      setSimMsg("读取失败：" + (error?.message ?? error), false);
-    }
-  }
-  function initialize24() {
-    simPromptOriginal = "";
-    simPromptPreset = "qq-chat-v2";
-  }
-  function setSimPromptOriginal(value2) {
-    simPromptOriginal = value2;
-  }
-
   // console/layers/G/access.js
   async function refreshWhitelist() {
     try {
@@ -4087,9 +4558,6 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       document.getElementById("simPromptText").value = simPromptOriginal;
       setSimEditing(false);
       setSimMsg("已放弃修改");
-    });
-    document.getElementById("simPromptPreset").addEventListener("change", () => {
-      refreshSimPrompt();
     });
     document.getElementById("simPromptSave").addEventListener("click", async () => {
       const content = document.getElementById("simPromptText").value;
@@ -4291,7 +4759,10 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         el3.innerHTML = convs.length ? convs.map((c) => '<option value="' + esc(c.key) + '">' + esc(c.key) + "</option>").join("") : '<option value="">（暂无会话）</option>';
         if (prev && convs.some((c) => c.key === prev)) el3.value = prev;
       };
-      fillKeys(document.getElementById("v2TbKey"));
+      const bubbleKey = document.getElementById("v2TbKey");
+      const previousBubbleKey = bubbleKey?.value;
+      fillKeys(bubbleKey);
+      if (bubbleKey && bubbleKey.value !== previousBubbleKey) bubbleKey.dispatchEvent(new Event("change"));
       fillKeys(document.getElementById("v2PmKey"));
       const followupKey = document.getElementById("v2FollowupSessionKey");
       if (followupKey) {
@@ -4307,7 +4778,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       if (cur && convs.some((c) => c.key === cur)) sel.value = cur;
       const repeatLabel = (rep) => rep === "daily" ? "每天重复" : rep === "weekly" ? "每周重复" : "一次性";
       const scheduleSessions = (sch && sch.conversations || []).filter((c) => Array.isArray(c.items) && c.items.length);
-      const rows = [];
+      const rows2 = [];
       let scheduleCount = 0;
       const remainingLabel = (dueAt) => {
         const delta = Number(dueAt) - Date.now();
@@ -4320,7 +4791,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         const items2 = [...c.items].sort((a, b) => Number(a.dueAt) - Number(b.dueAt));
         scheduleCount += items2.length;
         const isGroup = String(c.key || "").startsWith("group:");
-        rows.push('<section class="schedule-session"><header class="schedule-session-head"><span class="schedule-session-kind">' + (isGroup ? "群聊" : "私聊") + '</span><strong class="schedule-session-key">' + esc(c.key) + '</strong><span class="schedule-session-count">' + items2.length + " 条待办</span></header>");
+        rows2.push('<section class="schedule-session"><header class="schedule-session-head"><span class="schedule-session-kind">' + (isGroup ? "群聊" : "私聊") + '</span><strong class="schedule-session-key">' + esc(c.key) + '</strong><span class="schedule-session-count">' + items2.length + " 条待办</span></header>");
         for (const it of items2) {
           const dueAt = Number(it.dueAt) || 0;
           const dueDate = dueAt ? new Date(dueAt) : /* @__PURE__ */ new Date(NaN);
@@ -4337,11 +4808,11 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
           const nextReminderAt = Number(it.nextReminderAt) || remindAt;
           const nextReminderText = nextReminderAt && Number.isFinite(new Date(nextReminderAt).getTime()) ? new Date(nextReminderAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "";
           const nextReminderLabel = Number(it.lastRemindedAt) > 0 ? "下次 " : nextReminderAt <= Date.now() ? "待首次补发 " : "首次 ";
-          rows.push('<article class="schedule-card"><div class="schedule-card-date"><span>' + esc(dateText) + "</span><strong>" + esc(timeText) + "</strong><small>" + esc(remainingLabel(dueAt)) + '</small></div><div class="schedule-card-body"><div class="schedule-card-title">' + esc(it.title || "未命名日程") + '</div><div class="schedule-card-meta">' + esc(repeatLabel(it.repeat)) + "</div>" + (extra ? '<div class="schedule-card-extra">' + esc(extra) + "</div>" : "") + '<div class="schedule-card-lead">开始前 <input type="number" min="0" max="1440" step="1" value="' + leadMinutes + '" data-lead-key="' + leadEncKey + '" data-lead-id="' + esc(it.id) + '" aria-label="提醒开始提前分钟数"> 分钟；之后每 <input type="number" min="1" max="1440" step="1" value="' + intervalMinutes + '" data-interval-id="' + esc(it.id) + '" aria-label="提醒间歇分钟数"> 分钟提醒 <button type="button" class="small" data-lead-save="1" data-lead-key="' + leadEncKey + '" data-lead-id="' + esc(it.id) + '">保存提醒设置</button> <button type="button" class="small" data-sch-complete="1" data-sch-key="' + leadEncKey + '" data-sch-id="' + esc(it.id) + '" data-sch-title="' + esc(encodeURIComponent(String(it.title || ""))) + '">确认已去做</button> <span class="meta">' + (leadIsDefault ? "提前量跟随全局默认" : "提前量单独设置") + (remindText ? " · 开始 " + esc(remindText) : "") + (nextReminderText ? " · " + nextReminderLabel + esc(nextReminderText) : "") + '</span></div></div><button type="button" class="small danger schedule-card-delete" aria-label="删除日程 ' + esc(it.title || "") + '" data-sch-delete="1" data-sch-key="' + esc(encodeURIComponent(c.key)) + '" data-sch-id="' + esc(it.id) + '" data-sch-title="' + esc(encodeURIComponent(String(it.title || ""))) + '">删除</button></article>');
+          rows2.push('<article class="schedule-card"><div class="schedule-card-date"><span>' + esc(dateText) + "</span><strong>" + esc(timeText) + "</strong><small>" + esc(remainingLabel(dueAt)) + '</small></div><div class="schedule-card-body"><div class="schedule-card-title">' + esc(it.title || "未命名日程") + '</div><div class="schedule-card-meta">' + esc(repeatLabel(it.repeat)) + "</div>" + (extra ? '<div class="schedule-card-extra">' + esc(extra) + "</div>" : "") + '<div class="schedule-card-lead">开始前 <input type="number" min="0" max="1440" step="1" value="' + leadMinutes + '" data-lead-key="' + leadEncKey + '" data-lead-id="' + esc(it.id) + '" aria-label="提醒开始提前分钟数"> 分钟；之后每 <input type="number" min="1" max="1440" step="1" value="' + intervalMinutes + '" data-interval-id="' + esc(it.id) + '" aria-label="提醒间歇分钟数"> 分钟提醒 <button type="button" class="small" data-lead-save="1" data-lead-key="' + leadEncKey + '" data-lead-id="' + esc(it.id) + '">保存提醒设置</button> <button type="button" class="small" data-sch-complete="1" data-sch-key="' + leadEncKey + '" data-sch-id="' + esc(it.id) + '" data-sch-title="' + esc(encodeURIComponent(String(it.title || ""))) + '">确认已去做</button> <span class="meta">' + (leadIsDefault ? "提前量跟随全局默认" : "提前量单独设置") + (remindText ? " · 开始 " + esc(remindText) : "") + (nextReminderText ? " · " + nextReminderLabel + esc(nextReminderText) : "") + '</span></div></div><button type="button" class="small danger schedule-card-delete" aria-label="删除日程 ' + esc(it.title || "") + '" data-sch-delete="1" data-sch-key="' + esc(encodeURIComponent(c.key)) + '" data-sch-id="' + esc(it.id) + '" data-sch-title="' + esc(encodeURIComponent(String(it.title || ""))) + '">删除</button></article>');
         }
-        rows.push("</section>");
+        rows2.push("</section>");
       }
-      listEl.innerHTML = rows.join("") || '<div class="schedule-empty">暂无待办日程。选择会话并填写时间与内容即可添加。</div>';
+      listEl.innerHTML = rows2.join("") || '<div class="schedule-empty">暂无待办日程。选择会话并填写时间与内容即可添加。</div>';
       listEl.querySelectorAll("[data-sch-delete]").forEach((btn) => btn.addEventListener("click", async () => {
         if (!confirm("删除日程「" + decodeURIComponent(btn.dataset.schTitle || "") + "」？")) return;
         const res = await api("/api/socialV2/schedules", "POST", { action: "cancel", key: decodeURIComponent(btn.dataset.schKey), id: btn.dataset.schId });
@@ -4429,6 +4900,17 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   }
 
   // console/layers/L/time-bubbles.js
+  var loadedTimeBubbleKey = "";
+  var timeBubbleLoadVersion = 0;
+  var savingTimeBubbles = false;
+  var selectedTimeBubbleKey = () => document.getElementById("v2TbKey")?.value || "";
+  var timeBubbleEditorReady = (key2) => !!key2 && key2 === selectedTimeBubbleKey() && key2 === loadedTimeBubbleKey && !savingTimeBubbles;
+  function invalidateTimeBubbleEditor() {
+    timeBubbleLoadVersion++;
+    loadedTimeBubbleKey = "";
+    renderV2TimeBubbles([]);
+    setV2TbMsg("请先加载该会话，再编辑或保存时段。");
+  }
   function buildV2TimeBubbleRow(slot) {
     const div = document.createElement("div");
     div.className = "row";
@@ -4449,7 +4931,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     return div;
   }
   function applyV2TimeBubbleLocks() {
-    const allLocked = document.getElementById("v2TbAllLocked")?.checked === true;
+    const ready = timeBubbleEditorReady(selectedTimeBubbleKey());
+    const allLocked = !ready || document.getElementById("v2TbAllLocked")?.checked === true;
     document.querySelectorAll("#v2TimeBubbleRows [data-tb-row]").forEach((row) => {
       const rowLocked = row.querySelector('[data-tb="locked"]')?.checked === true;
       row.querySelectorAll('[data-tb]:not([data-tb="locked"]),[data-tb-del]').forEach((el3) => {
@@ -4460,6 +4943,11 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     syncV2TimeBubbleCapacity();
   }
   function syncV2TimeBubbleCapacity() {
+    const ready = timeBubbleEditorReady(selectedTimeBubbleKey());
+    for (const id of ["v2TbSave", "v2TbReset", "v2TbAllLocked"]) {
+      const control = document.getElementById(id);
+      if (control) control.disabled = !ready;
+    }
     const box = document.getElementById("v2TimeBubbleRows");
     const add = document.getElementById("v2TimeBubbleAdd");
     const msg = document.getElementById("v2TbCapacityMsg");
@@ -4469,13 +4957,14 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     const rawLimit = capacityInput?.value;
     const limit = rawLimit !== "" && Number.isFinite(Number(rawLimit)) ? Math.max(0, Math.floor(Number(rawLimit))) : Infinity;
     const overLimit = count > limit;
-    if (add) add.disabled = allLocked || count >= limit;
+    if (add) add.disabled = !ready || allLocked || count >= limit;
     if (capacityInput) {
       capacityInput.disabled = overLimit;
       if (!overLimit) capacityInput.dataset.lastValidValue = capacityInput.value;
     }
     if (msg) {
-      if (overLimit) msg.textContent = `当前已配置 ${count} 个时段，超过每日上限 ${limit}；请先删除多余时段，再调整上限。`;
+      if (loadedTimeBubbleKey !== selectedTimeBubbleKey() || !loadedTimeBubbleKey) msg.textContent = "加载会话后显示已配置时段。";
+      else if (overLimit) msg.textContent = `当前已配置 ${count} 个时段，超过每日上限 ${limit}；请先删除多余时段，再调整上限。`;
       else if (allLocked) msg.textContent = `当前已配置 ${count}${Number.isFinite(limit) ? " / " + limit : ""} 个时段；冒泡栏已锁定。`;
       else if (count >= limit) msg.textContent = `当前已配置 ${count} / ${limit} 个时段，已达到上限，不能继续添加。`;
       else if (Number.isFinite(limit)) msg.textContent = `当前已配置 ${count} / ${limit} 个时段，还可添加 ${limit - count} 个。`;
@@ -4507,47 +4996,77 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     if (el3) el3.textContent = text || "";
   }
   async function loadV2TimeBubblesFor(key2) {
+    const version = ++timeBubbleLoadVersion;
+    loadedTimeBubbleKey = "";
+    renderV2TimeBubbles([]);
     if (!key2) {
       renderV2TimeBubbles([]);
       setV2TbMsg("请选择会话");
       return;
     }
+    if (key2 !== selectedTimeBubbleKey()) return;
+    setV2TbMsg("正在加载该会话时段…");
     try {
       const r = await api("/api/socialV2/time-bubbles?key=" + encodeURIComponent(key2));
+      if (version !== timeBubbleLoadVersion || key2 !== selectedTimeBubbleKey()) return;
       if (!r.ok) throw new Error(r.error || "读取失败");
-      const all = r.all || r.slots || [];
+      const all = r.all ?? r.slots;
+      if (!Array.isArray(all)) throw new Error("时段数据不完整，请重新加载");
+      loadedTimeBubbleKey = key2;
       renderV2TimeBubbles(all, r.allLocked === true);
       setV2TbMsg((all.length ? "该会话已配置时间冒泡。" : "当前没有时间冒泡。") + " 共 " + all.length + " 个时段。");
     } catch (e) {
+      if (version !== timeBubbleLoadVersion || key2 !== selectedTimeBubbleKey()) return;
+      loadedTimeBubbleKey = "";
+      applyV2TimeBubbleLocks();
       setV2TbMsg("读取失败：" + (e && e.message ? e.message : e));
     }
   }
   async function saveV2TimeBubblesFor(key2) {
-    if (!key2) {
-      setV2TbMsg("请选择会话");
+    if (!timeBubbleEditorReady(key2)) {
+      setV2TbMsg("请先成功加载当前会话，再保存时段。");
+      applyV2TimeBubbleLocks();
       return;
     }
+    const version = timeBubbleLoadVersion;
+    const slots = collectV2TimeBubbles();
+    savingTimeBubbles = true;
+    applyV2TimeBubbleLocks();
     try {
-      const r = await api("/api/socialV2/time-bubbles", "POST", { key: key2, slots: collectV2TimeBubbles(), allLocked: document.getElementById("v2TbAllLocked")?.checked === true });
+      const r = await api("/api/socialV2/time-bubbles", "POST", { key: key2, slots, allLocked: document.getElementById("v2TbAllLocked")?.checked === true });
+      if (version !== timeBubbleLoadVersion || key2 !== selectedTimeBubbleKey()) return;
       setV2TbMsg(r.ok ? r.conflicts?.length ? "⚠️ 已保存未锁时段；锁定时段 " + r.conflicts.join("、") + " 保持原样。" : "✅ 已保存，共 " + (r.all || []).length + " 个时段" : "❌ " + (r.error || "失败"));
-      if (r.ok) loadV2TimeBubblesFor(key2);
+      if (r.ok) await loadV2TimeBubblesFor(key2);
       else if (r.error === "LOCKED_SCHEDULE") {
         setV2TbMsg("该冒泡栏或时段已锁定；先解锁，再保存。");
-        loadV2TimeBubblesFor(key2);
+        await loadV2TimeBubblesFor(key2);
       }
     } catch (e) {
-      setV2TbMsg("保存失败：" + (e && e.message ? e.message : e));
+      if (version === timeBubbleLoadVersion && key2 === selectedTimeBubbleKey()) setV2TbMsg("保存失败：" + (e && e.message ? e.message : e));
+    } finally {
+      savingTimeBubbles = false;
+      applyV2TimeBubbleLocks();
     }
   }
   async function resetV2TimeBubblesFor(key2) {
-    if (!key2) return;
+    if (!timeBubbleEditorReady(key2)) {
+      setV2TbMsg("请先加载当前会话，再清空时段。");
+      return;
+    }
     if (!confirm("清空此会话的所有时间冒泡时段？")) return;
+    const version = timeBubbleLoadVersion;
+    savingTimeBubbles = true;
+    applyV2TimeBubbleLocks();
     try {
       const r = await api("/api/socialV2/time-bubbles", "POST", { key: key2, reset: true });
+      if (version !== timeBubbleLoadVersion || key2 !== selectedTimeBubbleKey()) return;
       setV2TbMsg(r.ok ? "✅ 已清空；此会话不会再发送时间冒泡" : "❌ " + (r.error || "失败"));
-      if (r.ok) loadV2TimeBubblesFor(key2);
+      if (r.ok) await loadV2TimeBubblesFor(key2);
     } catch (e) {
-      setV2TbMsg("恢复失败：" + (e && e.message ? e.message : e));
+      if (version === timeBubbleLoadVersion && key2 === selectedTimeBubbleKey()) setV2TbMsg("清空失败：" + (e && e.message ? e.message : e));
+    } finally {
+      savingTimeBubbles = false;
+      applyV2TimeBubbleLocks();
     }
   }
   async function loadV2FollowupSessionLimits(key2) {
@@ -4609,7 +5128,10 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     }
   }
   function initialize30() {
+    invalidateTimeBubbleEditor();
+    document.getElementById("v2TbKey").addEventListener("change", invalidateTimeBubbleEditor);
     document.getElementById("v2TimeBubbleAdd").addEventListener("click", () => {
+      if (!timeBubbleEditorReady(selectedTimeBubbleKey())) return;
       const box = document.getElementById("v2TimeBubbleRows");
       if (box) {
         const capacity = document.getElementById("v2TimeBubbleAdd")?.closest(".settings-content")?.querySelector(".inline-component-settings .comp-form-num");
@@ -4747,7 +5269,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       } catch {
       }
       const hasCatchUpFor = (key2, targetDate) => historyAvailable && [...catchUpKeys].some((item) => item.startsWith(String(key2) + "|") && item.slice(String(key2).length + 1) < String(targetDate || ""));
-      const rows = convs.map((c) => {
+      const rows2 = convs.map((c) => {
         const last = c.lastDiaryDate || "未发过";
         const state = c.hasDiary ? "目标日记 " + c.diaryChars + " 字（" + (c.diarySource === "archive" ? "归档" : "当前记忆") + "）" : "没有 " + (c.targetDate || "目标日期") + " 的日记内容";
         const delivery = { sent: "目标日已确认发送", claimed: "发送处理中", uncertain: "发送结果未确认", absent: "目标日尚无发送凭据", archive_only: "仅有归档，未确认发送", unavailable: "凭据状态不可用" }[c.deliveryStatus] || "状态未知";
@@ -4763,7 +5285,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         return '<article class="diary-session-card" title="' + esc(title) + '"><div class="diary-session-head"><b class="diary-session-key">' + esc(c.key) + '</b><span class="diary-session-state ' + statusClass + '">' + esc(statusLabel) + '</span></div><div class="diary-session-window">' + esc(c.targetDate || "目标日期") + " 日记时间窗 · " + esc(diaryWindowForDay(c.targetDate)) + '</div><div class="diary-session-detail">' + esc(state) + " · " + esc(sendDateLabel) + '</div><div class="diary-session-actions"><button class="small" title="每次点击都会重新总结当前记忆并发送今天的日记" ' + (blocked ? "disabled" : "") + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-day="' + esc(c.targetDate || "") + '" data-dd-action="sendNow">刷新并发送今日日记</button><button class="small" title="只补发今天以前、尚未确认发送的归档日记" ' + (c.diaryPending || !catchUpAvailable ? "disabled" : "") + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-action="catchUpAll">补发未发送日记</button></div></article>';
       });
       if (catchUpButton) catchUpButton.disabled = !historyAvailable || !convs.some((c) => !c.diaryPending && hasCatchUpFor(c.key, c.targetDate));
-      listEl.innerHTML = rows.join("") || "（暂无会话）";
+      listEl.innerHTML = rows2.join("") || "（暂无会话）";
       listEl.querySelectorAll("[data-dd-key]").forEach((btn) => btn.addEventListener("click", async () => {
         const key2 = decodeURIComponent(btn.dataset.ddKey);
         const action = btn.dataset.ddAction;
@@ -4899,7 +5421,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   var time2 = (value2) => value2 ? new Date(value2).toLocaleString("zh-CN", { hour12: false }) : "—";
   function historyItem(item) {
     const corrected = item.voided === true;
-    return '<li class="mood-history-item' + (corrected ? " is-corrected" : "") + '"><div><b>' + esc(corrected ? "已核实回应，原未答判定已更正" : { "daily-recovery": "每日04:00保底恢复", "daily-first": "历史首次发言恢复", "model-adjustment": "AI加减分", "unanswered": "主动未回应扣分" }[item.source] || item.source || "未知来源") + "</b><time>" + esc(time2(item.effectiveAt ?? item.at)) + "</time></div><p>" + esc(item.reason || "未提供原因") + "</p><span>" + esc(item.before ?? "—") + " → " + esc(item.after ?? "—") + "（变化 " + esc(item.delta ?? "—") + "）</span>" + (corrected ? "<small>原记录：" + esc(item.source) + "；原扣分 " + esc(item.originalPenalty ?? "—") + "；记录于 " + esc(time2(item.recordedAt)) + "<br>更正依据：" + esc(typeof item.correction === "string" ? item.correction : JSON.stringify(item.correction || {})) + "</small>" : "") + "</li>";
+    return '<li class="mood-history-item' + (corrected ? " is-corrected" : "") + '"><div><b>' + esc(corrected ? "已核实回应，原未答判定已更正" : { "daily-recovery": "每日保底恢复", "daily-first": "历史首次发言恢复", "model-adjustment": "AI加减分", "unanswered": "主动未回应扣分" }[item.source] || item.source || "未知来源") + "</b><time>" + esc(time2(item.effectiveAt ?? item.at)) + "</time></div><p>" + esc(item.reason || "未提供原因") + "</p><span>" + esc(item.before ?? "—") + " → " + esc(item.after ?? "—") + "（变化 " + esc(item.delta ?? "—") + "）</span>" + (corrected ? "<small>原记录：" + esc(item.source) + "；原扣分 " + esc(item.originalPenalty ?? "—") + "；记录于 " + esc(time2(item.recordedAt)) + "<br>更正依据：" + esc(typeof item.correction === "string" ? item.correction : JSON.stringify(item.correction || {})) + "</small>" : "") + "</li>";
   }
   async function refreshV2Mood() {
     const el3 = document.getElementById("v2MoodCurrent");
@@ -4992,8 +5514,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   // console/layers/E/config-load.js
   function applyEConfig(c) {
     const ad = c.adminDev || {};
-    document.getElementById("v2AdminDevEnabled").checked = ad.enabled !== false;
-    document.getElementById("v2AdminDevPreset").value = ad.preset || "qq-chat-dev";
+    document.getElementById("v2AdminDevEnabled").checked = ad.enabled === true;
+    renderAdminPresets(ad.preset === "qq-chat-dev" ? "" : String(ad.preset ?? ""));
   }
 
   // console/layers/L/config-load.js
@@ -5014,9 +5536,9 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     document.getElementById("v2NewsHour").value = nw.hour ?? 9;
     document.getElementById("v2NewsMinute").value = nw.minute ?? 0;
     document.getElementById("v2NewsMax").value = nw.maxItems ?? 2;
-    const defaultNewsTopics = ["科学", "技术", "科普", "自然 纪录片", "艺术", "学习 方法"];
+    const defaultNewsTopics = ["助手", "海洋", "科技动态", "科学纪录片", "历史文化", "学习方法"];
     document.getElementById("v2NewsKeywords").value = (Array.isArray(nw.keywords) && nw.keywords.length ? nw.keywords : defaultNewsTopics).join("\n");
-    const defaultNewsUploaders = [];
+    const defaultNewsUploaders = [{ topic: "助手", uploader: "示例科普频道", weight: 2 }];
     const topicUploaders = Array.isArray(nw.topicUploaders) ? nw.topicUploaders : defaultNewsUploaders;
     document.getElementById("v2NewsUploaders").value = topicUploaders.map((x) => `${x.topic} | ${x.uploader} | ${x.weight ?? 1}`).join("\n");
     document.getElementById("v2NewsSessions").value = (Array.isArray(nw.sessionWhitelist) ? nw.sessionWhitelist : []).join("\n");
@@ -5177,7 +5699,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     return {
       adminDev: {
         enabled: document.getElementById("v2AdminDevEnabled").checked,
-        preset: String(document.getElementById("v2AdminDevPreset").value || "standard").trim().slice(0, 64) || "standard"
+        preset: String(document.getElementById("v2AdminDevPreset").value ?? "").trim().slice(0, 64)
       }
     };
   }
@@ -5263,7 +5785,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         if (slots.length) msg.textContent = "✅ 页面设置与补充参数已保存";
       } catch (error) {
         msg.textContent = "部分参数未保存：" + error.message;
-        msg.className = "meta err";
+        msg.classList.remove("ok");
+        msg.classList.add("meta", "err");
       }
     }
   }
@@ -5779,7 +6302,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     msg.className = "meta";
     return api("/api/socialV2/state?key=" + encodeURIComponent(key2)).then((r) => {
       if (!r || r.ok !== true) throw new Error(r && r.error || "失败");
-      const rows = Array.isArray(r.pendingMessages) ? r.pendingMessages : [];
+      const rows2 = Array.isArray(r.pendingMessages) ? r.pendingMessages : [];
       const fmt = (t) => t ? new Date(Number(t)).toLocaleTimeString() : "—";
       const lines = [
         `会话：${r.key || key2}`,
@@ -5788,8 +6311,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const audit = r.doubleStampCheck;
       if (audit) lines.push(`最近入站回查：${audit.enabled ? "启用" : "关闭"}｜向前 ${Number(audit.windowCount) || 0} 条｜触发 seq ${audit.triggerSeq || "—"}｜${audit.checkedAt ? new Date(Number(audit.checkedAt)).toLocaleTimeString() : "尚未检查"}｜窗口未完成 ${Number(audit.pendingCount) || 0} 条｜异常 ${Array.isArray(audit.anomalies) ? audit.anomalies.length : 0} 条｜上次 JSON 回执 ${audit.lastReportAt ? new Date(Number(audit.lastReportAt)).toLocaleTimeString() : "尚未上报"}｜${audit.lastReportError || ""}`);
       if (Array.isArray(audit?.anomalies) && audit.anomalies.length) lines.push("异常详情：" + audit.anomalies.map((item) => `seq ${item.seq} ${item.state || ""} ${item.note || item.source || ""}`).join("；"));
-      if (!rows.length) lines.push("（窗口内没有未完成的消息：都拿到了 seenAt + repliedAt）");
-      for (const m of rows) {
+      if (!rows2.length) lines.push("（窗口内没有未完成的消息：都拿到了 seenAt + repliedAt）");
+      for (const m of rows2) {
         lines.push(`seq ${m.seq} · ${m.sender || "未知"} · ${m.receiptState || ""} · seenAt=${fmt(m.seenAt)} · repliedAt=${fmt(m.repliedAt)}${m.awaitingReply ? " · 已接收未回复" : ""}`);
       }
       out.textContent = lines.join("\n");
@@ -5958,6 +6481,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       "codex-peer": '<rect x="2" y="4" width="8" height="7" rx="1.5"/><rect x="14" y="13" width="8" height="7" rx="1.5"/><path d="M14 6h5v4m-3-3 3 3M10 18H5v-4m3 3-3-3"/>',
       "injection-lab": '<path d="M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1 2h14a1.3 1.3 0 0 0 1-2L14 9V3M7 15h10M10 18h.01M14 12h.01"/>',
       "environment-chat": '<path d="M21 11a8 8 0 0 1-8 8H7l-4 2V9a7 7 0 0 1 7-7h4a7 7 0 0 1 7 7Z"/>',
+      "environment-presets": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h10M7 12h10M7 17h6"/>',
       "environment-admin": '<path d="m12 3-8 3v6c0 5 8 9 8 9s8-4 8-9V6Z"/><path d="m9 12 2 2 4-4"/>',
       "environment-web": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 8h18m-8 4 5 2-3 1-1 3Z"/>',
       "environment-watch": '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
@@ -6300,7 +6824,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   function markup(plugin) {
     const info = plugin.state?.mountInspection || {}, disabled = plugin.enabled === false, when = info.validatedAt ? new Date(info.validatedAt).toLocaleString("zh-CN", { hour12: false }) : "暂无记录";
     const title = disabled ? "组件已停用" : !plugin.config?.libraryDir ? "尚未挂载资料包" : info.ok ? "当前挂载：" + info.title : "资料包未就绪";
-    return '<div class="core-mount-heading"><b>' + esc(title) + '</b><button class="small" type="button" data-core-recheck' + (disabled ? " disabled" : "") + ">重新校验当前目录</button></div>" + (info.ok ? '<dl class="core-mount-facts"><div><dt>作者</dt><dd>' + esc(info.author) + "</dd></div><div><dt>版本</dt><dd>" + esc(info.version) + "</dd></div><div><dt>主题</dt><dd>" + esc(info.topicCount) + "</dd></div><div><dt>原稿</dt><dd>" + esc(info.sourceCount) + "</dd></div></dl>" : '<p class="meta">' + esc(info.error || "填写目录并保存后开始使用。") + "</p>") + '<p class="meta core-mount-path">已保存目录：<code>' + esc(plugin.config?.libraryDir || "未设置") + '</code></p><p class="meta">最近校验：' + esc(when) + '。未保存的输入不替换当前挂载；文件变化后可重新校验。</p><p class="core-mount-message meta" role="status"></p>';
+    return '<div class="core-mount-heading"><b>' + esc(title) + '</b><button class="small" type="button" data-core-recheck' + (disabled ? " disabled" : "") + ">重新校验当前目录</button></div>" + (info.ok ? '<dl class="core-mount-facts"><div><dt>作者</dt><dd>' + esc(info.author) + "</dd></div><div><dt>版本</dt><dd>" + esc(info.version) + "</dd></div><div><dt>主题</dt><dd>" + esc(info.topicCount) + "</dd></div><div><dt>原稿</dt><dd>" + esc(info.sourceCount) + "</dd></div></dl>" : '<p class="meta">' + esc(info.error || "填写目录并保存后开始使用。") + "</p>") + '<p class="meta core-mount-path">当前根目录：<code>' + esc(plugin.config?.libraryDir || "未设置") + '</code></p><p class="meta">最近校验：' + esc(when) + '。编辑后保存生效。</p><p class="core-mount-message meta" role="status"></p>';
   }
   function mountPersonalCore({ id, body, p }) {
     const panel = document.createElement("section");
@@ -6439,12 +6963,12 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         result.textContent = "正在读取…";
         const data2 = await call("query", key2);
         if (request !== sequence2 || !panel.isConnected) return;
-        const rows = Array.isArray(data2.entries) ? data2.entries : data2.key ? [{ key: data2.key, used: data2.used, remaining: data2.remaining }] : [];
-        for (const row of rows) if (validKey(row.key)) keys.add(row.key);
+        const rows2 = Array.isArray(data2.entries) ? data2.entries : data2.key ? [{ key: data2.key, used: data2.used, remaining: data2.remaining }] : [];
+        for (const row of rows2) if (validKey(row.key)) keys.add(row.key);
         fillOptions();
         const categories2 = { professional: "专业求助", casual: "日常交流", uncertain: "待澄清" };
         const records = Array.isArray(data2.recentClassifications) ? data2.recentClassifications : [];
-        result.innerHTML = '<div class="quota-summary"><span>日期 <b>' + esc(data2.day || "—") + "</b></span><span>每日上限 <b>" + esc(data2.limit ?? "—") + "</b></span><span>计数方式 <b>" + esc(data2.countBy === "user" ? "按发言人" : "按会话") + "</b></span><span>识别方式 <b>" + ((data2.semanticEnabled ?? p.config?.semanticEnabled) !== false ? "AI语义优先" : "关键词规则") + "</b></span>" + ((data2.exemptOwner ?? p.config?.exemptOwner) !== false ? "<span>管理员提问不计数</span>" : "<span>管理员提问也计数</span>") + (data2.enabled === false ? '<span class="quota-off">功能已停用</span>' : "") + "</div>" + (rows.length ? '<div class="quota-rows">' + rows.map((row) => '<div class="quota-row"><code>' + esc(row.key) + "</code><span>已用 <b>" + esc(row.used) + "</b></span><span>剩余 <b>" + esc(row.remaining) + "</b></span></div>").join("") + "</div>" : '<div class="quota-empty">今天还没有专业问答用量。</div>');
+        result.innerHTML = '<div class="quota-summary"><span>日期 <b>' + esc(data2.day || "—") + "</b></span><span>每日上限 <b>" + esc(data2.limit ?? "—") + "</b></span><span>计数方式 <b>" + esc(data2.countBy === "user" ? "按发言人" : "按会话") + "</b></span><span>识别方式 <b>" + ((data2.semanticEnabled ?? p.config?.semanticEnabled) !== false ? "AI语义优先" : "关键词规则") + "</b></span>" + ((data2.exemptOwner ?? p.config?.exemptOwner) !== false ? "<span>管理员提问不计数</span>" : "<span>管理员提问也计数</span>") + (data2.enabled === false ? '<span class="quota-off">功能已停用</span>' : "") + "</div>" + (rows2.length ? '<div class="quota-rows">' + rows2.map((row) => '<div class="quota-row"><code>' + esc(row.key) + "</code><span>已用 <b>" + esc(row.used) + "</b></span><span>剩余 <b>" + esc(row.remaining) + "</b></span></div>").join("") + "</div>" : '<div class="quota-empty">今天还没有专业问答用量。</div>');
         if (records.length) result.insertAdjacentHTML("beforeend", '<details class="parameter-block"><summary>最近识别记录</summary>' + records.map((item) => '<p class="meta"><code>' + esc(item.bucketKey || item.key) + "</code> · " + esc(categories2[item.category] || item.category) + " · " + (item.source === "ai" ? "AI判定" : item.source === "nontext" ? "媒体交回正常会话" : "规则兜底") + "<br>" + esc(item.reason) + "</p>").join("") + "</details>");
       } catch (error) {
         if (request === sequence2) result.textContent = "读取失败：" + error.message;
@@ -6803,7 +7327,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       "maxCharsPerSnippet": "设为300：单条事实片段最多保留300字符，防止长文本挤占上下文。"
     },
     "ctx-memory-store": {
-      "diaryArchive": "开启后保留日记归档；日记归档不等于每轮都注入聊天提示词。"
+      "diaryArchive": "设为20000：每天所有会话共用一份归档，最多保留20000字符；有效范围为200至200000。归档与发到QQ的日记字数上限分别设置。"
     },
     "ctx-memory-update": {
       "maxChars": "设为6000：给记忆维护回合组织材料时使用6000字符预算，不代表清空更长的持久记录。"
@@ -6980,8 +7504,11 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     "fields": [
       {
         "key": "diaryArchive",
-        "label": "保留日记归档",
-        "type": "boolean"
+        "label": "每日归档字数上限",
+        "type": "number",
+        "property": "maxChars",
+        "min": 200,
+        "max": 2e5
       }
     ]
   };
@@ -7161,6 +7688,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       { key: "webWatchEnabled", label: "启用网页监控", help: "必须填写至少一个网址；页面变化时发送新增内容的 diff。", type: "boolean" },
       { key: "fastCheckMinutes", label: "到期轮询间隔（分钟）", help: "只检查哪些网址到期，不表示每次都重新读取全部网页。", type: "number", min: 1, max: 1440 },
       { key: "fullCheckMinutes", label: "网页完整检查间隔（分钟）", help: "按此间隔重新读取已启用的网址，并与上次内容比较。", type: "number", min: 1, max: 10080 },
+      { key: "loginMaxAttempts", label: "登录尝试／通知上限（次）", help: "全局上限、各网站独立计数。同域课程共用一次登录。例：设3，第3次失败时QQ通知并暂停，等待手动重新监管或桥接重启。", type: "number", min: 1, max: 20 },
+      { key: "loginRetryMinutes", label: "登录尝试／提醒间隔（分钟）", help: "尝试与提醒共用这一间隔。例：设5，首次失败立即通知，之后每5分钟验证一次；每次失败立即通知。", type: "number", min: 1, max: 1440 },
       { key: "watchUrls", label: "监控网址（勾选=启用）", help: "所有网页都按普通网址监控处理，含 Blackboard 页面。可直接写 https://网址，也可写“名称 | https://网址”；取消勾选 = 暂停检测但保留。", type: "items", placeholder: "名称 | https://网址", addLabel: "添加网址" },
       { key: "scriptCollabEnabled", label: "启用脚本协同", help: "添加脚本后，AI 可以按约定查询其状态并参与任务流程。", type: "boolean" },
       { key: "scriptPaths", label: "协同脚本（勾选=启用）", help: "勾选参与协同，取消勾选暂停。登记地址不会自动执行脚本。", type: "items", placeholder: "scripts/campus-watch.mjs", addLabel: "添加脚本" },
@@ -7306,11 +7835,11 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     "fields": [
       {
         "key": "libraryDir",
-        "label": "资料包目录（本机路径）",
+        "label": "资料包根目录（本机路径）",
         "type": "text",
         "maxLength": 4096,
         "group": "目录挂载",
-        "help": "支持项目相对路径或本机绝对路径。填写标准资料包的根目录；保存时校验并挂载。留空表示卸载。"
+        "help": "例：D:\\qq-bridge\\private-libraries\\my-core。填写含 manifest.json 的根目录；留空卸载。"
       },
       {
         "key": "referenceSessionKeys",
@@ -7349,10 +7878,20 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     ]
   };
 
+  // console/layers/O/components/obs-self-review.js
+  var obs_self_review_default = {
+    title: "Codex 修正接口",
+    saveLabel: "保存 Codex 修正接口设置",
+    fields: [{ key: "codexRepairEnabled", label: "启用 Codex 修正接口", type: "boolean", help: "勾选并保存后，Codex 可扫描反馈、协助修复并同步修复状态、统计和日志。取消后，Codex 必须停止并请求你开启，不能自行开启或绕过；Bot 自查、日记、日报及已有反馈记录不受影响。" }]
+  };
+
   // console/layers/C/components/ctx-user-mood.js
   var ctx_user_mood_default = { ownsEnabled: true, saveLabel: "保存心情与双形态", title: "心情与双形态", fields: [
     { key: "enabled", label: "启用心情系统", help: "心情表示 bot 主观上是否喜欢与对方聊天，并决定风格；用户忙闲由聊天意愿单独评估。", type: "boolean", group: "结算规则" },
     { key: "noReplyAfterMinutes", label: "主动后等待回应（分钟）", type: "number" },
+    { key: "noReplyPenalty", label: "主动回合未回应扣分（0–100）", type: "number" },
+    { key: "dailyRecoveryHour", label: "每日恢复时刻（上海时间，0–23点）", type: "number" },
+    { key: "dailyFloor", label: "每日恢复保底分数（0–100）", type: "number" },
     { key: "modeThreshold", label: "普通与临界形态阈值（0–100）", type: "number", group: "双形态", help: "达到阈值采用普通形态；低于阈值采用临界形态。" },
     { key: "normalName", label: "普通形态名称", type: "text", maxLength: 40 },
     { key: "normalStyle", label: "普通形态：语言风格与对话示例", type: "textarea", maxLength: 2400, help: "全局规则，仅普通形态注入。写清说话习惯、聊天倾向和几组对话示例；人设卡只保留整体身份与气质。" },
@@ -7373,6 +7912,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
 
   // console/shared/components/forms.js
   var COMPONENT_FORMS = {
+    "obs-self-review": obs_self_review_default,
     "obs-session-recovery": obs_session_recovery_default,
     "ctx-memory-store": ctx_memory_store_default,
     "life-scheduler": life_scheduler_default,
@@ -7472,8 +8012,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     if (field.type === "items") {
       const arr = Array.isArray(value2) ? value2.map((e) => typeof e === "string" ? { value: e, enabled: true } : e) : [];
       const ph = esc(field.placeholder || "");
-      const rows = arr.map((e) => '<div class="comp-item' + (e.enabled === false ? " is-off" : "") + '"><input type="checkbox" class="comp-item-on" title="勾选=启用" aria-label="启用此项"' + (e.enabled !== false ? " checked" : "") + '><input type="text" class="comp-item-val" value="' + esc(e.value || "") + '" placeholder="' + ph + '" style="flex:1"><button type="button" class="small comp-item-del" aria-label="删除此项">删除</button></div>').join("");
-      return '<div class="comp-field"><div class="meta">' + esc(field.label) + "</div>" + rows + '<div class="row" style="gap:6px;margin-top:6px"><input type="text" class="comp-item-new" placeholder="' + ph + '" style="flex:1"><button type="button" class="small comp-item-add">' + esc(field.addLabel || "添加") + "</button></div>" + hint + "</div>";
+      const rows2 = arr.map((e) => '<div class="comp-item' + (e.enabled === false ? " is-off" : "") + '"><input type="checkbox" class="comp-item-on" title="勾选=启用" aria-label="启用此项"' + (e.enabled !== false ? " checked" : "") + '><input type="text" class="comp-item-val" value="' + esc(e.value || "") + '" placeholder="' + ph + '" style="flex:1"><button type="button" class="small comp-item-del" aria-label="删除此项">删除</button></div>').join("");
+      return '<div class="comp-field"><div class="meta">' + esc(field.label) + "</div>" + rows2 + '<div class="row" style="gap:6px;margin-top:6px"><input type="text" class="comp-item-new" placeholder="' + ph + '" style="flex:1"><button type="button" class="small comp-item-add">' + esc(field.addLabel || "添加") + "</button></div>" + hint + "</div>";
     }
     return "";
   }
@@ -7581,7 +8121,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     let grouped = false, groupCount = 0;
     const fields = form.fields.map((f) => {
       const id = "cfg-" + p.id + "-" + f.key;
-      let html = compFieldHtml({ ...f, example: f.example || PARAMETER_EXAMPLES[p.id]?.[f.key] }, f.key === "watchUrls" && !(cfg.watchUrls || []).length ? p.state?.watchUrls || [] : cfg[f.key]);
+      const value2 = f.property ? cfg[f.key]?.[f.property] : cfg[f.key];
+      let html = compFieldHtml({ ...f, example: f.example || PARAMETER_EXAMPLES[p.id]?.[f.key] }, f.key === "watchUrls" && !(cfg.watchUrls || []).length ? p.state?.watchUrls || [] : value2);
       html = html.replace('class="comp-field', 'data-config-key="' + esc(f.key) + '" class="comp-field');
       if (!["moodRules", "ackGroup", "items", "flags"].includes(f.type)) {
         html = html.replace(/<(input|select|textarea) /, '<$1 id="' + id + '" aria-label="' + esc(f.label) + '" ');
@@ -7602,7 +8143,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       form.fields.forEach((f, index) => {
         const v = compFieldValue(f, fields2[index]);
         if (v === void 0) delete out[f.key];
-        else out[f.key] = v;
+        else out[f.key] = f.property ? { ...cfg[f.key], [f.property]: v } : v;
       });
       const ruleIds = [...out.positiveRules || [], ...out.negativeRules || []].map((rule) => rule.id);
       if (new Set(ruleIds).size !== ruleIds.length) throw Error("升分和降分规则 ID 不能重复");
@@ -7745,351 +8286,6 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     }
   }
 
-  // console/layers/T/tool-presentation.js
-  var TOOL_PRESENTATION = {
-    learningSources: { group: "记忆、心情与排程", label: "调整知识适用来源", example: "例：高频用到某条确认资料时，把当前会话加入默认注入名单；不确认候选。" },
-    aliasQuery: { group: "知识与反馈", label: "查询成员绰号", example: "例：按完整QQ号查询已确认称呼；跨来源不返回原始聊天证据。" },
-    aliasSubmit: { group: "知识与反馈", label: "提交绰号候选", example: "例：发现新称呼后提交候选，仍由管理员确认。" },
-    "status": {
-      "group": "读取与状态",
-      "label": "连接状态",
-      "example": "例：开启并保存后，可读取QQ连接与账号状态；仍受会话权限与额度约束。"
-    },
-    "getPrompt": {
-      "group": "读取与状态",
-      "label": "当前角色与规则",
-      "example": "例：开启并保存后，可查看本轮角色、参数指引和允许工具；仍受会话权限与额度约束。"
-    },
-    "getUnread": {
-      "group": "读取与状态",
-      "label": "未处理来信",
-      "example": "例：开启并保存后，可读取尚未完成处理的消息；仍受会话权限与额度约束。"
-    },
-    "getRecent": {
-      "group": "读取与状态",
-      "label": "最近聊天",
-      "example": "例：开启并保存后，可读取当前会话的近期消息；仍受会话权限与额度约束。"
-    },
-    "socialState": {
-      "group": "读取与状态",
-      "label": "会话状态",
-      "example": "例：开启并保存后，可查看当前会话状态与唤醒条件；仍受会话权限与额度约束。"
-    },
-    "getMyRecent": {
-      "group": "读取与状态",
-      "label": "bot 最近发言",
-      "example": "例：开启并保存后，可核对bot刚才实际发过的内容；仍受会话权限与额度约束。"
-    },
-    "getMessageDetail": {
-      "group": "读取与状态",
-      "label": "消息与引用详情",
-      "example": "例：开启并保存后，可按真实消息ID查看单条及引用关系；仍受会话权限与额度约束。"
-    },
-    "getActiveMembers": {
-      "group": "读取与状态",
-      "label": "近期活跃成员",
-      "example": "例：开启并保存后，可查看当前会话近期参与者；仍受会话权限与额度约束。"
-    },
-    "getGroupMembers": {
-      "group": "读取与状态",
-      "label": "群成员列表",
-      "example": "例：开启并保存后，可读取当前群成员信息；仍受会话权限与额度约束。"
-    },
-    "sendBurst": {
-      "group": "回复、等待与收尾",
-      "label": "分条发送",
-      "example": "例：开启并保存后，可按当前发送计划分成多条发出；仍受会话权限与额度约束。"
-    },
-    "sendMessage": {
-      "group": "回复、等待与收尾",
-      "label": "发送聊天消息",
-      "example": "例：开启并保存后，可在当前权限和发送计划内发言；仍受会话权限与额度约束。"
-    },
-    "waitMessages": {
-      "group": "回复、等待与收尾",
-      "label": "等待新消息与确认说完",
-      "example": "例：开启并保存后，可分别使用等新消息、等对方说完两个工具；仍受会话权限与额度约束。"
-    },
-    "markRead": {
-      "group": "回复、等待与收尾",
-      "label": "标记已读与收尾",
-      "example": "例：开启并保存后，可声明看过消息并完成相应回合收尾；仍受会话权限与额度约束。"
-    },
-    "reportReceipts": {
-      "group": "回复、等待与收尾",
-      "label": "逐条处理回报",
-      "example": "例：开启并保存后，可按真实消息ID回报处理结果；仍受会话权限与额度约束。"
-    },
-    "setWakeConfig": {
-      "group": "回复、等待与收尾",
-      "label": "设置唤醒与意愿",
-      "example": "例：开启并保存后，可设置下一次唤醒条件或评估聊天意愿；仍受会话权限与额度约束。"
-    },
-    "mood": {
-      "group": "记忆、心情与排程",
-      "label": "调整心情",
-      "example": "例：开启并保存后，可按add或dec提交有依据的心情调整；仍受会话权限与额度约束。"
-    },
-    "taskNote": {
-      "group": "记忆、心情与排程",
-      "label": "当前事务",
-      "example": "例：开启并保存后，可查看或更新任务、承诺和安排的状态；仍受会话权限与额度约束。"
-    },
-    "memory": {
-      "group": "记忆、心情与排程",
-      "label": "窗口轻量记忆",
-      "example": "例：开启并保存后，可维护当前话题、待说想法与临时印象；仍受会话权限与额度约束。"
-    },
-    "schedule": {
-      "group": "记忆、心情与排程",
-      "label": "日程提醒",
-      "example": "例：开启并保存后，可登记和管理属于当前会话的日程；仍受会话权限与额度约束。"
-    },
-    "timeBubbleManage": {
-      "group": "记忆、心情与排程",
-      "label": "定时冒泡",
-      "example": "例：开启并保存后，可管理允许修改的定时主动时段；仍受会话权限与额度约束。"
-    },
-    "availability": {
-      "group": "记忆、心情与排程",
-      "label": "免打扰与稍后联系",
-      "example": "例：开启并保存后，可登记或调整用户明确表达的时间意愿；仍受会话权限与额度约束。"
-    },
-    "slangQuery": {
-      "group": "知识与反馈",
-      "label": "查询黑话",
-      "example": "例：开启并保存后，可查询已确认的黑话含义；仍受会话权限与额度约束。"
-    },
-    "slangSubmit": {
-      "group": "知识与反馈",
-      "label": "提交黑话候选",
-      "example": "例：开启并保存后，可把陌生表达提交为待审核候选；仍受会话权限与额度约束。"
-    },
-    "termQuery": {
-      "group": "知识与反馈",
-      "label": "查询兴趣知识",
-      "example": "例：开启并保存后，可查找已确认的兴趣词条与来源；仍受会话权限与额度约束。"
-    },
-    "termSubmit": {
-      "group": "知识与反馈",
-      "label": "提交兴趣候选",
-      "example": "例：开启并保存后，可把待核实的知识提交为候选；仍受会话权限与额度约束。"
-    },
-    "feedback": {
-      "group": "知识与反馈",
-      "label": "报告问题",
-      "example": "例：开启并保存后，可记录失败、异常或需要修复的问题；仍受会话权限与额度约束。"
-    },
-    "sendVoice": {
-      "group": "图片、语音与文件",
-      "label": "语音库与语音发送",
-      "example": "例：开启并保存后，可查询语音素材并按权限发送；仍受会话权限与额度约束。"
-    },
-    "sendFile": {
-      "group": "图片、语音与文件",
-      "label": "发送文件",
-      "example": "例：开启并保存后，可在管理员权限内发送允许的本地文件；仍受会话权限与额度约束。"
-    },
-    "sendPoke": {
-      "group": "图片、语音与文件",
-      "label": "拍一拍",
-      "example": "例：开启并保存后，可向允许的对象发送拍一拍；仍受会话权限与额度约束。"
-    },
-    "getImages": {
-      "group": "图片、语音与文件",
-      "label": "读取消息图片",
-      "example": "例：开启并保存后，可取得真实消息所附的图片；仍受会话权限与额度约束。"
-    },
-    "imageGeneration": {
-      "group": "图片、语音与文件",
-      "label": "图片生成",
-      "example": "例：开启并保存后，可按生图服务设置和额度发起生成；仍受会话权限与额度约束。"
-    },
-    "imageTransfer": {
-      "group": "图片、语音与文件",
-      "label": "图片取回与转发",
-      "example": "例：开启并保存后，可在当前范围内处理已生成或暂存图片；仍受会话权限与额度约束。"
-    },
-    "getForwardMsg": {
-      "group": "图片、语音与文件",
-      "label": "合并转发内容",
-      "example": "例：开启并保存后，可读取真实合并转发消息；仍受会话权限与额度约束。"
-    },
-    "listStickers": {
-      "group": "图片、语音与文件",
-      "label": "收藏表情列表",
-      "example": "例：开启并保存后，可查询可用的收藏表情；仍受会话权限与额度约束。"
-    },
-    "getStickerImage": {
-      "group": "图片、语音与文件",
-      "label": "查看收藏表情",
-      "example": "例：开启并保存后，可读取选定表情的图像；仍受会话权限与额度约束。"
-    },
-    "sendSticker": {
-      "group": "图片、语音与文件",
-      "label": "发送收藏表情",
-      "example": "例：开启并保存后，可按发送计划发出一个表情；仍受会话权限与额度约束。"
-    },
-    "collectSticker": {
-      "group": "图片、语音与文件",
-      "label": "收藏表情",
-      "example": "例：开启并保存后，可按收藏频率限制收录表情；仍受会话权限与额度约束。"
-    },
-    "getSelfImage": {
-      "group": "图片、语音与文件",
-      "label": "角色自身形象",
-      "example": "例：开启并保存后，可取得允许使用的角色图像；仍受会话权限与额度约束。"
-    },
-    "stickerNote": {
-      "group": "图片、语音与文件",
-      "label": "表情含义与标签",
-      "example": "例：开启并保存后，可维护表情的语境含义；仍受会话权限与额度约束。"
-    },
-    "setStickerRemark": {
-      "group": "图片、语音与文件",
-      "label": "修改表情备注",
-      "example": "例：开启并保存后，可在有权限时修改收藏备注；仍受会话权限与额度约束。"
-    }
-  };
-
-  // src/tools/flags.js
-  var TOOL_CONFIG_FLAGS = {
-    qq_status: "status",
-    qq_get_prompt: "getPrompt",
-    qq_get_unread_messages: "getUnread",
-    qq_get_recent_messages: "getRecent",
-    qq_social_state: "socialState",
-    qq_mark_read: "markRead",
-    qq_report_message_receipts: "reportReceipts",
-    qq_set_wake_config: "setWakeConfig",
-    qq_mood: "mood",
-    qq_send_burst: "sendBurst",
-    qq_send_message: "sendMessage",
-    qq_wait_for_messages: "waitMessages",
-    qq_wait_for_quiet: "waitMessages",
-    qq_report_feedback: "feedback",
-    qq_get_my_recent_messages: "getMyRecent",
-    qq_get_message_detail: "getMessageDetail",
-    qq_get_active_members: "getActiveMembers",
-    qq_get_group_members: "getGroupMembers",
-    qq_task_note: "taskNote",
-    qq_memory_append: "memory",
-    qq_memory_query: "memory",
-    qq_memory_remove: "memory",
-    qq_memory_clear: "memory",
-    qq_schedule: "schedule",
-    time_bubble_manage: "timeBubbleManage",
-    qq_availability: "availability",
-    qq_slang_query: "slangQuery",
-    qq_slang_submit: "slangSubmit",
-    qq_alias_query: "aliasQuery",
-    qq_alias_submit: "aliasSubmit",
-    qq_knowledge_sources: "learningSources",
-    qq_term_query: "termQuery",
-    qq_term_submit: "termSubmit",
-    qq_send_voice: "sendVoice",
-    qq_send_file: "sendFile",
-    qq_list_voices: "sendVoice",
-    // 下面这些曾经漏登记。漏一个不是"多注册一个工具"那么轻：桥接那边按 `v2ToolEnabled(flag)`
-    // 在**调用期**一律 403，而这里不登记就等于"控制台显示已关闭、模型每次请求仍收到它的完整
-    // 描述与参数 schema，然后调用它、再拿到 403"——既白烧 token（本文件开头 176 行起就是为省这份
-    // token 才改注册期过滤的），又诱导模型误调。`qq_set_sticker_remark` 默认就是 `false`
-    // （见 bridge.js 的 socialV2.tools 默认表），所以此前它一直是"默认关闭却仍然可见"。
-    qq_send_poke: "sendPoke",
-    qq_get_message_images: "getImages",
-    qq_make_meme: "imageGeneration",
-    qq_get_meme_job: "imageGeneration",
-    qq_send_image: "imageTransfer",
-    qq_list_staged_images: "imageTransfer",
-    qq_import_image: "imageTransfer",
-    qq_relay_image: "imageTransfer",
-    qq_get_forward_msg: "getForwardMsg",
-    qq_list_stickers: "listStickers",
-    qq_get_sticker_image: "getStickerImage",
-    qq_send_sticker: "sendSticker",
-    qq_collect_sticker: "collectSticker",
-    qq_get_self_image: "getSelfImage",
-    qq_sticker_note: "stickerNote",
-    qq_set_sticker_remark: "setStickerRemark"
-  };
-
-  // console/layers/T/tool-inventory.js
-  function toolRows(tools) {
-    const name = (tool) => tool.name || String(tool.qualifiedName || "").split("__").slice(2).join("__");
-    return [...tools].sort((a, b) => name(a).localeCompare(name(b), "en", { sensitivity: "base", numeric: true }) || String(a.server).localeCompare(String(b.server))).map((tool) => '<div class="tool-reference-item"><code title="' + esc(tool.qualifiedName) + '">' + esc(name(tool)) + "</code><span>" + esc(tool.description) + "<br><small>" + esc(tool.server) + " · " + (tool.botInjectedSessions || 0) + " 个聊天会话有注入记录</small></span></div>").join("");
-  }
-  async function loadToolCatalog() {
-    const root = document.getElementById("toolReferenceRoot");
-    const status = document.getElementById("toolsCatalogStatus");
-    try {
-      const catalog = await api("/api/tools/catalog");
-      if (!catalog.ok) throw Error(catalog.error || "注册表读取失败");
-      const visible = catalog.tools.filter((tool) => tool.audience === "qq" && tool.registered && tool.botInjectedSessions > 0);
-      const pending = catalog.tools.filter((tool) => tool.audience === "qq" && (!tool.registered || !tool.botInjectedSessions));
-      const admin = catalog.tools.filter((tool) => tool.audience === "admin");
-      root.innerHTML = toolRows(visible) || '<p class="meta">尚无真实请求的注入证据。</p>';
-      document.getElementById("toolPendingRoot").innerHTML = toolRows(pending) || '<p class="meta">无待注入工具。</p>';
-      document.getElementById("toolAdminRoot").innerHTML = toolRows(admin);
-      const unexpected = admin.filter((tool) => tool.botInjectedSessions > 0);
-      status.textContent = visible.length + " 个聊天工具有实际注入记录；依据会话最新 request/header。" + (catalog.stale ? " 注册定义有变化，需重新运行 audit:tools 核验。" : "") + (unexpected.length ? " 当前历史工具面仍含 " + unexpected.length + " 个管理工具；过滤修复需刷新对应 preset 后在下一轮请求核验。" : "") + (catalog.evidenceError ? " " + catalog.evidenceError : "");
-      status.className = "meta" + (catalog.stale || unexpected.length ? " err" : " ok");
-      return catalog;
-    } catch (error) {
-      root.innerHTML = '<div class="err">工具注册读取失败：' + esc(error.message) + "</div>";
-      status.textContent = "未取得工具注入证据";
-      return null;
-    }
-  }
-  async function renderToolInventory(pluginsReady) {
-    const groups = /* @__PURE__ */ new Map();
-    for (const [name, flag] of Object.entries(TOOL_CONFIG_FLAGS)) {
-      if (!groups.has(flag)) groups.set(flag, []);
-      groups.get(flag).push(name);
-    }
-    const root = document.getElementById("v2Tools");
-    const sections = /* @__PURE__ */ new Map();
-    for (const [flag, names2] of groups) {
-      const view = TOOL_PRESENTATION[flag] || { group: "其他能力", label: names2.join(" / "), example: "调整后需保存，并刷新对应MCP工具清单。" };
-      if (!sections.has(view.group)) sections.set(view.group, []);
-      sections.get(view.group).push({ flag, names: names2, ...view });
-    }
-    root.dataset.loaded = "0";
-    root.innerHTML = [...sections].map(([title, items2]) => '<details class="tool-parameter-group tool-switch-group" data-tool-group="' + esc(title) + '"><summary><span>' + esc(title) + '</span><small class="meta" data-tool-group-count></small></summary><div class="tool-parameter-options">' + items2.map(({ flag, names: names2, label: label2, example }) => '<label class="v2-tool-item"><input type="checkbox" disabled data-v2-tool="' + esc(flag) + '"><span><b>' + esc(label2) + '</b><small class="meta tool-call-names">' + esc(names2.join(" / ")) + '</small><small class="parameter-example">' + esc(example) + "</small></span></label>").join("") + "</div></details>").join("");
-    const save2 = document.querySelector("#section-v2-t .v2-save"), status = document.getElementById("toolSwitchStatus"), retry = document.getElementById("toolSwitchRetry");
-    save2.disabled = true;
-    const updateCounts = () => root.querySelectorAll(".tool-parameter-group").forEach((group) => {
-      const all = group.querySelectorAll('.v2-tool-item input[type="checkbox"]');
-      group.querySelector("[data-tool-group-count]").textContent = root.dataset.loaded === "1" ? "已启用 " + [...all].filter((x) => x.checked).length + " / " + all.length : all.length + " 项 · 读取中";
-    });
-    updateCounts();
-    root.onchange = updateCounts;
-    const loadConfig = async () => {
-      status.textContent = "读取开关状态…";
-      retry.hidden = true;
-      try {
-        const out = await api("/api/socialV2/config");
-        if (out.ok !== true || !out.config || typeof out.config !== "object") throw Error(out.error || "未取得当前配置");
-        root.querySelectorAll("[data-v2-tool]").forEach((input) => {
-          input.checked = out.config.tools?.[input.dataset.v2Tool] !== false;
-          input.disabled = false;
-        });
-        root.dataset.loaded = "1";
-        save2.disabled = false;
-        status.textContent = "";
-        updateCounts();
-      } catch (error) {
-        status.textContent = "开关读取失败：" + error.message;
-        retry.hidden = false;
-      }
-    };
-    retry.onclick = loadConfig;
-    document.getElementById("toolsCatalogRefresh").onclick = loadToolCatalog;
-    registerPageLoader("reference", loadToolCatalog);
-    const configReady = loadConfig();
-    void pluginsReady;
-    await configReady;
-  }
-
   // console/layers/O/deepseek-balance.js
   function mountBalanceControl(container, balance, updateCounts = () => {
   }) {
@@ -8097,7 +8293,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     row.id = "balanceToolControl";
     row.dataset.componentId = balance.id;
     const numeric = [["abundantBalance", "富足提醒阈值", 0, 1e6, 20, "例：填20，达到20及以上为超级富足。"], ["lowBalance", "偏少提醒阈值", 0, 1e6, 5, "例：填5，余额降到5及以下进入偏少；低于见底阈值再进入下一档。"], ["criticalBalance", "见底提醒阈值", 0, 1e6, 1, "例：填1，余额降到1及以下可再次提醒；0及以下为空了。"], ["dropAlertAmount", "明显消耗参考金额", 0, 1e6, 5, "例：填5，两次核对净减少至少5时记录明显消耗；0关闭。"], ["notificationCooldownMin", "普通变化提醒冷却（分钟）", 1, 1440, 30, "例：普通补充/消耗30分钟冷却；偏少→见底→空了各自可提醒。"], ["checkIntervalMin", "余额检查间隔（分钟）", 1, 1440, 5, "例：5表示约每5分钟核对一次，不调用LLM。"]];
-    row.innerHTML = '<label class="v2-tool-item"><input type="checkbox" id="balanceToolEnabled"' + (balance.enabled ? " checked" : "") + '><span><b>启用账户余额监控</b><small class="meta">检查真实余额，分阶段提供聊天提醒；仅管理员可见账户金额。</small></span></label><span class="meta" role="status"></span><details class="balance-settings"><summary>阶段金额与提醒范围</summary><p class="meta">全局账户规则。自然提醒在已有聊天或主动机会里生成，不额外唤醒LLM；措辞参考当前存量、补充前后差额与相对增幅。</p><div class="balance-config-grid"><label><span>自动检查</span><input type="checkbox" data-balance-setting="monitorEnabled" checked><small>关闭后保留手动查询；停用上方组件开关则全部停止。</small></label><label><span>提醒范围</span><select data-balance-setting="reminderScope"><option value="admin">仅管理员</option><option value="private">仅私聊</option><option value="all" selected>全部</option></select><small>仅管理员私聊／所有已授权私聊／再包含已授权群聊。系统核对异常仍仅报管理员。</small></label><label><span>提醒币种</span><select data-balance-setting="currency"><option value="CNY">人民币 CNY</option><option value="USD">美元 USD</option></select><small>三个金额阈值统一按这个币种判断，不混算币种。</small></label>' + numeric.map(([key2, label2, min, max, value2, example2]) => "<label><span>" + label2 + '</span><input type="number" data-balance-setting="' + key2 + '" min="' + min + '" max="' + max + '" step="' + (["checkIntervalMin", "notificationCooldownMin"].includes(key2) ? "1" : "0.01") + '" value="' + value2 + '"><small>' + example2 + "</small></label>").join("") + '</div><p class="meta" data-balance-example></p><div class="balance-actions"><button class="small primary" type="button" data-balance-save>保存调用额度监控阶段与范围</button><button class="small" type="button" data-balance-query>立即核对账户余额</button><span class="meta" data-balance-message role="status"></span></div><p class="meta" data-balance-snapshot>尚未加载核对记录。</p></details>';
+    row.innerHTML = '<label class="v2-tool-item"><input type="checkbox" id="balanceToolEnabled"' + (balance.enabled ? " checked" : "") + '><span><b>启用API预算存量监控</b><small class="meta">检查真实余额；有效告警经 LLM 向管理员说一句，并刷新主动状态。</small></span></label><span class="meta" role="status"></span><details class="balance-settings"><summary>阶段金额与提醒范围</summary><p class="meta">定时告警：仅发管理员私聊，跳过主动概率，经 LLM 生成一句；实际发送成功后重置主动状态。仍遵守暂停、免打扰、预算和发送限额。</p><div class="balance-config-grid"><label><span>自动检查</span><input type="checkbox" data-balance-setting="monitorEnabled" checked><small>关闭后保留手动查询；停用上方组件开关则全部停止。</small></label><label><span>聊天内提示范围</span><select data-balance-setting="reminderScope"><option value="admin">仅管理员</option><option value="private">仅私聊</option><option value="all" selected>全部</option></select><small>在已有聊天中自然提及：仅管理员／授权私聊／再含群聊。独立定时告警始终只发管理员。</small></label><label><span>提醒币种</span><select data-balance-setting="currency"><option value="CNY">人民币 CNY</option><option value="USD">美元 USD</option></select><small>三个金额阈值统一按这个币种判断，不混算币种。</small></label>' + numeric.map(([key2, label2, min, max, value2, example2]) => "<label><span>" + label2 + '</span><input type="number" data-balance-setting="' + key2 + '" min="' + min + '" max="' + max + '" step="' + (["checkIntervalMin", "notificationCooldownMin"].includes(key2) ? "1" : "0.01") + '" value="' + value2 + '"><small>' + example2 + "</small></label>").join("") + '</div><p class="meta" data-balance-example></p><div class="balance-actions"><button class="small primary" type="button" data-balance-save>保存API预算监控阶段与范围</button><button class="small" type="button" data-balance-query>立即核对API预算存量</button><span class="meta" data-balance-message role="status"></span></div><p class="meta" data-balance-snapshot>尚未加载核对记录。</p></details>';
     container.append(row);
     updateCounts();
     let dirty3 = false, loaded = false;
@@ -8109,7 +8305,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     function renderSnapshot(state) {
       const sample = state?.lastSuccess;
       if (!sample) {
-        snapshot.textContent = "尚未成功核对账户余额。";
+        snapshot.textContent = "尚未成功核对API预算存量。";
         return;
       }
       snapshot.textContent = "上次核对：" + new Date(sample.at).toLocaleString("zh-CN") + " · " + (sample.balance_infos || []).map((r) => r.currency + " " + r.total_balance).join("；") + " · 账户" + (sample.is_available ? "可用" : "不可用") + (state.lastError ? " · 最近查询失败，当前存量未核实" : "");
@@ -8169,7 +8365,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         const result = await api("/api/plugins/config", "POST", { id: balance.id, config });
         if (!result.ok) throw Error(result.error || "配置校验失败");
         dirty3 = false;
-        message2.textContent = "账户余额提醒设置已保存";
+        message2.textContent = "API预算存量提醒设置已保存";
         message2.className = "meta ok";
         await load2();
       } catch (error) {
@@ -8185,7 +8381,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       try {
         const result = await api("/api/plugins/call", "POST", { tool: "deepseek_balance", input: {} }), data2 = result.result || result;
         if (!data2.ok) throw Error(data2.error || result.error || "查询失败");
-        message2.textContent = "账户余额已核对";
+        message2.textContent = "API预算存量已核对";
         message2.className = "meta ok";
         snapshot.textContent = (data2.balance_infos || []).map((r) => r.currency + " " + r.total_balance).join("；") + " · 账户" + (data2.is_available ? "可用" : "不可用") + " · 核对时间 " + new Date(data2.milk?.checkedAt || Date.now()).toLocaleString("zh-CN");
       } catch (error) {
@@ -8208,7 +8404,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         mountBalanceControl(root, balance);
       }
     }).catch((error) => {
-      document.getElementById("bridgeMilkMonitor").textContent = "调用额度监控读取失败：" + error.message;
+      document.getElementById("bridgeMilkMonitor").textContent = "API预算监控读取失败：" + error.message;
     });
     void renderToolInventory(pluginsReady).catch((error) => {
       document.getElementById("toolSwitchStatus").textContent = "工具开关加载失败：" + error.message;
@@ -8392,7 +8588,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   function initialize50() {
     (() => {
       const message2 = document.getElementById("aliasMsg");
-      let rows = [], active = "candidate", selected2 = /* @__PURE__ */ new Set();
+      let rows2 = [], active = "candidate", selected3 = /* @__PURE__ */ new Set();
       const statusLabel = { candidate: "待判断", confirmed: "已确认", rejected: "已拒绝" };
       function search() {
         const suffix = active === "candidate" ? "Cand" : active[0].toUpperCase() + active.slice(1);
@@ -8413,7 +8609,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       }
       function render2() {
         const suffix = active === "candidate" ? "Cand" : active[0].toUpperCase() + active.slice(1), target = document.getElementById("alias" + active[0].toUpperCase() + active.slice(1) + "List"), q = search(), limit = Number(document.getElementById("aliasLimit" + suffix).value) || 100;
-        const list = rows.filter((x) => x.status === active), filtered = list.filter((x) => !q || [x.alias, x.qq, x.note, x.reason, x.targetName, (x.sourceKeys || []).join(" "), ...(x.evidence || []).map((y) => y.text)].join(" ").toLowerCase().includes(q)), shown = filtered.slice(0, limit);
+        const list = rows2.filter((x) => x.status === active), filtered = list.filter((x) => !q || [x.alias, x.qq, x.note, x.reason, x.targetName, (x.sourceKeys || []).join(" "), ...(x.evidence || []).map((y) => y.text)].join(" ").toLowerCase().includes(q)), shown = filtered.slice(0, limit);
         if (!shown.length) {
           target.innerHTML = '<div class="meta" style="padding:8px">' + (list.length ? "没有符合条件的绰号" : active === "candidate" ? "暂无候选；可刷新近期群消息或手动添加" : "暂无" + statusLabel[active] + "绰号") + "</div>";
           return;
@@ -8421,13 +8617,13 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         let html = '<div class="meta" style="padding:6px 8px">共 ' + filtered.length + " 条，显示 " + shown.length + " 条</div><table><tr><th>选择</th><th>绰号</th><th>被称呼者</th><th>对应 QQ</th><th>适用会话 / 语境证据</th><th>备注</th><th>操作</th></tr>";
         for (const e of shown) {
           const actions = active === "candidate" ? '<button class="small" data-alias-edit="' + esc(e.id) + '">查看 / 编辑</button><button class="small primary" data-alias-confirm="' + esc(e.id) + '">确认</button><details class="compact-actions"><summary>更多</summary><div class="compact-actions-menu"><button class="small" data-alias-reject="' + esc(e.id) + '">拒绝</button></div></details>' : active === "confirmed" ? '<button class="small" data-alias-edit="' + esc(e.id) + '">编辑</button><button class="small danger" data-alias-delete="' + esc(e.id) + '">删除</button>' : '<span class="meta">已记入拒绝记录</span>';
-          html += '<tr data-alias-id="' + esc(e.id) + '"><td>' + (active !== "rejected" ? '<input type="checkbox" data-alias-select="' + esc(e.id) + '" ' + (selected2.has(e.id) ? "checked" : "") + ">" : "—") + "</td><td><b>" + esc(e.alias) + '</b><br><span class="' + (active === "candidate" ? "pill b" : active === "confirmed" ? "pill g" : "pill r") + '">' + statusLabel[active] + "</span></td><td>" + esc(e.targetName || "—") + "</td><td>" + esc(e.qq || "未绑定") + "</td><td>" + sourceKeysMarkup(e) + (e.evidence?.length ? "<br>" + learningEvidence(e.evidence) : "") + "</td><td>" + esc(e.note || e.reason || "—") + '</td><td class="row">' + actions + "</td></tr>";
+          html += '<tr data-alias-id="' + esc(e.id) + '"><td>' + (active !== "rejected" ? '<input type="checkbox" data-alias-select="' + esc(e.id) + '" ' + (selected3.has(e.id) ? "checked" : "") + ">" : "—") + "</td><td><b>" + esc(e.alias) + '</b><br><span class="' + (active === "candidate" ? "pill b" : active === "confirmed" ? "pill g" : "pill r") + '">' + statusLabel[active] + "</span></td><td>" + esc(e.targetName || "—") + "</td><td>" + esc(e.qq || "未绑定") + "</td><td>" + sourceKeysMarkup(e) + (e.evidence?.length ? "<br>" + learningEvidence(e.evidence) : "") + "</td><td>" + esc(e.note || e.reason || "—") + '</td><td class="row">' + actions + "</td></tr>";
         }
         target.innerHTML = html + "</table>";
         target.querySelectorAll("[data-alias-select]").forEach((cb) => cb.addEventListener("change", () => {
-          cb.checked ? selected2.add(cb.dataset.aliasSelect) : selected2.delete(cb.dataset.aliasSelect);
+          cb.checked ? selected3.add(cb.dataset.aliasSelect) : selected3.delete(cb.dataset.aliasSelect);
         }));
-        target.querySelectorAll("[data-alias-edit],[data-alias-confirm]").forEach((button) => button.addEventListener("click", () => openEditor(rows.find((x) => x.id === (button.dataset.aliasEdit || button.dataset.aliasConfirm)))));
+        target.querySelectorAll("[data-alias-edit],[data-alias-confirm]").forEach((button) => button.addEventListener("click", () => openEditor(rows2.find((x) => x.id === (button.dataset.aliasEdit || button.dataset.aliasConfirm)))));
         target.querySelectorAll("[data-alias-reject],[data-alias-delete]").forEach((button) => button.addEventListener("click", async () => {
           try {
             await learningCall("alias_reject", { id: button.dataset.aliasReject || button.dataset.aliasDelete });
@@ -8449,7 +8645,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
           document.getElementById("aliasCooldown").value = Number(config.cooldownMs ?? 18e5) / 6e4;
           document.getElementById("aliasMaxCalls").value = config.maxCallsPerHour ?? 4;
           document.getElementById("aliasInjectMax").value = config.injectMax ?? 40;
-          rows = [...data2.entries || [], ...data2.rejected || []];
+          rows2 = [...data2.entries || [], ...data2.rejected || []];
           render2();
         } catch (e) {
           document.getElementById("aliasCandidateList").innerHTML = '<span class="err">读取失败：' + esc(e.message) + "</span>";
@@ -8467,28 +8663,28 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         document.getElementById("aliasLimit" + suffix).addEventListener("change", render2);
       }
       for (const status of ["candidate", "confirmed"]) document.getElementById("alias" + status[0].toUpperCase() + status.slice(1) + "SelectAll").addEventListener("change", (event) => {
-        for (const e of rows.filter((x) => x.status === status)) {
-          if (event.target.checked) selected2.add(e.id);
-          else selected2.delete(e.id);
+        for (const e of rows2.filter((x) => x.status === status)) {
+          if (event.target.checked) selected3.add(e.id);
+          else selected3.delete(e.id);
         }
         render2();
       });
       document.getElementById("aliasRejectSelected").addEventListener("click", async () => {
-        for (const id of selected2) {
-          const e = rows.find((x) => x.id === id);
+        for (const id of selected3) {
+          const e = rows2.find((x) => x.id === id);
           if (e?.status === "candidate") try {
             await learningCall("alias_reject", { id });
           } catch (error) {
             message2.textContent = error.message;
           }
         }
-        selected2.clear();
+        selected3.clear();
         await loadAliases();
       });
       document.getElementById("aliasConfirmSelected").addEventListener("click", async () => {
         let confirmed = 0, skipped = 0;
-        for (const id of selected2) {
-          const e = rows.find((x) => x.id === id);
+        for (const id of selected3) {
+          const e = rows2.find((x) => x.id === id);
           if (e?.status !== "candidate") continue;
           if (!/^\d{5,12}$/.test(String(e.qq || ""))) {
             skipped++;
@@ -8502,20 +8698,20 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
             skipped++;
           }
         }
-        selected2.clear();
+        selected3.clear();
         message2.textContent = "批量确认 " + confirmed + " 条；" + skipped + " 条缺少有效 QQ 或确认失败，请单独编辑。";
         await loadAliases();
       });
       document.getElementById("aliasDeleteSelected").addEventListener("click", async () => {
-        for (const id of selected2) {
-          const e = rows.find((x) => x.id === id);
+        for (const id of selected3) {
+          const e = rows2.find((x) => x.id === id);
           if (e?.status === "confirmed") try {
             await learningCall("alias_reject", { id });
           } catch (error) {
             message2.textContent = error.message;
           }
         }
-        selected2.clear();
+        selected3.clear();
         await loadAliases();
       });
       document.getElementById("aliasAutoExtract").addEventListener("change", async (event) => {
@@ -8579,7 +8775,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         }
       });
       document.getElementById("aliasModalConfirm").addEventListener("click", async () => {
-        const id = document.getElementById("aliasEditId").value, entry = rows.find((x) => x.id === id);
+        const id = document.getElementById("aliasEditId").value, entry = rows2.find((x) => x.id === id);
         if (!entry) return;
         try {
           await learningCall("alias_confirm", { id, alias: document.getElementById("aliasModalName").value, qq: document.getElementById("aliasModalQq").value, note: document.getElementById("aliasModalNote").value, sourceKeys: readSourceKeys("aliasSourceKeys") });
@@ -8609,6 +8805,38 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     })();
   }
 
+  // console/layers/E/preset-overview.js
+  async function loadPresetOverview() {
+    const status = document.getElementById("presetOverviewStatus");
+    status.textContent = "读取中…";
+    try {
+      const data2 = await api("/api/presets/overview");
+      if (!data2.ok) throw Error(data2.error || "预设总览接口尚未加载，请确认桥接版本。");
+      const owner = data2.bindings.find((b) => b.key === "owner");
+      const usingAdmin = data2.mode === "closed-agent" || data2.adminEnabled;
+      document.getElementById("presetOverviewExplanation").innerHTML = "<p><strong>管理员日常聊天：</strong>" + esc(usingAdmin ? "当前整个管理员私聊使用管理员环境预设，包括日常聊天。" : "当前管理员环境未启用，日常聊天使用当前运行模式的预设。") + "当前选定 <code>" + esc(owner?.preset || "待确定") + "</code>。</p><p>预设按整个会话选择，不按单条消息的内容自动切换。管理员身份决定管理接口权限，预设决定工具与工作规则；角色卡仍独立提供AI助手人设。</p><p>“跟随 DSH 默认”当前解析为 <code>" + esc(data2.defaultPreset || "待确定") + "</code>，与一、二代运行模式独立。</p>";
+      document.getElementById("presetOverviewRows").innerHTML = data2.bindings.map((binding) => {
+        const config = binding.configuration;
+        const phase = binding.active === true ? "当前使用" : binding.active === false ? "当前未启用" : "按用途调用";
+        const recorded = binding.key === "owner" ? binding.hasSession ? '<p class="meta">既有会话记录：<code>' + esc(binding.loadedPreset || "未知") + "</code>" + (binding.loadedPreset !== binding.preset ? "；与选定值不同，将在后续会话协调时更新。" : "") + "</p>" : '<p class="meta">尚无已建立的管理员私聊会话。</p>' : "";
+        return '<article class="preset-overview-card" data-preset-binding="' + esc(binding.key) + '"><div class="preset-overview-heading"><h3>' + esc(binding.key === "learning" ? config?.name || binding.label : binding.label) + '</h3><span class="meta">' + phase + "</span></div><p><strong>" + esc(config?.name || binding.preset || "尚未确定") + "</strong><br><code>" + esc(binding.preset || "—") + "</code></p><p>" + esc(binding.description) + "</p>" + recorded + (config?.description ? '<p class="meta">' + esc(config.description) + "</p>" : "") + "<ul>" + (config?.features || ["配置暂不可用"]).map((feature) => "<li>" + esc(feature) + "</li>").join("") + '</ul><p class="meta">' + (config?.configStatus === "read" ? "展示预设的能力配置；当前会话可用的工具还受开关与权限限制。" : "配置未读取；不据此推断能力。") + "</p>" + (binding.edit ? '<a href="#' + esc(binding.edit.page) + '" data-preset-edit="' + esc(binding.edit.page) + '" data-preset-target="' + esc(binding.edit.target) + '">' + esc(binding.edit.label) + " ↗</a>" : '<span class="meta">固定预设 · Console 不提供预设编辑</span>') + "</article>";
+      }).join("");
+      status.textContent = "已读取当前选定值与 DSH 声明；只读";
+    } catch (error) {
+      status.textContent = "读取失败：" + error.message;
+    }
+  }
+  function initializePresetOverview() {
+    document.getElementById("presetOverviewRefresh").addEventListener("click", loadPresetOverview);
+    document.getElementById("presetOverviewRows").addEventListener("click", (event) => {
+      const link = event.target.closest("[data-preset-edit]");
+      if (!link) return;
+      event.preventDefault();
+      setConsolePage(link.dataset.presetEdit, { focus: true });
+      document.getElementById(link.dataset.presetTarget)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }
+
   // console/layers/E/monitor-status.js
   var states = /* @__PURE__ */ new Set(["green", "red", "stable", "changed", "baseline", "pending", "none", "unknown", "sent"]);
   var names = { fetch: { green: "读取正常", red: "读取失败", unknown: "待检查" }, auth: { green: "访问正常", red: "需要登录", unknown: "待确认" }, diff: { green: "暂无变化", stable: "暂无变化", changed: "发现更新", baseline: "已记录初始内容", red: "对比失败", unknown: "待对比" }, delivery: { green: "已发送", sent: "已发送", red: "发送失败", pending: "等待发送", none: "暂无待发送", unknown: "尚无发送记录" } };
@@ -8625,12 +8853,17 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       }
       const at = Number(health.checkedAt), date = at > 0 ? new Date(at) : null;
       const time3 = date && !Number.isNaN(date.getTime()) ? new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date) : "尚未检查";
-      const rows = [["fetch", "读取"], ["auth", "访问／登录"], ["diff", "内容变化"], ["delivery", "通知发送"]].map(([key2, label2]) => {
+      const rows2 = [["fetch", "读取"], ["auth", "访问／登录"], ["diff", "内容变化"], ["delivery", "通知发送"]].map(([key2, label2]) => {
         const state = states.has(health[key2]) ? health[key2] : "unknown";
         return '<div class="watch-state"><dt>' + label2 + '</dt><dd class="watch-value ' + state + '">' + esc(names[key2][state] || names[key2].unknown) + "</dd></div>";
       }).join("");
       const hint = oneLine(health.hint), showHint = hint && !/^(页面可读取|页面读取正常|访问正常|无变化)$/.test(hint);
-      return '<article class="watch-site"><div class="watch-site-heading"><h4>' + esc(site.name || "未命名网页") + '</h4><span class="watch-check-time">' + esc(time3) + "</span></div>" + (url ? '<a class="watch-site-url" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(raw) + "</a>" : '<span class="watch-site-url">' + esc(raw) + "</span>") + '<dl class="watch-state-grid">' + rows + "</dl>" + (showHint ? '<p class="watch-note">' + esc(hint) + "</p>" : "") + "</article>";
+      const recovery = site.loginRecovery || {}, phase = { paused: "已暂停，等待手动重新监管", waiting: "等待登录，期间不刷新登录页", needed: "已请求重新监管，等待后台验证（登录有效时无需弹窗）", error: "最近检查失败，可点击重新监管", ready: "正常监管" }[recovery.phase] || "尚未检测";
+      const retry = url ? '<button type="button" class="small" data-watch-retry="' + esc(url) + '">重新监管</button>' : "";
+      const eventTime = (value2) => new Date(value2).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
+      const eventLine = (recovery.lastFailureAt ? '<p class="watch-note">最近检测到掉线：' + esc(eventTime(recovery.lastFailureAt)) + "（北京时间）</p>" : "") + (recovery.recoveredAt ? '<p class="watch-note">恢复验证时间：' + esc(eventTime(recovery.recoveredAt)) + "（北京时间）</p>" : "") + (recovery.checkError ? '<p class="watch-note">' + esc(recovery.checkError) + "</p>" : "");
+      const recoveryLine = '<p class="watch-note">' + esc(phase) + " · 登录失败 " + esc(Number(recovery.attempts) || 0) + " / " + esc(Number(recovery.loginMaxAttempts) || 3) + " 次" + (recovery.nextAttemptAt && recovery.phase === "waiting" ? " · 下次尝试 " + esc(new Date(recovery.nextAttemptAt).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false })) : "") + "</p>" + (recovery.noticeError ? '<p class="watch-note">QQ通知未受理：' + esc(recovery.noticeError) + "</p>" : "");
+      return '<article class="watch-site"><div class="watch-site-heading"><h4>' + esc(site.name || "未命名网页") + '</h4><span class="watch-check-time">' + esc(time3) + "</span>" + retry + "</div>" + (url ? '<a class="watch-site-url" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(raw) + "</a>" : '<span class="watch-site-url">' + esc(raw) + "</span>") + '<dl class="watch-state-grid">' + rows2 + "</dl>" + recoveryLine + eventLine + (showHint && recovery.phase !== "paused" ? '<p class="watch-note">' + esc(hint) + "</p>" : "") + "</article>";
     }).join("");
   }
   function fillScriptDescriptions(root, scripts = []) {
@@ -8657,9 +8890,12 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
 
   // console/layers/E/environment-components.js
   function initialize51() {
+    initializePresetOverview();
+    registerPageLoader("environment-presets", loadPresetOverview);
     (() => {
-      let lastScripts = [];
+      let lastScripts = [], lastSites = [], statusRequest = null, lastStatusAt = 0;
       const loadEnvironmentPage = async (page) => {
+        if (page === "environment-admin") await refreshAdminPresets();
         if (!componentUI.renderIds) return;
         await Promise.all([...document.querySelectorAll('section[data-page="' + page + '"] .env-comp-root')].map((root) => {
           const ids = (root.dataset.ids || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -8667,30 +8903,64 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         }));
         if (["environment-watch", "environment-scripts"].includes(page)) void loadStatus();
       };
-      const loadStatus = () => {
+      const loadStatus = async ({ force = false } = {}) => {
+        if (statusRequest) {
+          if (!force) return statusRequest;
+          await statusRequest;
+        }
         const status = document.getElementById("envMonitorStatus");
         const scriptStatus = document.getElementById("envScriptStatus");
         if (!status) return;
-        api("/api/plugins/call", "POST", { tool: "campus_watch_status", input: {} }).then((response) => {
+        statusRequest = api("/api/plugins/call", "POST", { tool: "campus_watch_status", input: {} }).then((response) => {
           const result = response.result || {};
           if (response.ok !== true || result.ok !== true) throw Error(result.error || "状态读取失败");
-          status.innerHTML = siteStatusMarkup(result.sites || []);
+          lastSites = result.sites || [];
+          lastStatusAt = Date.now();
+          status.innerHTML = siteStatusMarkup(lastSites);
           lastScripts = result.scripts || [];
           fillScriptDescriptions(document.getElementById("envCompScript"), lastScripts);
           if (scriptStatus) scriptStatus.textContent = lastScripts.length ? "" : "尚未登记协同脚本，可在上方添加地址。";
         }).catch((error) => {
           status.textContent = "读取监控状态失败：" + error.message;
           if (scriptStatus) scriptStatus.textContent = "读取脚本状态失败：" + error.message;
+        }).finally(() => {
+          statusRequest = null;
         });
+        return statusRequest;
       };
       for (const page of ["environment-chat", "environment-admin", "environment-web", "environment-watch", "environment-scripts", "images"]) registerPageLoader(page, () => loadEnvironmentPage(page));
       document.getElementById("envStatusRefresh").addEventListener("click", loadStatus);
       document.getElementById("envMonitorRefresh").addEventListener("click", loadStatus);
+      document.getElementById("envMonitorStatus").addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-watch-retry]");
+        if (!button) return;
+        button.disabled = true;
+        button.textContent = "正在请求重新监管…";
+        try {
+          const response = await api("/api/plugins/config", "POST", { id: "life-campus-watch", config: { manualRetry: { url: button.dataset.watchRetry, nonce: crypto.randomUUID() } } });
+          if (response.ok !== true) throw Error(response.error || "重新监管失败");
+          await loadStatus({ force: true });
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = "重新监管";
+          let note = button.closest(".watch-site").querySelector("[data-watch-retry-error]");
+          if (!note) {
+            note = document.createElement("p");
+            note.dataset.watchRetryError = "";
+            note.className = "watch-note";
+            button.closest(".watch-site").append(note);
+          }
+          note.textContent = error.message;
+        }
+      });
       document.getElementById("envCompScript").addEventListener("input", () => fillScriptDescriptions(document.getElementById("envCompScript"), lastScripts));
       document.getElementById("envCompScript").addEventListener("component-config-saved", loadStatus);
+      document.getElementById("envCompBrowserWatch").addEventListener("component-config-saved", () => loadStatus({ force: true }));
       setInterval(() => {
+        const urgent = lastSites.some((site) => ["needed", "waiting"].includes(site.loginRecovery?.phase));
+        if (!urgent && Date.now() - lastStatusAt < 3e4) return;
         if (document.visibilityState === "visible" && ["section-environment-watch", "section-environment-scripts"].some((id) => !document.getElementById(id).hidden)) loadStatus();
-      }, 3e4);
+      }, 5e3);
     })();
   }
 
@@ -8733,12 +9003,12 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
             root.innerHTML = '<div class="meta">（空）当前没有登记任何免打扰 / 稍后联系时段。</div>';
             return;
           }
-          const rows = keys.map((k) => {
+          const rows2 = keys.map((k) => {
             const p = plans[k] || {};
             const st = p.finished ? DONE[p.finished] || p.finished : "生效中";
             return "<tr><td>" + esc(k) + "</td><td>" + esc(typeLabel(p)) + "</td><td>" + esc(windowLabel(p)) + "</td><td>" + esc(st) + "</td></tr>";
           }).join("");
-          root.innerHTML = "<table><tr><th>会话</th><th>类型</th><th>时段</th><th>状态</th></tr>" + rows + "</table>";
+          root.innerHTML = "<table><tr><th>会话</th><th>类型</th><th>时段</th><th>状态</th></tr>" + rows2 + "</table>";
         } catch (e) {
           root.innerHTML = '<div class="err">读取失败：' + esc(e.message) + "</div>";
           if (status) status.textContent = "读取失败";
@@ -8757,19 +9027,19 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   initialize();
   initialize3();
   initialize4();
-  initialize23();
-  initialize7();
-  initialize8();
   initialize24();
-  initialize25();
+  initialize8();
   initialize9();
+  initialize7();
+  initialize25();
+  initialize10();
   initialize26();
   initialize27();
   initialize28();
-  initialize10();
+  initialize11();
   initialize30();
   initialize31();
-  initialize18();
+  initialize19();
   initialize32();
   initialize33();
   initialize29();
@@ -8780,16 +9050,16 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   initialize38();
   initialize39();
   initialize40();
-  initialize11();
+  initialize12();
   initialize41();
   initialize42();
   initialize43();
-  initialize12();
   initialize13();
-  initialize15();
   initialize14();
   initialize16();
+  initialize15();
   initialize17();
+  initialize18();
   initialize44();
   initialize45();
   initialize46();
@@ -8800,10 +9070,10 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   initialize50();
   initialize51();
   initialize52();
-  initialize21();
   initialize22();
+  initialize23();
+  initialize21();
   initialize20();
-  initialize19();
   initialize6();
   initialize2();
 })();

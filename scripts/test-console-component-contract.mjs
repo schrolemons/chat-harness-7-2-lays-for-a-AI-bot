@@ -3,7 +3,7 @@ import test from 'node:test';
 test('preset choices explain their purpose and preserve custom or already selected entries',async()=>{
  const {presetChoices,presetInfo}=await import('../console/layers/O/preset-catalog.js');
  const presets=['standard','ptc','qq-chat-dev','qq-chat-v2','qq-learning','custom-agent'].map(id=>({id}));
- assert.deepEqual(presetChoices(presets).map(p=>p.id),['standard','qq-chat-dev','custom-agent']);
+ assert.deepEqual(presetChoices(presets).map(p=>p.id),['standard','ptc','qq-chat-dev','qq-chat-v2','qq-learning','custom-agent']);
  assert(presetChoices(presets,false,'qq-learning').some(p=>p.id==='qq-learning'));
  assert.equal(presetChoices(presets,true).length,6);
  assert.equal(presetInfo('qq-learning').group,'后台专用');

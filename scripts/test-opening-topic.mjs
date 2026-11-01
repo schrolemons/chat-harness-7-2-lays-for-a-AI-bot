@@ -104,21 +104,21 @@ test('bare group attention draws a topic, but meaningful text or media must be a
 
 test('actual atSelf evidence recognizes a rendered nickname that differs from the bot configured name',()=>{
  const f=fixture(),plugin=createPlugin(f.ctx),base={key:'group:2',reason:'atMention@seq981',selfName:'AI助手',selfId:'999',hasUnreadNow:true};
- const st={lastWakeAt:now,unread:[{seq:981,plain:'@DeepSeekAI助手',atSelf:true,time:now}]};
+ const st={lastWakeAt:now,unread:[{seq:981,plain:'@AI助手',atSelf:true,time:now}]};
  assert.equal(hasReplyContent({...base,st}),false,'a verified self mention alone has no question body');
  const prompt=plugin.hooks.beforePrompt({...base,st});assert.match(prompt,/空\s*@.*招呼/);assert.match(prompt,/话题抽签/);assert.equal(f.data().openingChoices[base.key].action,'newTopic');
- for(const message of [{plain:'@DeepSeekAI助手 报告怎么改',atSelf:true},{plain:'@DeepSeekAI助手报告怎么改',atSelf:true},{plain:'@别人',atSelf:false},{plain:'@DeepSeekAI助手 @别人',atSelf:true},{plain:'',text:'[引用 甲：怎么做？]@DeepSeekAI助手',atSelf:true},{plain:'@DeepSeekAI助手',atSelf:true,media:[{kind:'image'}]}])assert.equal(hasReplyContent({...base,st:{unread:[message]}}),true,JSON.stringify(message));
+ for(const message of [{plain:'@AI助手 报告怎么改',atSelf:true},{plain:'@AI助手报告怎么改',atSelf:true},{plain:'@别人',atSelf:false},{plain:'@AI助手 @别人',atSelf:true},{plain:'',text:'[引用 甲：怎么做？]@AI助手',atSelf:true},{plain:'@AI助手',atSelf:true,media:[{kind:'image'}]}])assert.equal(hasReplyContent({...base,st:{unread:[message]}}),true,JSON.stringify(message));
 });
 
 test('empty self mentions still select a grounded topic on a generic or low-budget message batch',()=>{
  for(const reason of ['message','budgetWeak']){
-  const f=fixture(),st={lastWakeAt:now,unread:[{text:'@DeepSeekAI助手',atSelf:true}],activeTopics:[{text:'刚才的游戏进度'}]};
+  const f=fixture(),st={lastWakeAt:now,unread:[{text:'@AI助手',atSelf:true}],activeTopics:[{text:'刚才的游戏进度'}]};
   const text=createPlugin(f.ctx).hooks.beforePrompt({key:'group:2',reason,st,selfName:'AI助手',hasUnreadNow:true});assert.match(text,/话题抽签/);assert.match(text,/不.*(?:责问|催促)/);
  }
 });
 
 test('empty attention gives conversation guidance even when a real pending question takes precedence',()=>{
- const f=fixture(),st={lastWakeAt:now,unread:[{seq:980,text:'上一条代码为何报错？'},{seq:981,text:'@DeepSeekAI助手',atSelf:true}]};
+ const f=fixture(),st={lastWakeAt:now,unread:[{seq:980,text:'上一条代码为何报错？'},{seq:981,text:'@AI助手',atSelf:true}]};
  const text=createPlugin(f.ctx).hooks.beforePrompt({key:'group:2',reason:'atMention@seq981',st,selfName:'AI助手',hasUnreadNow:true});assert.match(text,/空\s*@.*招呼/);assert.doesNotMatch(text,/话题抽签/);assert.match(text,/先正常回应/);
  const skipped=createPlugin(f.ctx).hooks.beforePrompt({key:'group:2',reason:'atMention@seq981',st,hasUnreadNow:false});assert.doesNotMatch(skipped,/本次.*空\s*@|话题抽签/);
 });
@@ -128,7 +128,7 @@ test('group rules do not force an empty acknowledgement or a missing-text interr
  const text=blocks.join('\n');assert.doesNotMatch(text,/哪怕只回一句/);assert.match(text,/空\s*@.*(?:话题|招呼)/);
 });
 test('old bare mention snapshots do not create a fresh opening when no current unread was admitted',()=>{
- const f=fixture(),text=createPlugin(f.ctx).hooks.beforePrompt({key:'group:2',reason:'atMention@seq981',selfName:'AI助手',hasUnreadNow:false,st:{unread:[{text:'@DeepSeekAI助手',atSelf:true}]}});
+ const f=fixture(),text=createPlugin(f.ctx).hooks.beforePrompt({key:'group:2',reason:'atMention@seq981',selfName:'AI助手',hasUnreadNow:false,st:{unread:[{text:'@AI助手',atSelf:true}]}});
  assert.doesNotMatch(text,/本次.*空\s*@|话题抽签/);assert.equal(f.data().openingChoices,undefined);
 });
 test('previous exchanges remain eligible across midnight; empty/future history cannot invent an old topic',()=>{

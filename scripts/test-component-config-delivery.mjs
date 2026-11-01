@@ -178,9 +178,12 @@ test('startup cooldown vetoes real host wake before the generic greeting tail is
     const assembleAllowedTurn = () => {
       if (!host.allowsWake('startupGreeting', { key })) return '';
       const payload = { reason: 'startupGreeting', key, st: {} };
-      return host.collectPromptBlocks(payload).join('') + host.collectWakeTails(payload);
+      const text=host.collectPromptBlocks(payload).join('') + host.collectWakeTails(payload);
+      assert.equal(host.allowsWake('startupGreeting',{key}),true,'assembling text must not consume dispatch cooldown');
+      host.callService('startupGreeting','markDispatched',{key});
+      return text;
     };
-    assert.ok(assembleAllowedTurn().includes('本轮开机起床'));
+    assert.ok(assembleAllowedTurn().includes('本轮启动问候'));
     assert.equal(host.allowsWake('startupGreeting', { key }), false);
     assert.equal(assembleAllowedTurn(), '', 'cooldown must prevent the common startup-greeting tail too');
     assert.equal(host.allowsWake('message', { key }), true);
@@ -188,7 +191,7 @@ test('startup cooldown vetoes real host wake before the generic greeting tail is
     await host.reload('life-proactive-startup-greeting');
     assert.equal(host.allowsWake('startupGreeting', { key }), false, 'cooldown persists across reload');
     await configure(host, 'life-proactive-startup-greeting', { cooldownMinutes: 0 });
-    assert.ok(assembleAllowedTurn().includes('本轮开机起床'));
-    assert.ok(assembleAllowedTurn().includes('本轮开机起床'));
+    assert.ok(assembleAllowedTurn().includes('本轮启动问候'));
+    assert.ok(assembleAllowedTurn().includes('本轮启动问候'));
   });
 });

@@ -26,8 +26,8 @@
   "configSchema": {
     "libraryDir": {
       "type": "string",
-      "label": "资料包目录（本机路径）",
-      "example": "填private-libraries/my-core，或本机完整目录；保存时校验manifest、索引及原文，失败不会替换当前目录。"
+      "label": "资料包根目录（本机路径）",
+      "example": "例：D:\\qq-bridge\\private-libraries\\my-core。填写含 manifest.json 的根目录；留空卸载。"
     },
     "referenceSessionKeys": {
       "type": "array",

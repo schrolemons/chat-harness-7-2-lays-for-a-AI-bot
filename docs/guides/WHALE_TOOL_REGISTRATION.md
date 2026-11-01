@@ -20,4 +20,4 @@ AI助手自己的 MCP 定义以 `src/tools/servers.js` 为目录；DSH 内置工
 
 ### S 层标准私人资料包
 
-唯一注册源为 `mcp-personal-core`（serverName `personal-core`），只提供 `core_status`、`core_topics`、`core_read`。组件服务同名；工具不接受任意目录或文件路径，管理员仅从控制台配置挂载目录。资料包协议、AI整理说明与虚构示例见 [说明.md](../personal-core/说明.md)。机主SCHNIE包属于私人数据，框架不内置其作者、章节或话题；旧工具名称只在一次性迁移中处理，不保留运行别名。
+唯一注册源为 `mcp-personal-core`（serverName `personal-core`），只提供 `core_status`、`core_topics`、`core_read`。组件服务同名；工具不接受任意目录或文件路径，管理员仅从控制台配置挂载目录。资料包协议、AI整理说明与虚构示例见 [资料包建立规范](../personal-core/README.md)。机主REFERENCE_DATA包属于私人数据，框架不内置其作者、章节或话题；旧工具名称只在一次性迁移中处理，不保留运行别名。

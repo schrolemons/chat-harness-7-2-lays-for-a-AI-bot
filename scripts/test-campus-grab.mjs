@@ -8,8 +8,8 @@ const source = fs.readFileSync(new URL('./campus-watch.mjs', import.meta.url), '
 const section = source.slice(source.indexOf('const GRAB_DIR ='), source.indexOf('async function checkLecturesDOM('));
 function runner(execFileSync, lectures = { enabled: true }) {
   const logs = [];
-  const enrollments = [],beats=[];
-  const sandbox = { reportScriptHeartbeat(...args){beats.push(args);}, MONITOR_SCRIPTS: new Set(["lectures", "grab"]), fs, path, ROOT: process.cwd(), process, execFileSync,
+  const enrollments = [],beats=[],recoveries=[];
+  const sandbox = {syncLectureCookies:()=>{},RETRY_URL:'',flushLoginNotices:async()=>{}, loginReady:async url=>recoveries.push(url), loginRecovery:{canCheck:()=>true,checkFailed:()=>{}}, reportScriptHeartbeat(...args){beats.push(args);}, MONITOR_SCRIPTS: new Set(["lectures", "grab"]), fs, path, ROOT: process.cwd(), process, execFileSync,
     CONFIG: { lectures }, logLine: s => logs.push(s),
     recordEnrollment: (_dir, item) => enrollments.push(item),
     migrateLegacyEnrollments: () => {},
@@ -18,7 +18,7 @@ function runner(execFileSync, lectures = { enabled: true }) {
   vm.createContext(sandbox);
   vm.runInContext(section, sandbox);
   sandbox.refreshCookieJar=async()=>true;
-  return { sandbox, logs, enrollments,beats };
+  return { sandbox, logs, enrollments,beats,recoveries };
 }
 
 test('nonzero Python exit preserves its structured failure and partial successes', () => {
@@ -33,9 +33,10 @@ test('nonzero Python exit preserves its structured failure and partial successes
 
 test('failed cookie sync stops execution instead of silently using stale cookies', () => {
   const calls = [];
-  const { sandbox } = runner((_exe, args) => { calls.push(args[0]); throw new Error('cookie export missing'); });
+  const { sandbox } = runner((_exe, args) => { calls.push(args[0]); });
+  sandbox.syncLectureCookies=()=>{throw new Error('cookie export missing');};
   const result = sandbox.runGrabScript();
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 0);
   assert.equal(result.ok, false);
 });
 
@@ -73,3 +74,23 @@ test('scheduled checks respect a ten minute interval', async () => {
 
 test('failed application initialization never reuses an old cookie export for Python',async()=>{let calls=0;const {sandbox,logs,beats}=runner(()=>{calls++;return '{}';});sandbox.refreshCookieJar=async()=>false;await sandbox.checkLectures({}, {}, []);assert.equal(calls,0);assert.ok(logs.includes('DOM fallback'));assert.equal(beats.at(-1)[4],'fallback');});
 test('capacity failures are not login failures',()=>{const {sandbox}=runner(()=>{}),changes=[];sandbox.handleGrabResult({failed:[{error:'full'}]}, {},changes);assert.equal(changes.some(c=>c.kind==='login'),false);});
+
+test('a successful lecture retry completes recovery and updates the visible website health',async()=>{
+ const {sandbox,recoveries}=runner((_exe,args)=>args[0].endsWith('sync_cookies.py')?'':'{"ok":true,"grabbed":[],"withdrawn":[]}',{enabled:true,portalUrl:'https://lecture.example/',intervalMinutes:10});
+ const state={};await sandbox.checkLectures({},state,[],true);
+ assert.deepEqual(recoveries,['https://lecture.example/']);assert.equal(state.monitorHealth['https://lecture.example/'].auth,'green');assert.equal(state.monitorHealth['https://lecture.example/'].fetch,'green');assert(state.monitorHealth['https://lecture.example/'].checkedAt>0);
+});
+test('a successful DOM fallback also completes lecture recovery; a failed fallback does not',async()=>{
+ const {sandbox,recoveries}=runner(()=>{throw Error('script unavailable');},{enabled:true,portalUrl:'https://lecture.example/'});
+ const state={};await sandbox.checkLectures({},state,[],true);assert.deepEqual(recoveries,['https://lecture.example/']);assert.equal(state.monitorHealth['https://lecture.example/'].auth,'green');
+ sandbox.checkLecturesDOM=async()=>undefined;await sandbox.checkLectures({},state,[],true);assert.equal(recoveries.length,1);assert.equal(state.monitorHealth['https://lecture.example/'].fetch,'red');
+});
+
+test('lecture DOM auth failures update the same website health and enter login recovery',async()=>{
+ const {sandbox,recoveries}=runner(()=>{throw Error('script unavailable');},{enabled:true,portalUrl:'https://lecture.example/'}),failures=[];
+ sandbox.loadCoursePolicy=()=>({query:{}});sandbox.openReportTableDOM=async()=>{throw Object.assign(Error('login required'),{error_type:'auth'});};
+ sandbox.loginFailed=async(target,health)=>{health.auth='red';failures.push(target.url);};
+ vm.runInContext(source.slice(source.indexOf('async function checkLecturesDOM('),source.indexOf('async function checkBookmarks(')),sandbox);
+ const state={};await sandbox.checkLectures({browserContext:()=>({})},state,[],true);
+ assert.deepEqual(failures,['https://lecture.example/']);assert.equal(recoveries.length,0);assert.equal(state.monitorHealth['https://lecture.example/'].auth,'red');
+});

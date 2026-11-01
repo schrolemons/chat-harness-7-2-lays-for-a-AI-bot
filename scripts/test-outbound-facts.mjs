@@ -63,7 +63,7 @@ async function httpFixture(t,extra={}) {
     const envelope={key,sessionId:sid,reason,actionId,replyPlan,mood};
     h.activeTurnEnvelopes.set(sid,envelope);return envelope;
   }
-  const get=async route=>{const r=await fetch('http://127.0.0.1:'+server.address().port+route,{headers:{'x-console-token':'fixture-console-token','x-agent-token':st.agentToken}});return {status:r.status,body:await r.json()};};
+  const get=async(route,token=st.agentToken)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+route,{headers:{'x-console-token':'fixture-console-token','x-agent-token':token}});return {status:r.status,body:await r.json()};};
   return {h,key,st,sid,post,get,turn};
 }
 test('real tools share cumulative cap across text/poke, reject absent turn, preserve actual fact IDs',async t=>{
@@ -211,14 +211,17 @@ test('optional mood and proactive owners may be disabled at startup without disa
 
 
 test('real multipart group send acquires only its first explicit target after the target part succeeds',async t=>{
- const {h,post}=await httpFixture(t);h.setSelfIdentity('bot','9');const key='group:456',sid=await h.ensureSession(key),st=h.getSocialV2State(key),actionId='multipart-target';
+ const {h,post,get}=await httpFixture(t);h.setSelfIdentity('bot','9');const key='group:456',sid=await h.ensureSession(key),st=h.getSocialV2State(key),actionId='multipart-target';
  const replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'hi',mood:{replyCeiling:3,welcomeBurstActive:true}});
  h.activeTurnEnvelopes.set(sid,{key,sessionId:sid,actionId,reason:'proactiveCheck',replyPlan});
- const send=async extra=>{const result=await post('/api/socialV2/send-message',{key,messages:'hello',...extra},st.agentToken);assert.equal(result.body.ok,true,JSON.stringify(result));};
+ let part=0;const send=async extra=>{const result=await post('/api/socialV2/send-message',{key,messages:'hello '+(++part),...extra},st.agentToken);assert.equal(result.body.ok,true,JSON.stringify(result));};
  const readWait=()=>Object.values(h.pluginHost.get('ctx-user-mood').state.mood.waits).find(x=>x.key===key);
  const incoming=async(user,id)=>h.handleIncoming('group',456,{message_id:id,user_id:user,self_id:9,sender:{nickname:'person'},message:[{type:'text',data:{text:'ordinary response'}}]},h.cfg);
  await send({});assert.equal(readWait().targetUserId,null);
  await incoming(123,'before-target');await new Promise(resolve=>setTimeout(resolve,5));
+ // Actual agent read, not merely queue arrival, admits the new body to this turn.
+ const admitted=await get('/api/socialV2/unread?key='+encodeURIComponent(key),st.agentToken);
+ assert.equal(admitted.body.ok,true,JSON.stringify(admitted));
  await send({atUserId:'123'});assert.equal(readWait().targetUserId,'123');assert.equal(readWait().answeredAt,null);
  const targetFromAt=readWait().targetFromAt;
  await send({atUserId:'222'});assert.equal(readWait().targetUserId,'123');assert.equal(readWait().targetFromAt,targetFromAt);

@@ -1,7 +1,7 @@
 {
   "id": "life-wake-reasons",
   "name": "来信与静默主动",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "私聊来信直接回复；群聊以递增主动概率+最大唤醒加成开启会话，醒后共用回复与等待，结束后恢复主动模型。",
   "layer": "L",
   "category": "生命周期与编排",
@@ -14,6 +14,7 @@
   "main": "index.js",
   "enabled": true,
   "hooks": [
+    "beforePrompt",
     "wakeTail",
     "onTick"
   ],

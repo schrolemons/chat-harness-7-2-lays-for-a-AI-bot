@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {chromium} from 'playwright';
+import {startConsoleFixture} from './console-ui-fixture.mjs';
+import {presetBindings} from '../src/console/preset-overview.js';
+const fixture=await startConsoleFixture(),browser=await chromium.launch({headless:true,channel:'msedge'});
+try {
+  const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  const bindings=presetBindings({mode:'reserved2',admin:{enabled:false,preset:''},defaultPreset:'cordis',ownerHasSession:true,ownerLoadedPreset:'qq-chat-v2'}).map(binding=>({...binding,configuration:{id:binding.preset,name:binding.preset==='qq-chat-v2'?'AI助手二代仿真':binding.label,description:'控制此用途的基础指令与工具规则',features:['联网检索与网页读取','上下文压缩；保留 48000 tokens'],configStatus:'read',moduleCount:8}}));
+  await page.route('**/api/presets/overview',route=>route.fulfill({json:{ok:true,mode:'reserved2',defaultPreset:'cordis',adminEnabled:false,bindings}}));
+  await page.goto(fixture.url+'/#environment-presets');
+  await page.locator('[data-preset-binding="owner"]').waitFor();
+  assert.equal(await page.locator('#presetOverviewRows article').count(),8);
+  assert.equal(await page.locator('#section-environment-presets input,#section-environment-presets select,#section-environment-presets textarea,.preset-overview-card button').count(),0);
+  assert.match(await page.locator('#presetOverviewExplanation').textContent(),/未启用.*当前运行模式/);
+  assert.equal(await page.locator('[data-preset-binding="task"] a').count(),0);
+  await page.locator('[data-preset-binding="owner"] a').click();
+  await page.locator('#section-environment-admin:visible').waitFor();
+  await page.locator('#mainNav [data-view="environment-presets"]').click();
+  await page.locator('[data-preset-binding="v2"] a').click();
+  await page.locator('#section-persona:visible').waitFor();
+  assert.deepEqual(errors,[]);
+  await page.locator('#mainNav [data-view="environment-presets"]').click();
+  await page.locator('#presetOverviewStatus').filter({hasText:'已读取'}).waitFor();
+  fs.mkdirSync('state/audits/preset-overview',{recursive:true});
+  await page.screenshot({path:'state/audits/preset-overview/desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  assert(await page.locator('.preset-overview-card').first().evaluate(el=>el.getBoundingClientRect().width<390));
+  console.log('PASS E navigation, eight read-only bindings, explanation, admin/prompt edit destinations, mobile layout, zero page errors');
+}finally{await browser.close();await fixture.close();}

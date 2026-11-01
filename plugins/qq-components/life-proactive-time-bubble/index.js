@@ -1,5 +1,7 @@
 // 时间冒泡插件：桥接到点会用它设置的 pendingTimeBubble 唤醒，
 // 插件把那一条「冒泡要求」写进提示词，桥接只负责收尾。
+const activityUrl=new URL('../ctx-memory-profile-facts/activity-pattern-policy.mjs',import.meta.url);activityUrl.search=new URL(import.meta.url).search;
+const {BUBBLE_ACTIVITY_MODELING_GUIDANCE}=await import(activityUrl.href);
 
 export function createPlugin(ctx) {
   const cfg = ctx.config || {};
@@ -20,7 +22,7 @@ export function createPlugin(ctx) {
     return current?.key === String(key || '') && Date.now() - Number(current.at) < 20 * 60000;
   };
   ctx.registerTool('time_bubble_manage', {
-    description: '查看或调整某个 session 的定时主动冒泡时段。仅当用户在本人私聊中明确分享/修改作息或饮食时间，且适合规划时使用。先 get 读取现有计划与锁定状态，再根据档案卡的作息和饮食习惯由你决定是否 set；保留无关时段，只改未锁定项。若结果包含锁定冲突，简短提醒用户该时段保持锁定。不得推断或跨会话使用他人作息。',
+    description: '查看或调整当前 session 的定时主动冒泡时段。根据本人明确作息，或跨多天真实主动来信形成并记录在chat_activity_pattern的可靠活跃窗口规划；观察模式不能当作确认的起床时间或当前有空。先 get 读取计划与锁定状态，再决定是否 set；保留无关时段，只改未锁定项，遵守每日上限及免打扰，不跨会话使用私人资料。',
     schema: { type: 'object', required: ['action', 'key'], properties: {
       action: { type: 'string', enum: ['get', 'set'] },
       key: { type: 'string', description: '本人私聊 private:QQ号；或需要独立安排的群聊 group:群号' },
@@ -61,7 +63,7 @@ export function createPlugin(ctx) {
         if (payload?.reason !== 'timeBubble') {
           if (payload?.key && ctx.runtime) ctx.runtime.bubbleSession = { key: String(payload.key), at: Date.now() };
           if (payload?.isPrivate && payload?.hasUnreadNow && cfg.enabled !== false) {
-            return '【自主冒泡排程】用户已经允许你结合其本人私聊档案中的作息与饮食时间规划冒泡。只有在用户明确分享或修改了这些时间时，才可调用 time_bubble_manage 先读取再调整当前 session 的时段；先看锁定状态，保留被锁项目，最多安排到每日次数上限。若工具返回锁定冲突，只需简短提醒时段仍被锁定。不要在群聊透露档案内容，也不要替别人改作息。';
+            return BUBBLE_ACTIVITY_MODELING_GUIDANCE;
           }
           return '';
         }

@@ -7,6 +7,15 @@ export function toolRows(tools) {
   return [...tools].sort((a,b)=>name(a).localeCompare(name(b),'en',{sensitivity:'base',numeric:true}) || String(a.server).localeCompare(String(b.server)))
     .map(tool=>'<div class="tool-reference-item"><code title="'+esc(tool.qualifiedName)+'">'+esc(name(tool))+'</code><span>'+esc(tool.description)+'<br><small>'+esc(tool.server)+' · '+(tool.botInjectedSessions||0)+' 个聊天会话有注入记录</small></span></div>').join('');
 }
+export function toolCatalogStatus(catalog){
+ const visible=catalog.tools.filter(t=>t.audience==='qq'&&t.registered&&t.botInjectedSessions>0);
+ const leaked=catalog.tools.filter(t=>t.audience==='admin'&&t.botInjectedSessions>0);
+ const removed=catalog.tools.filter(t=>t.audience==='qq'&&!t.registered&&t.botInjectedSessions>0);
+ const failed=(catalog.servers||[]).filter(s=>s.ok===false);
+ const problem=leaked.length||removed.length||failed.length;
+ const text=visible.length+' 个聊天工具有实际注入记录；依据会话最新 request/header。'+(catalog.stale?' 工具注册或实现输入有变化，当前版本待核验；请运行 audit:tools。已有注入记录仍有效，不能据此判为漏注入。':' 当前注册已核验。')+(removed.length?' '+removed.length+' 个历史注入工具当前未注册，需核查注册与会话工具面。':'')+(leaked.length?' 当前历史工具面仍含 '+leaked.length+' 个管理工具；过滤修复需刷新对应 preset 后在下一轮请求核验。':'')+(failed.length?' '+failed.length+' 个 MCP 注册核验失败。':'')+(catalog.evidenceError?' '+catalog.evidenceError:'');
+ return {text,tone:problem?'err':catalog.stale||catalog.evidenceError?'':'ok'};
+}
 export async function loadToolCatalog() {
   const root=document.getElementById('toolReferenceRoot');
   const status=document.getElementById('toolsCatalogStatus');
@@ -19,9 +28,10 @@ export async function loadToolCatalog() {
     root.innerHTML=toolRows(visible)||'<p class="meta">尚无真实请求的注入证据。</p>';
     document.getElementById('toolPendingRoot').innerHTML=toolRows(pending)||'<p class="meta">无待注入工具。</p>';
     document.getElementById('toolAdminRoot').innerHTML=toolRows(admin);
-    const unexpected=admin.filter(tool=>tool.botInjectedSessions>0);
-    status.textContent=visible.length+' 个聊天工具有实际注入记录；依据会话最新 request/header。'+(catalog.stale?' 注册定义有变化，需重新运行 audit:tools 核验。':'')+(unexpected.length?' 当前历史工具面仍含 '+unexpected.length+' 个管理工具；过滤修复需刷新对应 preset 后在下一轮请求核验。':'')+(catalog.evidenceError?' '+catalog.evidenceError:'');
-    status.className='meta'+(catalog.stale||unexpected.length?' err':' ok');
+    root.dataset.loaded='1';
+    document.dispatchEvent(new CustomEvent('console:tool-catalog-updated'));
+    const summary=toolCatalogStatus(catalog);status.textContent=summary.text;
+    status.className='meta'+(summary.tone?' '+summary.tone:'');
     return catalog;
   }catch(error){root.innerHTML='<div class="err">工具注册读取失败：'+esc(error.message)+'</div>';status.textContent='未取得工具注入证据';return null;}
 }

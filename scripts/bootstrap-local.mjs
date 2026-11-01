@@ -1,0 +1,15 @@
+import fs from 'node:fs';import path from 'node:path';
+import {restorePrivateData} from './restore-private-data.mjs';
+// First-install filesystem initialization only; never start/restart QQ or DSH.
+export function bootstrapLocal(root){
+ const file=path.join(root,'config.json');if(fs.existsSync(file))return {created:false};
+ if(fs.existsSync(path.join(root,'private-data/manifest.json'))){const restored=restorePrivateData(root,{apply:true});return {created:true,restored};}
+ const cfg=JSON.parse(fs.readFileSync(path.join(root,'config.example.json'),'utf8'));
+ cfg.sessionCwd=root;cfg.allowAllWhenEmpty=false;cfg.allow={private:[],groups:[]};cfg.ownerQQ=null;cfg.consoleToken='';
+ fs.writeFileSync(file,JSON.stringify(cfg,null,2)+'\n',{flag:'wx',mode:0o600});
+ fs.mkdirSync(path.join(root,'state'),{recursive:true,mode:0o700});
+ for(const [name,value]of Object.entries({'mode.json':{mode:'reserved2',closedAgentPreset:''},'current-role.json':{role:fs.readdirSync(path.join(root,'roles')).find(f=>f.endsWith('.md')&&f!=='README.md')?.slice(0,-3)||'',mode:'active'}})){
+  const target=path.join(root,'state',name);if(!fs.existsSync(target))fs.writeFileSync(target,JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
+ }
+ return {created:true};
+}

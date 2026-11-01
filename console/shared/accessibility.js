@@ -1,6 +1,7 @@
 
 import { setSlangTab, closeSlangModal } from '../layers/C/slang.js';
 import { consolePages, setConsolePage } from './navigation.js';
+import { loadToolCatalog } from '../layers/T/tool-inventory.js';
 // shared/accessibility: explicit imports; initialize is called in the application startup order.
 
 
@@ -11,6 +12,7 @@ let searchInput;
 let searchResults;
 
 let featureIndex;
+let catalogSearchLoad;
 
 function closeConsoleSearch() { searchResults.hidden = true; searchInput.setAttribute('aria-expanded','false'); }
 
@@ -54,12 +56,16 @@ document.querySelectorAll('section[data-page]').forEach(section => {
     if (label) featureIndex.push({ page, label: label.trim(), target: el });
   });
 });
-searchInput.addEventListener('input', () => {
+const renderSearch = () => {
   const query = searchInput.value.trim().toLowerCase();
   searchResults.replaceChildren();
   if (!query) return closeConsoleSearch();
-  const matches = featureIndex.filter(entry => (consolePages[entry.page][0] + entry.label + entry.target.id).toLowerCase().includes(query)).slice(0,12);
-  if (!matches.length) { const empty = document.createElement('p'); empty.textContent = '未找到匹配功能，试试「唤醒」「白名单」或「表情」。'; searchResults.append(empty); }
+  const toolEntries = [...document.querySelectorAll('#section-reference .tool-reference-item')].map(target => ({
+    page: 'reference', label: target.querySelector('code')?.textContent || '', target,
+    keywords: target.textContent + ' ' + (target.querySelector('code')?.title || ''),
+  }));
+  const matches = [...featureIndex, ...toolEntries].filter(entry => (consolePages[entry.page][0] + entry.label + entry.target.id + (entry.keywords || '')).toLowerCase().includes(query)).slice(0,12);
+  if (!matches.length) { const empty = document.createElement('p'); empty.textContent = '未找到匹配的功能、参数或工具。'; searchResults.append(empty); }
   matches.forEach(entry => {
     const button = document.createElement('button');
     const title = document.createElement('span'); title.textContent = entry.label;
@@ -87,6 +93,17 @@ searchInput.addEventListener('input', () => {
   });
   searchResults.hidden = false;
   searchInput.setAttribute('aria-expanded','true');
+};
+searchInput.addEventListener('input', () => {
+  renderSearch();
+  if (searchInput.value.trim() && document.getElementById('toolReferenceRoot')?.dataset.loaded !== '1' && !catalogSearchLoad) {
+    catalogSearchLoad = loadToolCatalog().finally(() => { catalogSearchLoad = null; });
+  }
+});
+document.addEventListener('console:tool-catalog-updated', () => {
+  const wasOpen = !searchResults.hidden;
+  renderSearch();
+  if (!wasOpen) closeConsoleSearch();
 });
 searchInput.addEventListener('keydown', event => {
   if (event.key === 'Escape') closeConsoleSearch();

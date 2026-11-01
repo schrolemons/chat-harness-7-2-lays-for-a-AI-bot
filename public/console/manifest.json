@@ -1,5 +1,5 @@
 {
-  "build": "460b4e10fe561df5",
+  "build": "e0cdc65056b2b750",
   "inputs": [
     "console/app.js",
     "console/layers/C/affairs-budget.js",
@@ -36,6 +36,7 @@
     "console/layers/C/slang.js",
     "console/layers/C/source-keys.js",
     "console/layers/C/terms.js",
+    "console/layers/E/admin-presets.js",
     "console/layers/E/components/exec-browser-manager.js",
     "console/layers/E/components/exec-image-generation.js",
     "console/layers/E/config-load.js",
@@ -46,6 +47,7 @@
     "console/layers/E/monitor-status.js",
     "console/layers/E/ownership.js",
     "console/layers/E/parameter-examples.js",
+    "console/layers/E/preset-overview.js",
     "console/layers/E/sessions.js",
     "console/layers/E/voice.js",
     "console/layers/G/access.js",
@@ -80,8 +82,10 @@
     "console/layers/L/social-v1.js",
     "console/layers/L/task-capacity.css",
     "console/layers/L/time-bubbles.js",
+    "console/layers/O/budget-cycle.js",
     "console/layers/O/components/obs-cost-policy.js",
     "console/layers/O/components/obs-health-monitor.js",
+    "console/layers/O/components/obs-self-review.js",
     "console/layers/O/components/obs-session-recovery.js",
     "console/layers/O/config-load.js",
     "console/layers/O/config-save.js",

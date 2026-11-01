@@ -3,8 +3,11 @@ export default {
   "fields": [
     {
       "key": "diaryArchive",
-      "label": "保留日记归档",
-      "type": "boolean"
+      "label": "每日归档字数上限",
+      "type": "number",
+      "property": "maxChars",
+      "min": 200,
+      "max": 200000
     }
   ]
 };

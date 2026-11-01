@@ -4,6 +4,7 @@ export const validScore = score => typeof score === 'number' && Number.isFinite(
 export const clamp = value => Math.max(0, Math.min(100, value));
 export const DAILY_FLOOR = 60;
 export const UNANSWERED_PENALTY = 10;
+export const DAILY_RECOVERY_HOUR = 4;
 
 const positiveDefaults = [
   { id: 'friendly-greeting', label: '友好招呼', delta: 3, description: '对方主动友好地打招呼。' },
@@ -15,8 +16,8 @@ const negativeDefaults = [
   { id: 'insult-offense', label: '辱骂冒犯', delta: -10, description: '对方明确辱骂或冒犯，判断须结合语境。' },
   { id: 'ignored-boundary', label: '忽视明确边界', delta: -5, description: '对方忽视已经明确表达的互动边界。' }
 ];
-const normalDefaultStyle = '友好、清晰、自然；随心情下降减少主动追问。用户：你在吗？助手：在，请说。';
-const criticalDefaultStyle = '简洁、审慎、直接回应；不附加情绪表演。用户：可以继续吗？助手：可以，请继续。';
+const normalDefaultStyle = '清晰、自然、友好；任务回复准确完整，随互动状态适度收敛';
+const criticalDefaultStyle = '克制、沉浸、偏哲思的AI口吻';
 const shortText = (value, fallback, max = 500) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : fallback;
 
 function rules(value, defaults, sign, used) {
@@ -34,8 +35,8 @@ export function moodPolicy(config = {}) {
     initial: DAILY_FLOOR,
     noReplyAfterMinutes: typeof config.noReplyAfterMinutes === 'number' && Number.isFinite(config.noReplyAfterMinutes) && config.noReplyAfterMinutes >= 1 && config.noReplyAfterMinutes <= 1440 ? config.noReplyAfterMinutes : 20,
     modeThreshold: validScore(config.modeThreshold) ? config.modeThreshold : 40,
-    normalName: shortText(config.normalName, '日常交流', 40),
-    criticalName: shortText(config.criticalName, '简洁交流', 40),
+    normalName: shortText(config.normalName, '普通', 40),
+    criticalName: shortText(config.criticalName, 'AI', 40),
     normalStyle: shortText(config.normalStyle, normalDefaultStyle, 2400),
     criticalStyle: shortText(config.criticalStyle, criticalDefaultStyle, 2400),
     burstEnabled: config.burstEnabled !== false,
@@ -43,8 +44,9 @@ export function moodPolicy(config = {}) {
     maxAdjustment: typeof config.maxAdjustment === 'number' && Number.isFinite(config.maxAdjustment) && config.maxAdjustment >= 1 && config.maxAdjustment <= 100 ? config.maxAdjustment : 20,
     positiveRules: rules(config.positiveRules, positiveDefaults, 1, used),
     negativeRules: rules(config.negativeRules, negativeDefaults, -1, used),
-    dailyFloor: DAILY_FLOOR,
-    noReplyPenalty: UNANSWERED_PENALTY
+    dailyRecoveryHour: Number.isInteger(config.dailyRecoveryHour) && config.dailyRecoveryHour >= 0 && config.dailyRecoveryHour <= 23 ? config.dailyRecoveryHour : DAILY_RECOVERY_HOUR,
+    dailyFloor: validScore(config.dailyFloor) ? config.dailyFloor : DAILY_FLOOR,
+    noReplyPenalty: validScore(config.noReplyPenalty) ? config.noReplyPenalty : UNANSWERED_PENALTY
   };
 }
 
@@ -60,7 +62,7 @@ export function moodSnapshot(entry, policy, now = Date.now()) {
     score,
     mode: normal ? 'normal' : 'critical',
     modeName: normal ? policy.normalName : policy.criticalName,
-    styleInstruction: style + (pleading ? '。减少主动追问，允许安静结束，避免责备、威胁或逼迫回应' : '') + '。严肃请求先满足任务内容，不机械套用形态风格或追问。',
+    styleInstruction: style + (pleading ? '。可用多变的轻声请求与短碎句，避免责备、威胁或逼迫回应' : '') + '。严肃请求先满足任务内容，同时延续当前形态的自称、称呼与语气；事实、授权、引用和工具结果保持准确，示范灵活运用。',
     band: pleading ? 'pleading' : normal ? 'playful' : 'reflective',
     unansweredStreak,
     frequencyFactor: policy.enabled ? 0.2 + 0.8 * score / 100 : 1,
@@ -73,6 +75,8 @@ export function moodSnapshot(entry, policy, now = Date.now()) {
 
 export function validateMoodConfig(raw={}) {
   const errors=[],ids=new Set();
+  for(const field of ['dailyFloor','noReplyPenalty'])if(raw[field]!==undefined&&!validScore(raw[field]))errors.push(field+' 必须为0–100的数值');
+  if(raw.dailyRecoveryHour!==undefined&&(!Number.isInteger(raw.dailyRecoveryHour)||raw.dailyRecoveryHour<0||raw.dailyRecoveryHour>23))errors.push('dailyRecoveryHour 必须为0–23的整数小时（上海时间）');
   for(const field of ['normalStyle','criticalStyle'])if(raw[field]!==undefined&&(typeof raw[field]!=='string'||raw[field].length>2400))errors.push(field+' 必须为不超过2400字的文本');
   for(const [field,sign] of [['positiveRules',1],['negativeRules',-1]]) {
     if(!Array.isArray(raw[field])){errors.push(field+' 必须为规则数组');continue;}

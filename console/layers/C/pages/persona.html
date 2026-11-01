@@ -49,13 +49,7 @@
       </details>
 
       <h3 class="layer-heading">仿真提示词（预设内置）<span class="meta" id="simPromptStatus">加载中…</span></h3>
-      <div class="row" style="margin-bottom:8px">
-        <div class="setting-field"><label style="flex:0 0 auto" for="simPromptPreset">仿真代次</label><select id="simPromptPreset" style="flex:0 1 280px">
-          <option value="qq-chat-v2">二代仿真（reserved2 · qq-chat-v2）</option>
-          <option value="qq-chat">一代仿真（reserved · qq-chat）</option>
-        </select><small class="parameter-example" data-example-for="simPromptPreset">例：选择二代：查看二代预设提示，不会把一代内容混入编辑框。</small></div>
-        <span class="meta">两代机制不同（一代空格分条 / 二代一切皆工具），提示词各自独立。</span>
-      </div>
+      <p class="meta" id="simPromptMode">跟随总览中的当前运行模式。</p>
       <div class="meta" id="simPromptWarnings"></div>
       <textarea id="simPromptText" class="code-area" spellcheck="false" readonly></textarea>
       <div class="row" style="margin-top:8px">

@@ -7,6 +7,7 @@ const text=v=>String(v??'').trim();
 const parseJson=v=>JSON.parse(String(v||'').replace(/^\x60{3}(?:json)?\s*/i,'').replace(/\s*\x60{3}$/,'').trim());
 export function createPlugin(ctx){
   const alive=()=>ctx.isActive?.()!==false,state=()=>ctx.state.get()||{},rt=ctx.runtime||{};
+  const normalizedAlias=value=>cleanName(value).normalize('NFKC').toLowerCase();
   const migrated=(state().entries||[]).map(migrateScope);if(JSON.stringify(migrated)!==JSON.stringify(state().entries||[]))ctx.state.set({entries:migrated});
   rt.memberCache ||=new Map();rt.busy ||=new Set();
   function entries(){
@@ -18,6 +19,16 @@ export function createPlugin(ctx){
     }return list;
   }
   const allowed=key=>ctx.capabilities?.isLearningAllowed?.(key)!==false;
+  const owners=(list,alias)=>new Set(list.filter(e=>e.status==='confirmed'&&validQq(e.qq)&&normalizedAlias(e.alias)===normalizedAlias(alias)).map(e=>String(e.qq)));
+  const conflict=(list,alias,qq,excludeId)=>list.some(e=>e.id!==excludeId&&e.status==='confirmed'&&normalizedAlias(e.alias)===normalizedAlias(alias)&&String(e.qq)!==String(qq));
+  const safeEntries=()=>{const list=entries();return list.map(e=>e.status==='confirmed'&&owners(list,e.alias).size>1?{...e,status:'ambiguous'}:e);};
+  function queryIdentity(i={}){
+    const list=entries(),q=text(i.q),ids=owners(list,q);
+    if(ids.size>1)return {ok:false,ambiguous:true,entries:[],matches:[],error:'该绰号存在多个QQ归属，暂不能用于认人、@或传话；请核对并改为唯一绰号'};
+    const out=queryEntries(safeEntries(),'alias',i);
+    if(q&&out.ok&&new Set((out.entries||[]).map(e=>String(e.qq))).size>1)return {...out,ambiguous:true,hint:'片段匹配到多个人，不能按昵称前缀或第一项认人；请核对完整绰号及真实发言者QQ。'};
+    return out;
+  }
   const fingerprint=m=>m?m.messageId||[m.time,m.userId,m.text].join(':'):'';
   function budget(){const calls=(state().calls||[]).filter(t=>Date.now()-t<3600000);if(calls.length>=Math.min(12,Math.max(1,Number(ctx.config?.maxCallsPerHour)||4)))return false;ctx.state.set({calls:[...calls,Date.now()]});return true;}
   const save=list=>{if(!alive())throw Error('插件已停用');ctx.state.set({entries:list});};
@@ -30,6 +41,7 @@ export function createPlugin(ctx){
     if(!confirmed&&(state().rejectedAliases||[]).some(x=>x.alias===alias.toLowerCase()&&(x.key==='*'||x.key===key)))return {ok:false,error:'管理员已拒绝此候选，不自动重复收录'};
     let explicitSources;try{if(confirmed&&i.sourceKeys!==undefined)explicitSources=sourceKeys(i.sourceKeys);}catch(error){return {ok:false,error:error.message};}
     const list=entries(),id=aliasId(alias,qq,key);let e=list.find(x=>x.id===id);
+    if(confirmed&&conflict(list,alias,qq))return {ok:false,error:'ALIAS_QQ_CONFLICT：一个绰号只能对应一个QQ；请核对或使用不同绰号'};
     if(e?.status==='confirmed'&&!confirmed)return {ok:true,duplicate:true,entry:e};
     if(!e){if(list.length>=200)return {ok:false,error:'绰号表已满，请先处理候选；已确认记录不会被自动删除'};e={id,alias,qq,originKey:key,sourceKeys:validSessionKey(key)?[key]:[],status:confirmed?'confirmed':'candidate',at:Date.now(),evidence:[]};list.push(e);}
     if(explicitSources)e.sourceKeys=explicitSources;
@@ -50,6 +62,7 @@ export function createPlugin(ctx){
   tool('alias_confirm','管理员按 id 编辑绰号和 QQ 后确认；QQ 必填',i=>{
     const list=entries(),e=select(list,i);if(!e)return {ok:false,error:'没有这条候选'};
     const alias=cleanName(i.alias||e.alias),qq=text(i.qq||e.qq);if(!validQq(qq)||!validAlias(alias))return {ok:false,error:'请先填写有效绰号与 QQ'};
+    if(conflict(list,alias,qq,e.id))return {ok:false,error:'ALIAS_QQ_CONFLICT：该绰号已对应另一个QQ，请先核对或改名'};
     if(i.sourceKeys!==undefined){try{e.sourceKeys=sourceKeys(i.sourceKeys);}catch(error){return {ok:false,error:error.message};}}
     const id=aliasId(alias,qq),dup=list.find(x=>x.id===id&&x.id!==e.id);
     if(dup){let merged;try{merged=sourceKeys([...new Set([...(dup.sourceKeys||[]),...(e.sourceKeys||[])])]);}catch(error){return {ok:false,error:error.message};}dup.status='confirmed';dup.sourceKeys=merged;dup.evidence=[...dup.evidence,...e.evidence].slice(-6);save(list.filter(x=>x.id!==e.id));return {ok:true,entry:dup};}
@@ -59,8 +72,8 @@ export function createPlugin(ctx){
     const list=entries(),e=select(list,i);if(!e)return {ok:false,error:'没有这条记录'};ctx.state.set({rejectedAliases:[...(state().rejectedAliases||[]),{alias:e.alias.toLowerCase(),key:e.originKey||'*',at:Date.now()}].slice(-500)});save(list.filter(x=>x.id!==e.id));return {ok:true,removed:e};
   });
   tool('alias_query','查询绰号和 QQ；candidate 只是线索，不是确认的身份',i=>{
-    if(i.key){const out=queryEntries(entries(),'alias',i);return {...out,matches:out.entries||[]};}
-    const q=text(i.q).toLowerCase();return {ok:true,matches:entries().filter(e=>!q||e.alias.toLowerCase().includes(q)||e.qq.includes(q)).slice(0,50)};
+    if(i.key){const out=queryIdentity(i);return {...out,matches:out.entries||[]};}
+    const q=text(i.q).toLowerCase();return {ok:true,matches:safeEntries().filter(e=>!q||e.alias.toLowerCase().includes(q)||e.qq.includes(q)).slice(0,50)};
   });
   function lookupConfirmed({alias}={}){
     const key=cleanName(alias).normalize('NFKC').toLowerCase();
@@ -142,15 +155,15 @@ export function createPlugin(ctx){
     if(key){const result=await extract({key,maxCandidates:1,stopAfterGroup:true});if(result?.ok===false)return {...result,scanned:recent.length,analyzed,processed};analyzed=1;processed=Number(result?.processed)||0;}
     return {ok:true,scanned:recent.length,groups:keys.size,analyzed,processed,candidates:entries().filter(x=>x.status!=='confirmed').length};
   });
-  return {services:{aliases:{injectionPreview:({key}={})=>injectionReport(entries(),'alias',key,injectLimit(ctx.config?.injectMax,40)),extract,lookupConfirmed,linkConfirmed,query:i=>queryEntries(entries(),'alias',i),updateSources:i=>{const list=entries(),out=changeCurrentSource(list,i);if(out.ok&&out.changed)save(list);return out;}}},hooks:{onIncoming:incoming,
+  return {services:{aliases:{injectionPreview:({key}={})=>injectionReport(safeEntries(),'alias',key,injectLimit(ctx.config?.injectMax,40)),extract,lookupConfirmed,linkConfirmed,query:queryIdentity,updateSources:i=>{const list=entries(),out=changeCurrentSource(list,i);if(out.ok&&out.changed)save(list);return out;}}},hooks:{onIncoming:incoming,
     async onTick({now=Date.now()}={}){
       if(ctx.config?.autoExtract===false||ctx.config?.autoSemantic===false)return;
       for(const [key,win] of Object.entries(state().windows||{})){if(!allowed(key)||state().learning?.[key]?.through===fingerprint(win.at(-1))||win.length<Number(ctx.config?.minMessages||15)||now-Number(state().learning?.[key]?.at||0)<Number(ctx.config?.cooldownMs||1800000))continue;await extract({key});break;}
     },
     beforePrompt(p={}){
-      const confirmed=defaultEntries(entries(),'alias',p.key,injectLimit(ctx.config?.injectMax,40)),owner=String(ctx.capabilities?.getOwnerQQ?.()||'');
+      const confirmed=defaultEntries(safeEntries(),'alias',p.key,injectLimit(ctx.config?.injectMax,40)),owner=String(ctx.capabilities?.getOwnerQQ?.()||'');
       const lines=confirmed.slice(0,40).map(e=>'- '+e.alias+' = '+e.qq+(owner===e.qq?'（管理员/管理员）':''));
-      return sourceGuidance('alias',ctx.capabilities)+'\n'+(queryEnabled(ctx.capabilities,'alias')?lookupHints(entries(),'alias',{...promptInputs(p),injected:confirmed}):'')+'\n'+'【成员绰号学习】一个人可有多个绰号。'+(queryEnabled(ctx.capabilities,'alias')?'认人/@/传话先 qq_alias_query(key,token,q)，':'查询工具关闭，不猜测缺失映射。')+'只把 confirmed 当成确认身份，candidate 不能确定收件人；同名多人不猜。\n'
+      return sourceGuidance('alias',ctx.capabilities)+'\n'+(queryEnabled(ctx.capabilities,'alias')?lookupHints(safeEntries(),'alias',{...promptInputs(p),injected:confirmed}):'')+'\n'+'【成员绰号学习】一个QQ可有多个绰号，一个绰号只能对应一个QQ。真实发言者、引用对象按消息中的userId/QQ确定，不能因昵称前缀相同就合并为同一个人；不擅自截短昵称来认人。'+(queryEnabled(ctx.capabilities,'alias')?'认人/@/传话先 qq_alias_query(key,token,q)，':'查询工具关闭，不猜测缺失映射。')+'只把唯一归属的 confirmed 当成确认身份，candidate或ambiguous不能确定收件人；同名、前缀相同或仅片段匹配到多人时不猜，也不把群友之间的引用默认当成在对你说。\n'
         +(ctx.config?.autoExtract===false?'自动学习已关闭，保留管理员确认的称呼。\n':'使用 qq_alias_submit 提交高置信度绰号候选：优先明确自称或明确说明某称呼属于谁；疑似称呼也可留空 QQ 供管理员判断，模糊情况须有多条独立消息把同一短称呼用于同一成员。单条邀约、问句、@后的文字、整句、黑话、辱骂或性内容都不算证据。QQ没证据就留空，note 写原文语境与目标线索；绝不能把发言者绑定为被讨论的人。候选由管理员在控制台编辑、确认或拒绝。\n')
         +(lines.length?'【已确认成员绰号速查】\n'+lines.join('\n'):'当前适用来源没有默认注入的映射；遇到完整绰号或回复具体QQ时按需查询。');
     }

@@ -1,6 +1,9 @@
 export default {ownsEnabled:true,saveLabel:"保存心情与双形态",title:'心情与双形态',fields:[
  {key:'enabled',label:'启用心情系统',help:'心情表示 bot 主观上是否喜欢与对方聊天，并决定风格；用户忙闲由聊天意愿单独评估。',type:'boolean',group:'结算规则'},
  {key:'noReplyAfterMinutes',label:'主动后等待回应（分钟）',type:'number'},
+ {key:'noReplyPenalty',label:'主动回合未回应扣分（0–100）',type:'number'},
+ {key:'dailyRecoveryHour',label:'每日恢复时刻（上海时间，0–23点）',type:'number'},
+ {key:'dailyFloor',label:'每日恢复保底分数（0–100）',type:'number'},
  {key:'modeThreshold',label:'普通与临界形态阈值（0–100）',type:'number',group:'双形态',help:'达到阈值采用普通形态；低于阈值采用临界形态。'},
  {key:'normalName',label:'普通形态名称',type:'text',maxLength:40},
  {key:'normalStyle',label:'普通形态：语言风格与对话示例',type:'textarea',maxLength:2400,help:'全局规则，仅普通形态注入。写清说话习惯、聊天倾向和几组对话示例；人设卡只保留整体身份与气质。'},

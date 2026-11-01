@@ -24,7 +24,10 @@ async function refreshV2Schedule() {
       el.innerHTML = convs.length ? convs.map((c) => '<option value="' + esc(c.key) + '">' + esc(c.key) + '</option>').join('') : '<option value="">（暂无会话）</option>';
       if (prev && convs.some((c) => c.key === prev)) el.value = prev;
     };
-    fillKeys(document.getElementById('v2TbKey'));
+    const bubbleKey = document.getElementById('v2TbKey');
+    const previousBubbleKey = bubbleKey?.value;
+    fillKeys(bubbleKey);
+    if (bubbleKey && bubbleKey.value !== previousBubbleKey) bubbleKey.dispatchEvent(new Event('change'));
     fillKeys(document.getElementById('v2PmKey'));
     const followupKey = document.getElementById('v2FollowupSessionKey');
     if (followupKey) {

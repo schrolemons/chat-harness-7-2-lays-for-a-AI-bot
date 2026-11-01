@@ -666,15 +666,16 @@ server.tool(
     throughSeq: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional().describe('可同时确认已读：使用已查看结果中的 readThroughSeq，省去额外 qq_mark_read；不传则只设置唤醒配置。双戳启用时不能借此设置 repliedAt；若 markRead 工具被关闭，该水位会被忽略'),
     chatWillingness: z.number().min(0).max(100).optional().describe('客观聊天可用度0–100：根据用户是否工作、开会、疲劳或有空评估，必须附reason依据；无依据保持原分。不代表bot喜好，不因没回复自动降分；不改变聊天风格'),
     reason: z.string().max(300).optional().describe('用户当前忙闲、时间或精力状况的证据；不是bot的喜好'),
+    availabilityAssessment: z.object({kind:z.enum(['sleep','busy','available','other']),untilISO:z.string().optional()}).optional().describe('本次可用度评估的依据类型；sleep=当前这一段睡眠，busy=其他忙碌，available=明确有空。untilISO仅用于sleep，填写用户明确给出的本段睡眠结束时间，须含时区，不猜起床时间；未提供时只按本人已确认作息判断是否到期'),
     config: z.object({
       infinite: z.boolean().optional().describe('true=不设置到时检查；false=必须同时指定 sleepMs 或 sleepUntil；来信与独立排程仍可提前触发'),
       sleepMs: z.number().nonnegative().optional().describe('明确约定的到时唤醒，距现在毫秒数；普通潜水不设置此项'),
       sleepUntil: z.string().optional().describe('明确约定的到时唤醒 ISO 时间，优先于 sleepMs'),
     }).optional().describe('要设置的唤醒配置，缺省字段保留原值')
   },
-  async ({ key, token, config, throughSeq, chatWillingness, reason }) => {
+  async ({ key, token, config, throughSeq, chatWillingness, reason, availabilityAssessment }) => {
     try {
-      const data = await agentApi('/api/socialV2/wake-config', { method: 'POST', body: JSON.stringify({ key, config, throughSeq, chatWillingness, reason }), headers: { 'x-agent-token': token } });
+      const data = await agentApi('/api/socialV2/wake-config', { method: 'POST', body: JSON.stringify({ key, config, throughSeq, chatWillingness, reason, availabilityAssessment }), headers: { 'x-agent-token': token } });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
     } catch (error) {
       return { content: [{ type: 'text', text: `设置唤醒配置失败：${error?.message ?? error}` }], isError: true };
@@ -1304,7 +1305,7 @@ server.tool(
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().min(1).describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    alias: z.string().describe('绰号（如 小林）'),
+    alias: z.string().describe('绰号（如 十二）'),
     qq: z.string().optional().describe('有证据的对应 QQ；不确定可省略或留空，不能默认填发言者'),
     note: z.string().optional().describe('疑似称呼的原话语境与被称呼者线索')
   },
@@ -1815,10 +1816,10 @@ if (cfg.socialV2?.tools?.getForwardMsg !== false) {
   );
 }
 
-// ── 账户余额：有效私聊/群聊可查档位，管理员私聊可看账户金额 ──
+// ── API预算存量：有效私聊/群聊可查档位，管理员私聊可看账户金额 ──
 server.tool(
   'deepseek_balance',
-  '只读查询AI助手的账户余额（DeepSeek API余额）和最近变化。已授权私聊/群聊可查调用额度档位及补充状态，具体账户金额只在管理员私聊返回。偏少、见底、空了或刚补充时按当前形态自然接话，普通形态可清晰友好交流；带唤醒提示中的会话令牌。查询失败不等于存量为零，不改额度策略。',
+  '只读查询AI助手的API预算存量（DeepSeek API余额）和最近变化。已授权私聊/群聊可查API预算档位及补充状态，具体账户金额只在管理员私聊返回。偏少、见底、空了或刚补充时按当前形态自然接话，普通形态可自然友好交流；带唤醒提示中的会话令牌。查询失败不等于存量为零，不改额度策略。',
   { token: z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）') },
   async ({ token }) => {
     try {
@@ -1955,7 +1956,7 @@ server.tool(
     token: z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）'),
     action: z.enum(['status', 'note']).describe('status=看本机状态；note=写桌面便签'),
     text: z.string().optional().describe('action=note 时要写的话（一句，短一点）'),
-    milkEventId: z.string().optional().describe('调用额度变化便签带上下文给出的事件ID，跨会话同一事件只写一次')
+    milkEventId: z.string().optional().describe('API预算变化便签带上下文给出的事件ID，跨会话同一事件只写一次')
   },
   async ({ token, action, text, milkEventId }) => {
     try {

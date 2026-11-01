@@ -8,4 +8,4 @@ status块同时提供交互事件事实：近期窗口按真实seq去重，区�
 
 插拔、配置和验收参见 docs/guides/PLUGIN_RUNTIME_CONTRACT.md。运行 npm run test:plugin-audit，测试使用隔离文件和模拟端点。
 
-状态块可从milkStock.context读取管理员私聊专属账户余额快照，标明核对时间与过期/失败；群聊及其他私聊不注入。仅动态事实，不改角色卡或额度策略。
+状态块可从milkStock.context读取管理员私聊专属API预算存量快照，标明核对时间与过期/失败；群聊及其他私聊不注入。仅动态事实，不改角色卡或额度策略。

@@ -1,7 +1,7 @@
 {
   "name": "qq-agent-presets",
-  "version": "0.2.1-r1",
-  "description": "qq-bridge 的 DSH agent preset bundle：把 qq-chat / qq-chat-v2 作为 @deepseek-ai/dsh-agent-preset 行插入（DSH 0.1.7+ 的 preset 机制），并携带两个 preset 共用的 qq-tool-restrict 安全守卫",
+  "version": "0.3.0",
+  "description": "Bridge-owned DSH preset declarations and shared tool/context guards; installed together by the root qq-bridge bundle.",
   "type": "module",
   "license": "MIT",
   "dsh": {
@@ -9,9 +9,11 @@
       "patch": [
         "./presets/qq-chat.patch.yml",
         "./presets/qq-chat-v2.patch.yml",
-        "./presets/qq-chat-dev.patch.yml",
+        "./presets/qq-admin.patch.yml",
         "./presets/qq-task-worker.patch.yml",
-        "./presets/qq-learning.patch.yml"
+        "./presets/qq-learning.patch.yml",
+        "./presets/campus-summary.patch.yml",
+        "./session-titles.patch.yml"
       ]
     }
   }

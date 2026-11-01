@@ -1,30 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { WHALE_MCP_SERVERS } from './servers.js';
 import { readSessionToolEvidence } from './session-evidence.js';
+import {toolCatalogInputs,fingerprintInputs} from './fingerprint.js';
 
 export function toolCatalogFingerprint(root) {
-  const hash=crypto.createHash('sha256');
-  for(const server of WHALE_MCP_SERVERS)hash.update(server.name).update(fs.readFileSync(path.join(root,server.script)));
-  hash.update(fs.readFileSync(path.join(root,'src/mcp-bilibili-tools.mjs')));
-  for(const file of ['src/tools/flags.js','src/tools/servers.js','state/mode.json']) {
-    const resolved=path.join(root,file);
-    if(fs.existsSync(resolved))hash.update(fs.readFileSync(resolved));
-  }
-  for(const dir of fs.readdirSync(path.join(root,'plugins/qq-components')).sort()) {
-    for(const name of ['plugin.json','index.js']) {
-      const file=path.join(root,'plugins/qq-components',dir,name);
-      if(fs.existsSync(file))hash.update(fs.readFileSync(file));
-    }
-  }
-  const registry=path.join(root,'state/plugins/registry.json');
-  if(fs.existsSync(registry))hash.update(fs.readFileSync(registry));
-  const config=JSON.parse(fs.readFileSync(path.join(root,'config.json'),'utf8').replace(/^\uFEFF/,''));
-  hash.update(JSON.stringify({tools:config.socialV2?.tools||{},bilibili:config.bilibili?.enabled}));
-  return hash.digest('hex');
+  return fingerprintInputs(toolCatalogInputs(root));
 }
 export async function inspectWhaleMcpServers(root) {
   const servers=[];
@@ -34,11 +17,12 @@ export async function inspectWhaleMcpServers(root) {
       const transport=new StdioClientTransport({command:process.execPath,args:[path.join(root,spec.script)],cwd:root,stderr:'pipe'});
       await client.connect(transport,{timeout:15000});
       const listed=await client.listTools(undefined,{timeout:15000});
-      servers.push({...spec,ok:true,tools:listed.tools.map(({name,description})=>({name,description:description||''}))});
+      servers.push({...spec,ok:true,tools:listed.tools.map(({name,description,inputSchema,outputSchema,annotations})=>({name,description:description||'',inputSchema,...(outputSchema?{outputSchema}:{}),...(annotations?{annotations}:{})}))});
     }catch(error){servers.push({...spec,ok:false,error:error.message,tools:[]});}
     finally{await client.close().catch(()=>{});}
   }
-  return {version:1,observedAt:new Date().toISOString(),fingerprint:toolCatalogFingerprint(root),servers};
+  const fingerprintSources=toolCatalogInputs(root);
+  return {version:2,observedAt:new Date().toISOString(),fingerprint: fingerprintInputs(fingerprintSources),fingerprintSources,servers};
 }
 export function readToolCatalog(root) {
   let registered;
@@ -46,9 +30,10 @@ export function readToolCatalog(root) {
   catch{return {ok:false,error:'尚无实际 MCP tools/list 验证记录，请运行 npm run audit:tools',tools:[],servers:[],sessions:[]};}
   let sessions=[],evidenceError;
   try{sessions=readSessionToolEvidence(root);}catch(error){evidenceError=error.message;}
-  const stale=registered.fingerprint!==toolCatalogFingerprint(root);
+  const currentSources=toolCatalogInputs(root),stale=registered.version!==2||registered.fingerprint!==fingerprintInputs(currentSources);
+  const changedInputs=registered.fingerprintSources?Object.keys({...registered.fingerprintSources,...currentSources}).filter(key=>registered.fingerprintSources[key]!==currentSources[key]):[];
   const tools=mergeToolEvidence(registered.servers,sessions);
-  return {ok:true,stale,observedAt:registered.observedAt,servers:registered.servers.map(({tools,...server})=>({...server,toolCount:tools.length})),sessions:sessions.map(({names,...session})=>({...session,toolCount:names?.length||0})),evidenceError,tools};
+  return {ok:true,stale,freshness:stale?'unverified':'verified',changedInputs,observedAt:registered.observedAt,servers:registered.servers.map(({tools,...server})=>({...server,toolCount:tools.length})),sessions:sessions.map(({names,...session})=>({...session,toolCount:names?.length||0})),evidenceError,tools};
 }
 export function mergeToolEvidence(servers,sessions) {
   const entries=new Map();

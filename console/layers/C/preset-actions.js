@@ -16,7 +16,6 @@ document.getElementById('simPromptCancel').addEventListener('click', () => {
   setSimEditing(false);
   setSimMsg('已放弃修改');
 });
-document.getElementById('simPromptPreset').addEventListener('change', () => { refreshSimPrompt(); });
 document.getElementById('simPromptSave').addEventListener('click', async () => {
   const content = document.getElementById('simPromptText').value;
   if (!confirm('保存会改写该代预设的源文件并同步到 DSH 的 preset 目录（新会话生效，进行中的会话需重置或重启 DSH）。确定继续？')) return;

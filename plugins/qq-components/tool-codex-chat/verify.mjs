@@ -14,7 +14,7 @@ try{
  console.log('Status: '+JSON.stringify(await call('codex_chat_status',{})));
  if(process.argv.includes('--live')){
   const requestId='live-'+Date.now();
-  console.log('Send: '+JSON.stringify(await call('codex_chat_send',{requestId,text:'这是机主授权的通用助手通信插件验收，请只回复：通用助手，通信成功。记住本轮口令是「示例口令」。'})));
+  console.log('Send: '+JSON.stringify(await call('codex_chat_send',{requestId,text:'这是机主授权的AI助手通信插件验收，请只回复：AI助手，通信成功。记住本轮口令是「蓝鲸松果」。'})));
   let result;
   for(let i=0;i<12;i++){result=await call('codex_chat_poll',{requestId,waitMs:20000});console.log('Poll: '+JSON.stringify(result));if(!['pending','running'].includes(result.status))break;}
   assert.equal(result.status,'completed');assert.match(result.reply,/通信成功/);
@@ -24,15 +24,15 @@ try{
   const first=JSON.parse(fs.readFileSync(path.join(PLUGIN,'docs','live-result.json'),'utf8'));
   const requestId='context-'+Date.now();await call('codex_chat_send',{requestId,text:'仅用于验收多轮上下文：上一轮机主让你记住的口令是什么？只回答口令。'});
   let result;for(let i=0;i<12;i++){result=await call('codex_chat_poll',{requestId,waitMs:20000});console.log('Poll: '+JSON.stringify(result));if(!['pending','running'].includes(result.status))break;}
-  assert.equal(result.status,'completed');assert.match(result.reply,/示例口令/);assert.equal(result.threadId,first.first.threadId);
+  assert.equal(result.status,'completed');assert.match(result.reply,/蓝鲸松果/);assert.equal(result.threadId,first.first.threadId);
   first.second=result;fs.writeFileSync(path.join(PLUGIN,'docs','live-result.json'),JSON.stringify(first,null,2));
  }
  if(process.argv.includes('--recover')){
   const proof=JSON.parse(fs.readFileSync(path.join(PLUGIN,'docs','live-result.json'),'utf8'));
-  const result=await call('codex_chat_poll',{requestId:proof.first.requestId});assert.equal(result.reply,'通用助手，通信成功。');console.log('Recovered without resend: '+JSON.stringify(result));
+  const result=await call('codex_chat_poll',{requestId:proof.first.requestId});assert.equal(result.reply,'AI助手，通信成功。');console.log('Recovered without resend: '+JSON.stringify(result));
  }
  if(process.argv.includes('--desktop-live')){
-  const requestId='desktop-'+Date.now();await call('codex_chat_send',{requestId,text:'机主已在桌面端打开这个专用聊天。这是最后一次验收：请只回复「通用助手，桌面显示与工具通信均正常。」不要调用任何工具。'});
+  const requestId='desktop-'+Date.now();await call('codex_chat_send',{requestId,text:'机主已在桌面端打开这个专用聊天。这是最后一次验收：请只回复「AI助手，桌面显示与工具通信均正常。」不要调用任何工具。'});
   let result;for(let i=0;i<12;i++){result=await call('codex_chat_poll',{requestId,waitMs:20000});console.log('Poll: '+JSON.stringify(result));if(!['pending','running'].includes(result.status))break;}
   assert.equal(result.status,'completed');assert.match(result.reply,/均正常/);
  }

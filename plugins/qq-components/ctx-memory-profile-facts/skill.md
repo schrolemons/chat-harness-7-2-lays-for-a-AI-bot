@@ -1,5 +1,7 @@
 # 自动人物档案提取标准
 
+2026-11-01：普通聊天的候选提示只消费当前处理回合确实收到完整正文的 `admittedMessages`，并用匹配的消息ID/seq回填带引用的原文；`onIncoming` 提前积累的候选不能充当聊天来信。逐请求动态刷新同样过滤未准入的原文，收件索引只提供元数据。记忆整理仍可读取本会话原始候选和近期记录，但缺少完整来源的旧候选标记截断，须补查；该回合受发送层硬性禁止发QQ。渲染、失败或未准入均不清除候选。
+
 普通聊天与 memoryWrite 共用 extraction-policy.mjs。语义判断由模型完成，写入通过现有 profile_get/profile_update，继续受宿主鉴权控制。
 
 - 逐栏检查 routine_food、hobbies、relationships、catchphrases。明确姓名等可用 identity 扩展字段；不能把学科误作爱好。

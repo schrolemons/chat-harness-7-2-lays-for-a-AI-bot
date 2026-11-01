@@ -1,7 +1,7 @@
 {
   "id": "life-token-budget",
   "name": "会话花费分级",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "会话花费分级：冷漠私聊按可配置来信条数、群聊按间隔处理；硬上限每条触发限流的固定回复，通知直投。",
   "layer": "O",
   "category": "令牌与花费",
@@ -15,6 +15,7 @@
     "everyMs": 60000
   },
   "config": {
+    "dailyResetTime": "22:00",
     "sessions": {},
     "ownerBudgetEnabled": true,
     "globalHardLimitYuan": 0,
@@ -33,6 +34,12 @@
     "privateWakeEveryMessages": 5
   },
   "configSchema": {
+    "dailyResetTime": {
+      "type": "string",
+      "editable": false,
+      "label": "每日额度重置时间（北京时间）",
+      "description": "00:00–23:59，默认22:00；所有会话与后台任务共用，由令牌与花费页面保存。修改后按新边界重算，不删除历史流水。"
+    },
     "mechanicalLimits": {
       "type": "object",
       "editable": false,

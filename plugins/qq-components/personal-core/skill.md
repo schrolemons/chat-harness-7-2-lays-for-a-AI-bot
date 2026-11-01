@@ -21,8 +21,8 @@
 目录支持项目相对路径与本机绝对路径；清空并保存表示卸载。启用组件时保存前校验，失败不替换原配置。文件变化后重新校验；错误明确展示，不回退默认包。referenceSessionKeys只控制自动导读范围，不充当MCP资料权限；careSessionKeys只控制资料包关怀语境，不授予其他权限。读取预算、默认目录分页均直接作用于实际工具。
 
 ## 默认数据与开发者
-机主默认SCHNIE包位于private-libraries/schnie，本目录不包含作者数据。其原有208个文件、175张卡和5份原稿按hash原样迁移；专属触发规则留在该私人包manifest中。
+目录说明统一使用 private-libraries 存放资料包，以 D:\qq-bridge 为项目目录时，通用示例资料包根目录为 D:\qq-bridge\private-libraries\my-core。my-core 是示例包名；机主实际的 REFERENCE_DATA 包使用 private-libraries/reference-data，相对项目目录解析，不因示例变化而移动或改名。本目录不包含作者数据；专属触发规则留在私人包 manifest 中。
 
-独立整理规范：docs/personal-core/说明.md；虚构示例：examples/personal-core/minimal；CLI：node scripts/personal-core.mjs validate <dir>。
+独立整理规范：D:\qq-bridge\docs\personal-core\README.md；完整路径校验示例：node "D:\qq-bridge\scripts\personal-core.mjs" validate "D:\qq-bridge\private-libraries\my-core"。开发用虚构测试包 examples/personal-core/minimal 与用户资料包独立，不作为默认挂载；实际使用时替换项目目录与包名。
 
 不改人设卡，不发送QQ，不重建会话，不联网解析私人文件。首次接口切换由一次性迁移完成，运行中不保留旧命名工具或别名。

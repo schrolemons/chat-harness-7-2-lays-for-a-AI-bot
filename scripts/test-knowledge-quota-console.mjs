@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { startConsoleFixture } from './console-ui-fixture.mjs';
 const require = createRequire(import.meta.url), { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const executablePath = [path.join(process.env.PROGRAMFILES || '', 'Google/Chrome/Application/chrome.exe'), path.join(process.env['PROGRAMFILES(X86)'] || '', 'Microsoft/Edge/Application/msedge.exe')].find(fs.existsSync);
-const fixture = await startConsoleFixture(), group = 'group:21008';
+const fixture = await startConsoleFixture(), group = 'group:40001';
 const artifact = path.resolve('state/audits/knowledge-quota-20261030'); fs.mkdirSync(artifact, { recursive: true });
 let browser;
 try {
@@ -38,9 +38,9 @@ try {
   await panel.getByText('最近识别记录', { exact: true }).click();
   assert.match(await panel.innerText(), /规则兜底/);
   const values = await picker.locator('option').evaluateAll(options => options.map(option => option.value));
-  assert(values.includes(group) && values.includes('private:21001'));
-  await picker.selectOption('private:21001');
-  await page.waitForFunction(() => document.querySelector('.quota-row code')?.textContent === 'private:21001');
+  assert(values.includes(group) && values.includes('private:10001'));
+  await picker.selectOption('private:10001');
+  await page.waitForFunction(() => document.querySelector('.quota-row code')?.textContent === 'private:10001');
   assert.equal(await panel.locator('.quota-row span b').first().innerText(), '0');
   await picker.selectOption('__manual__');
   const resets = fixture.requests.filter(x => x.body?.tool === 'knowledge_quota' && x.body.input?.action === 'reset').length;

@@ -10,7 +10,7 @@ export function createPlugin(ctx) {
   const validKey = key => /^(private|group):\d+$/.test(key);
   function normalize(p, key = String(p?.key || '')) {
     const userId = String(p?.userId ?? p?.user_id ?? '');
-    const text = String(p?.plain ?? p?.text ?? '').trim();
+    const text = String(p?.text ?? p?.plain ?? '').trim();
     if (!validKey(key) || !/^\d{1,20}$/.test(userId) || p?.isSelf || !text || !/[\u4e00-\u9fa5a-zA-Z0-9]/.test(text)) return null;
     if (key.startsWith('private:') && key !== 'private:' + userId) return null;
     return { key, userId, who: String(p.sender || p.who || userId).slice(0, 64), text: text.slice(0, chars), truncated: p.truncated === true || text.length > chars, at: Number(p.at ?? p.time) || Date.now(), messageId: p.messageId != null ? String(p.messageId) : null, seq: Number.isSafeInteger(p.seq) ? p.seq : null };
@@ -30,7 +30,16 @@ export function createPlugin(ctx) {
       if(!validKey(key) || /^(selfReview|selfOptimize|userFeedbackReview|slangLearn)$/.test(String(payload.reason||'')))return '';
       const maintenance=payload.reason==='memoryWrite',state=ctx.state.get(),now=Date.now();
       if(!maintenance && Number(cfg.cooldownMs)>0 && now-Number(state.lastAskedByKey?.[key]||0)<Number(cfg.cooldownMs))return '';
-      const list=pending().filter(p=>p.key===key && now-Number(p.at||0)<TTL).map(p=>normalize(p,key)).filter(Boolean);
+      const admitted=Array.isArray(payload.admittedMessages)?payload.admittedMessages:[];
+      const raw=maintenance?[...(payload.st?.unread||[]),...(payload.st?.recentMessages||payload.state?.recentMessages||[])]:admitted;
+      const matching=p=>raw.find(m=>m&&!m.isSelf&&(p.messageId&&String(m.messageId)===String(p.messageId)||Number.isSafeInteger(p.seq)&&p.seq===m.seq));
+      const list=pending().filter(p=>p.key===key && now-Number(p.at||0)<TTL).flatMap(p=>{
+        const full=matching(p);
+        if(full)return [normalize({...p,...full,userId:p.userId},key)].filter(Boolean);
+        // Maintenance can recover a legacy candidate, but must fetch its full
+        // source before drawing conclusions. Chat never sees this early copy.
+        return maintenance?[normalize({...p,truncated:true},key)].filter(Boolean):[];
+      });
       // A refresh can revisit real inbound messages even if earlier chat consumed the old queue.
       if(maintenance)for(const message of (payload.st?.recentMessages||payload.state?.recentMessages||[])){const p=normalize(message,key);if(p)list.push(p);}
       const unique=new Map();for(const p of list)if(!unique.has(signature(p)))unique.set(signature(p),p);

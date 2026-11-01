@@ -23,7 +23,7 @@ import { COMPONENT_FORMS } from './components/forms.js';
 
 export function initialize() {
   const pluginsReady=api('/api/plugins');
-  void pluginsReady.then(data=>{const root=document.getElementById('bridgeMilkMonitor'),balance=data.plugins?.find(p=>p.id==='tool-deepseek-balance');if(root&&balance){root.textContent='';mountBalanceControl(root,balance);}}).catch(error=>{document.getElementById('bridgeMilkMonitor').textContent='调用额度监控读取失败：'+error.message;});
+  void pluginsReady.then(data=>{const root=document.getElementById('bridgeMilkMonitor'),balance=data.plugins?.find(p=>p.id==='tool-deepseek-balance');if(root&&balance){root.textContent='';mountBalanceControl(root,balance);}}).catch(error=>{document.getElementById('bridgeMilkMonitor').textContent='API预算监控读取失败：'+error.message;});
   void renderToolInventory(pluginsReady).catch(error=>{document.getElementById('toolSwitchStatus').textContent='工具开关加载失败：'+error.message;});
 (() => {
 

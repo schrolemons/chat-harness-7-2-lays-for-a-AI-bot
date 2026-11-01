@@ -1,15 +1,26 @@
 {
-  "schema": 1,
+  "schema": 2,
+  "version": "0.3.0",
   "source": "upstream QQ bridge plus generic harness extensions",
+  "sourceRevision": "8b7f95d9de3cd54382f89176d81f891af31bb9de",
   "upstream": "https://github.com/Derpyu520/qq-bridge",
+  "sharedSourceFiles": 1102,
+  "edition": "public",
+  "defaultLanguage": "neutral AI assistant",
+  "verification": {
+    "isolatedTests": 524,
+    "nativeDshCliInstall": true,
+    "automaticPresets": 6,
+    "executableStructureDifferences": 0
+  },
   "excluded": [
     "operator runtime data",
-    "private knowledge",
-    "personal scripts",
+    "private knowledge and native conversation history",
+    "personal scripts and voice examples",
     "actual account configuration",
-    "browser storage",
+    "credentials and browser storage",
     "screenshots and live reports",
-    "original git history"
+    "private git history"
   ],
-  "referenceMaterial": "one newly authored public example"
+  "referenceMaterial": "one fictional public example"
 }

@@ -15,7 +15,8 @@ export function renderComponentForm(p, selectedKeys, showTitle = true, expandGro
     let grouped=false, groupCount=0;
     const fields = form.fields.map((f) => {
       const id = 'cfg-' + p.id + '-' + f.key;
-      let html = compFieldHtml({...f,example:f.example||PARAMETER_EXAMPLES[p.id]?.[f.key]}, f.key === 'watchUrls' && !(cfg.watchUrls || []).length ? (p.state?.watchUrls || []) : cfg[f.key]);
+      const value = f.property ? cfg[f.key]?.[f.property] : cfg[f.key];
+      let html = compFieldHtml({...f,example:f.example||PARAMETER_EXAMPLES[p.id]?.[f.key]}, f.key === 'watchUrls' && !(cfg.watchUrls || []).length ? (p.state?.watchUrls || []) : value);
       html = html.replace('class="comp-field', 'data-config-key="' + esc(f.key) + '" class="comp-field');
       // Give every simple control its own nearby label; custom tables own their row labels.
       if (!['moodRules','ackGroup','items','flags'].includes(f.type)) {
@@ -31,7 +32,7 @@ export function renderComponentForm(p, selectedKeys, showTitle = true, expandGro
     return { ownsEnabled,saveLabel:componentForm?.saveLabel || '保存'+form.title, html: (showTitle ? '<div class="meta" style="margin:6px 0">' + esc(form.title) + '</div>' : '') + '<div class="component-fields">' + fields + '</div>', collect: (el) => {
       const out = {};
       const fields = el.querySelectorAll('.comp-field[data-config-key]');
-      form.fields.forEach((f, index) => { const v = compFieldValue(f, fields[index]); if (v === undefined) delete out[f.key]; else out[f.key] = v; });
+      form.fields.forEach((f, index) => { const v = compFieldValue(f, fields[index]); if (v === undefined) delete out[f.key]; else out[f.key] = f.property ? {...cfg[f.key], [f.property]:v} : v; });
       const ruleIds = [...(out.positiveRules || []), ...(out.negativeRules || [])].map(rule => rule.id);
       if (new Set(ruleIds).size !== ruleIds.length) throw Error('升分和降分规则 ID 不能重复');
       return out;

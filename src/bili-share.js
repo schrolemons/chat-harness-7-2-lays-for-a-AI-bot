@@ -18,15 +18,15 @@ const MAX_DESC_CHARS = 120;
 
 export const BILI_BV_RE = /^BV[0-9A-Za-z]{10}$/;
 
-// 默认公开选题；管理员可按实际用途自行修改。
+// 选题方向（机主 2026-10-28 确认）：海洋 / 知识科普 / 助手相关。
 // 按天轮换，保证同一天可复现，也不会天天用同一个词。
 export const DEFAULT_BILI_KEYWORDS = [
-  '科学',
-  '技术',
-  '科普',
-  '自然 纪录片',
-  '艺术',
-  '学习 方法'
+  '助手',
+  '海洋',
+  '科技动态',
+  '科学纪录片',
+  '历史文化',
+  '学习方法'
 ];
 
 function cleanText(value, maxChars) {

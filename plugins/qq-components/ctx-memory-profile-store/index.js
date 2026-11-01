@@ -5,7 +5,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { routineView, routineBlockLines, foodTaste } from '../../../src/user-routines.js';
+import { routineView, routineBlockLines, foodTaste, parseRoutine } from '../../../src/user-routines.js';
 
 const PROFILE_FIELDS = ['routine_food', 'hobbies', 'relationships', 'catchphrases'];
 
@@ -170,6 +170,15 @@ export function createPlugin(ctx) {
     return { ok: true, lines, taste: foodTaste({}), slots: routineSlots({ key }) };
   }
 
+  // Read-only evidence for availability expiry; never use default bubble slots
+  // or the last speaker in a group as someone's personal sleeping schedule.
+  function availabilityRoutine({key}={}) {
+    if(!/^private:[1-9]\d*$/.test(String(key)))return null;
+    const profile=readPersonProfiles().profiles[String(key).slice(8)];
+    const items=String(profile?.routine_food||'').split(/[；;\n]+/).map(parseRoutine).filter(Boolean);
+    return Object.fromEntries(['wake','sleep','work'].map(kind=>[kind,items.filter(r=>r.kind===kind)]));
+  }
+
   function cleanName(name) {
     const n = String(name || '').trim();
     return BAD_NAMES.has(n) ? '' : n;
@@ -186,7 +195,7 @@ export function createPlugin(ctx) {
     }
   });
   ctx.registerTool('profile_update', {
-    description: '根据档案对象本人亲自表达的信息，用 JSON 字符串字段创建或修改其档案。默认字段 routine_food/hobbies/relationships/catchphrases；只更新传入字段，遗漏字段保留。普通用户只能操作本人；群聊只可修改当前实际发言者的四个固定字段，扩展字段仅限本人或管理员私聊管理。管理员私聊可跨档案管理。',
+    description: '根据档案对象本人表达的信息，用 JSON 字符串字段创建或修改其档案。稳定事实以本人表达为准；私聊中跨多天真实聊天的观察模式可写chat_activity_pattern扩展字段，注明日期范围、来源和不确定性，不冒充已确认作息。默认字段 routine_food/hobbies/relationships/catchphrases；只更新传入字段，遗漏字段保留。普通用户只能操作本人；群聊只可修改当前实际发言者的四个固定字段，扩展字段仅限本人或管理员私聊管理。管理员私聊可跨档案管理。',
     schema: { type: 'object', required: ['userId', 'key', 'profile'], properties: { userId: { type: 'string' }, key: { type: 'string' }, profile: { type: 'object', additionalProperties: { type: 'string' }, description: 'key 是字段名，value 必须为完整文本字符串；只传需要变更的键，允许增加新键' }, deleteKeys: { type: 'array', items: { type: 'string' }, description: '明确删除的扩展字段名；固定四个字段只能清空，不能删除' } } },
     handler: ({ userId, key, profile, deleteKeys, adminCrossSession } = {}) => {
       if (!authorizedTarget({ userId, key, adminCrossSession })) return { ok: false, changed: false, error: '只能修改当前发言者本人档案；跨档案修改须由管理员私聊发起。' };
@@ -233,7 +242,7 @@ export function createPlugin(ctx) {
   });
 
   return {
-    services: { profileStore: { isWarmTarget, routineSlots, routineCard } },
+    services: { profileStore: { isWarmTarget, routineSlots, routineCard, availabilityRoutine } },
     hooks: {
       onIncoming(payload) {
         const text = String(payload?.text ?? '');

@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {chromium} from 'playwright';
+import {createPluginHost} from '../src/plugin-host.js';
+import {startConsoleFixture} from './console-ui-fixture.mjs';
+
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'qq-diary-config-'));
+const id='ctx-memory-store',source=path.resolve('plugins/qq-components',id);
+const target=path.join(root,'plugins/qq-components',id);
+fs.mkdirSync(target,{recursive:true});
+const manifest=JSON.parse(fs.readFileSync(path.join(source,'plugin.json'),'utf8'));
+fs.writeFileSync(path.join(target,'plugin.json'),JSON.stringify({...manifest,main:'entry.mjs'}));
+fs.writeFileSync(path.join(target,'entry.mjs'),'export {createPlugin} from '+JSON.stringify(pathToFileURL(path.join(source,manifest.main)).href)+';');
+const host=createPluginHost({root,startTimers:false});
+let fixture,browser;
+try{
+  await host.loadAll();
+  fixture=await startConsoleFixture();
+  browser=await chromium.launch({headless:true,channel:'msedge'});
+  const page=await browser.newPage(),errors=[],writes=[];
+  page.setDefaultTimeout(10000);
+  page.on('pageerror',error=>errors.push(error.message));
+  await page.route('**/api/plugins/config',async route=>{
+    const body=route.request().postDataJSON();
+    if(body.id!==id)return route.continue();
+    const result=host.setConfig(id,body.config);
+    writes.push({body,result});
+    if(result.ok)fixture.componentFixtures.get(id).config=structuredClone(result.config);
+    await route.fulfill({json:result});
+  });
+  await page.goto(fixture.url+'/#setting-o-1');
+  const field=page.locator('#diaryArchiveSettings [data-config-key="diaryArchive"] input');
+  await field.waitFor();
+  const numeric=await field.getAttribute('type')==='number';
+  if(numeric)await field.fill('24000');else await field.check();
+  await page.waitForFunction(()=>[...document.querySelectorAll('#section-setting-o-1 .inline-component-settings .comp-body')].every(el=>el.dataset.loaded==='1'));
+  await page.locator('#section-setting-o-1 button.v2-save').click();
+  const message=page.locator('#section-setting-o-1 [role="status"]').last();
+  await message.filter({hasText:/补充参数已保存|部分参数未保存|保存失败/}).waitFor();
+  assert.match(await message.textContent(),/页面设置与补充参数已保存/);
+  assert.deepEqual(writes.at(-1).body.config.diaryArchive,{maxChars:24000});
+  assert.equal(await field.inputValue(),'24000','saved value must survive component readback');
+  assert.equal(numeric,true,'archive capacity uses a numeric control');
+  await field.fill('100');
+  const before=writes.length;
+  await page.locator('#section-setting-o-1 button.v2-save').click();
+  await message.filter({hasText:'超出有效范围'}).waitFor();
+  assert.equal(writes.length,before,'invalid capacity must not reach the host');
+  await field.fill('20000');
+  await page.locator('#section-setting-o-1 button.v2-save').click();
+  await message.filter({hasText:'页面设置与补充参数已保存'}).waitFor();
+  assert.equal(writes.length,before+1,'saving must remain usable after a validation error');
+  assert.deepEqual(writes.at(-1).body.config.diaryArchive,{maxChars:20000});
+  assert.equal(host.setConfig(id,{diaryArchive:false}).ok,false,'host must keep rejecting obsolete booleans');
+  assert.deepEqual(errors,[]);
+  console.log('PASS diary page save, real host object validation, readback, bounds, and zero page errors');
+}finally{
+  await browser?.close();await fixture?.close();await host.dispose();
+  assert.equal(path.dirname(root),os.tmpdir());
+  assert(path.basename(root).startsWith('qq-diary-config-'));
+  fs.rmSync(root,{recursive:true,force:true});
+}

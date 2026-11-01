@@ -256,8 +256,8 @@ test('console manages separate private and group mechanical reply lists', async 
     const post = async (body, extraHeaders = {}) => fetch(url, { method: 'POST', headers: { ...headers, ...extraHeaders, 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(async response => ({ status: response.status, data: await response.json() }));
     const initial = await get();
     assert.equal(initial.status, 200);
-    assert.ok(initial.data.privateReplies.length >= 2);
-    assert.ok(initial.data.groupReplies.length >= 2);
+    assert.ok(initial.data.privateReplies.length >= 20);
+    assert.ok(initial.data.groupReplies.length >= 20);
     assert.equal((await post({ privateReplies: [], groupReplies: ['hi'] })).status, 400);
     assert.equal((await post({ privateReplies: ['私聊词条'], groupReplies: ['群聊词条'] }, { 'x-agent-token': 'forbidden' })).status, 403);
     assert.equal((await post({ privateReplies: ['私聊词条'], groupReplies: ['群聊词条'] })).status, 200);

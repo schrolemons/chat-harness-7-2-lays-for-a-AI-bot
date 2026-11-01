@@ -1,9 +1,30 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
+
+const messageDigest=m=>createHash('sha256').update(JSON.stringify([String(m?.messageId??''),String(m?.text??m?.plain??'')])).digest('hex');
+export const messageContentComplete=m=>m?.truncated!==true&&m?.bodyComplete!==false&&!m?.unresolvedReplyIds?.length
+  // The previous store clipped unmarked bodies at exactly 200 UTF-16 units.
+  // Such legacy rows require a fresh detail read rather than guessed recovery.
+  &&(m?.bodyComplete===true||String(m?.text??m?.plain??'').length!==200);
+export function recordAdmittedMessages(envelope,messages=[]){
+  if(!envelope)return;
+  const records=envelope.admittedMessages||=new Map();
+  for(const m of messages)if(Number.isSafeInteger(m?.seq)&&m.seq>0&&!m.isSelf){
+    // A clipped window item is visible for bookkeeping, not complete enough to
+    // authorize a semantic reply. A subsequent full tool read can promote it.
+    if(messageContentComplete(m))records.set(m.seq,messageDigest(m));
+    else if(!records.has(m.seq))records.set(m.seq,null);
+  }
+  while(records.size>2000)records.delete(records.keys().next().value);
+}
+export function messageAdmitted(envelope,message){
+  return !!envelope?.admittedMessages?.get(message?.seq)&&messageContentComplete(message)
+    &&envelope.admittedMessages.get(message.seq)===messageDigest(message);
+}
 
 // Transport identity only. Policy and durable counters live in component services.
 export const outboundScope=new AsyncLocalStorage();
-export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{},clock=Date.now,sleep=ms=>new Promise(r=>setTimeout(r,ms))}) {
+export function createOutboundTransport({callService,contextFacts=()=>({}),guard=()=>()=>{},log=()=>{},clock=Date.now,sleep=ms=>new Promise(r=>setTimeout(r,ms))}) {
   const call=(s,m,p)=>callService(s,m,p);
   const chains=new Map();
   function capture({key,envelope,origin='operator',reason='operator',agent=false,conversationIntent,topicId}={}) {
@@ -12,7 +33,7 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
     const plan=envelope?.replyPlan||call('replyPlan','resolve',{key,turnId:agent?'':actionId,agent,incomingText:'',mood});
     const originReason=envelope?.reason||reason;
     const ordinary=/^(message|reply|private|question|atMention|nameMention|keyword|probability|anyMessage|speaker|poke|bootstrap)(:|$)/.test(originReason);
-    if(origin==='conversation'&&!ordinary&&!['proactiveCheck','timeBubble','startupGreeting','privateFollowup'].includes(originReason))origin='purpose';
+    if(origin==='conversation'&&!ordinary&&!['proactiveCheck','timeBubble','startupGreeting','privateFollowup','milkStock'].includes(originReason))origin='purpose';
     return Object.freeze({key,sourceKey:envelope?.key||key,envelope,actionId,plan,origin,reason:originReason,agent,mode:mood?.mode,
       conversationIntent:['reply','followup','newTopic'].includes(conversationIntent)?conversationIntent:undefined,
       topicId:typeof topicId==='string'?topicId.slice(0,120):undefined});
@@ -20,7 +41,7 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
   function reportDelivered(fact) {
     // A failed observer cannot convert a completed physical operation into a retry.
     let drive; try { drive = call('conversationDrive','sent',{...fact,at:fact.sentAt,eventId:fact.deliveryId,episodeId:fact.proactiveId,kind:fact.conversationIntent}); } catch(error) { log('outbound fact conversationDrive: '+error.message); }
-    const active = drive?.isProactive === true || ['followup','newTopic'].includes(fact.conversationIntent) || fact.originReason === 'privateFollowup';
+    const active = drive?.isProactive === true || ['followup','newTopic'].includes(fact.conversationIntent) || ['privateFollowup','timeBubble','reminder','milkStock'].includes(fact.originReason);
     for(const [service,method,payload] of [
       ['proactive','observe',{...fact,isProactive:active,at:fact.sentAt,kind:'sent',reason:fact.wakeReason,eventId:'sent:'+fact.deliveryId,episodeId:drive?.episodeId||fact.proactiveId}],
       ['mood','sent',fact],
@@ -36,9 +57,17 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
     void tail.finally(()=>{if(chains.get(key)===tail)chains.delete(key);});
     return operation;
   }
-  async function performNow({key,context,kind='text',text='',send,assertAllowed,requestedDelay,targetUserId}={}) {
+  async function performNow({key,context,kind='text',text='',send,assertAllowed,requestedDelay,targetUserId,replyToMessageId}={}) {
     const c=context||outboundScope.getStore()||capture({key});
     const operationId=randomUUID();
+    const assertContext=()=>{
+      if(!c.agent)return;
+      const checked=call('replyPlan','validateContext',{...contextFacts(c.sourceKey,c.envelope,replyToMessageId),agent:c.agent,reason:c.envelope?.reason||c.reason});
+      if(checked?.ok===false){const error=Error(checked.reason+'；'+checked.hint);error.knownFailed=true;throw error;}
+    };
+    assertContext();
+    const scheduled=c.envelope?.scheduledEvent;
+    if(scheduled&&(key!==scheduled.key||(Array.isArray(scheduled.allowedKinds)&&!scheduled.allowedKinds.includes(kind)))){const e=Error('定时事件不允许此发送目标或消息类型');e.knownFailed=true;throw e;}
     if(c.agent){const expression=call('chatExpression','validate',{key,text,kind});if(expression?.ok===false){const error=Error(expression.reason+'；'+expression.hint);error.knownFailed=true;throw error;}}
     const assertRecommendation=()=>{
       if(String(c.reason||'').split(':')[0]!=='newsShare')return;
@@ -59,6 +88,7 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
     try {
       if(reservation.waitMs>0)await sleep(reservation.waitMs);
       assertGuard();
+      assertContext();
       if(c.agent===false&&c.origin==='mechanical'&&c.reason==='budgetExceeded'&&call('tokenBudget','authorizeMechanicalSend',{key,now:clock()})?.ok!==true){const error=Error('满额固定回复已限流，不排队补发');error.knownFailed=true;throw error;}
       assertRecommendation();
       if(call('conversationDrive','authorize',{key,lease:topicLease})?.ok===false){const e=Error('话题动作已因新来信失效');e.knownFailed=true;throw e;}
@@ -72,13 +102,15 @@ export function createOutboundTransport({callService,guard=()=>()=>{},log=()=>{}
     const sentAt=clock(),gatewayMessageId=result?.data?.message_id??result?.message_id??result?.messageId;
     const deliveryId=gatewayMessageId!=null?key+':gateway:'+gatewayMessageId:key+':attempt:'+operationId;
     try{if(metered)call('replyPlan','commit',{key,operationId,sentAt,deliveryId});}catch(error){log('outbound commit: '+error.message);}
-    const conversational=['proactiveCheck','timeBubble','startupGreeting','privateFollowup'].includes(c.reason);
+    const conversational=['proactiveCheck','timeBubble','startupGreeting','privateFollowup','milkStock'].includes(c.reason);
     const ordinary=c.origin==='conversation'&&!conversational;
     const wakeReason=ordinary?'message':c.reason;
-    reportDelivered({key,sourceKey:c.sourceKey,operationId,deliveryId,gatewayMessageId,kind,text,sentAt,success:true,
+    const fact={key,sourceKey:c.sourceKey,operationId,deliveryId,gatewayMessageId,kind,text,sentAt,success:true,
       origin:c.origin,originReason:c.reason,wakeReason,proactiveId:c.actionId,episodeId:c.actionId,
-      expectsReply:conversational&&c.origin!=='operator',targetUserId:targetUserId ?? c.targetUserId ?? c.envelope?.targetUserId,
-      mode:c.mode,topicLease,conversationIntent:topicLease?.kind||c.conversationIntent,topicId:topicLease?.topicId||c.topicId,recommendationPlanId:c.envelope?.biliPlanId});
+      expectsReply:conversational&&c.reason!=='milkStock'&&c.origin!=='operator',targetUserId:targetUserId ?? c.targetUserId ?? c.envelope?.targetUserId,
+      mode:c.mode,topicLease,conversationIntent:topicLease?.kind||c.conversationIntent,topicId:topicLease?.topicId||c.topicId,recommendationPlanId:c.envelope?.biliPlanId};
+    reportDelivered(fact);
+    try{c.envelope?.scheduledEvent?.onDelivered?.(fact);}catch(error){log('scheduled delivery receipt: '+error.message);}
     return result;
   }
   return {capture,perform,reportDelivered};

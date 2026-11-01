@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readBridgeHealth } from '../plugins/qq-components/obs-bridge-health/health.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv;
@@ -87,16 +88,10 @@ for (const l of toolSendLines) {
 }
 const toolFailLines = bridgeLines.filter((l) => /发送失败|工具.*失败|工具未启用|拒绝执行|403|权限不足/.test(l));
 const contextResets = bridgeLines.filter((l) => /退役会话|新会话|上下文|恢复进行中的回合|compact/i.test(l)).length;
-const envChecks = [];
-async function probe(url, name) {
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(1500) });
-    envChecks.push({ name, ok: r.status < 500, status: r.status });
-  } catch { envChecks.push({ name, ok: false, status: 0 }); }
-}
-await probe('http://127.0.0.1:9222/json/version', 'Edge(9222)');
-await probe('http://127.0.0.1:3000/get_login_info', 'SnowLuma(3000)');
-await probe('http://127.0.0.1:3100/api/status', '桥接控制台(3100)');
+let bridgeHealth;
+try { bridgeHealth = await readBridgeHealth({ root: ROOT }); }
+catch { bridgeHealth = { observedAt: new Date().toISOString(), verdict: 'unknown', healthy: false, needsRestart: false, reason: '本地健康检查未完成；整链状态待管理端核实。' }; }
+const envChecks = [{ name: '桥接整链', ok: bridgeHealth.healthy === true, verdict: bridgeHealth.verdict }];
 let taskChecks = [];
 try {
   const out = execSync('schtasks /Query /TN "CampusWatch30m" /FO LIST', { encoding: 'utf8', timeout: 5000 });
@@ -121,7 +116,7 @@ if (complaintHits.length) {
 }
 if (errors.length) suggestions.push('处理 bridge.log 里最近的错误/异常（见下方样本）');
 if (toolTotal > 0 && toolOk < toolTotal) suggestions.push('工具发送有失败：' + (toolTotal - toolOk) + '/' + toolTotal + '，检查 QQ 发送/白名单/敏感信息拦截');
-if (envChecks.some((e) => !e.ok)) suggestions.push('环境探活异常：' + envChecks.filter((e) => !e.ok).map((e) => e.name).join('、'));
+if (!bridgeHealth.healthy) suggestions.push('桥接健康检查：' + bridgeHealth.verdict + '；' + bridgeHealth.reason);
 if (taskChecks.some((t) => t.status === 'missing' || t.status === 'Disabled')) suggestions.push('计划任务未就绪：' + taskChecks.filter((t) => t.status === 'missing' || t.status === 'Disabled').map((t) => t.name).join('、'));
 if (fastLogAgeMin > 5) suggestions.push('讲座快检超过 ' + fastLogAgeMin + ' 分钟没跑，检查计划任务/隐藏启动');
 if (bridgeLogMB > 20) suggestions.push('bridge.log 已 ' + bridgeLogMB + 'MB，考虑轮转');
@@ -140,7 +135,7 @@ if (topKeys.length) lines.push(`- 会话分布：${topKeys.slice(0, 6).map(([k, 
 lines.push(`- 运行异常：${errors.length} 条，桥接重启 ${restarts} 次，断线重连 ${reconnects} 次，繁忙排队 ${busyQueued} 次，跳过补发 ${skippedWake} 次`);
 lines.push('- 工具调用：发送 ' + toolOk + '/' + toolTotal + ' 成功，失败/拒绝样本 ' + toolFailLines.length + ' 条');
 lines.push('- 上下文：会话重置/切换相关事件 ' + contextResets + ' 次');
-lines.push('- 环境：' + envChecks.map((e) => e.name + (e.ok ? ' OK' : ' 异常(' + e.status + ')')).join('；'));
+lines.push('- 【扫描健康摘要】' + JSON.stringify(bridgeHealth));
 lines.push('- 计划任务：' + taskChecks.map((t) => t.name + ' ' + t.status).join('；') + '；快检日志 ' + (fastLogAgeMin < 0 ? '缺失' : fastLogAgeMin + ' 分钟前') + '；bridge.log ' + bridgeLogMB + 'MB');
 if (toolFailLines.length) {
   lines.push('');
@@ -176,6 +171,7 @@ console.log(JSON.stringify({
   toolStats: { ok: toolOk, total: toolTotal, failSamples: toolFailLines.length },
   contextResets,
   envChecks,
+  bridgeHealth,
   taskChecks,
   suggestions,
   summary: section

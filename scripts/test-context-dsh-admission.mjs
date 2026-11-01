@@ -22,7 +22,7 @@ try{
  let reconstructed=0;
  ctx.on('llm/stream',(request,next)=>{if(request.sessionId===agent.id){assert.deepEqual(Session.create(agent.id,agent.session.snapshotEvents()).deriveMessages(),request.messages,'dispatch-time durable replay equals frozen model request');reconstructed++;}return next();});
  for(let i=1;i<=3;i++){
-  const body={version:1,sessionId:agent.session.id,key:'private:21001',scene:'timeBubble',nonce:'n'+i,issuedAt:Date.now(),modules:[{id:'role-card',text:'固定双形态设定，一份保留。'},{id:'session-background',text:'特别背景，一份保留。'},{id:'ctx-user-mood',text:'本轮心情 '+i},{id:'wake-action',text:'第 '+i+' 次主动开口'},{id:'message-snapshot',text:JSON.stringify({messages:[{seq:1,text:'不应重复的真实用户消息'}],recent:[],unreadCount:0})}]};
+  const body={version:1,sessionId:agent.session.id,key:'private:10001',scene:'timeBubble',nonce:'n'+i,issuedAt:Date.now(),modules:[{id:'role-card',text:'固定双形态设定，一份保留。'},{id:'session-background',text:'特别背景，一份保留。'},{id:'ctx-user-mood',text:'本轮心情 '+i},{id:'wake-action',text:'第 '+i+' 次主动开口'},{id:'message-snapshot',text:JSON.stringify({messages:[{seq:1,text:'不应重复的真实用户消息'}],recent:[],unreadCount:0})}]};
   agent.followup(createUserMessage({content:[{type:'text',text:encodePacket(body,secretFor(root))}],source:{kind:'user'}}));await agent.whenIdle();
   assert.equal(adapter.requests.length,i,'each round reaches scripted provider once');
   assertReleasedV4Relationships({header:agent.session.header,events:agent.session.snapshotEvents(),inheritedEventCount:0},KNOWN_SESSION_EVENT_TYPES);

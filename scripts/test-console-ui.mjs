@@ -156,7 +156,7 @@ try {
       assert(visiblePages.length > 0, `${view} has no visible content`);
       assert(visiblePages.every(x => x === view), `${view} exposes another page: ${visiblePages.join(', ')}`);
     }
-    const drafts = { wlGroups: '100001, 100002', roleInput: '未保存的角色', v2MemoryKey: 'private:21001', sKeywords: '未保存关键词', slangMeaning: '未保存的含义', tsMsg: '未发送的测试消息' };
+    const drafts = { wlGroups: '100001, 100002', roleInput: '未保存的角色', v2MemoryKey: 'private:10001', sKeywords: '未保存关键词', slangMeaning: '未保存的含义', tsMsg: '未发送的测试消息' };
     for (const [id, value] of Object.entries(drafts)) await fill(id, value);
     await navigate('overview');
     await page.waitForTimeout(3300); // Exercise the real 3-second status polling interval.
@@ -186,7 +186,7 @@ try {
 
   await test('Daily diary catch-up excludes today, shows one send timestamp and disables after delivery', async () => {
     await page.locator('#v2DdRefresh').click();
-    const card = page.locator('.diary-session-card').filter({ hasText: 'private:21001' }).first();
+    const card = page.locator('.diary-session-card').filter({ hasText: 'private:10001' }).first();
     await card.waitFor();
     const detail = await card.locator('.diary-session-detail').innerText();
     assert.match(detail, /最近确认发送：/);
@@ -195,16 +195,16 @@ try {
     assert.equal(await card.locator('[data-dd-action="sendNow"]').isDisabled(), false, 'manual resend should remain available after a prior same-day send');
     const catchUp = card.locator('[data-dd-action="catchUpAll"]');
     assert.equal(await catchUp.isDisabled(), false, 'yesterday archive should be eligible');
-    const otherUserCard = page.locator('.diary-session-card').filter({ hasText: 'private:21010' }).first();
+    const otherUserCard = page.locator('.diary-session-card').filter({ hasText: 'private:10001' }).first();
     assert.equal(await otherUserCard.locator('[data-dd-action="catchUpAll"]').isDisabled(), false, 'another user with backlog has an independent catch-up action');
     await catchUp.click();
     await page.waitForFunction(() => document.getElementById('v2DdMsg')?.textContent.includes('补发完成'));
-    await page.waitForFunction(() => document.querySelector('.diary-session-card [data-dd-key="private%3A21001"][data-dd-action="catchUpAll"]')?.disabled === true);
+    await page.waitForFunction(() => document.querySelector('.diary-session-card [data-dd-key="private%3A100001"][data-dd-action="catchUpAll"]')?.disabled === true);
     assert.equal(await card.locator('[data-dd-action="catchUpAll"]').isDisabled(), true, 'the selected user disables after their backlog is sent');
     assert.equal(await otherUserCard.locator('[data-dd-action="catchUpAll"]').isDisabled(), false, 'another user with backlog remains independently available');
     assert.equal(await page.locator('#v2DdCatchUp').isDisabled(), false, 'global catch-up remains available while another user has backlog');
-    assert.equal(fixture.state.diaryCatchUpSent['private:21001'], true, 'catch-up should reach the offline service for the selected user');
-    assert.equal(fixture.state.diaryCatchUpSent['private:21010'], false, 'the other user must not be changed by the selected user catch-up');
+    assert.equal(fixture.state.diaryCatchUpSent['private:10001'], true, 'catch-up should reach the offline service for the selected user');
+    assert.equal(fixture.state.diaryCatchUpSent['private:10001'], false, 'the other user must not be changed by the selected user catch-up');
     const otherCatchUp = otherUserCard.locator('[data-dd-action="catchUpAll"]');
     await page.locator('#v2DdMsg').evaluate(el => { el.textContent = ''; });
     const [otherResponse] = await Promise.all([
@@ -215,7 +215,7 @@ try {
     await page.waitForFunction(() => document.getElementById('v2DdMsg')?.textContent.includes('补发完成'));
     await page.waitForFunction(() => document.querySelectorAll('.diary-session-card [data-dd-action="catchUpAll"]:disabled').length === 2);
     assert.equal(await page.locator('#v2DdCatchUp').isDisabled(), true, 'global catch-up disables only after every user is caught up');
-    assert.equal(fixture.state.diaryCatchUpSent['private:21010'], true, 'the second user can be caught up independently');
+    assert.equal(fixture.state.diaryCatchUpSent['private:10001'], true, 'the second user can be caught up independently');
   });
 
   await test('Opening daily diary history automatically loads dates and the newest preview', async () => {
@@ -231,7 +231,7 @@ try {
   });
 
   await test('Quiet-time plans load automatically without pressing refresh', async () => {
-    await page.waitForFunction(() => document.getElementById('availabilityRoot')?.textContent.includes('private:21001'));
+    await page.waitForFunction(() => document.getElementById('availabilityRoot')?.textContent.includes('private:10001'));
     assert.match(await page.locator('#availabilityStatus').innerText(), /1 条计划/);
   });
 
@@ -333,13 +333,13 @@ try {
   await test('First-generation social parameter and phase contracts', async () => {
     await fill('sTrigger', 0.35);
     await fill('sCheckMin', 12);
-    await fill('sKeywords', '鲸鱼，测试');
+    await fill('sKeywords', '助手，测试');
     const body = await clickWrite('#socialSave', '/api/social');
     assert.equal(body.triggerProbability, 0.35);
     assert.equal(body.activeCheckMinMs, 12000);
-    assert.deepEqual(body.mustReplyKeywords, ['鲸鱼', '测试']);
-    await (await reveal('#sStateKey')).selectOption('group:21008');
-    assert.deepEqual(await clickWrite('#sStateIdle', '/api/social/state'), { key: 'group:21008', phase: 'idle' });
+    assert.deepEqual(body.mustReplyKeywords, ['助手', '测试']);
+    await (await reveal('#sStateKey')).selectOption('group:40001');
+    assert.deepEqual(await clickWrite('#sStateIdle', '/api/social/state'), { key: 'group:40001', phase: 'idle' });
     assert.deepEqual(await clickWrite('#socialFlush', '/api/social/flush'), {});
   });
 
@@ -370,9 +370,9 @@ try {
     await fill('tsMsg', '离线测试，不会发往 QQ。');
     assert.deepEqual(await clickWrite('#tsSend', '/api/test-send'), { kind: 'group', id: '123456789', message: '离线测试，不会发往 QQ。' });
     await (await reveal('#aiNotifyKind')).selectOption('private');
-    await fill('aiNotifyId', '21001');
+    await fill('aiNotifyId', '100001');
     await fill('aiNotifyMessage', '离线提醒，不会发往 DSH。');
-    assert.deepEqual(await clickWrite('#aiNotifySend', '/api/console/notify-ai'), { key: 'private:21001', message: '离线提醒，不会发往 DSH。' });
+    assert.deepEqual(await clickWrite('#aiNotifySend', '/api/console/notify-ai'), { key: 'private:10001', message: '离线提醒，不会发往 DSH。' });
   });
 
   // Each mutation is asserted at its owning API boundary above; obsolete whole-run baseline removed.
@@ -390,14 +390,14 @@ try {
 
     // 按会话（群 / 私聊 / 内部）明细
     const conversations = await page.textContent('#usageConversations');
-    assert.match(conversations, /group:21008/, '按会话表应列出群会话');
-    assert.match(conversations, /private:21001/, '按会话表应列出私聊会话');
+    assert.match(conversations, /group:40001/, '按会话表应列出群会话');
+    assert.match(conversations, /private:10001/, '按会话表应列出私聊会话');
     assert.match(conversations, /internal:黑话学习/, '按会话表应列出内部（黑话学习）用量');
     assert.match(conversations, /¥/, '按会话表应显示花费列');
     assert.match(conversations, /未命中输入/, '按会话表应拆分缓存命中 / 未命中');
 
     // 下钻逐轮：点会话行 → 加载该会话的逐轮花费
-    await page.click('#usageConversations [data-usage-key="group:21008"]');
+    await page.click('#usageConversations [data-usage-key="group:40001"]');
     await page.waitForFunction(() => /#\d+/.test(document.getElementById('usageTurns')?.textContent || ''));
     const turns = await page.textContent('#usageTurns');
     assert.match(turns, /#42/, '逐轮明细应显示轮次编号');
@@ -406,19 +406,19 @@ try {
     assert.match(turns, /¥/, '逐轮明细应显示每轮花费');
 
     // 会话下拉与逐轮表同步
-    assert.equal(await page.inputValue('#usageKeySelect'), 'group:21008', '下拉框应跟随选中的会话');
+    assert.equal(await page.inputValue('#usageKeySelect'), 'group:40001', '下拉框应跟随选中的会话');
 
     // 实时流水与价目表
-    assert.match(await page.textContent('#usageRecent'), /group:21008|private:21001/, '最近流水应列出采样');
+    assert.match(await page.textContent('#usageRecent'), /group:40001|private:10001/, '最近流水应列出采样');
     assert.match(await page.textContent('#usagePrices'), /deepseek-flash/, '价目表应列出模型单价');
   });
 
   await test('Token budget controls save per-conversation and global caps', async () => {
     await navigate('usage');
-    await page.waitForSelector('#usageBudgets [data-budget-key="group:21008"]');
+    await page.waitForSelector('#usageBudgets [data-budget-key="group:40001"]');
     await page.locator('#usageGlobalLimit').fill('2.5');
     await page.locator('#usageGlobalSave').click();
-    const row = page.locator('#usageBudgets [data-budget-key="group:21008"]');
+    const row = page.locator('#usageBudgets [data-budget-key="group:40001"]');
     await row.locator('input').nth(0).fill('0.5');
     await row.locator('input').nth(1).fill('1.25');
     await row.locator('input').nth(2).fill('45');
@@ -427,7 +427,7 @@ try {
     assert.equal(await page.inputValue('#usageGlobalLimit'), '2.5');
     assert.equal(await row.locator('input').nth(0).inputValue(), '0.5');
     assert(fixture.requests.some((request) => request.path === '/api/tokens/budgets/global' && request.body.globalHardLimitYuan === 2.5));
-    assert(fixture.requests.some((request) => request.path === '/api/tokens/budgets' && request.body.key === 'group:21008' && request.body.hardLimitYuan === 1.25));
+    assert(fixture.requests.some((request) => request.path === '/api/tokens/budgets' && request.body.key === 'group:40001' && request.body.hardLimitYuan === 1.25));
   });
 
   await test('Token usage trend chart renders bars, tiers and range/metric switching', async () => {

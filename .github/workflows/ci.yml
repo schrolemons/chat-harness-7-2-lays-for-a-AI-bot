@@ -13,4 +13,7 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm test
+      - run: npm run lint:console
+      - run: npm run build:bundle -- --check
+      - run: node scripts/build-agent-preset-patches.mjs --check
       - run: npm run privacy:check

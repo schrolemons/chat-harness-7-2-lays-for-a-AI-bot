@@ -1,13 +1,28 @@
 <section id="section-layer-s" data-page="layer-s" class="card span-all">
   <h2>私人资料目录与管理</h2>
-  <p class="meta">连接本机的标准资料包。AI 先看目录，再按需要读原文；资料名称、作者、触发规则均由挂载的资料包声明。</p>
+  <p class="meta">挂载本机资料包，AI 按需查目录、读卡片。</p>
   <div class="tool-reference-list"><div class="tool-reference-item"><code>core_status</code><span>查看当前资料包是否可用、作者与规模</span></div><div class="tool-reference-item"><code>core_topics</code><span>浏览主题目录、出处与适用情境</span></div><div class="tool-reference-item"><code>core_read</code><span>按主题 ID 读取卡片；按 @guide 读取作者导读</span></div></div>
   <div class="row" style="gap:8px;margin:12px 0"><button id="sLayerRefresh" class="small">刷新挂载信息</button></div>
   <div id="sLayerRoot"></div>
   <details class="settings-group core-preparation-guide"><summary>为自己的文档准备资料包</summary><div class="settings-content">
-    <ol><li>保留原稿，在独立目录中准备 <code>manifest.json</code>、<code>catalog.json</code>、<code>topics/</code> 与 <code>sources/</code>。</li><li>让 AI 按 <code>docs/personal-core/说明.md</code> 整理；原文片段、整理者解释和未核实内容分别标明，不按固定字数硬切。</li><li>用离线命令校验，通过后在上方填写目录并保存挂载。原稿变更后重新整理受影响卡片，校验后再挂载新版本。</li></ol>
-    <p class="meta">虚构示例：<code>examples/personal-core/minimal</code>。该示例没有任何真实私人材料。</p>
-    <pre>node scripts/personal-core.mjs validate "你的资料包目录"</pre>
-    <p class="meta">日常聊天不自动加载整库。资料是作者观点与引用材料，不覆盖角色、心情、系统规则或工具权限。</p>
+    <p>以项目目录 <code>D:\qq-bridge</code> 为例：把原稿放入 <code>originals</code>，其余交给 AI 建立。</p>
+    <pre class="core-package-tree" aria-label="资料包目录结构">D:\qq-bridge\private-libraries\my-core\  ← 挂载此目录
+├─ sources\
+│  ├─ originals\     你放入的原稿
+│  └─ converted\     AI 转换的文本
+├─ topics\           AI 整理的主题卡片（含出处）
+├─ manifest.json     资料包信息
+├─ catalog.json      主题索引
+└─ GUIDE.md          可选：资料阅读导读</pre>
+    <p class="meta">AI 校验通过后，将树中的根目录填入上方并保存。示例中的项目目录和包名请换成实际值。</p>
+    <details class="core-developer-reference"><summary>AI 整理要求与开发参考</summary><div class="settings-content">
+      <p class="meta">可将以下要求交给 AI：</p>
+      <pre>请阅读 D:\qq-bridge\docs\personal-core\README.md。
+将 D:\qq-bridge\private-libraries\my-core\sources\originals 中的原稿整理为资料包，保存于 D:\qq-bridge\private-libraries\my-core。
+保留原稿，区分原文、解读与未核实内容，记录出处；按规范完成索引与校验，返回挂载路径和结果。</pre>
+      <p class="meta"><code>README.md</code> 是项目自带的建包规范；<code>GUIDE.md</code> 是 AI 可选生成的资料导读。</p>
+      <pre>node "D:\qq-bridge\scripts\personal-core.mjs" validate "D:\qq-bridge\private-libraries\my-core"</pre>
+      <p class="meta">项目相对路径从项目目录解析。资料按需读取，不覆盖人设与权限。</p>
+    </div></details>
   </div></details>
 </section>

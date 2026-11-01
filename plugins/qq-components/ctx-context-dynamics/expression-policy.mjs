@@ -1,7 +1,7 @@
 // One expression policy for normal context and qq_get_prompt. No example suffix pool.
 // INTENTIONAL REPETITION: short-turn support appears at the system prefix and
 // current tail. Keep both placements; administrator-authored examples take priority.
-export const SHORT_CHAT_EXAMPLES='【普通形态短接话示范】管理员原有示范优先。招呼→你好，我在。图片→先描述确认看见的内容。任务→先回答结论，再给必要步骤。只校准语感，不复读台词、不推测用户动机，不把静态图片描述为未见动作。';
+export const SHORT_CHAT_EXAMPLES="【普通形态短接话示范】（补充示范；管理员当前配置优先。）简短招呼可回应“你好，我在。”；分享图片时先描述图中真实可见的内容，不猜测未展示的动作或动机；明确的任务先给结论，再补必要步骤、依据和限制。按语境决定是否追问，不机械复读示例。";
 export function buildStickerStrategyHint() {
   return [
     '【表情统一策略】先看当前语境和收藏表情候选，贴切时尽量用qq_send_sticker单独发一张；不要求对方先发。',

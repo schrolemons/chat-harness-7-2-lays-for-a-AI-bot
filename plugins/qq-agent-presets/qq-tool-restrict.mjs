@@ -1,3 +1,4 @@
+import { isAdminToolName } from '../../src/tools/admin-policy.js';
 // QQ 桥接安全硬边界：只允许 QQ MCP 工具与少量无害模型侧工具。
 //
 import fs from 'node:fs'
@@ -346,6 +347,7 @@ export function apply(ctx) {
     if (typeof name !== 'string' || name.length === 0) return '工具名无效，已拒绝'
     // 浏览器工具只属于管理员开发会话（qq-chat-dev 没有本守卫）。
     if (name.startsWith('mcp__playwright__')) return '浏览器工具仅管理员开发会话可用，已拒绝'
+    if (isAdminToolName(name)) return '管理工具不在 QQ 桥接白名单内，仅管理员环境可用';
     if (SAFE_EXACT.has(name)) return
     if (SAFE_PREFIXES.some((prefix) => name.startsWith(prefix))) return
     return `工具 "${name}" 不在 QQ 桥接白名单内，已拒绝（仅允许 QQ MCP 工具与无害模型侧工具）`

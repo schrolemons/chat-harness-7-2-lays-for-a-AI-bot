@@ -14,20 +14,8 @@ if (original.includes(begin)) {
   if (finish < 0) throw Error('Incomplete summary configuration block');
   next = original.slice(0, start) + begin + '\n' + source + end + original.slice(finish + end.length);
 } else {
-  // setup-dsh serializes YAML and can remove marker comments. Identify the
-  // managed row structurally so a second complete installation stays idempotent.
-  const doc = yaml.load(original) || [];
-  const desired = yaml.load(source)[0].insert[0];
-  let found = false;
-  for (const operation of doc) if (Array.isArray(operation.insert)) {
-    operation.insert = operation.insert.map(entry => {
-      if (entry.id !== desired.id) return entry;
-      if (entry.name !== desired.name || entry.config?.id !== desired.config.id) throw Error('Conflicting summary preset entry');
-      found = true;
-      return desired;
-    });
-  }
-  next = found ? yaml.dump(doc, {lineWidth:-1}) : original.trimEnd() + '\n\n' + begin + '\n' + source + end + '\n';
+  if (original.includes('preset-campus-summary')) throw Error('Existing summary preset outside managed block');
+  next = original.trimEnd() + '\n\n' + begin + '\n' + source + end + '\n';
 }
 yaml.load(next);
 if (next !== original) {

@@ -39,7 +39,7 @@ test('service captures opening stage and caches its one lottery across reset and
 
 test('directed question matching uses configured names, @ facts and directed phrasing, not a hardcoded old persona',()=>{
  const decide=text=>model.evaluateGroupIncoming({key:'group:1',p:0,policy:{...policy,groupNameBonus:0,groupQuestionBonus:.8},event:{text},random:()=>.1});
- assert.equal(decide('AI助手午饭吃了吗？').extraProbability,.8);assert.equal(decide('你能解释一下吗').extraProbability,.8);assert.equal(decide('小明午饭吃了吗？').extraProbability,0);assert.equal(decide('通用助手吃了吗？').extraProbability,0);
+ assert.equal(decide('AI助手午饭吃了吗？').extraProbability,.8);assert.equal(decide('你能解释一下吗').extraProbability,.8);assert.equal(decide('小明午饭吃了吗？').extraProbability,0);assert.equal(decide('AI助手吃了吗？').extraProbability,0);
 });
 
 test('bounded incoming audit retains most recent events even when numeric message IDs are out of order',()=>{

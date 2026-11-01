@@ -1,7 +1,8 @@
 import {api,esc} from '../../shared/api.js';
 import {registerPageLoader} from '../../shared/page-loaders.js';
 const time = value => value ? new Date(value).toLocaleString('zh-CN',{hour12:false}) : '—';
-const sources = {default:'默认值（尚无 AI 评估）',ai:'AI 评估',activity:'旧活动评分（待重新评估）',purpose:'旧发送评分（待重新评估）'};
+const sources = {default:'默认值（尚无 AI 评估）',ai:'AI 评估','sleep-expired':'旧睡眠评估已到期',activity:'旧活动评分（待重新评估）',purpose:'旧发送评分（待重新评估）'};
+const reviews={'sleep-end-unconfirmed':'起床边界未确认，待模型复核','sleep-evidence-expired':'旧睡眠依据已到期，待模型复核','current-quiet-plan':'当前仍有免打扰约定','confirmed-working-window':'当前处于已确认工作时段','sleep-period-active':'仍在本次睡眠有效期内'};
 async function refreshProactivePreview() {
   const root=document.getElementById('proactivePreview');
   try {
@@ -17,6 +18,7 @@ async function refreshProactivePreview() {
         + '<dt>静默主动阶段</dt><dd>'+esc(p.stage??'—')+'</dd><dt>无人来信时的主动概率</dt><dd>'+esc(p.effectiveProbability==null?'—':(p.effectiveProbability*100).toFixed(1)+'%')+'</dd>'
         + '<dt>聊天意愿（用户忙闲）</dt><dd>'+esc(p.willingness??'—')+' / 100 · '+esc(sources[p.source]||p.source||'未知来源')+'</dd>'
         + '<dt>上次 AI 评估</dt><dd>'+esc(p.lastAI ? p.lastAI.value+' · '+p.lastAI.reason+' · '+time(p.lastAI.at) : '尚无 AI 评估')+'</dd>'
+        + (p.review?'<dt>评估有效性</dt><dd>'+esc(reviews[p.review.reason]||'待复核')+(p.review.boundary?' · '+esc(time(p.review.boundary)):'')+'</dd>':'')
         + '<dt>实际检验区间</dt><dd>'+esc(interval ? interval.minMinutes+'–'+interval.maxMinutes+' 分钟' : '—')+'</dd>'
         + '<dt>下次判定</dt><dd>'+esc(time(p.nextAt))+'</dd><dt>阻断 / 暂停</dt><dd>'+esc(p.blockedReason || (row.paused ? '已暂停' : '无'))+'</dd>'
         + '<dt>当前状态</dt><dd>'+esc([p.phase,p.intent,p.lastFinishedReason].filter(Boolean).join(' · ')||'—')+'</dd></dl></div>';

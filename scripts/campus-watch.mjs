@@ -27,7 +27,12 @@ import { enrollmentChange, dispatchOwnerChanges } from './ustc-notifications.mjs
 import { reportScriptHeartbeat } from './script-heartbeat.mjs';
 import { extractPageSnapshot, buildWebChange, stageWebChanges, prepareWebNotifications } from '../plugins/qq-components/life-campus-watch/web-changes.mjs';
 import { generateWebSummary } from '../plugins/qq-components/life-campus-watch/summarizer.mjs';
-import { acquireLease, leaseActive, classifySnapshot, ensureSessionBrowser, restoreCookies, saveCookies } from './campus-browser-session.mjs';
+import { acquireLease, leaseActive, classifyNavigation, ensureSessionBrowser } from './campus-browser-session.mjs';
+import {createLoginRecovery,loginOrigin} from '../plugins/qq-components/life-campus-watch/login-recovery.mjs';
+import {createSiteSessions} from './campus-site-sessions.mjs';
+import {syncLectureCookies} from './campus-lecture-cookies.mjs';
+import {flushLoginNotices} from './campus-login-notifications.mjs';
+import {isMonitorBrowser} from './campus-browser-ownership.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG = JSON.parse(fs.readFileSync(path.join(ROOT, 'campus-watch.json'), 'utf8'));
@@ -46,6 +51,25 @@ const LOG_FILE = path.join(ROOT, 'state', 'campus-watch.log');
 const PORT = Number(CONFIG.debugPort) || 9222;
 const PROFILE = path.join(ROOT, 'state', 'campus-profile');
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+let siteSessions;
+const loginRecovery=createLoginRecovery(ROOT,{config:WATCH_PLUGIN_CONFIG});
+function requestLoginWindow(targets){
+  const active=targets.filter(target=>loginRecovery.get(target.url).phase==='waiting');
+  if(!active.length||leaseActive(path.join(ROOT,'state','login-window.lock'))||!loginRecovery.claimWindow())return false;
+  fs.writeFileSync(path.join(ROOT,'state','campus-login-request.json'),JSON.stringify({at:Date.now(),targets:active},null,2));
+  const child=spawn(process.execPath,[path.join(ROOT,'scripts','login-window.mjs')],{cwd:ROOT,detached:true,stdio:'ignore',windowsHide:true});child.unref();return true;
+}
+async function loginFailed(target,health={}){
+  const recovery=loginRecovery.fail(target);
+  Object.assign(health,{auth:'red',hint:recovery.phase==='paused'?'已达到登录尝试上限，等待手动重新监管':'需要登录，已请求QQ提醒'});
+  await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});
+  if(recovery.phase==='waiting')requestLoginWindow([target]);
+}
+function skipLoginSite(url,health){
+  if(loginRecovery.canCheck(url))return false;
+  const recovery=loginRecovery.get(url);Object.assign(health,{auth:'red',hint:recovery.phase==='paused'?'已暂停此网站监管，点击重新监管恢复':'等待登录，下次尝试前不重复访问'});return true;
+}
+async function loginReady(url){const entry=loginRecovery.get(url);if(['waiting','needed','error'].includes(entry.phase)){loginRecovery.recovered(url,entry.generation);await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});}}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Navigation has a per-page timeout; stages are awaited to completion. Racing a
@@ -95,8 +119,14 @@ async function ensureBrowser() {
   const { browser } = await ensureSessionBrowser({
     connect: async () => { try { return await puppeteer.connect({ browserURL: `http://127.0.0.1:${PORT}`, defaultViewport: null }); } catch { return null; } },
     launch: launchBrowser,
-    restore: browser => restoreCookies(browser, path.join(ROOT, 'state', 'campus-cookies.json'))
+    restore: undefined
   });
+  if(!(await browser.userAgent()).includes('Headless')){
+    if(!isMonitorBrowser(browser,{profile:PROFILE,port:PORT})){await browser.disconnect();throw Error('调试端口不是可确认的监控专用浏览器，未操作日常浏览器');}
+    await browser.close();
+    for(let n=0;n<40;n++){try{const old=await puppeteer.connect({browserURL:`http://127.0.0.1:${PORT}`});await old.disconnect();}catch{return launchBrowser();}await sleep(500);}
+    throw Error('监控专用浏览器尚未退出');
+  }
   return browser;
 }
 
@@ -127,14 +157,15 @@ function looksLoadFailed(text) {
 }
 
 async function fetchPage(page, url, { waitMs = 2500 } = {}) {
-  await page.goto(url, { waitUntil: 'networkidle2', timeout: 25000 }).catch(() => {});
+  let navigationSucceeded=true,response;
+  try{response=await page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});}catch{navigationSucceeded=false;}
   await sleep(waitMs);
   const r = await page.evaluate(extractPageSnapshot).catch(() => ({ url, title: '', text: '', lines: [], links: [] }));
   // goto 失败/被重定向到别的站点时 location.href 会落到别的 host：此刻抓的是上一页旧内容，
   // 绝不能当成本页结果去比对基线（否则会把收藏夹/门户页误判成「内容更新」重复通知）。
   let hostOk = false;
   try { hostOk = new URL(String(r.url || '')).host === new URL(String(url || '')).host; } catch {}
-  const status = classifySnapshot(r, url);
+  const status = classifyNavigation(r,url,{navigationSucceeded,httpStatus:response?.status()||200});
   if (!hostOk || status !== 'ready') return { url: r.url, title: r.title, text: '', lines: [], links: [], status };
   return { ...r, status };
 }
@@ -143,21 +174,27 @@ async function checkBlackboard(page, state, changes) {
   state.monitorHealth ||= {};
   for (const course of CONFIG.bbCourses || []) {
     for (const p of course.pages || []) {
-      const url = `https://portal.example.invalid/webapps/blackboard/content/listContent.jsp?course_id=${course.courseId}&content_id=${p.contentId}&mode=reset`;
+      const url = `https://example.invalid/webapps/blackboard/content/listContent.jsp?course_id=${course.courseId}&content_id=${p.contentId}&mode=reset`;
+      if(RETRY_URL&&url!==RETRY_URL)continue;
       const health = state.monitorHealth[url] ||= {};
+      if(skipLoginSite(url,health))continue;
       health.checkedAt = Date.now();
+      const page=await siteSessions.page(url);
       const r = await fetchPage(page, url, { waitMs: 2000 }).catch(() => null);
       if (r?.status === 'login') {
         Object.assign(health, { fetch: 'green', auth: 'red', diff: 'unknown', delivery: 'unknown', hint: '需要登录' });
         changes.push({ kind: 'login', url, name: course.name + '·' + p.label, msg: 'Blackboard 需要重新登录' });
+        await loginFailed({url,name:course.name+'·'+p.label},health);
         continue;
       }
       if (!r || looksLoadFailed(r.text) || !String(r.text || '').trim()) {
         Object.assign(health, { fetch: 'red', auth: 'unknown', diff: 'unknown', delivery: 'unknown', hint: '页面无法读取，请检查网络或登录状态' });
+        loginRecovery.checkFailed({url,name:course.name+'·'+p.label},health.hint);await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});
         logLine(`【${course.name}·${p.label}】页面加载失败/为空，跳过本轮（站点或网络问题，不改基线）`);
         continue;
       }
       Object.assign(health, { fetch: 'green', auth: 'green', hint: '页面可读取' });
+      await loginReady(url);
       const content = r.text.slice(0, 20000);
       const items = r.links.filter(l => /bbcswebdav|assignment|listContent/.test(l.h) && l.t)
         .map(l => l.t).filter(t => !/^(课程主页|课程通知|课程资源|讨论版|作业区|Classin课堂|工具)$/.test(t));
@@ -188,14 +225,14 @@ const GRAB_PY = fs.existsSync(path.join(GRAB_DIR, 'venv', 'Scripts', 'python.exe
 // 为什么需要：Python 用的是导出快照，久了 _WEU/GS_SESSIONID 会过期，直连 API 就 403。
 // 每次跑抢课前先刷新一遍，复用浏览器里还活着、且已经「进过学术报告选课应用」的会话。
 async function refreshCookieJar(page) {
-  const jar = path.join(ROOT, 'state', 'campus-cookies.json');
+  const jar = path.join(ROOT, 'state', 'campus-lecture-cookies.json');
   try {
     // 关键：先「进一次学术报告选课应用」把应用会话初始化、并验证查询返回 200，再导出 cookie；
     // 只导裸 cookie 不带应用初始化，Python 直连接口照样 403。
-    const cookies = await prepareReportSession(page.browser());
+    const cookies = await prepareReportSession(page.browserContext());
     if (Array.isArray(cookies) && cookies.length) {
       fs.writeFileSync(jar, JSON.stringify(cookies, null, 2), 'utf8');
-      const yjs = cookies.filter((c) => c.domain === 'portal.example.invalid').length;
+      const yjs = cookies.filter((c) => c.domain === 'yjs1.ustc.edu.cn').length;
       logLine('已刷新抢课 cookie（应用会话已初始化）：共 ' + cookies.length + ' 条，yjs1 域 ' + yjs + ' 条');
       return true;
     }
@@ -212,7 +249,7 @@ function runGrabScript() {
   let stage = 'cookie-sync';
   try {
     // 先同步 cookies：campus-cookies.json（浏览器登录态，会随重登刷新）→ config.yml，避免 _WEU 过期后拿旧值。
-    execFileSync(GRAB_PY, [path.join(GRAB_DIR, 'sync_cookies.py')], { ...options, timeout: 20000 });
+    syncLectureCookies(ROOT,GRAB_DIR);
     stage = 'grab';
     const out = execFileSync(GRAB_PY, [GRAB_CLI], { ...options, timeout: 50000 });
     const line = String(out || '').trim().split('\n').filter(Boolean).pop();
@@ -246,12 +283,18 @@ function handleGrabResult(result, state, changes) {
 }
 
 async function checkLectures(page, state, changes, force = false) {
+  const portal=CONFIG.lectures?.portalUrl||'https://example.invalid/';
+  if(RETRY_URL&&loginOrigin(RETRY_URL)!==loginOrigin(portal))return;
+  if(!loginRecovery.canCheck(portal))return;
   const lec = CONFIG.lectures;
   if (!lec?.enabled || !MONITOR_SCRIPTS.has('lectures')) return;
   migrateLegacyEnrollments(GRAB_DIR, state);
   const interval = Math.max(5, Number(lec.intervalMinutes) || 10) * 60000;
   if (!force && Date.now() - (Number(state.lastLectureCheckAt) || 0) < interval) return;
   state.lastLectureCheckAt = Date.now();
+  state.monitorHealth ||= {};
+  const health=state.monitorHealth[portal] ||= {};
+  Object.assign(health,{checkedAt:Date.now(),auth:'unknown',hint:'正在验证讲座应用与监管脚本'});
   // 优先专用抢课脚本；脚本不可用/失败再回退 DOM（DOM 同时是操作普通网页的泛用能力）。
   // 跑之前先从浏览器刷新 cookie（导出快照会过期，直连 API 就会 403）。
   const freshSession = page ? await refreshCookieJar(page) : false;
@@ -259,6 +302,8 @@ async function checkLectures(page, state, changes, force = false) {
   const scriptResult = MONITOR_SCRIPTS.has('grab') ? (freshSession ? runGrabScript() : {ok:false,error_type:'initialization',error:'学术报告应用会话未初始化；未使用旧 cookie 执行脚本'}) : null;
   if (scriptResult) handleGrabResult(scriptResult, state, changes);
   if (scriptResult && scriptResult.ok === true) {
+    Object.assign(health,{fetch:'green',auth:'green',hint:'讲座应用及监管脚本已验证'});
+    await loginReady(portal);
     reportScriptHeartbeat(ROOT, GRAB_HEARTBEAT, true, '抢到 ' + (scriptResult.grabbed || []).length + ' 场');
     logLine('抢课脚本已跑：抢到 ' + (scriptResult.grabbed || []).length + ' 场，退掉 ' + (scriptResult.withdrawn || []).length + ' 场');
     return;
@@ -267,7 +312,14 @@ async function checkLectures(page, state, changes, force = false) {
   logLine('抢课脚本失败：' + (scriptResult?.error || '没有有效结果'));
   logLine('抢课脚本不可用，回退 DOM 泛用方案');
   const fallback = await checkLecturesDOM(page, state, changes, force);
-  if (fallback?.ok) reportScriptHeartbeat(ROOT, GRAB_HEARTBEAT, true, 'DOM备用流程正常；脚本：' + (scriptResult?.error || '未启用'), 'fallback');
+  if (fallback?.ok) {
+    Object.assign(health,{fetch:'green',auth:'green',hint:'讲座应用已验证，使用DOM备用流程'});
+    await loginReady(portal);
+    reportScriptHeartbeat(ROOT, GRAB_HEARTBEAT, true, 'DOM备用流程正常；脚本：' + (scriptResult?.error || '未启用'), 'fallback');
+  } else if(health.auth!=='red'){
+    Object.assign(health,{fetch:'red',hint:'讲座检查未完成，请查看脚本状态与日志'});
+    loginRecovery.checkFailed({url:portal,name:'讲座平台'},health.hint);await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});
+  }
 }
 
 async function checkLecturesDOM(page, state, changes, force = false) {
@@ -276,7 +328,7 @@ async function checkLecturesDOM(page, state, changes, force = false) {
   const policy = loadCoursePolicy(GRAB_DIR, lec);
   let appPage;
   try {
-    const table = await openReportTableDOM(page.browser(), policy.query);
+    const table = await openReportTableDOM(page.browserContext(), policy.query);
     appPage = table.page;
     const rows = eligibleReports(table.rows, policy);
     const nowList = rows.map(row => ({ ...normalizeCourse(row), speaker: row.BGRZW,
@@ -329,7 +381,11 @@ async function checkLecturesDOM(page, state, changes, force = false) {
   } catch (error) {
     logLine('讲座 DOM 回退失败：' + error.message);
     if (error.error_type === 'auth' || /\/cas\/login|id\.ustc\.edu\.cn\/cas\//i.test(appPage?.url() || '')) {
-      changes.push({ kind: 'login', url: lec.portalUrl || 'https://portal.example.invalid/', name: '研究生平台', msg: '研究生平台需要重新登录' });
+      changes.push({ kind: 'login', url: lec.portalUrl || 'https://example.invalid/', name: '研究生平台', msg: '研究生平台需要重新登录' });
+      state.monitorHealth ||= {};
+      const health=state.monitorHealth[lec.portalUrl||'https://example.invalid/'] ||= {};
+      Object.assign(health,{checkedAt:Date.now(),fetch:'green'});
+      await loginFailed({url:lec.portalUrl||'https://example.invalid/',name:'研究生平台'},health);
     }
   } finally {
     if (appPage) await appPage.close().catch(() => {});
@@ -339,21 +395,27 @@ async function checkLecturesDOM(page, state, changes, force = false) {
 async function checkBookmarks(page, state, changes) {
   state.monitorHealth ||= {};
   for (const site of WATCH_SITES) {
+    if(RETRY_URL&&site.url!==RETRY_URL)continue;
     const health = state.monitorHealth[site.url] ||= {};
+    if(skipLoginSite(site.url,health))continue;
     health.checkedAt = Date.now();
+    const page=await siteSessions.page(site.url);
     const r = await fetchPage(page, site.url, { waitMs: 2500 }).catch(() => null);
     if (r?.status === 'login') {
       Object.assign(health, { fetch: 'green', auth: 'red', diff: 'unknown', delivery: 'unknown', hint: '需要登录，请协助在可见窗口完成登录' });
       // Always retain the login target; delivery cooldown is enforced separately.
       changes.push({ kind: 'login', url: site.url, name: site.name, msg: `【${site.name}】网页监控需要重新登录，请协助完成后继续监视。` });
+      await loginFailed(site,health);
       continue;
     }
     if (!r || looksLoadFailed(r.text) || !String(r.text || '').trim()) {
       Object.assign(health, { fetch: 'red', auth: 'unknown', diff: 'unknown', delivery: 'unknown', hint: '页面无法读取，请检查网址、网络或登录状态' });
+      loginRecovery.checkFailed(site,health.hint);await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});
       logLine(`【${site.name}】页面加载失败/为空，跳过本轮（不改基线）`);
       continue;
     }
     Object.assign(health, { fetch: 'green', auth: 'green', hint: '页面可读取' });
+    await loginReady(site.url);
     const key = 'bookmark/' + site.url;
     const hash = sha(r.text.slice(0, 20000));
     const links = r.links.filter(l => l.h && !l.h.startsWith('javascript')).map(l => l.t).filter(Boolean);
@@ -384,7 +446,9 @@ async function notifyOwner(text,meta={}) {
   }
 }
 
-const FORCE = process.argv.includes('--force');
+const RETRY_URL = process.argv.includes('--retry-url')?process.argv[process.argv.indexOf('--retry-url')+1]:'';
+if(RETRY_URL)loginOrigin(RETRY_URL);
+const FORCE = process.argv.includes('--force')||!!RETRY_URL;
 const LECTURES_ONLY = process.argv.includes('--lectures-only');
 
 // 站点不可达时的退避：校内平台偶尔整段连不上（TLS 被重置/需要校园网/单点登录挂了）。
@@ -409,11 +473,11 @@ async function siteReachable(url) {
   } catch { return false; }
 }
 async function preflight() {
-  const targets = [...new Set([
-    ...(!LECTURES_ONLY && MONITOR_SCRIPTS.has('blackboard') && CONFIG.bbCourses?.length ? ['https://portal.example.invalid/'] : []),
-    ...(CONFIG.lectures?.enabled && MONITOR_SCRIPTS.has('lectures') ? [CONFIG.lectures.portalUrl || 'https://portal.example.invalid/'] : []),
+  const targets = [...new Set((RETRY_URL?[RETRY_URL]:[
+    ...(!LECTURES_ONLY && MONITOR_SCRIPTS.has('blackboard') && CONFIG.bbCourses?.length ? ['https://example.invalid/'] : []),
+    ...(CONFIG.lectures?.enabled && MONITOR_SCRIPTS.has('lectures') ? [CONFIG.lectures.portalUrl || 'https://example.invalid/'] : []),
     ...(!LECTURES_ONLY && WATCH_PLUGIN_CONFIG.webWatchEnabled !== false && MONITOR_SCRIPTS.has('bookmarks') ? WATCH_SITES.map(s => s.url) : [])
-  ].map(url => new URL(url).origin))];
+  ]).map(url => new URL(url).origin))];
   const results = await Promise.all(targets.map(async (u) => [u, await siteReachable(u)]));
   const okAny = results.some(([, ok]) => ok);
   logLine('站点预检：' + results.map(([u, ok]) => u.replace(/^https?:\/\//, '').replace(/\/$/, '') + (ok ? '=通' : '=不通')).join(' '));
@@ -421,6 +485,7 @@ async function preflight() {
 }
 
 async function main() {
+  await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});
   // Interactive login owns the entire profile, including cookies and navigation.
   // Never refresh pages or replay an old jar while the owner is signing in.
   const loginLock = path.join(ROOT, 'state', 'login-window.lock');
@@ -463,7 +528,9 @@ async function main() {
   try {
     browser = await ensureBrowser();
     // 用独立的临时标签页跑 BB/收藏夹检查，结束后关闭；yjs 标签页单独复用。
-    const page = await browser.newPage();
+    siteSessions=createSiteSessions(ROOT,browser);
+    const lectureUrl=CONFIG.lectures?.portalUrl||'https://example.invalid/';
+    const page=CONFIG.lectures?.enabled&&MONITOR_SCRIPTS.has('lectures')&&(!RETRY_URL||loginOrigin(RETRY_URL)===loginOrigin(lectureUrl))?await siteSessions.page(lectureUrl):null;
     if (!LECTURES_ONLY && MONITOR_SCRIPTS.has('blackboard')) {
       await checkBlackboard(page, state, changes);
       await sleep(1500);
@@ -474,15 +541,16 @@ async function main() {
       await checkBookmarks(page, state, changes);
     }
     // Keep the most recent session snapshot; do not move any visible window.
-    saveCookies(path.join(ROOT, 'state', 'campus-cookies.json'), await browser.defaultBrowserContext().cookies());
-    try { await page.close(); } catch {}
+    await siteSessions.close();siteSessions=null;
     await browser.disconnect();
     clearTimeout(watchdog);
   } catch (error) {
     logLine('检查失败：' + (error?.message ?? error));
+    if(RETRY_URL){const health=state.monitorHealth?.[RETRY_URL]||{};loginRecovery.checkFailed({url:RETRY_URL,name:loginRecovery.get(RETRY_URL).name},error.message);Object.assign(health,{checkedAt:Date.now(),fetch:'red',hint:error.message});(state.monitorHealth||={})[RETRY_URL]=health;await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine}).catch(()=>{});}
     reportScriptHeartbeat(ROOT, 'scripts/campus-watch.mjs', false, error?.message ?? String(error));
     stageWebChanges(state, changes);
     saveState(state);
+    try { await siteSessions?.close();siteSessions=null; } catch {}
     try { await browser?.disconnect(); } catch {}
     release();
     clearTimeout(watchdog);
@@ -495,23 +563,17 @@ async function main() {
   // 登录失效 → 临时弹出登录窗口；登录后关闭它并恢复同一 profile 的无头浏览器。
   if (changes.some(c => c.kind === 'login')) {
     try {
-      // 30 分钟去重：登录窗口导出 cookie 后会自删锁，靠锁判断会每分钟重弹；这里用持久时间戳兜住。
-      let recent = Date.now() - (Number(state.lastLoginPopAt) || 0) < 30 * 60 * 1000;
-      recent = recent || leaseActive(loginLock);
-      if (!recent) {
-        const targets = changes.filter(c => c.kind === 'login' && c.url).map(c => ({ name: c.name || '监控网页', url: c.url }));
-        fs.writeFileSync(path.join(ROOT, 'state', 'campus-login-request.json'), JSON.stringify({ at: Date.now(), targets }, null, 2), 'utf8');
-        state.lastLoginPopAt = Date.now();
-        saveState(state);
-        const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'login-window.mjs')], { cwd: ROOT, detached: true, stdio: 'ignore' });
-        child.unref();
-        logLine('检测到登录失效，已弹出登录窗口');
-        for (const c of changes) if (c.kind === 'login') c.msg += '（已自动弹出登录窗口，请在窗口里登录）';
+      const targets=changes.filter(c=>c.kind==='login'&&c.url).map(c=>({name:c.name||'监控网页',url:c.url}));
+      requestLoginWindow(targets);
+      if(targets.some(target=>loginRecovery.get(target.url).phase==='waiting')){
+        // Raw changes are durable. Hand the profile to login immediately rather
+        // than keeping it locked while unrelated AI summaries are generated.
+        reportScriptHeartbeat(ROOT,'scripts/campus-watch.mjs',true,'等待登录协助，内容变化已保留');release();return;
       }
     } catch (error) { logLine('弹出登录窗口失败：' + (error?.message ?? error)); }
   }
   state.webSummaryCache ||= {};
-  const prepared = await prepareWebNotifications(notificationChanges, {
+  const prepared = await prepareWebNotifications(notificationChanges.filter(change=>change.kind!=='login'), {
     cache: state.webSummaryCache,
     generate: WATCH_PLUGIN_CONFIG.aiWebSummary === false ? undefined : payload => generateWebSummary(payload, {
       root: ROOT, timeoutMs: WATCH_PLUGIN_CONFIG.summaryTimeoutMs || 35000

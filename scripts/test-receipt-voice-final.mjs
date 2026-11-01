@@ -53,7 +53,7 @@ test('text style protection and recent tail evidence stay active when sticker me
  const p=dynamics({config:{disabledBlocks:['sticker']},addPromptBlock:t=>blocks.push(t)});
  p.hooks.beforePrompt({key:'group:1',reason:'budgetWeak',st:{recentMessages:[]},recentOwnMessages:own,stickerConfig:{enabled:false},moodState:{enabled:true,score:60,mode:'normal',modeName:'普通',styleInstruction:'完整示范'}});
  assert.match(blocks.join('\n'),/近期表达去重/);assert.match(blocks.join('\n'),/本轮表达校准/);
-  assert.match(blocks.join('\n'),/【交流目标】.*当前需求/);
+  assert.match(blocks.join('\n'),/【交流目标】.*陪聊/);
  assert.equal(p.services.chatExpression.validate({key:'group:1',kind:'text',text:'你又输了吧 (￣▽￣)'}).ok,false);
  assert.equal(p.services.chatExpression.validate({key:'group:1',kind:'text',text:'诶，这么大的枪呀，我都要抱不动了。'}).ok,true);
 });
@@ -92,18 +92,21 @@ test('tail reinforcement repeats selected administrator examples verbatim and se
  assert.doesNotMatch(currentDialogueExamples(critical,'critical'),/原句 A|调侃 B/);assert.match(currentDialogueExamples(critical,'critical'),/安静 E/);
 });
 
-test('public system voice repeats selected administrator examples without a second persona',()=>{
+test('the system voice prioritizes tenderness over teasing and repeats literal gentle examples',()=>{
  const blocks=[],p=dynamics({config:{},addPromptBlock:t=>blocks.push(t)});
- const style='私聊：示例 A\n被夸：示例 B\n关心：示例 C';
- p.hooks.beforePrompt({key:'group:1',moodState:{enabled:true,score:60,mode:'normal',modeName:'日常交流',styleInstruction:style}});
+ const style='私聊：温柔原句 A\n被夸：害羞原句 B\n关心：关心原句 C\n群聊接梗：调侃原句 D';
+ p.hooks.beforePrompt({key:'group:1',moodState:{enabled:true,score:60,mode:'normal',modeName:'普通',styleInstruction:style}});
  const system=p.services.chatExpression.current({key:'group:1'}).text;
- assert.equal(system.split('示例 A').length-1,2);
- assert.match(system,/管理员原有示范优先/);
- assert.doesNotMatch(system,/短接话示范/);
+ assert.match(system,/温和.*底色/);assert.match(system,/偶尔.*调皮/);assert.match(system,/不揣测.*动机/);
+ assert.equal(system.split('温柔原句 A').length-1,2,'full administrator style plus literal gentle reinforcement');
+ assert.match(system,/短接话示范/);assert.match(system,/句号.*我在/);
+ assert.equal(blocks.filter(text=>text.includes('短接话示范')).length,2,'short-turn voice is visible at the system prefix and current tail');
  const critical=dynamics({config:{},addPromptBlock(){}});
- critical.hooks.beforePrompt({key:'private:2',moodState:{enabled:true,score:20,mode:'critical',modeName:'简洁交流',styleInstruction:'临界示例'}});
- const selected=critical.services.chatExpression.current({key:'private:2'}).text;
- assert.match(selected,/临界示例/);assert.doesNotMatch(selected,/示例 A|短接话示范/);
+ critical.hooks.beforePrompt({key:'private:2',moodState:{enabled:true,score:20,mode:'critical',modeName:'AI',styleInstruction:'安静原句'}});
+ assert.doesNotMatch(critical.services.chatExpression.current({key:'private:2'}).text,/温和.*底色|温柔原句 A/);
+ const custom=dynamics({config:{},addPromptBlock(){}});
+ custom.hooks.beforePrompt({key:'private:3',moodState:{enabled:true,score:60,mode:'normal',modeName:'船长',styleInstruction:'沉着简洁的船长示范'}});
+ assert.doesNotMatch(custom.services.chatExpression.current({key:'private:3'}).text,/短接话示范|温和.*底色/,'a different ordinary form keeps its administrator-defined voice');
 });
 
 test('the console reports budget-skipped model tests as not executed, rather than successful delivery',async()=>{

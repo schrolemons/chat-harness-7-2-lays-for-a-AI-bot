@@ -27,9 +27,9 @@ const balance = (total, currency = 'CNY') => ({ currency, total_balance: total, 
 test('funded account is explicitly the bots own milk stock, with role-aware expression', async () => {
   await fixture({ is_available: true, balance_infos: [balance('12.00')] },async tool=>{
   const result = await tool.handler();
-  assert.match(tool.description, /账户余额/);
-  assert.equal(result.milk.state, 'funded'); assert.equal(result.milk.perspective, '我的账户余额');
-  assert.match(result.milk.responseGuidance, /可用余额/); assert.match(result.milk.responseGuidance, /核实/);
+  assert.match(tool.description, /API预算余额/);
+  assert.equal(result.milk.state, 'funded'); assert.equal(result.milk.perspective, '当前API预算余额');
+  assert.match(result.milk.responseGuidance, /确认当前可用/); assert.match(result.milk.responseGuidance, /可以继续调用/);
   assert.equal(result.balance_infos[0].total_balance, '12.00');
   assert.equal(JSON.stringify(result).includes('synthetic-milk-key'), false);
   });
@@ -37,8 +37,8 @@ test('funded account is explicitly the bots own milk stock, with role-aware expr
 test('confirmed empty milk stock invites a milk replenishment reaction without inventing a balance', async () => {
   const result = await fixture({ is_available: false, balance_infos: [balance('0.00')] },tool=>tool.handler());
   assert.equal(result.milk.state, 'empty');
-  assert.match(result.milk.responseGuidance, /耗尽/); assert.match(result.milk.responseGuidance, /补充调用额度/);
-  assert.match(result.milk.responseGuidance, /账户余额/);
+  assert.match(result.milk.responseGuidance, /说明预算不足/); assert.match(result.milk.responseGuidance, /补充API预算/);
+  assert.match(result.milk.responseGuidance, /API预算余额/);
   assert.equal(result.balance_infos[0].total_balance, '0.00');
 });
 test('unavailable provider with a positive balance is still funded, with unavailability reported separately', async () => {

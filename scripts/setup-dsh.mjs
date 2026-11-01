@@ -18,6 +18,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import yaml from 'js-yaml';
+import {browserMcpArgs} from './browser-mcp-config.mjs';
 import { BUNDLE_DIR, PRESETS, buildPatches, patchFileFor } from './build-agent-preset-patches.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -131,15 +132,11 @@ function mcpEntries() {
     'mcp-snowluma-host': { serverName: 'snowluma-host', script: path.join(REPO_ROOT, 'src', 'mcp-host-server.js') },
     'mcp-web-search-safe': { serverName: 'web-search-safe', script: path.join(REPO_ROOT, 'src', 'mcp-web-search-safe.js') },
     'mcp-games': { serverName: 'games', script: path.join(REPO_ROOT, 'src', 'mcp-games.mjs') },
-    // 浏览器工具：连接用户本机真实 Edge（CDP 9227，由 scripts/browser-fetch.mjs --start-edge 提供）。
-    // MCP 工具是全局注册的，非管理员会话由 qq-tool-restrict 在注册/执行期隐藏与拒绝。
+    // DOM操作独立启动浏览器；普通QQ预设仍隐藏并拒绝这些工具。
     'mcp-playwright': {
-      serverName: 'playwright',
-      script: path.join(REPO_ROOT, 'node_modules', '@playwright', 'mcp', 'cli.js'),
-      // 自己拉起 Edge（用同步好的登录态副本），不依赖外部调试端口：
-      // DSH 启动时 Edge 未必开着，若用 --cdp-endpoint 会直接连不上而退出。
-      // 连接常驻 Edge（headless，端口 9222，配置 state/campus-profile）：AI 与定时检查共用同一浏览器/登录态。
-      extraArgs: ['--cdp-endpoint', 'http://127.0.0.1:9222']
+      serverName:'playwright',
+      script:path.join(REPO_ROOT,'node_modules','@playwright','mcp','cli.js'),
+      extraArgs:browserMcpArgs(REPO_ROOT)
     },
   };
   let out = '# === qq-bridge MCP BEGIN ===\n';

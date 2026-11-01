@@ -4,17 +4,17 @@ import yaml from 'js-yaml';
 import {patchProfile,createMcpEntry} from '../../plugins/qq-components/personal-core/install.mjs';
 import {DEFAULT_CONFIG,validateSettings} from '../../plugins/qq-components/personal-core/config.mjs';
 import {loadLibrary} from '../../plugins/qq-components/personal-core/library.mjs';
-const OLD='schnie-core',NEW='personal-core',sha=b=>createHash('sha256').update(b).digest('hex');
+const OLD='reference-data-core',NEW='personal-core',sha=b=>createHash('sha256').update(b).digest('hex');
 function removeUnmanagedLegacyServer(text){
  // Old installers sometimes inserted one unmarked YAML row. Remove that exact
  // row only; unrelated profile bytes must survive the migration unchanged.
- if(text.includes('# === SCHNIE PRIVATE PHI BEGIN ==='))return text;
+ if(text.includes('# === REFERENCE_DATA PRIVATE PHI BEGIN ==='))return text;
  const lines=text.match(/[^\n]*\n|[^\n]+$/g)||[];
  for(let i=0;i<lines.length;i++){
   if(!/^- insert:\s*(?:\r?\n)?$/.test(lines[i]))continue;
   let end=i+1;while(end<lines.length&&!/^(?:- |# ===)/.test(lines[end]))end++;
-  const block=lines.slice(i,end).join('');if(!block.includes('mcp-schnie-private-phi'))continue;
-  const rows=yaml.load(block);if(rows?.length!==1||rows[0]?.insert?.length!==1||rows[0].insert[0]?.id!=='mcp-schnie-private-phi')throw Error('旧MCP与其他profile条目混合，请先审查具体条目');
+  const block=lines.slice(i,end).join('');if(!block.includes('mcp-reference-data-private-phi'))continue;
+  const rows=yaml.load(block);if(rows?.length!==1||rows[0]?.insert?.length!==1||rows[0].insert[0]?.id!=='mcp-reference-data-private-phi')throw Error('旧MCP与其他profile条目混合，请先审查具体条目');
   lines.splice(i,end-i);return lines.join('');
  }
  return text;
@@ -22,11 +22,11 @@ function removeUnmanagedLegacyServer(text){
 function roles(root){const dir=path.join(root,'roles');return fs.existsSync(dir)?Object.fromEntries(fs.readdirSync(dir).filter(f=>f.endsWith('.md')).map(f=>[f,sha(fs.readFileSync(path.join(dir,f)))])):{};}
 export function planPersonalCoreMigration({root,profileText,legacyConfig,registry={}}){
  if(!legacyConfig||!Array.isArray(legacyConfig.coreSessionKeys)||!Array.isArray(legacyConfig.worldviewPatterns)||!Array.isArray(legacyConfig.coreCarePatterns))throw Error('缺少完整的旧配置快照，拒绝猜测机主设置');
- const config={...DEFAULT_CONFIG,libraryDir:'private-libraries/schnie',referenceSessionKeys:[],careSessionKeys:[...legacyConfig.coreSessionKeys]};const valid=validateSettings(config);if(!valid.ok)throw Error(valid.errors.join('；'));
+ const config={...DEFAULT_CONFIG,libraryDir:'private-libraries/reference-data',referenceSessionKeys:[],careSessionKeys:[...legacyConfig.coreSessionKeys]};const valid=validateSettings(config);if(!valid.ok)throw Error(valid.errors.join('；'));
  const clean=values=>[...new Set((values||[]).map(id=>id===OLD?NEW:id))];const nextRegistry={...registry,disabled:clean(registry.disabled),enabled:clean(registry.enabled),order:clean(registry.order)};
- let text=removeUnmanagedLegacyServer(profileText).replaceAll('mcp__schnie-private-phi__schnie_','mcp__personal-core__core_').replaceAll('mcp-schnie-private-phi','mcp-personal-core').replaceAll('schnie-private-phi','personal-core').replaceAll('SCHNIE PRIVATE PHI','PERSONAL CORE').replaceAll('schnie-core/mcp.mjs','personal-core/mcp.mjs').replaceAll('schnie-core\\mcp.mjs','personal-core\\mcp.mjs').replaceAll('qq-tool-restrict-phi.mjs','qq-tool-restrict.mjs');
+ let text=removeUnmanagedLegacyServer(profileText).replaceAll('mcp__reference-data-private-phi__reference-data_','mcp__personal-core__core_').replaceAll('mcp-reference-data-private-phi','mcp-personal-core').replaceAll('reference-data-private-phi','personal-core').replaceAll('REFERENCE_DATA PRIVATE PHI','PERSONAL CORE').replaceAll('reference-data-core/mcp.mjs','personal-core/mcp.mjs').replaceAll('reference-data-core\\mcp.mjs','personal-core\\mcp.mjs').replaceAll('qq-tool-restrict-phi.mjs','qq-tool-restrict.mjs');
  text=patchProfile(text,createMcpEntry(root));
- if(/mcp-schnie-private-phi|schnie-core[\\/]mcp\.mjs|schnie-private-phi/.test(text))throw Error('旧MCP条目未清理完整');
+ if(/mcp-reference-data-private-phi|reference-data-core[\\/]mcp\.mjs|reference-data-private-phi/.test(text))throw Error('旧MCP条目未清理完整');
  const discussion=[...new Set(['(?:进入|开启|使用|切换到)?\\s*phi\\s*模式',...legacyConfig.worldviewPatterns])],behavior={discussion_commands:['/phi'],discussion_patterns:discussion,care_patterns:[...legacyConfig.coreCarePatterns],exit_patterns:['退出\\s*phi','关闭\\s*phi','别讲哲学']};for(const expression of [...discussion,...behavior.care_patterns])new RegExp(expression,'i');
  return{version:1,root,config,registry:nextRegistry,profileText:text,behavior,roleHashes:roles(root)};
 }

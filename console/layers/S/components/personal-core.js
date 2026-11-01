@@ -4,11 +4,11 @@ export default {
   "fields": [
     {
       "key": "libraryDir",
-      "label": "资料包目录（本机路径）",
+      "label": "资料包根目录（本机路径）",
       "type": "text",
       "maxLength": 4096,
       "group": "目录挂载",
-      "help": "支持项目相对路径或本机绝对路径。填写标准资料包的根目录；保存时校验并挂载。留空表示卸载。"
+      "help": "例：D:\\qq-bridge\\private-libraries\\my-core。填写含 manifest.json 的根目录；留空卸载。"
     },
     {
       "key": "referenceSessionKeys",

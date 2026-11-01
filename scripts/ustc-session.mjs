@@ -6,7 +6,7 @@ export async function prepareReportSession(browser) {
       response.url().includes('/wxbgbgdz.do') && response.status() === 200 &&
       !response.request().postData()?.includes('*searchMeta=1'), { timeout: 20000 });
     ready.catch(() => {});
-    await page.goto('https://portal.example.invalid/gsapp/sys/xsbgglappustc/*default/index.do#/xsbgxk',
+    await page.goto('https://example.invalid/gsapp/sys/xsbgglappustc/*default/index.do#/xsbgxk',
       { waitUntil: 'domcontentloaded', timeout: 25000 });
     const data = await (await ready).json();
     if (!Array.isArray(data?.datas?.wxbgbgdz?.rows)) throw new Error('学术报告查询返回无效数据，未导出会话');

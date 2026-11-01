@@ -3,6 +3,6 @@ const [{createBalanceQuery,resolveApiKey},{createMilkMonitor},{validateMilkPolic
 export {resolveApiKey};
 export function createPlugin(ctx,options={}){
  const monitor=createMilkMonitor(ctx,{query:createBalanceQuery({...options,signal:ctx.signal}),clock:options.clock});
- ctx.registerTool('deepseek_balance',{description:'只读查询账户余额和最近变化；有效私聊/群聊可查询调用额度档位，管理员私聊另可看账户金额。按当前形态自然反应，不改账户或额度策略。',schema:{type:'object',properties:{},additionalProperties:false},handler:input=>input?.callerKey?monitor.queryFor({key:input.callerKey}):monitor.query()});
- return {validateConfig:validateMilkPolicy,services:{milkStock:{status:()=>monitor.status(),context:payload=>monitor.context(payload),noteStatus:payload=>monitor.noteStatus(payload),noteWritten:payload=>monitor.noteWritten(payload)}},hooks:{onTick:payload=>monitor.tick(payload),afterSend:payload=>monitor.sent(payload)}};
+ ctx.registerTool('deepseek_balance',{description:'只读查询API预算余额和最近变化；有效私聊/群聊可查询API预算档位，管理员私聊另可看账户金额。按当前形态自然反应，不改账户或额度策略。',schema:{type:'object',properties:{},additionalProperties:false},handler:input=>input?.callerKey?monitor.queryFor({key:input.callerKey}):monitor.query()});
+ return {validateConfig:validateMilkPolicy,services:{milkStock:{status:()=>monitor.status(),context:payload=>monitor.context(payload),noteStatus:payload=>monitor.noteStatus(payload),noteWritten:payload=>monitor.noteWritten(payload)}},hooks:{wakeTail:payload=>monitor.wakeTail(payload),onTick:payload=>monitor.tick(payload),afterSend:payload=>monitor.sent(payload)}};
 }

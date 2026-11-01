@@ -21,7 +21,7 @@ const check = (name, ok, detail) => {
 };
 
 const plugin = createPlugin(mkCtx());
-const base = { key: 'private:11003', preSleepMs: 300000, triggeredLine: '' };
+const base = { key: 'private:10001', preSleepMs: 300000, triggeredLine: '' };
 const tail = (reason, extra = {}) => plugin.hooks.wakeTail({ ...base, reason, ...extra }) || '';
 
 check('bootstrap', tail('bootstrap').includes('引导唤醒'));
@@ -30,24 +30,24 @@ check('replyCheck', tail('replyCheck').includes('回复检查') && tail('replyCh
 check('careCheck', tail('careCheck').includes('主动关心'));
 const biliShareTail = tail('newsShare', {
   maxItems: 2,
-  biliShareKeywords: ['海洋纪录片', '鲸鱼'],
-  biliPreferredUploader: '示例创作者',
+  biliShareKeywords: ['海洋纪录片', '助手'],
+  biliPreferredUploader: '示例科普频道',
   biliShareItems: [{
     bvid: 'BV1ab411c7mD',
-    title: '鲸鱼纪录片',
+    title: '助手纪录片',
     uploader: '海洋频道',
     description: '记录鲸群迁徙。'
   }]
 });
 check('newsShare 仅分享已核实候选', biliShareTail.includes('只分享下面这些') && biliShareTail.includes('不要另找视频'));
-check('newsShare 含可核实视频字段', biliShareTail.includes('鲸鱼纪录片') && biliShareTail.includes('海洋频道') && biliShareTail.includes('https://www.bilibili.com/video/BV1ab411c7mD'));
+check('newsShare 含可核实视频字段', biliShareTail.includes('助手纪录片') && biliShareTail.includes('海洋频道') && biliShareTail.includes('https://www.bilibili.com/video/BV1ab411c7mD'));
 check('newsShare 保留标题UP链接与简介边界', ['标题：','UP 主：','链接：','简介能支持'].every(x=>biliShareTail.includes(x)));
 check('newsShare 不由模型重新选择UP', biliShareTail.includes('不要另找视频'));
 check('newsShare 没有候选安静收尾', tail('newsShare', {maxItems:2}).includes('不要发送推荐或替补内容'));
 check('newsShare 拒绝缺少核实信息的候选', tail('newsShare', {biliShareItems:[{bvid:'BV1ab411c7mD'}]}).includes('不要发送推荐'));
 const scheduledBiliTail = tail('newsShare', {
   maxItems: 3,
-  biliShareKeywords: ['鲸鱼'],
+  biliShareKeywords: ['助手'],
   biliPreferredUploader: ''
 });
 check('定时推荐无候选不临时搜索', scheduledBiliTail.includes('不要发送推荐或替补内容'));
@@ -57,10 +57,10 @@ check('selfOptimize 带历史', opt.includes('历史记录内容') && opt.includ
 check('selfReview', tail('selfReview').includes('功能与代码自查'));
 check('memoryWrite', tail('memoryWrite').includes('记忆更新'));
 check('newFriend 带 peer', tail('newFriend', { peer: '123456' }).includes('QQ 123456'));
-check('新好友使用普通AI助手身份', tail('newFriend', { peer: '123456' }).includes('AI 助手') && !/鲸鱼娘|爱吃白饭|吃 token/.test(tail('newFriend', { peer: '123456' })));
-check('主动唤醒遵循新卡', ['newsShare', 'reminder', 'poke'].every((reason) => !/通用助手的口吻|通用助手味|生硬装烦/.test(tail(reason))));
+check('新好友使用普通AI助手身份', tail('newFriend', { peer: '123456' }).includes('AI助手') && !/助手娘|爱吃白饭|吃 token/.test(tail('newFriend', { peer: '123456' })));
+check('主动唤醒遵循新卡', ['newsShare', 'reminder', 'poke'].every((reason) => !/AI助手的口吻|AI助手味|傲娇装烦/.test(tail(reason))));
 check('timeBubble', tail('timeBubble').includes('时间冒泡'));
-check('startupGreeting', tail('startupGreeting').includes('启动'));
+check('startupGreeting', tail('startupGreeting').includes('启动问候'));
 const done = tail('taskDone', { taskReport: { title: '测试任务', taskId: 't-abc' } });
 check('taskDone 带任务信息', done.includes('测试任务') && done.includes('t-abc') && done.includes('qq_task_result'));
 const rem = tail('reminder', { reminderItems: [{ text: '日程｜2026-10-25 23:00｜开会' }] });
@@ -68,7 +68,7 @@ check('reminder 带条目', rem.includes('日程｜2026-10-25 23:00｜开会'));
 check('proactiveCheck', tail('proactiveCheck').includes('主动机会'));
 check('poke', tail('poke').includes('拍一拍'));
 const plain = tail('private', { triggeredLine: '（触发这条是 1 分钟前发的）' });
-check('普通唤醒走默认尾巴', plain.includes('【唤醒】private:11003') && plain.includes('原因：private') && plain.includes('1 分钟前'));
+check('普通唤醒走默认尾巴', plain.includes('【唤醒】private:10001') && plain.includes('原因：private') && plain.includes('1 分钟前'));
 check('未知 reason 也走默认尾巴', tail('someNewReason').includes('原因：someNewReason'));
 
 // 配置禁用某个 reason：返回空，让桥接走兜底
@@ -95,7 +95,7 @@ const tailMarkers = [
   '【主动关心】', '【每日 B 站视频推荐】', '【空闲兜底】',
   '【自我迭代｜按建议直接动手】', '【自我迭代｜功能与代码自查】',
   '【记忆更新】按上面插件给出的格式', '【新好友】老板刚通过',
-  '【时间冒泡】按上面插件给出的要求', '【开机起床】按上面插件给出的口径',
+  '【时间冒泡】按上面插件给出的要求', '【启动问候】按上面插件给出的口径',
   '【任务回执】你之前委派的任务', '【定时提醒｜现在就去群里说】',
   '【主动机会】', '【拍一拍要积极响应'
 ];

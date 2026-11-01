@@ -78,8 +78,8 @@ function usageConversationFixture(key, buckets, cost, turns, steps, unattributed
 
 function usageSummaryFixture() {
   const conversations = [
-    usageConversationFixture('group:21008', { cacheMiss: 41230, cacheHit: 1284000, cacheWrite: 0, output: 18420, reasoning: 0 }, 0.2886, 42, 231),
-    usageConversationFixture('private:21001', { cacheMiss: 8600, cacheHit: 210400, cacheWrite: 0, output: 3900, reasoning: 0 }, 0.0467, 9, 48),
+    usageConversationFixture('group:40001', { cacheMiss: 41230, cacheHit: 1284000, cacheWrite: 0, output: 18420, reasoning: 0 }, 0.2886, 42, 231),
+    usageConversationFixture('private:10001', { cacheMiss: 8600, cacheHit: 210400, cacheWrite: 0, output: 3900, reasoning: 0 }, 0.0467, 9, 48),
     usageConversationFixture('internal:黑话学习', { cacheMiss: 2200, cacheHit: 18000, cacheWrite: 0, output: 900, reasoning: 0 }, 0.0075, 3, 11),
   ];
   const buckets = conversations.reduce((acc, c) => ({
@@ -193,7 +193,7 @@ function usageSeriesFixture(hoursRaw) {
       turns,
       steps,
       tier: tierOfBucket(t),
-      keys: steps > 0 ? ['group:21008'] : [],
+      keys: steps > 0 ? ['group:40001'] : [],
     });
   }
   const totals = buckets.reduce((acc, b) => ({
@@ -223,7 +223,7 @@ function usageSeriesFixture(hoursRaw) {
 }
 
 function usageTurnsFixture(key) {
-  const target = key || 'group:21008';
+  const target = key || 'group:40001';
   const base = Date.parse(timestamp);
   const rows = [];
   for (let i = 0; i < 6; i += 1) {
@@ -278,7 +278,7 @@ function usageRecentFixture() {
   for (let i = 0; i < 8; i += 1) {
     rows.push({
       time: base - i * 45_000,
-      key: i % 3 === 2 ? 'private:21001' : 'group:21008',
+      key: i % 3 === 2 ? 'private:10001' : 'group:40001',
       sessionId: 'fixture-session',
       turn: 42 - Math.floor(i / 4),
       step: 1 + (i % 4),
@@ -314,11 +314,11 @@ export function makeFixtureState() {
     roleInjectMax: 8000,
     dshEffort: 'max',
     whitelist: { allow: { groups: [123456789, 100003], private: [100001] }, deny: { groups: [], private: [] }, ownerQQ: '100001' },
-    diaryCatchUpSent: { 'private:21001': false, 'private:21010': false },
+    diaryCatchUpSent: { 'private:10001': false, 'private:10001': false },
     sessions: [
-      { key: 'group:21008', sessionId: 'demo-community-20260920', owner: false },
-      { key: 'group:21003', sessionId: 'demo-development-20260920', owner: false },
-      { key: 'private:21001', sessionId: 'demo-owner-20260920', owner: true },
+      { key: 'group:40001', sessionId: 'demo-community-20260920', owner: false },
+      { key: 'group:40001', sessionId: 'demo-development-20260920', owner: false },
+      { key: 'private:10001', sessionId: 'demo-owner-20260920', owner: true },
     ],
     social: {
       triggerProbability: 0.2, activeCheckMinMs: 10000, activeCheckMaxMs: 30000,
@@ -332,7 +332,7 @@ export function makeFixtureState() {
       proactiveIdleThresholdMs: 1800000, proactiveCheckMinMs: 300000,
       proactiveCheckMaxMs: 900000, proactiveProbability: 0.2,
     },
-    socialStates: { 'group:21008': { phase: 'active' }, 'group:21003': { phase: 'idle' } },
+    socialStates: { 'group:40001': { phase: 'active' }, 'group:40001': { phase: 'idle' } },
     v2: { enabled: true, doubleStamp:{enabled:true,windowCount:12}, tools: {} },
     // 会话初始提示词（离线示例）：整段内容都是虚构的演示文本。
     initPrompt: '离线示例：这是一个演示用的群聊环境说明，不会写进任何真实配置。',
@@ -347,8 +347,8 @@ export function makeFixtureState() {
     // （真实场景：Windows 上未以管理员身份运行桥接时就是这个状态）。
     hardenStateDir: false,
     toolLog: [
-      { time: timestamp, key: 'group:21008', tool: 'qq_get_recent_messages', type: 'call', args: JSON.stringify({ key: 'group:21008', limit: 20 }) },
-      { time: timestamp, key: 'group:21008', tool: 'qq_get_recent_messages', type: 'result', ok: true },
+      { time: timestamp, key: 'group:40001', tool: 'qq_get_recent_messages', type: 'call', args: JSON.stringify({ key: 'group:40001', limit: 20 }) },
+      { time: timestamp, key: 'group:40001', tool: 'qq_get_recent_messages', type: 'result', ok: true },
     ],
     feedback: [{ time: timestamp, level: 'info', message: '这是离线演示反馈。' }],
   };
@@ -392,7 +392,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
   const refreshCore=()=>createPersonalCore({root:projectRoot,config:coreFixture.config,dir:resolve(projectRoot,'plugins/qq-components/personal-core'),state:{set:patch=>Object.assign(coreFixture.state,patch)},registerTool(){}});
   refreshCore();
   const quotaService = createKnowledgeQuota(quotaContext).services.knowledgeQuota;
-  componentFixtures.get('life-user-availability').state = { plans: { 'private:21001': {kind:'quiet',start:Date.now(),end:Date.now()+3600000} } };
+  componentFixtures.get('life-user-availability').state = { plans: { 'private:10001': {kind:'quiet',start:Date.now(),end:Date.now()+3600000} } };
   const scriptsFixture=componentFixtures.get('life-campus-watch');
   scriptsFixture.config.scriptPaths=[{value:'scripts/example-watch.mjs',enabled:true},{value:'scripts/example-summary.mjs',enabled:false}];
   scriptsFixture.config.scriptDescriptions={'scripts/example-watch.mjs':'按约定检查指定网页，发现更新后通知','scripts/example-summary.mjs':'整理已有结果，不主动搜索或发送'};
@@ -476,7 +476,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           case '/api/games': return json({ok:true,games:[{id:'fixture-dice',name:'离线骰子',summary:'隔离测试游戏',rules:'参与者同意后掷骰',enabled:true,parameters:{sides:6}}]});
           case '/api/socialV2/self-review-feedback': return json({ok:true,pending:[],completed:[],admin:[],queues:{user:[],self:[],admin:[]},difficulties:[],history:[],counts:{pending:0,completed:0},historyCount:0});
           case '/api/socialV2/optimization-memory': return json({ok:true,content:'离线优化记录',chars:6,path:'fixture/_optimization.md',exists:true,updatedAt:Date.now()});
-          case '/api/status': return json({ ok: true, dshReady: true, mode: state.mode, role: state.role, roleMode: state.roleMode, closedAgentPreset: state.closedAgentPreset, ownerQQ: state.whitelist.ownerQQ, allowGroups: state.whitelist.allow.groups, allowPrivate: state.whitelist.allow.private, activity: '[08:30:00] 演示桥接已连接\n[08:30:12] group:21008 · 已处理一条消息\n[08:30:20] 二代社交助手正在运行\n以上均为离线模拟数据。' });
+          case '/api/status': return json({ ok: true, dshReady: true, mode: state.mode, role: state.role, roleMode: state.roleMode, closedAgentPreset: state.closedAgentPreset, ownerQQ: state.whitelist.ownerQQ, allowGroups: state.whitelist.allow.groups, allowPrivate: state.whitelist.allow.private, activity: '[08:30:00] 演示桥接已连接\n[08:30:12] group:40001 · 已处理一条消息\n[08:30:20] 二代社交助手正在运行\n以上均为离线模拟数据。' });
           case '/api/presets': return json({ presets: ['standard','ptc','minimal','cordis','qq-chat','qq-chat-v2','qq-chat-dev','qq-task-worker','qq-learning','campus-summary'].map(id=>({id,trust:'user'})) });
           case '/api/roles': return json({
             roles: state.roles.slice(),
@@ -548,14 +548,14 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           });
           case '/api/whitelist': return json(state.whitelist);
           case '/api/sessions': return json({ sessions: state.sessions });
-          case '/api/pending': return json({ pending: [{ key: 'group:21008', kind: 'approval', toolName: '演示工具', reason: '等待管理员确认（离线示例）' }] });
-          case '/api/social': return json({ config: state.social, states: state.socialStates, pendingSummaries: { 'group:21008': 2 } });
+          case '/api/pending': return json({ pending: [{ key: 'group:40001', kind: 'approval', toolName: '演示工具', reason: '等待管理员确认（离线示例）' }] });
+          case '/api/social': return json({ config: state.social, states: state.socialStates, pendingSummaries: { 'group:40001': 2 } });
           case '/api/socialV2/config': return json({ ok: true, config: state.v2 });
           case '/api/socialV2/daily-diary': {
             const todayDate = new Date();
             const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
             const today = dateKey(todayDate);
-            return json({ ok: true, conversations: ['private:21001', 'private:21010'].map(key => ({ key, targetDate: today, hasDiary: true,
+            return json({ ok: true, conversations: ['private:10001', 'private:10001'].map(key => ({ key, targetDate: today, hasDiary: true,
               diaryChars: 120, diarySource: 'memory', lastDiaryDate: today, targetSent: true, sentAt: Date.now(),
               deliveryStatus: 'sent', diaryPending: false })) });
           }
@@ -577,7 +577,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
                 maxChars: 2000,
                 writable: true,
                 entries: state.initPrompt
-                  ? [{ key: 'group:21008', chars: String(state.initPrompt).length, updatedAt: Date.now(), preview: String(state.initPrompt).slice(0, 80) }]
+                  ? [{ key: 'group:40001', chars: String(state.initPrompt).length, updatedAt: Date.now(), preview: String(state.initPrompt).slice(0, 80) }]
                   : []
               });
             }
@@ -590,7 +590,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           case '/api/voice/list':
           case '/api/socialV2/voices': return json({
             ok: true,
-            key: url.searchParams.get('key') || 'group:21008',
+            key: url.searchParams.get('key') || 'group:40001',
             count: 2,
             voices: [
               { name: '演示-问候.mp3', ok: true, bytes: 20480, detail: '2秒 · 20.0 KB · mp3 · 24.0kHz · 单声道', seconds: 2 },
@@ -628,7 +628,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           case '/api/tokens/budgets/replies': return json({ ok: true,
             privateReplies: state.mechanicalReplies?.privateReplies || DEFAULT_PRIVATE_REPLIES,
             groupReplies: state.mechanicalReplies?.groupReplies || DEFAULT_GROUP_REPLIES,mechanicalLimits:state.mechanicalLimits||{minIntervalMs:10000,maxPerMinute:4,maxPerHour:30} });
-          case '/api/tokens/budgets': return json({ ok: true, symbol: '¥', owner:{key:'private:21001',budgetEnabled:state.ownerBudgetEnabled!==false},recoveryWindows:state.recoveryWindows||{privateMessages:5,groupMessages:5,groupAtMessages:5},global: { cost: 0.09, turns: 3, limit: state.globalBudgetLimit || 0, remaining: state.globalBudgetLimit ? Math.max(0, state.globalBudgetLimit - 0.09) : null, reached: false, partial: false }, rows: usageSummaryFixture().conversations.map((item) => ({
+          case '/api/tokens/budgets': return json({ ok: true, symbol: '¥', owner:{key:'private:10001',budgetEnabled:state.ownerBudgetEnabled!==false},recoveryWindows:state.recoveryWindows||{privateMessages:5,groupMessages:5,groupAtMessages:5},global: { cost: 0.09, turns: 3, limit: state.globalBudgetLimit || 0, remaining: state.globalBudgetLimit ? Math.max(0, state.globalBudgetLimit - 0.09) : null, reached: false, partial: false }, rows: usageSummaryFixture().conversations.map((item) => ({
             key: item.key, cost: 0.03, turns: 1, stage: 'normal', partial: false, privateWakeEveryMessages:componentFixtures.get('life-token-budget').config.privateWakeEveryMessages??5,
             remainingYuan: state.budgetConfigs?.[item.key]?.hardLimitYuan ? Math.max(0, state.budgetConfigs[item.key].hardLimitYuan - 0.03) : null,
             coldLimitYuan: state.budgetConfigs?.[item.key]?.coldLimitYuan || 0,
@@ -646,7 +646,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           if(['privateMessages','groupMessages','groupAtMessages'].some(field=>!Number.isSafeInteger(body[field])||body[field]<1||body[field]>30))return json({ok:false,error:'三个恢复窗口均需为 1–30 条整数'},400);
           state.recoveryWindows=structuredClone(body);return json({ok:true,recoveryWindows:state.recoveryWindows});
         }
-        if(path==='/api/tokens/budgets/owner'){state.ownerBudgetEnabled=body.ownerBudgetEnabled;return json({ok:true,owner:{key:'private:21001',budgetEnabled:state.ownerBudgetEnabled}});}
+        if(path==='/api/tokens/budgets/owner'){state.ownerBudgetEnabled=body.ownerBudgetEnabled;return json({ok:true,owner:{key:'private:10001',budgetEnabled:state.ownerBudgetEnabled}});}
         if (path === '/api/tokens/budgets/replies') {
           state.mechanicalReplies = { privateReplies: body.privateReplies, groupReplies: body.groupReplies };if(body.mechanicalLimits)state.mechanicalLimits=body.mechanicalLimits;
           return json({ ok: true, ...state.mechanicalReplies });
@@ -663,7 +663,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
         switch (path) {
           case '/api/plugins/call': {
             if(body.tool==='knowledge_quota')return json({ok:true,plugin:'ctx-knowledge-quota',result:body.input?.action==='reset'?quotaService.reset(body.input?.key||''):quotaService.report(body.input?.key||'')});
-            if(body.tool==='profile_snapshot')return json({ok:true,plugin:'ctx-memory-profile-store',result:{ok:true,version:1,updatedAt:Date.now(),profiles:{'100001':{hobbies:'离线档案兴趣'}},people:{'100001':{name:'演示用户',keys:['private:21001']}}}});
+            if(body.tool==='profile_snapshot')return json({ok:true,plugin:'ctx-memory-profile-store',result:{ok:true,version:1,updatedAt:Date.now(),profiles:{'100001':{hobbies:'离线档案兴趣'}},people:{'100001':{name:'演示用户',keys:['private:10001']}}}});
             if(body.tool==='image_generation_secret'&&body.input?.op==='status')return json({ok:true,plugin:'exec-image-generation',result:{ok:true,configured:false}});
             if(body.tool==='image_generation_status')return json({ok:true,plugin:'exec-image-generation',result:{ok:true,day:'2026-10-29',globalUsed:0,globalLimit:10,sessionLimit:3,quotaMode:'requests'}});
             if(body.tool==='campus_watch_status')return json({ok:true,plugin:'life-campus-watch',result:{ok:true,enabled:true,watchUrls:[],sites:[{name:'课程公告',url:'https://example.invalid/course?course_id=100&content_id=200&context='+('long-address-'.repeat(18)),health:{checkedAt:Date.now(),fetch:'green',auth:'green',diff:'stable',delivery:'none',hint:'页面可读取'}}],scripts:(scriptsFixture.config.scriptPaths||[]).map(item=>({path:typeof item==='string'?item:item.value,health:item.enabled===false?'paused':'green',description:scriptsFixture.config.scriptDescriptions?.[typeof item==='string'?item:item.value]||''})),running:[],lastRun:null}});
@@ -677,7 +677,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
               todayDate.setDate(todayDate.getDate() - 1);
               const yesterday = dateKey(todayDate);
               return json({ ok: true, plugin: 'ctx-memory-store', result: { ok: true, dates: [{ date: yesterday, count: 1, chars: 120,
-                deliveries: ['private:21001', 'private:21010'].map(key => ({ key, status: state.diaryCatchUpSent[key] ? 'sent' : 'archive_only' })) }] } });
+                deliveries: ['private:10001', 'private:10001'].map(key => ({ key, status: state.diaryCatchUpSent[key] ? 'sent' : 'archive_only' })) }] } });
             }
             if (body.tool !== 'worklog_history') return json({ ok: false, error: '演示工具不存在' }, 404);
             const reports = [

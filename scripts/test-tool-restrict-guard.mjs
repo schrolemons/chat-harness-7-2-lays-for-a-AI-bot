@@ -77,14 +77,17 @@ await test('时序问题能被 3 秒后的重试补藏（工具晚注册）', as
   const diag = path.join(tmpDir, 'diag-late.log');
   const mod = await loadPlugin(diag);
   const total = mod.RESTRICTED_TOOL_NAMES.length;
+  let registered=false;
   // 第一轮全部失败（模拟全局工具还没注册），第二轮全部成功（模拟 3 秒后注入器已注册）
   const { ctx, calls } = makeCtx({
-    restrictImpl: ({ round }) => (round <= total ? new Error('unknown global tool') : undefined)
+    restrictImpl: ({name}) => (mod.RESTRICTED_TOOL_NAMES.includes(name)&&!registered ? new Error('unknown global tool') : undefined)
   });
   mod.apply(ctx);
-  assert.equal(calls.hidden.size, 0, '第一轮应当一个都没藏掉');
+  assert.equal([...calls.hidden].filter(name=>mod.RESTRICTED_TOOL_NAMES.includes(name)).length, 0, '本地工具尚未注册时不能报告已隐藏');
+  registered=true;
   await new Promise((resolve) => setTimeout(resolve, 3400));
-  assert.equal(calls.hidden.size, total, `重试后应全部藏掉，实际 ${calls.hidden.size}/${total}`);
+  assert.equal([...calls.hidden].filter(name=>mod.RESTRICTED_TOOL_NAMES.includes(name)).length,total,'延迟注册的本地工具全部隐藏');
+  assert(calls.hidden.has('mcp__playwright__browser_navigate'),'额外的浏览器权限边界也必须保留');
   const log = fs.readFileSync(diag, 'utf8');
   assert.match(log, new RegExp(`延迟重试 ok=${total}`), `重试结果应写入诊断：${log}`);
 });
@@ -94,7 +97,8 @@ await test('restrict 一次成功时不写诊断文件（不制造噪声）', as
   const mod = await loadPlugin(diag);
   const { ctx, calls } = makeCtx({ restrictImpl: () => undefined });
   mod.apply(ctx);
-  assert.equal(calls.hidden.size, mod.RESTRICTED_TOOL_NAMES.length);
+  for(const name of mod.RESTRICTED_TOOL_NAMES)assert(calls.hidden.has(name),name);
+  assert(calls.hidden.has('mcp__playwright__browser_navigate'));
   assert.equal(fs.existsSync(diag), false, '全部成功时不该产生诊断文件');
 });
 
@@ -105,13 +109,14 @@ await test('执行期 guard 照旧：QQ MCP 放行、dev_* 与本地工具拒绝
   mod.apply(ctx);
   assert.equal(typeof calls.guard, 'function', '必须注册执行期 guard');
   const guard = calls.guard;
-  for (const name of ['mcp__snowluma__qq_send_message', 'mcp__snowluma-host__snowluma_status', 'mcp__web-search-safe__web_search', 'mcp__games__games_start', 'ask_user_question', 'todo_write']) {
+  for (const name of ['mcp__snowluma__qq_send_message', 'mcp__web-search-safe__web_search', 'mcp__games__games_start', 'ask_user_question', 'todo_write']) {
     assert.equal(guard({ name }), undefined, `${name} 应放行`);
   }
-  for (const name of ['dev_inject_plugin', 'dev_plugin_status', 'pwsh', 'read', 'write', 'dsh_snapshot', 'skill']) {
+  for (const name of ['mcp__snowluma-host__snowluma_status', 'mcp__snowluma__qq_task_spawn', 'dev_inject_plugin', 'dev_plugin_status', 'pwsh', 'read', 'write', 'dsh_snapshot', 'skill']) {
     assert.match(String(guard({ name })), /不在 QQ 桥接白名单内/, `${name} 必须拒绝`);
   }
   assert.match(String(guard({ name: '' })), /工具名无效/);
+  assert.match(String(guard({name:'mcp__playwright__browser_navigate'})),/浏览器工具仅管理员开发会话可用/);
   assert.match(String(guard({})), /工具名无效/);
 });
 

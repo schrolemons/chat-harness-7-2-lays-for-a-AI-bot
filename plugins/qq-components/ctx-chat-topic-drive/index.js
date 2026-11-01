@@ -11,7 +11,7 @@ const [{ planConversationDrive }, { effectiveFollowupLimits, isFollowupAllowed }
   import(helperUrl('../../../src/conversation-drive.js')), import(helperUrl('./followup-policy.mjs')), import(helperUrl('./topic-actions.mjs')), import(helperUrl('./private-followup.mjs')), import(helperUrl('./opening-topic.mjs'))
 ]);
 
-const NON_CHAT_REASONS = /^(selfReview|selfOptimize|memoryWrite|timeBubble|startupGreeting|reminder|newFriend|newsShare|careCheck|idleRescue|replyCheck)/;
+const NON_CHAT_REASONS = /^(selfReview|selfOptimize|memoryWrite|timeBubble|milkStock|startupGreeting|reminder|newFriend|newsShare|careCheck|idleRescue|replyCheck)/;
 
 export function createPlugin(ctx) {
   const referencePolicy = createTurnPolicy(ctx);
@@ -56,7 +56,7 @@ export function createPlugin(ctx) {
   ctx.registerTool('private_followup_send', {
     description: '群聊回复完成后，如果本轮实际发言者值得关心，或你对其具体经历/话题确实感兴趣且自然想了解后续，应使用本工具向其私聊追问一句。只问一个简短、具体的问题，不复述群里回复；必须使用本轮群聊 key 和实际发言者 QQ。系统会校验真实私聊关系、会话白名单、当前发言者和冷却/日上限，不要尝试绕过限制。',
     schema: { type: 'object', required: ['groupKey', 'userId', 'text'], properties: {
-      groupKey: { type: 'string', description: '本轮群聊 key，例如 group:21007' },
+      groupKey: { type: 'string', description: '本轮群聊 key，例如 group:40001' },
       userId: { type: 'string', description: '本轮群消息实际发送者 QQ 号' },
       text: { type: 'string', description: '一条简短的私聊追问，不复述群聊回复' }
     } },

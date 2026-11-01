@@ -39,7 +39,7 @@ ok('页面加载', page.status === 200 && html.includes('白名单 / 管理员')
 // 2. 角色列表
 let r = await api('/api/roles');
 const origRole = r.body.current ?? null;
-ok('角色列表', r.body.roles?.includes('生硬助手'), JSON.stringify(r.body));
+ok('角色列表', r.body.roles?.includes('傲娇助手'), JSON.stringify(r.body));
 
 // 3. 创建人格
 const TEST_ROLE = '测试人格Tmp';

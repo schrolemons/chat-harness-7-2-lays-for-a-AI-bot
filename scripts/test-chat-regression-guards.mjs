@@ -7,10 +7,10 @@ import {createPlugin} from '../plugins/qq-components/ctx-context-session/index.j
 
 test('current identity takes priority over historical self-introductions without rewriting history',()=>{
  const blocks=[];
- createPlugin({config:{},addPromptBlock:t=>blocks.push(t)}).hooks.beforePrompt({roleName:'AI助手',selfName:'DeepSeekAI助手',selfId:'123'});
+ createPlugin({config:{},addPromptBlock:t=>blocks.push(t)}).hooks.beforePrompt({roleName:'AI助手',selfName:'AI助手',selfId:'123'});
  assert.match(blocks.join('\n'),/历史.*(?:自称|自我介绍).*不.*(?:身份|角色)/);
  assert.match(blocks.join('\n'),/自我介绍.*当前角色/);
- assert.doesNotMatch(blocks.join('\n'),/通用助手/);
+ assert.doesNotMatch(blocks.join('\n'),/AI助手/);
  const other=[];createPlugin({config:{},addPromptBlock:t=>other.push(t)}).hooks.beforePrompt({roleName:'纸鹤',selfName:'纸鹤',selfId:'123'});
  assert.match(other.join('\n'),/纸鹤/);assert.doesNotMatch(other.join('\n'),/AI助手/);
 });

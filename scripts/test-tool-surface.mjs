@@ -93,10 +93,10 @@ await test('group-members 令牌校验：代理令牌错 / 什么令牌都没有
 
 await test('group-members 不在白名单的群被拒（不会变成任意群枚举入口）', async () => {
   await withBridge(async ({ st, request }) => {
-    const out = await request('group-members', { key: 'group:21015', token: st.agentToken });
+    const out = await request('group-members', { key: 'group:40001', token: st.agentToken });
     assert.equal(out.status, 403, JSON.stringify(out.data));
     // 关键：**不带令牌**也不能绕过白名单（closed-agent 的代理调用正是无令牌路径）
-    const noToken = await request('group-members', { key: 'group:21015', token: '' });
+    const noToken = await request('group-members', { key: 'group:40001', token: '' });
     assert.equal(noToken.status, 403, `无令牌也不得枚举非白名单群：${JSON.stringify(noToken.data)}`);
   });
 });

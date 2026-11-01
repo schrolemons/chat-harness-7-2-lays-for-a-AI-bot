@@ -1,3 +1,6 @@
+import * as presetOverview from '../src/console/preset-overview.js';
+import * as presetPolicy from '../src/preset-policy.js';
+import * as adminToolPolicy from '../src/tools/admin-policy.js';
 import * as dialogueSequence from '../src/bridge-core/dialogue-sequence.mjs';
 import * as receiptIndex from '../src/bridge-core/receipt-index.mjs';
 // Execute the real bridge initialization/functions against temporary files and fake peers.
@@ -31,6 +34,7 @@ import * as toolCatalog from '../src/tools/catalog.js';
 import { routePluginManagement } from '../src/console/plugin-management.js';
 import {routeContextManagement} from '../src/console/context-management.js';
 import {routeLearningManagement} from '../src/console/learning-management.js';
+import {routeFeedbackRepairs} from '../src/console/feedback-repairs.js';
 import { routeMemoryManagement } from '../src/console/memory-management.js';
 import * as scheduleLocks from '../plugins/qq-components/life-proactive-time-bubble/schedule-locks.mjs';
 import * as gamesStore from '../plugins/qq-components/tool-games/games-store.mjs';
@@ -165,8 +169,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
       if (action === 'get_friend_list') {
         return { status: 'ok', retcode: 0, data: [
           { user_id: 123, nickname: '管理员', remark: '管理员' },
-          { user_id: 11004, nickname: '小周用户', remark: '' },
-          { user_id: 11005, nickname: '小林用户', remark: '' },
+          { user_id: 10004, nickname: '艾莉用户', remark: '' },
+          { user_id: 10003, nickname: '十二用户', remark: '' },
           { user_id: 999, nickname: '未授权联系人', remark: '' }
         ] };
       }
@@ -192,12 +196,18 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   }, { out: [], droppingImport: false }).out.join('\n');
   source = source.replaceAll('import.meta.url', JSON.stringify(pathToFileURL(path.join(temp, 'src/bridge.js')).href));
   source = source.slice(0, source.indexOf("process.on('SIGINT'"));
+  const cleanupStart=source.indexOf('        // WebSocket 正常关闭和异常中断都会走到这里');
+  const cleanupEnd=cleanupStart+source.slice(cleanupStart).search(/\r?\n      }\r?\n      if \(framesThisStream > 0\)/);
+  if(cleanupStart<0||cleanupEnd<cleanupStart)throw Error('mux cleanup audit boundary missing');
+  const muxCleanup=source.slice(cleanupStart,cleanupEnd);
   source = source.replace('  bot.onPrivateMessage(async (event) => {', `
   return {
     pluginHost, taskCaps, tokenLedger, tokenBudgetOf, shouldBlockSilentReply,
     finishIdleWaitTurn: typeof finishIdleWaitTurn === 'function' ? finishIdleWaitTurn : undefined,
     ensureSession, ensureSlangLearnerSession, resolvePresetName, deliverPrompt, drainPromptQueue,
     buildTaskPrompt, handleTaskTurnEnd, tasksStore, queueDshEnvelope,
+    disconnectMux: async () => { ${muxCleanup}
+    },
     sendToQQ, sendAgentReplyV2: typeof sendAgentReplyV2 === 'function' ? sendAgentReplyV2 : undefined,
     onebotHttpAction, outboundContext, sendStickerV2, handleIncoming, handlePokeNotice, startConsoleServer, cfg, state, api, promptQueues,
     getSocialV2State, appendSocialV2Message, recordSentMessagesV2,
@@ -214,7 +224,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     messageAckInboundAt: typeof messageAckInboundAt !== 'undefined' ? messageAckInboundAt : undefined,
     syncStickerLibrary, listStickersForV2, getStickerImageData,
     refreshMode, modeAllowed, trackTurnEvent, replayPendingWakeReasonsV2,
-    collectors, setupSleepTimerV2, activeTurnEnvelopes, pendingTurnEnvelopes,
+    collectors, setupSleepTimerV2, activeTurnEnvelopes, pendingTurnEnvelopes, activeWaits,
     getInitialPrompt, setInitialPrompt, loadInitialPrompts, formatInitialPromptV2,
     initialPrompts, initialPromptMaxChars,
     extractMediaFromSegments, segmentsToText, fetchOneBotImage, fetchMediaData, resolveMediaList, imageAssetStore,
@@ -254,10 +264,10 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, migrateOutboundMood, migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...contextLimits, ...dialogueSequence, ...receiptIndex, ...costPolicy, ...consoleDocument, ...toolCatalog,
-    ...sessionRecovery,
+    ...sessionRecovery, ...presetPolicy, ...adminToolPolicy, ...presetOverview,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
     routePluginManagement,
-    routeMemoryManagement,routeLearningManagement,routeContextManagement,
+    routeMemoryManagement,routeLearningManagement,routeContextManagement,routeFeedbackRepairs,
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
     sniffImage: mediaNormalize.sniffImage,

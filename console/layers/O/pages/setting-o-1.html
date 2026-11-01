@@ -40,6 +40,11 @@
         <button id="v2FeedbackLoad" class="small">加载反馈历史与队列</button>
         <span class="meta" id="v2FeedbackMsg"></span>
       </div>
+      <div id="codexRepairInterfaceSettings" class="inline-component-settings" data-component-slot="obs-self-review" data-inline-fields="codexRepairEnabled" data-hide-toggle="1" data-hide-title="1" data-hide-scope="1" data-defer-save="1"></div>
+      <details class="settings-group"><summary>Codex 修正接口定义与规范</summary><div class="settings-content">
+        <p class="meta">管理员接口：GET / POST <code>/api/socialV2/self-review-feedback/repairs</code>。完整规范：<code>docs/guides/CODEX_REPAIR_API.md</code>；开发入口已写入 <code>AGENTS.md</code>。</p>
+        <p class="meta">提交 runId、问题编号、修复说明与 evidence 验证依据；先用 dryRun 检查，再正式提交。重复提交同一批次不会重复结案或写日志；日志失败返回 503，可用原批次重试。接口沿用控制台令牌，普通 QQ agent token 无权调用。</p>
+      </div></details>
       <div class="meta" id="v2FeedbackStatusSummary" style="margin-top:6px">反馈历史总账：提交后永久保留；历史数量与当前处理队列分开统计。</div>
       <div id="v2FeedbackHistoryOutput" class="feedback-history">正在自动加载反馈历史…</div>
       </div></details>

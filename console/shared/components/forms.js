@@ -29,7 +29,9 @@ import form24 from '../../layers/L/components/life-wake-reasons.js';
 import form25 from '../../layers/L/components/life-daily-worklog.js';
 import form26 from '../../layers/S/components/personal-core.js';
 import recoveryForm from '../../layers/O/components/obs-session-recovery.js';
+import selfReviewForm from '../../layers/O/components/obs-self-review.js';
 export const COMPONENT_FORMS = {
+  'obs-self-review':selfReviewForm,
   'obs-session-recovery':recoveryForm,
   "ctx-memory-store": extraForm2,
   "life-scheduler": extraForm1,

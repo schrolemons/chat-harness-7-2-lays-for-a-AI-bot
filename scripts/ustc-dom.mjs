@@ -1,4 +1,4 @@
-const APP_URL = 'https://portal.example.invalid/gsapp/sys/xsbgglappustc/*default/index.do#/xsbgxk';
+const APP_URL = 'https://example.invalid/gsapp/sys/xsbgglappustc/*default/index.do#/xsbgxk';
 const isReportData = r => r.url().includes('/wxbgbgdz.do') && !r.request().postData()?.includes('*searchMeta=1');
 
 export async function openReportTableDOM(browser, query) {

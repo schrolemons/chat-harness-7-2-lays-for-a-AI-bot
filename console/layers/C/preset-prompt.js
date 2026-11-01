@@ -22,10 +22,18 @@ function setSimEditing(editing) {
 }
 
 async function refreshSimPrompt() {
-  simPromptPreset = document.getElementById('simPromptPreset').value || 'qq-chat-v2';
+  if (!simPromptPreset) {
+    document.getElementById('simPromptText').value = '';
+    setSimEditing(false);
+    document.getElementById('simPromptEdit').disabled = true;
+    setSimMsg('管理员环境使用所选 DSH 预设；请在 DSH 中查看其配置。');
+    return;
+  }
   setSimMsg('读取中…');
+  const requested = simPromptPreset;
   try {
-    const r = await api('/api/preset/sim-prompt?preset=' + encodeURIComponent(simPromptPreset));
+    const r = await api('/api/preset/sim-prompt?preset=' + encodeURIComponent(requested));
+    if (requested !== simPromptPreset) return;
     const area = document.getElementById('simPromptText');
     if (!r.ok) {
       area.value = '';
@@ -56,3 +64,10 @@ simPromptPreset = 'qq-chat-v2';
 export { simPromptOriginal, simPromptPreset, setSimMsg, setSimEditing, refreshSimPrompt };
 
 export function setSimPromptOriginal(value) { simPromptOriginal = value; }
+
+export function followSimulationMode(mode) {
+  const preset = mode === 'reserved2' ? 'qq-chat-v2' : mode === 'reserved' || mode === 'chat' ? 'qq-chat' : null;
+  const label = document.getElementById('simPromptMode');
+  if (label) label.textContent = preset === 'qq-chat-v2' ? '当前模式：二代仿真；编辑本模式的行为与工具协议。' : preset ? '当前模式：一代／聊天；编辑本模式的行为与工具协议。' : '当前模式：管理员助手；预设由管理员环境选择。';
+  if (simPromptPreset !== preset) { simPromptPreset = preset; void refreshSimPrompt(); }
+}

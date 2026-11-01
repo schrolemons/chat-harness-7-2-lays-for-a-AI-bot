@@ -2,6 +2,18 @@
 import { api } from '../../shared/api.js';
 import { refreshV2Schedule } from './schedule.js';
 // layers/L/time-bubbles: explicit imports; initialize is called in the application startup order.
+let loadedTimeBubbleKey = '';
+let timeBubbleLoadVersion = 0;
+let savingTimeBubbles = false;
+const selectedTimeBubbleKey = () => document.getElementById('v2TbKey')?.value || '';
+const timeBubbleEditorReady = key => !!key && key === selectedTimeBubbleKey() && key === loadedTimeBubbleKey && !savingTimeBubbles;
+
+function invalidateTimeBubbleEditor() {
+  timeBubbleLoadVersion++;
+  loadedTimeBubbleKey = '';
+  renderV2TimeBubbles([]);
+  setV2TbMsg('请先加载该会话，再编辑或保存时段。');
+}
 
 function buildV2TimeBubbleRow(slot) {
   const div = document.createElement('div');
@@ -28,7 +40,8 @@ function buildV2TimeBubbleRow(slot) {
 }
 
 function applyV2TimeBubbleLocks() {
-  const allLocked = document.getElementById('v2TbAllLocked')?.checked === true;
+  const ready = timeBubbleEditorReady(selectedTimeBubbleKey());
+  const allLocked = !ready || document.getElementById('v2TbAllLocked')?.checked === true;
   document.querySelectorAll('#v2TimeBubbleRows [data-tb-row]').forEach((row) => {
     const rowLocked = row.querySelector('[data-tb="locked"]')?.checked === true;
     row.querySelectorAll('[data-tb]:not([data-tb="locked"]),[data-tb-del]').forEach((el) => { el.disabled = allLocked || rowLocked; });
@@ -38,6 +51,11 @@ function applyV2TimeBubbleLocks() {
 }
 
 function syncV2TimeBubbleCapacity() {
+  const ready = timeBubbleEditorReady(selectedTimeBubbleKey());
+  for (const id of ['v2TbSave','v2TbReset','v2TbAllLocked']) {
+    const control = document.getElementById(id);
+    if (control) control.disabled = !ready;
+  }
   const box = document.getElementById('v2TimeBubbleRows');
   const add = document.getElementById('v2TimeBubbleAdd');
   const msg = document.getElementById('v2TbCapacityMsg');
@@ -47,13 +65,14 @@ function syncV2TimeBubbleCapacity() {
   const rawLimit = capacityInput?.value;
   const limit = rawLimit !== '' && Number.isFinite(Number(rawLimit)) ? Math.max(0, Math.floor(Number(rawLimit))) : Infinity;
   const overLimit = count > limit;
-  if (add) add.disabled = allLocked || count >= limit;
+  if (add) add.disabled = !ready || allLocked || count >= limit;
   if (capacityInput) {
     capacityInput.disabled = overLimit;
     if (!overLimit) capacityInput.dataset.lastValidValue = capacityInput.value;
   }
   if (msg) {
-    if (overLimit) msg.textContent = `当前已配置 ${count} 个时段，超过每日上限 ${limit}；请先删除多余时段，再调整上限。`;
+    if (loadedTimeBubbleKey !== selectedTimeBubbleKey() || !loadedTimeBubbleKey) msg.textContent = '加载会话后显示已配置时段。';
+    else if (overLimit) msg.textContent = `当前已配置 ${count} 个时段，超过每日上限 ${limit}；请先删除多余时段，再调整上限。`;
     else if (allLocked) msg.textContent = `当前已配置 ${count}${Number.isFinite(limit) ? ' / ' + limit : ''} 个时段；冒泡栏已锁定。`;
     else if (count >= limit) msg.textContent = `当前已配置 ${count} / ${limit} 个时段，已达到上限，不能继续添加。`;
     else if (Number.isFinite(limit)) msg.textContent = `当前已配置 ${count} / ${limit} 个时段，还可添加 ${limit - count} 个。`;
@@ -86,36 +105,62 @@ function collectV2TimeBubbles() {
 function setV2TbMsg(text) { const el = document.getElementById('v2TbMsg'); if (el) el.textContent = text || ''; }
 
 async function loadV2TimeBubblesFor(key) {
+  const version = ++timeBubbleLoadVersion;
+  loadedTimeBubbleKey = '';
+  renderV2TimeBubbles([]);
   if (!key) { renderV2TimeBubbles([]); setV2TbMsg('请选择会话'); return; }
+  if (key !== selectedTimeBubbleKey()) return;
+  setV2TbMsg('正在加载该会话时段…');
   try {
     const r = await api('/api/socialV2/time-bubbles?key=' + encodeURIComponent(key));
+    if (version !== timeBubbleLoadVersion || key !== selectedTimeBubbleKey()) return;
     if (!r.ok) throw new Error(r.error || '读取失败');
-    const all = r.all || r.slots || [];
+    const all = r.all ?? r.slots;
+    if (!Array.isArray(all)) throw new Error('时段数据不完整，请重新加载');
+    loadedTimeBubbleKey = key;
     renderV2TimeBubbles(all, r.allLocked === true);
     setV2TbMsg((all.length ? '该会话已配置时间冒泡。' : '当前没有时间冒泡。') + ' 共 ' + all.length + ' 个时段。');
-  } catch (e) { setV2TbMsg('读取失败：' + (e && e.message ? e.message : e)); }
+  } catch (e) {
+    if (version !== timeBubbleLoadVersion || key !== selectedTimeBubbleKey()) return;
+    loadedTimeBubbleKey = '';
+    applyV2TimeBubbleLocks();
+    setV2TbMsg('读取失败：' + (e && e.message ? e.message : e));
+  }
 }
 
 async function saveV2TimeBubblesFor(key) {
-  if (!key) { setV2TbMsg('请选择会话'); return; }
+  if (!timeBubbleEditorReady(key)) { setV2TbMsg('请先成功加载当前会话，再保存时段。'); applyV2TimeBubbleLocks(); return; }
+  const version = timeBubbleLoadVersion;
+  const slots = collectV2TimeBubbles();
+  savingTimeBubbles = true;
+  applyV2TimeBubbleLocks();
   try {
-    const r = await api('/api/socialV2/time-bubbles', 'POST', { key, slots: collectV2TimeBubbles(), allLocked: document.getElementById('v2TbAllLocked')?.checked === true });
+    const r = await api('/api/socialV2/time-bubbles', 'POST', { key, slots, allLocked: document.getElementById('v2TbAllLocked')?.checked === true });
+    if (version !== timeBubbleLoadVersion || key !== selectedTimeBubbleKey()) return;
     setV2TbMsg(r.ok ? (r.conflicts?.length
       ? ('⚠️ 已保存未锁时段；锁定时段 ' + r.conflicts.join('、') + ' 保持原样。')
       : ('✅ 已保存，共 ' + ((r.all || []).length) + ' 个时段')) : ('❌ ' + (r.error || '失败')));
-    if (r.ok) loadV2TimeBubblesFor(key);
-    else if (r.error === 'LOCKED_SCHEDULE') { setV2TbMsg('该冒泡栏或时段已锁定；先解锁，再保存。'); loadV2TimeBubblesFor(key); }
-  } catch (e) { setV2TbMsg('保存失败：' + (e && e.message ? e.message : e)); }
+    if (r.ok) await loadV2TimeBubblesFor(key);
+    else if (r.error === 'LOCKED_SCHEDULE') { setV2TbMsg('该冒泡栏或时段已锁定；先解锁，再保存。'); await loadV2TimeBubblesFor(key); }
+  } catch (e) {
+    if (version === timeBubbleLoadVersion && key === selectedTimeBubbleKey()) setV2TbMsg('保存失败：' + (e && e.message ? e.message : e));
+  } finally { savingTimeBubbles = false; applyV2TimeBubbleLocks(); }
 }
 
 async function resetV2TimeBubblesFor(key) {
-  if (!key) return;
+  if (!timeBubbleEditorReady(key)) { setV2TbMsg('请先加载当前会话，再清空时段。'); return; }
   if (!confirm('清空此会话的所有时间冒泡时段？')) return;
+  const version = timeBubbleLoadVersion;
+  savingTimeBubbles = true;
+  applyV2TimeBubbleLocks();
   try {
     const r = await api('/api/socialV2/time-bubbles', 'POST', { key, reset: true });
+    if (version !== timeBubbleLoadVersion || key !== selectedTimeBubbleKey()) return;
     setV2TbMsg(r.ok ? '✅ 已清空；此会话不会再发送时间冒泡' : ('❌ ' + (r.error || '失败')));
-    if (r.ok) loadV2TimeBubblesFor(key);
-  } catch (e) { setV2TbMsg('恢复失败：' + (e && e.message ? e.message : e)); }
+    if (r.ok) await loadV2TimeBubblesFor(key);
+  } catch (e) {
+    if (version === timeBubbleLoadVersion && key === selectedTimeBubbleKey()) setV2TbMsg('清空失败：' + (e && e.message ? e.message : e));
+  } finally { savingTimeBubbles = false; applyV2TimeBubbleLocks(); }
 }
 
 async function loadV2FollowupSessionLimits(key) {
@@ -158,9 +203,11 @@ async function saveV2FollowupSessionLimits() {
 }
 
 export function initialize() {
-
+invalidateTimeBubbleEditor();
+document.getElementById('v2TbKey').addEventListener('change', invalidateTimeBubbleEditor);
 
 document.getElementById('v2TimeBubbleAdd').addEventListener('click', () => {
+  if (!timeBubbleEditorReady(selectedTimeBubbleKey())) return;
   const box = document.getElementById('v2TimeBubbleRows');
   if (box) {
     const capacity = document.getElementById('v2TimeBubbleAdd')?.closest('.settings-content')?.querySelector('.inline-component-settings .comp-form-num');

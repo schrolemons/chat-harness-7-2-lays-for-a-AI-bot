@@ -282,7 +282,7 @@ async function main() {
       if (logged && !announced) {
         announced = true;
         let cookies = [];
-        try { cookies = await page.cookies('https://portal.example.invalid'); } catch {}
+        try { cookies = await page.cookies('https://example.invalid'); } catch {}
         console.log('✅ 登录成功（url=' + state.url.slice(0, 80) + '，cookie=' + cookies.length + ' 个）');
         console.log('现在可以关闭这个浏览器窗口了；关闭后登录态会保存到 state/edge-profile。');
       }
