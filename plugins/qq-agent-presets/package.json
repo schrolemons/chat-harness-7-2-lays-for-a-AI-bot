@@ -1,6 +1,6 @@
 {
   "name": "qq-agent-presets",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Bridge-owned DSH preset declarations and shared tool/context guards; installed together by the root qq-bridge bundle.",
   "type": "module",
   "license": "MIT",

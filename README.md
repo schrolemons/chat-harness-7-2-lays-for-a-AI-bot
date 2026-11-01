@@ -18,10 +18,10 @@
 
 ## 推荐安装：一个 DSH 插件包
 
-从本项目 [Releases](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases) 下载 `qq-bridge-0.3.0.tgz`，在 DSH 的插件管理器安装本地包；也可使用 DSH CLI：
+从本项目 [Releases](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases) 下载 `qq-bridge-0.3.1.tgz`，在 DSH 的插件管理器安装本地包；也可使用 DSH CLI：
 
 ```powershell
-dsh plugin --profile desktop add C:/Downloads/qq-bridge-0.3.0.tgz
+dsh plugin --profile desktop add C:/Downloads/qq-bridge-0.3.1.tgz
 ```
 
 按 DSH 的提示应用插件。依赖由插件管理器安装；若提示是否允许运行本包安装脚本，请先查看脚本范围：只修补 SnowLuma SDK 的模块导入后缀，不登录账号、不启动或重启 QQ/DSH。
