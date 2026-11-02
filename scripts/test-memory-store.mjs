@@ -1,7 +1,10 @@
 // 记忆存储/调度组件回归测试：node scripts/test-memory-store.mjs
 import fs from 'node:fs';
 import path from 'node:path';
-import { createPlugin } from '../plugins/qq-components/ctx-memory-store/index.js';
+import { createPlugin as createMemoryPlugin } from '../plugins/qq-components/ctx-memory-store/index.js';
+import {withDiaryDelivery} from './fixtures/diary-delivery.mjs';
+import {diaryWindow} from '../plugins/qq-components/ctx-memory-store/diary-delivery.mjs';
+const createPlugin=ctx=>createMemoryPlugin({...ctx,capabilities:withDiaryDelivery(ctx.root,ctx.capabilities)});
 
 let failed = 0;
 const check = (name, ok, detail) => {
@@ -72,7 +75,7 @@ plugin.services.memory.capture({ key: 'private:1', text: '<MEMORY>【日记】\n
 
 // 下一次 tick：记忆已刷新，发当日日记
 await plugin.hooks.onTick({ now: t0 + 30_000 });
-check('刷新后发送目标日日记及明确时间窗', sent.length === 1 && sent[0].body.includes(today + ' 日日记') && sent[0].body.includes(dayOf(t0 - 86_400_000) + ' 22:00 至 ' + today + ' 22:00') && sent[0].body.includes('刷新后的日记'));
+check('刷新后发送目标日日记及明确时间窗', sent.length === 1 && sent[0].body.includes(today + ' 日日记') && sent[0].body.includes(diaryWindow(today,cfg.dailyDiary).label) && sent[0].body.includes('刷新后的日记'));
 const alreadySentResult = await plugin.services.memory.sendDiaryDetailed({ key: 'private:1', now: t0 + 30_000, day: today });
 check('手动重试明确返回已发送且不重复投递', alreadySentResult.reason === 'already_sent' && alreadySentResult.lastDiaryDate === today && sent.length === 1);
 check('日记状态显示插件登记的已发送日期', (await plugin.services.memory.diaryStatus({ key: 'private:1' })).lastDiaryDate === today);
@@ -128,8 +131,9 @@ check('日记历史左侧统计排除隐藏会话', diaryHistory?.ok === true &&
 check('日记历史预览只保留可见会话内容', diaryRead?.ok === true && diaryRead.text.includes('刷新后的日记') && !diaryRead.text.includes('EXCLUDED_GROUP_DIARY') && !diaryRead.text.includes('group:40001'));
 
 const listed = await registeredTools.get('diary_history')?.handler({ limit: 30 });
-check('归档列表含 date/count/keys/chars', listed.ok === true && listed.dates.length === 2
-  && listed.dates[0].date === today && listed.dates[0].count === 1 && listed.dates[0].keys[0] === 'private:1' && listed.dates[0].chars > 0);
+const listedToday=listed.dates.find(entry=>entry.date===today);
+check('归档列表含 date/count/keys/chars，允许保存未发送的新窗口草稿', listed.ok === true && listed.dates.length >= 2
+  && listedToday?.count === 1 && listedToday.keys[0] === 'private:1' && listedToday.chars > 0);
 
 const oneDay = plugin.services.memory.diaryArchiveRead({ date: today });
 check('读取某一天归档', oneDay.ok === true && oneDay.date === today && oneDay.text.includes('刷新后的日记'));
@@ -146,13 +150,13 @@ check('人工确认后补发指定日期：读取归档并记录发送', archive
 const olderA = dayOf(t0 - 4 * 86_400_000), olderB = dayOf(t0 - 2 * 86_400_000);
 fs.writeFileSync(path.join(archiveDir, olderA + '.md'), '# ' + olderA + ' 日记\n\n## private:3 · 20:00\nCATCHUP_A\n');
 fs.writeFileSync(path.join(archiveDir, olderB + '.md'), '# ' + olderB + ' 日记\n\n## private:3 · 20:00\nCATCHUP_B\n');
-fs.writeFileSync(path.join(archiveDir, today + '.md'), '# ' + today + ' 日记\n\n## private:3 · 20:00\nTODAY_IS_NOT_BACKLOG\n');
+fs.writeFileSync(path.join(archiveDir, plugin.services.memory.diaryTargetDay({now:t0}).day + '.md'), '# ' + plugin.services.memory.diaryTargetDay({now:t0}).day + ' 日记\n\n## private:3 · 20:00\nTODAY_IS_NOT_BACKLOG\n');
 const catchUpStart = sent.length;
 const catchUpAll = await plugin.services.memory.catchUpDiaries({ key: 'private:3', now: t0 });
 check('补发仅遍历今天之前的未发送归档，按日期发送且允许日期不连续', catchUpAll.ok === true
   && catchUpAll.results.map((item) => item.day).join(',') === [olderA, olderB].sort().join(',')
-  && sent.length === catchUpStart + 2 && sent.at(-2).meta?.id === 'diary:private:3:' + [olderA, olderB].sort()[0]
-  && sent.at(-1).meta?.id === 'diary:private:3:' + [olderA, olderB].sort()[1]);
+  && sent.length === catchUpStart + 2 && sent.at(-2).meta?.id === 'diary:private:3:' + [olderA, olderB].sort()[0]+':catchup'
+  && sent.at(-1).meta?.id === 'diary:private:3:' + [olderA, olderB].sort()[1]+':catchup');
 check('逐条补发后及时在对应归档标记发送时间', [olderA, olderB].every(day => fs.readFileSync(path.join(archiveDir, day + '.md'), 'utf8').includes('> 已发送：')));
 const noDay = plugin.services.memory.diaryArchiveRead({ date: '2000-01-01' });
 check('没有这一天的归档返回错误', noDay.ok === false && noDay.error === '没有这一天的归档');
@@ -182,11 +186,12 @@ const yesterday = dayOf(t0 - 86_400_000);
 const yesterdayFile = path.join(archiveRoot, 'state', 'memory', 'diary', yesterday + '.md');
 fs.writeFileSync(yesterdayFile, '# ' + yesterday + ' 日记\n\n## group:9 · 21:00\n别人的日记\n', 'utf8');
 plugin2.services.memory.write({ key: 'private:1', text: '【客观陈述】\n- 测试\n【日记】\n昨天写的日记' });
+fs.utimesSync(path.join(archiveRoot,'state/memory/private_1.md'),new Date(yesterday+'T12:00:00'),new Date(yesterday+'T12:00:00'));
 store2 = { lastDiaryDate: { 'private:1': yesterday } };
 await plugin2.hooks.onTick({ now: t0 });
 const yesterdayText = fs.readFileSync(yesterdayFile, 'utf8');
 check('回填缺失的归档（追加，不覆盖别的会话）', yesterdayText.includes('## group:9 ·') && yesterdayText.includes('## private:1 ·') && yesterdayText.includes('昨天写的日记'));
-check('回填记录 key+day', !!store2.diaryBackfill && !!store2.diaryBackfill['private:1|' + yesterday]);
+check('换窗归档不冒充实际发送，未确认投递前保留旧正文', !yesterdayText.includes('> 已发送：')&&plugin2.services.memory.diaryText({key:'private:1'}).includes('昨天写的日记'));
 const yesterdayOnce = fs.readFileSync(yesterdayFile, 'utf8');
 await plugin2.hooks.onTick({ now: t0 + 60_000 });
 check('回填不会重复追加', fs.readFileSync(yesterdayFile, 'utf8') === yesterdayOnce);

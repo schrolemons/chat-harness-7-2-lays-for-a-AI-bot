@@ -16,6 +16,8 @@ test('real plugin route rejects private/group tokens and forged owner fields bef
   const h=await bridgeHarness({config:{allow:{private:['123','789'],groups:['456']}}});let server;
   try {
     h.setMode('reserved2');
+    h.cfg.socialV2.adminDev={enabled:true,preset:'qq-admin'};h.setPresets(['standard','qq-chat-v2','qq-admin']);
+    h.state.sessions['private:123']='fixture-owner';h.state.sessionPresets['private:123']='qq-admin';
     const owner=h.getSocialV2State('private:123'),other=h.getSocialV2State('private:789'),group=h.getSocialV2State('group:456');
     server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));
     const call=(tool,token)=>fetch('http://127.0.0.1:'+server.address().port+'/api/plugins/call',{method:'POST',headers:{'content-type':'application/json','x-console-token':'fixture-console-token','x-agent-call':'1','x-agent-token':token},body:JSON.stringify({tool,input:{token,callerKey:'private:123',key:'private:123',isOwnerKey:true}})});

@@ -19,6 +19,7 @@ export const TOOL_CONFIG_FLAGS = {
   qq_get_active_members: 'getActiveMembers',
   qq_get_group_members: 'getGroupMembers',
   qq_task_note: 'taskNote',
+  qq_diary: 'memory',
   qq_memory_append: 'memory',
   qq_memory_query: 'memory',
   qq_memory_remove: 'memory',

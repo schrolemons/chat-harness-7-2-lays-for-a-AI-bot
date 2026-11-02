@@ -49,11 +49,11 @@ const RELATIVE_ROW_REWRITES = new Map([
 ]);
 
 export const BUNDLE_DIR = path.join(REPO_ROOT, 'plugins', 'qq-agent-presets');
-export function patchFileFor(name) {
-  return path.join(BUNDLE_DIR, 'presets', `${name}.patch.yml`);
+export function patchFileFor(name,root=REPO_ROOT) {
+  return path.join(root,'plugins','qq-agent-presets', 'presets', `${name}.patch.yml`);
 }
-function sourceDirFor(name) {
-  return path.join(REPO_ROOT, 'dsh', 'agent-presets', name);
+function sourceDirFor(name,root=REPO_ROOT) {
+  return path.join(root, 'dsh', 'agent-presets', name);
 }
 
 function readYaml(file) {
@@ -114,22 +114,29 @@ function normalizeRows(rows, preset) {
     throw new Error(`${preset}: 行列表缺少 qq-tool-restrict 行（仿真会话不允许缺少本地工具守卫）`);
   }
   if(preset === 'qq-learning' && !seen.has('learning-tool-restrict'))throw new Error('qq-learning 缺少只读学习守卫');
+  if(['qq-admin','qq-task-worker'].includes(preset) && !seen.has('admin-environment-guard'))throw new Error(preset+' 缺少管理员环境授权守卫');
   return normalized;
 }
 
 /** 渲染一个 preset 的 patch 文件内容。 */
-export function renderPatch(name) {
-  const dir = sourceDirFor(name);
+export function renderPatch(name,{root=REPO_ROOT}={}) {
+  const dir = sourceDirFor(name,root);
   const meta = readYaml(path.join(dir, 'preset.yml'));
   if (!meta || typeof meta !== 'object' || Array.isArray(meta)) throw new Error(`${name}: preset.yml 必须是映射`);
   for (const field of ['name', 'description', 'order']) {
     if (meta[field] === undefined) throw new Error(`${name}: preset.yml 缺少 ${field}`);
   }
-  const plugins = normalizeRows(readYaml(path.join(dir, 'agent.cordis.yml')), name);
+  let plugins = normalizeRows(readYaml(path.join(dir, 'agent.cordis.yml')), name);
   if (name === 'qq-admin') {
-    const persona=plugins.find(row=>row.id==='persona');
-    const v2=readYaml(path.join(sourceDirFor('qq-chat-v2'),'agent.cordis.yml')).find(row=>row.id==='persona');
-    persona.config.prefix=adminPersonaPrefix(persona.config.prefix,v2.config.prefix);
+    const v2=normalizeRows(readYaml(path.join(sourceDirFor('qq-chat-v2',root),'agent.cordis.yml')),'qq-chat-v2');
+    const additions=new Map(plugins.map(row=>[row.id,row]));
+    const persona=additions.get('persona');
+    plugins=v2.filter(row=>row.id!=='qq-tool-restrict').map(row=>row.id==='persona'
+      ? {...row,config:{...row.config,prefix:adminPersonaPrefix(persona.config.prefix,row.config.prefix)}}
+      : row.id==='tool-web' && additions.has(row.id) ? additions.get(row.id) : row);
+    const common=new Set(plugins.map(row=>row.id));
+    plugins.push(...[...additions.values()].filter(row=>!common.has(row.id)));
+    plugins=normalizeRows(plugins,name);
   }
   const row = {
     id: presetRowId(name),
@@ -155,11 +162,12 @@ export function renderPatch(name) {
 }
 
 /** 生成（或校验）全部 patch 文件。@returns {{file:string,changed:boolean}[]} */
-export function buildPatches({ check = false, log = () => {} } = {}) {
+export function buildPatches({ check = false, log = () => {},root=REPO_ROOT } = {}) {
   const results = [];
-  for (const name of PRESETS) {
-    const file = patchFileFor(name);
-    const content = renderPatch(name);
+  // Validate every derived preset before touching any artifact. Invalid shared
+  // interaction edits must never update v2 while leaving admin on old rules.
+  const rendered=PRESETS.map(name=>({file:patchFileFor(name,root),content:renderPatch(name,{root})}));
+  for (const {file,content} of rendered) {
     const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
     const changed = current !== content;
     if (changed && !check) {

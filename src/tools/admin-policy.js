@@ -1,4 +1,9 @@
 // Operational details and delegated execution belong only to the authenticated owner private session.
+const CHAT_ONLY_PRESETS=new Set(['qq-chat','qq-chat-v2','qq-learning','campus-summary']);
+export function isAdminEnvironmentAuthorized({owner=false,enabled=false,selectedPreset='',loadedPreset='',hasSession=false,knownPresets=[],requireSession=true}={}) {
+  return owner===true && enabled===true && !!selectedPreset && !CHAT_ONLY_PRESETS.has(selectedPreset)
+    && knownPresets.includes(selectedPreset) && (!requireSession || hasSession && loadedPreset===selectedPreset);
+}
 export function isAdminPluginTool(name) {
   return /^(?:task_(?:spawn|list|result|input|cancel)|campus_|bridge_health_|user_checking$|worklog_|diary_|eval_|exec_|browser_policy$|env_bridge_|integration_|gov_policy_|image_generation_(?:secret|status)$)/.test(String(name || ''));
 }

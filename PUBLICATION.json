@@ -2,16 +2,18 @@
   "schema": 2,
   "version": "0.3.1",
   "source": "upstream QQ bridge plus generic harness extensions",
-  "sourceRevision": "c0a11eccd0547468ff6ce3dc1d6b13705002fbe6",
+  "sourceRevision": "26d3778e7c1a969f5c6242eb6c3f57d605deb9e8",
   "upstream": "https://github.com/Derpyu520/qq-bridge",
-  "sharedSourceFiles": 1102,
+  "sharedSourceFiles": 1126,
   "edition": "public",
   "defaultLanguage": "neutral AI assistant",
   "verification": {
-    "isolatedTests": 524,
-    "nativeDshCliInstall": true,
+    "isolatedTests": 700,
     "automaticPresets": 6,
-    "executableStructureDifferences": 0
+    "presetModulesChecked": true,
+    "generatedArtifactsCurrent": true,
+    "unreviewedExecutableStructureDifferences": 0,
+    "neutralFixtureOverlays": 2
   },
   "excluded": [
     "operator runtime data",

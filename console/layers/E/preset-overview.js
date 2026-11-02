@@ -7,8 +7,8 @@ export async function loadPresetOverview() {
     const data=await api('/api/presets/overview');
     if(!data.ok)throw Error(data.error||'预设总览接口尚未加载，请确认桥接版本。');
     const owner=data.bindings.find(b=>b.key==='owner');
-    const usingAdmin=data.mode==='closed-agent'||data.adminEnabled;
-    document.getElementById('presetOverviewExplanation').innerHTML='<p><strong>管理员日常聊天：</strong>'+esc(usingAdmin?'当前整个管理员私聊使用管理员环境预设，包括日常聊天。':'当前管理员环境未启用，日常聊天使用当前运行模式的预设。')+'当前选定 <code>'+esc(owner?.preset||'待确定')+'</code>。</p><p>预设按整个会话选择，不按单条消息的内容自动切换。管理员身份决定管理接口权限，预设决定工具与工作规则；角色卡仍独立提供AI助手人设。</p><p>“跟随 DSH 默认”当前解析为 <code>'+esc(data.defaultPreset||'待确定')+'</code>，与一、二代运行模式独立。</p>';
+    const usingAdmin=data.adminEnabled===true;
+    document.getElementById('presetOverviewExplanation').innerHTML='<p><strong>管理员日常聊天：</strong>'+esc(usingAdmin?'管理员环境已开启，整个私聊使用所选预设；高权限还须该预设实际装配完成。':'当前管理员环境未启用，日常聊天使用当前运行模式的预设，owner 身份不单独授予高权限。')+'当前选定 <code>'+esc(owner?.preset||'待确定')+'</code>。</p><p>权限需要主动启用管理员环境并选择合适预设；普通聊天和只读预设不会获得执行权限。内置 qq-admin 与二代共用人设、发送、等待及上下文规则，只扩充工具权限；自定义预设仍遵循自身配置。预设不按单条消息自动切换。</p><p>“跟随 DSH 默认”当前解析为 <code>'+esc(data.defaultPreset||'待确定')+'</code>，与一、二代运行模式独立。</p>';
     document.getElementById('presetOverviewRows').innerHTML=data.bindings.map(binding=>{
       const config=binding.configuration;
       const phase=binding.active===true?'当前使用':binding.active===false?'当前未启用':'按用途调用';

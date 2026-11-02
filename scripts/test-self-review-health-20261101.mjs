@@ -12,7 +12,8 @@ const source=fs.readFileSync(new URL('./self-review.mjs',import.meta.url),'utf8'
 
 test('owner maintenance health instructions require actual tool availability and defer to injected scan health otherwise',()=>{
  let help;const plugin=createPlugin({registerTool:(name,definition)=>help=definition.handler});
- const text=plugin.hooks.beforePrompt({isOwnerKey:true,reason:'selfReview'});
+ assert.equal(plugin.hooks.beforePrompt({isOwnerKey:true,reason:'selfReview'}),'');
+ const text=plugin.hooks.beforePrompt({isOwnerKey:true,isAdminEnvironment:true,reason:'selfReview'});
  assert.match(text,/当前工具列表/);assert.match(text,/扫描健康摘要/);assert.match(text,/qq_status[\s\S]*不能[\s\S]*整链/);
  assert.match(help().rule,/当前工具列表/);assert.equal(plugin.hooks.beforePrompt({isOwnerKey:false,reason:'selfReview'}),'');
 });

@@ -17,6 +17,8 @@ test('configuration saves distinguish bot-wide rules from machine settings and s
  assert.equal(componentScope('life-schedule-reminder','保存全局日程规则').saveLabel,'保存全局日程规则');
  assert.equal(componentScope('exec-image-generation','保存生图服务与额度').saveLabel,'保存本机生图服务与额度');
  assert.match(componentScope('ctx-memory-profile-store').description,/按 QQ 号单独保存/);
+  assert.equal(componentScope('personal-core').label,'本机配置');
+  assert.match(componentScope('personal-core').description,/不.*MCP.*权限/);
 });
 test('current manifest fields replace retired forms and expose newly added settings', async () => {
   const { resolveComponentFields } = await import('../console/shared/components/field-contract.js');

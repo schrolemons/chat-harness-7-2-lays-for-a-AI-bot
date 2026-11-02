@@ -1,5 +1,6 @@
 import { presetBindings, summarizePreset } from './console/preset-overview.js';
-import { isAdminPluginTool } from './tools/admin-policy.js';
+import {buildDshBundle} from '../scripts/build-dsh-bundle.mjs';
+import { isAdminPluginTool, isAdminEnvironmentAuthorized } from './tools/admin-policy.js';
 import { FIXED_PRESETS, adminPresetConfig, requestedPreset, simulationPreset } from './preset-policy.js';
 import {ensureDialogueSequences} from './bridge-core/dialogue-sequence.mjs';
 import {receiptStateView} from './bridge-core/receipt-index.mjs';
@@ -11,6 +12,7 @@ import { createOutboundTransport, outboundScope, reportHumanIncoming, recordAdmi
 import { routePluginManagement } from './console/plugin-management.js';
 import { routeContextManagement } from './console/context-management.js';
 import { sendDirectTimedNotice } from './bridge-core/direct-timed-notices.js';
+import {routeDiaryManagement} from './console/diary-management.js';
 import { routeMemoryManagement } from './console/memory-management.js';
 // QQ ↔ DeepSeek Harness 桥接主程序。
 //
@@ -96,6 +98,7 @@ import { listGames, setGameSettings, saveCustomGame, deleteCustomGame } from '..
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
+const BRIDGE_STARTED_AT = Date.now();
 const STATE_DIR = path.join(ROOT, 'state');
 migrateOutboundMood(ROOT);
 migrateGroupWake(ROOT);
@@ -250,8 +253,8 @@ function loadOrCreateConsoleToken() {
  * 要给出一条**安全**的可复制命令，并把结果回报到控制台（/api/security 的 stateDirHardened）。
  * 宁可明确报"没做成"，也不要假装已经安全。
  */
-function hardenStateDirAcl() {
-  const result = hardenDir(STATE_DIR);
+function hardenStateDirAcl({force=false} = {}) {
+  const result = hardenDir(STATE_DIR,{force});
   if (result.ok) {
     stateDirHardened = true;
     return;
@@ -500,7 +503,7 @@ function presetStatus(name) {
     preset: name,
     label: name === PRESET_NAMES.v1 ? '一代仿真（reserved）' : '二代仿真（reserved2）',
     sourceFile: path.relative(ROOT, presetSourceYaml(name)),
-    installed: fs.existsSync(installedPresetYaml(name)),
+    installed: fs.existsSync(path.join(ROOT,'plugins','qq-agent-presets','presets',name+'.patch.yml')),
     requiresRestart: true,
   };
 }
@@ -2505,6 +2508,7 @@ async function main() {
   // DSH 可用性探活 + 重启容错队列：
   // DSH 重启期间收到的 QQ 消息先入队（不丢），DSH 恢复后按序补投。
   let dshReady = false;
+  let lastDshReadyAt = 0;
   let groupSessionRecovery = null;
   let dshCheckStarted = false;
   let snowlumaWatchStarted = false; // SnowLuma 上游健康探测只启动一次（见 startSnowlumaWatch）
@@ -2592,7 +2596,7 @@ async function main() {
   async function refreshPresetList() {
     try {
       const { presets: list } = unwrap(await api.agentPresets.list({}), 'agentPresets.list');
-      dshPresetIds = list.map((p) => String(p.id));
+      dshPresetIds = list.filter(p=>!p.broken).map((p) => String(p.id));
       lastPresetRefreshAt = Date.now();
       const marked = list.find((p) => p.isDefault === true);
       if (marked) dshDefaultPreset = String(marked.id);
@@ -2712,6 +2716,12 @@ async function main() {
   function modePreset(key, mode, cfg) {
     const binding = requestedPreset({mode, owner:isAdminDevKey(key), admin:adminDevCfgV2()});
     return resolvePresetName(binding.id, {strict:binding.strict}) || undefined;
+  }
+
+  function hasAdminEnvironment(key, {requireSession=true} = {}) {
+    const admin=adminDevCfgV2(),selected=admin.preset || dshDefaultPreset;
+    return isAdminEnvironmentAuthorized({owner:isAdminDevKey(key),enabled:admin.enabled,selectedPreset:selected,
+      loadedPreset:String(state.sessionPresets?.[key] || ''),hasSession:!!state.sessions?.[key],knownPresets:dshPresetIds,requireSession});
   }
 
   /** 判断一个会话 key 是否仍被当前模式/白名单允许（供唤醒调度与 HTTP 路由共用）。 */
@@ -2938,6 +2948,7 @@ async function main() {
       }
       if (dshPresetIds.length > 0) syncAdminDevPreset();
       reconcileSessionPolicies();
+      lastDshReadyAt = Date.now();
       if (!dshReady) {
         dshReady = true;
         lastMode = currentMode;
@@ -3205,7 +3216,7 @@ async function main() {
       // 管理员（owner）令牌：允许对任何白名单会话发消息（传话/代发）。
       const ownerKey = 'private:' + String(cfg.ownerQQ ?? '');
       const ownerSt = socialV2.conversations.get(ownerKey);
-      if (ownerSt?.agentToken && tokenEq(token, ownerSt.agentToken)) {
+      if (hasAdminEnvironment(ownerKey) && ownerSt?.agentToken && tokenEq(token, ownerSt.agentToken)) {
         const m = /^(private|group):(\d+)$/.exec(canonical ?? String(key));
         if (m && allowed(m[1], Number(m[2]), cfg)) return true;
       }
@@ -3450,9 +3461,14 @@ async function main() {
         }
       }
       const sourceToken=req.headers['x-agent-token'];
+      if (sourceToken && !isLiveAgentToken(sourceToken)) {sendJson({ok:false,error:'会话令牌已失效'},403);return;}
       const sourceKey=[...socialV2.conversations].find(([,st])=>sourceToken && st.agentToken===sourceToken)?.[0]
         || (!sourceToken && req.headers['x-agent-call']!==undefined && currentMode==='closed-agent' ? 'private:'+String(cfg.ownerQQ) : undefined);
       const agentRequest=req.headers['x-agent-call']!==undefined || !!sourceToken;
+      if(agentRequest && sourceKey && req.method==='GET' && !hasAdminEnvironment(sourceKey)) {
+        const target=url.searchParams.get('key') || url.searchParams.get('conversationKey');
+        if(target && target!==sourceKey){sendJson({ok:false,error:'跨会话读取需要启用管理员环境'},403);return;}
+      }
       const sourceEnvelope=sourceKey?activeTurnEnvelopes.get(state.sessions[sourceKey]):null;
       outboundScope.enterWith(actualOutbound.capture({key:sourceKey,envelope:sourceEnvelope,
         origin:agentRequest?'conversation':'operator',agent:agentRequest}));
@@ -3842,7 +3858,8 @@ async function main() {
             // 让一次"打开又保存"把整个提示词块变成全删全加的 diff，失去可复审性。
             const normalized = String(body.content ?? '').replace(/\r\n/g, '\n').replace(/\n+$/, '');
             if (normalized === prefix) {
-              sendJson({ ok: true, unchanged: true, chars: prefix.length, warnings: presetPromptWarnings(prefix), synced: fs.existsSync(installedPresetYaml(preset)), requiresRestart: false, status: presetStatus(preset) });
+              const built=buildDshBundle({root:ROOT});
+              sendJson({ ok: true, unchanged: true, chars: prefix.length, warnings: presetPromptWarnings(prefix), synced: true, requiresRestart: built.some(row=>row.changed), status: presetStatus(preset) });
               return;
             }
             nextText = renderPresetPromptYaml(text, body.content, preset === PRESET_NAMES.v1 ? 'v1' : 'v2');
@@ -3855,6 +3872,7 @@ async function main() {
           try {
             sourceBackup = backupPresetFile(preset);
             atomicWriteText(presetSourceYaml(preset), nextText);
+            buildDshBundle({root:ROOT});
             // 同步到 DSH 实际读取的安装目录。
             // 注意：安装副本**不做仓库内备份**——它的内容与刚写好的源文件一致，
             // 备份它等于把含本机绝对路径的快照塞进仓库工作区，没有额外价值。
@@ -3865,7 +3883,7 @@ async function main() {
           } catch (error) {
             // 尽力回滚源文件，避免留下半截状态
             if (sourceBackup && fs.existsSync(sourceBackup)) {
-              try { fs.copyFileSync(sourceBackup, presetSourceYaml(preset)); } catch {}
+              try { fs.copyFileSync(sourceBackup, presetSourceYaml(preset)); buildDshBundle({root:ROOT}); } catch {}
             }
             sendJson({ ok: false, error: `写入失败：${error?.message ?? error}` }, 500);
             return;
@@ -3875,7 +3893,7 @@ async function main() {
             ok: true,
             chars: String(body.content ?? '').length,
             warnings,
-            synced: fs.existsSync(installedPresetYaml(preset)),
+            synced: fs.existsSync(path.join(ROOT,'plugins','qq-agent-presets','presets',preset+'.patch.yml')),
             requiresRestart: true,
             status: presetStatus(preset),
           });
@@ -3916,6 +3934,7 @@ async function main() {
             }
             backupPresetFile(preset);
             atomicWriteText(presetSourceYaml(preset), restored);
+            buildDshBundle({root:ROOT});
             const installed = installedPresetYaml(preset);
             if (fs.existsSync(installed)) fs.copyFileSync(presetSourceYaml(preset), installed);
             log(`控制台：${preset} 仿真提示词已还原自备份 ${target}；需重启 DSH 生效`);
@@ -4345,7 +4364,7 @@ async function main() {
           // 支持从控制台**重试**收紧 state/ 权限（用户在管理员终端里配好了权限/换了启动方式后）。
           if (body.rehardenStateDir === true) {
             stateDirHardened = null;
-            hardenStateDirAcl();
+            hardenStateDirAcl({force:true});
             sendJson({ ok: stateDirHardened === true, hardened: stateDirHardened, path: STATE_DIR });
             return;
           }
@@ -4736,7 +4755,7 @@ async function main() {
           // adminDev：管理员开发模式
           if (body.adminDev && typeof body.adminDev === 'object') {
             merged.adminDev = { ...(current.adminDev ?? {}), ...body.adminDev };
-            if (merged.adminDev.enabled !== undefined) merged.adminDev.enabled = merged.adminDev.enabled !== false;
+            if (merged.adminDev.enabled !== undefined) merged.adminDev.enabled = merged.adminDev.enabled === true;
             if (merged.adminDev.preset !== undefined) merged.adminDev.preset = String(merged.adminDev.preset ?? '').trim().slice(0, 64);
           }
           // selfReview：自我更新频率
@@ -4833,6 +4852,7 @@ async function main() {
           if (wakeDefaultChanged) refreshAllDefaultWakeConfigsV2();
           if (body.adminDev !== undefined) {
             try { syncAdminDevPreset(); } catch (error) { log('同步管理员开发模式 preset 失败：' + (error?.message ?? error)); }
+            await revokeUnauthorizedAdminTasks();
           }
           // 定时主动消息改了时间/增删后，立刻按新配置重排所有会话的冒泡定时器。
           if (body.timeBubbles !== undefined) {
@@ -4986,7 +5006,7 @@ async function main() {
             setWakeConfig: 'qq_set_wake_config',
             mood: 'qq_mood',
             markRead: 'qq_mark_read',
-            memory: 'qq_memory_append / qq_memory_query / qq_memory_remove / qq_memory_clear',
+            memory: 'qq_memory_append / qq_memory_query / qq_memory_remove / qq_memory_clear / qq_diary',
             availability: 'qq_availability',
             schedule: 'qq_schedule',
     taskNote: 'qq_task_note',
@@ -5156,8 +5176,8 @@ async function main() {
             const headerToken = String(req.headers['x-agent-token'] || '');
             const token = headerToken || String(body.input?.token || '');
             const ownerKey = taskCapTokenKey(token);
-            if (!ownerKey || !v2SessionAllowed(ownerKey)) {
-              sendJson({ok:false,error:'此能力仅管理员私聊可用'},403); return;
+            if (!ownerKey || !v2SessionAllowed(ownerKey) || !hasAdminEnvironment(ownerKey)) {
+              sendJson({ok:false,error:'此能力需要启用管理员环境并使用已选高权限预设'},403); return;
             }
           }
           if (isAgentPluginCall && body.tool === 'knowledge_quota') {
@@ -5214,7 +5234,7 @@ async function main() {
             const sessionKey = [...CONVERSATION_TOKENS.entries()]
               .find(([, tokens]) => tokens.some((known) => tokenEq(known, token)))?.[0] || '';
             const ownerKey = 'private:' + String(cfg.ownerQQ ?? '');
-            const isOwnerProfileSession = !!cfg.ownerQQ && sessionKey === ownerKey;
+            const isOwnerProfileSession = !!cfg.ownerQQ && sessionKey === ownerKey && hasAdminEnvironment(sessionKey);
             const isCrossSessionTarget = !!input.key && String(input.key) !== sessionKey;
             if (!sessionKey
               || (toolName === 'profile_snapshot' && !isOwnerProfileSession)
@@ -5564,6 +5584,7 @@ async function main() {
           }
           return;
         }
+        if(await routeDiaryManagement({req,url,readBody,sendJson,pluginHost,tokenOk:memoryTokenOk,sessionAllowed:v2SessionAllowed,toolEnabled:v2ToolEnabled}))return;
         if(await routeLearningManagement({req,url,readBody,sendJson,pluginHost,tokenOk:memoryTokenOk,sessionAllowed:v2SessionAllowed,toolEnabled:v2ToolEnabled}))return;
         if (await routeMemoryManagement({ req, url, readBody, sendJson, pluginHost,
           agentTokenOk: memoryTokenOk,
@@ -5590,8 +5611,8 @@ async function main() {
           const list = [];
           for (const [key, st] of socialV2.conversations) {
             const pm = readPersistMemoryV2(key);
-            const targetDate = dateKeyLocalV2(new Date());
-            const diaryStatus = await pluginHost.callService('memory', 'diaryStatus', { key, day: targetDate }) || {};
+            const diaryStatus = await pluginHost.callService('memory', 'diaryStatus', { key, now: Date.now() }) || {};
+            const targetDate = diaryStatus.day || dateKeyLocalV2(new Date());
             const diaryAvailability = pluginHost.callService('memory', 'diaryForDay', { key, day: targetDate });
             const hasDiary = diaryAvailability && diaryAvailability.ok === true
               ? diaryAvailability.available === true : !!extractDiaryFromMemoryV2(pm.text);
@@ -5600,10 +5621,21 @@ async function main() {
               key,
               lastDiaryDate,
               targetDate,
+              windowStart: diaryStatus.start || '', windowEnd: diaryStatus.end || '',
+              lastConfirmedDiaryDate: diaryStatus.lastConfirmedDiaryDate || '',
+              lastConfirmedSentAt: Number(diaryStatus.lastConfirmedSentAt) || 0,
               hasDiary,
               targetSent: diaryStatus.sentForDay === true,
               sentAt: Number(diaryStatus.sentAt) || 0,
               deliveryStatus: diaryStatus.deliveryStatus || 'unavailable',
+              scheduledDeliveryStatus: diaryStatus.scheduledDeliveryStatus || 'unavailable',
+              scheduledSentAt: Number(diaryStatus.scheduledSentAt) || 0,
+              scheduledRefreshing: diaryStatus.scheduledRefreshing === true,
+              previousDay: diaryStatus.previousDay || '',
+              previousDiaryMissing: diaryStatus.previousDiaryMissing === true,
+              previousDiaryStatus: diaryStatus.previousDiaryStatus || 'unavailable',
+              previousDiaryAvailable: diaryStatus.previousDiaryAvailable === true,
+              previousSentAt: Number(diaryStatus.previousSentAt) || 0,
               diaryPending: Number(st.diaryRequestedAt || 0) > Date.now() - 30 * 60 * 1000,
               diaryChars: diaryAvailability && diaryAvailability.ok === true
                 ? Number(diaryAvailability.chars) || 0 : extractDiaryFromMemoryV2(pm.text).length,
@@ -5631,22 +5663,22 @@ async function main() {
                 if (stNow.pendingMemoryWrite) stNow.pendingMemoryWrite = false;
               }
               if (stNow.pendingMemoryWrite || stNow.diaryRequestedAt) { sendJson({ ok: false, error: '今天的记忆刷新或日记发送已在处理中', reason: 'pending' }, 409); return; }
-              const day = dateKeyLocalV2(new Date());
+              const day = pluginHost.callService('memory','diaryTargetDay',{now:Date.now()})?.day || dateKeyLocalV2(new Date());
               stNow.diaryRequestedAt = Date.now();
               stNow.diaryRequestedDay = day;
               stNow.diaryRequestedId = crypto.randomUUID();
               stNow.pendingMemoryWrite = true;
               saveSocialV2State();
               void sendWakePromptV2(key, 'memoryWrite').catch((error) => log('[diary] 手动刷新记忆失败 ' + key + ': ' + (error?.message ?? error)));
-              sendJson({ ok: true, accepted: true, pending: true, key, action: body.action, day, message: '已请求刷新今天的记忆；刷新完成后发送这次最新总结。' });
+              sendJson({ ok: true, accepted: true, pending: true, key, action: body.action, day, message: '已请求刷新并发送 '+day+' 日记；会按当前配置的日记窗口总结。' });
               return;
             }
             if (body.action === 'catchUpAll') {
-              const result = await pluginHost.callService('memory', 'catchUpDiaries', { key });
+              const result = await pluginHost.callService('memory', 'catchUpDiaries', { key, confirmLegacyUnsent: body.confirmLegacyUnsent === true });
               sendJson({ ok: result?.ok === true, key, action: body.action, results: result?.results || [], sentCount: (result?.results || []).filter((item) => item.ok).length });
               return;
             }
-            const result = await sendDailyDiaryV2(key, { catchUp: true, force: false, allowArchiveRetry: true, day: body.day });
+            const result = await sendDailyDiaryV2(key, { catchUp: true, force: false, allowArchiveRetry: true, day: body.day, confirmLegacyUnsent: body.confirmLegacyUnsent === true });
             const day = /^\d{4}-\d{2}-\d{2}$/.test(String(body.day || '')) ? String(body.day) : dateKeyLocalV2(new Date());
             const sent = result?.ok === true;
             sendJson({ ok: sent, key, action: body.action, sent, day,
@@ -6345,6 +6377,7 @@ async function main() {
           const ownerKey = 'private:' + String(cfg.ownerQQ ?? '');
           if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
           if (key !== ownerKey) { sendJson({ ok: false, error: '文件发送仅限管理员私聊（ownerQQ）' }, 403); return; }
+          if (!hasAdminEnvironment(key) || taskCapTokenKey(token)!==key || req.headers['x-agent-token'] && req.headers['x-agent-token']!==token) { sendJson({ok:false,error:'文件发送需要启用管理员环境并使用已选高权限预设'},403); return; }
           if (!token || !agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
           if (!v2ToolEnabled('sendFile')) { sendJson({ ok: false, error: '工具未启用：qq_send_file' }, 403); return; }
           let filePath = String(body.filePath ?? body.file ?? '').trim();
@@ -9168,7 +9201,7 @@ async function main() {
 
   // 审计范围：owner 私聊一律跳过（owner 有权看本机路径/凭据/令牌）；其余模式/会话一律审计
   function shouldAuditKey(key) {
-    return !(key === `private:${String(cfg.ownerQQ ?? '')}`);
+    return !hasAdminEnvironment(key);
   }
 
   // 入队校验无法约束排队等待期间的权限变化，每条消息临近实际发送时再次校验。
@@ -9354,7 +9387,7 @@ async function main() {
       // 拿不到 qq-chat* 就拒绝建会话，绝不让 DSH 用默认 preset（standard）顶上——那会把
       // bash/文件读写等本地工具暴露给 QQ 群里的任何人（见 RULES.md「无本地工具」）。
       // closed-agent 仅 owner 私聊、本来就用完整工具面，回退不构成提权。
-      const strictPreset = currentMode !== 'closed-agent';
+      const strictPreset = true;
       if (strictPreset && !preset) {
         const wanted = FIXED_PRESETS[currentMode] || FIXED_PRESETS.chat;
         throw new Error(`拒绝为 ${key} 创建会话：模式 ${currentMode} 需要 preset "${wanted}"，但它不在 DSH 可用清单中（${dshPresetIds.join(', ') || '未知'}）。回退到 DSH 默认 preset 会把本地工具暴露给 QQ 群；请先运行 node scripts/setup-dsh.mjs 并重启 DSH。`);
@@ -9453,7 +9486,7 @@ async function main() {
     for (const [key, st] of socialV2.conversations) {
       if (!st?.agentToken || st.agentToken.length !== token.length) continue;
       if (crypto.timingSafeEqual(Buffer.from(st.agentToken), Buffer.from(token))) {
-        return key === ownerKey ? key : null;
+        return key === ownerKey && hasAdminEnvironment(key) ? key : null;
       }
     }
     return null;
@@ -9465,11 +9498,11 @@ async function main() {
   }
   async function taskSpawn({ token, title, task }) {
     const callerKey = taskCapTokenKey(token);
-    if (!callerKey) throw new Error('任务委派仅管理员（管理员）会话可用：令牌校验失败');
+    if (!callerKey) throw new Error('任务委派需要启用管理员环境并使用已选高权限预设：令牌或环境校验失败');
     return taskSpawnCore({ callerKey, title, task });
   }
   async function taskSpawnCore({ callerKey, title, task, feedbackIssueId = '', feedbackClaimId = '' }) {
-    if (!isAdminDevKey(callerKey)) throw new Error('任务委派仅管理员（管理员）会话可用');
+    if (!hasAdminEnvironment(callerKey)) throw new Error('任务委派需要启用管理员环境并使用已选高权限预设');
     if (cfg.socialV2?.taskSession?.enabled === false) throw new Error('任务会话已停用');
     const taskConfig = pluginHost.get('life-task-session')?.config || {};
     const maxConcurrent = Math.max(1, Number(taskConfig.maxConcurrentTasks ?? cfg.socialV2?.taskSession?.maxConcurrentTasks) || 3);
@@ -9714,6 +9747,13 @@ async function main() {
   taskCaps.taskResult = taskResult;
   taskCaps.taskCancel = taskCancel;
   taskCaps.taskInput = taskInput;
+
+  async function revokeUnauthorizedAdminTasks() {
+    const revoked=Object.values(tasksStore).filter(task=>['running','waiting_input'].includes(task.status)&&!hasAdminEnvironment(task.originKey));
+    for(const task of revoked){task.status='cancelled';task.error='管理员环境关闭或预设变更，后续执行授权已撤销';task.updatedAt=Date.now();}
+    if(revoked.length)saveTasks();
+    await Promise.allSettled(revoked.map(task=>withTimeout(api.stopSessionWork(task.sessionId),DSH_CONTROL_TIMEOUT_MS,'revoke admin task')));
+  }
   // ── 传话组件（life-relay-message）的环境能力 ─────────────────────────────
   // 目标解析：白名单 + 别名表 + 管理员角色称呼；越权/未知一律 null。
   taskCaps.resolveRelayTarget = (name) => {
@@ -9787,6 +9827,7 @@ async function main() {
     if(cfg.socialV2?.enabled===false)return 'social_disabled';
     if(getSocialV2State(key).mutedUntilReengaged)return 'legacy_muted';
     if(pluginHost.callService('availability','isQuiet',{key})===true)return 'quiet';
+    if(pluginHost.callService('scheduler','transportReady')!==true)return 'transport';
     return '';
   }
   function automaticNotificationAllowed(key){return !automaticNotificationBlockReason(key);}
@@ -9796,6 +9837,7 @@ async function main() {
     const plugin=String(event.plugin||''),reason=String(event.reason||'');
     if(!event.id||event.key!==key||!reason||!Number.isFinite(event.expiresAt)||event.expiresAt<Date.now()||event.signal?.aborted)return {ok:false,reason:'expired'};
     if(!dshReady||!pluginHost.isEnabled(plugin))return {ok:false,reason:'unavailable'};
+    if(pluginHost.callService('scheduler','transportReady')!==true)return {ok:false,reason:'transport'};
     const blocked=automaticNotificationBlockReason(key);if(blocked)return {ok:false,reason:blocked};
     if(!pluginHost.allowsWake(reason,{key})||pluginHost.callService('availability','canWake',{key,reason})===false||pluginHost.callService('proactive','allowsReason',{reason})?.allowed===false)return {ok:false,reason:'wake_blocked'};
     const facts=taskCaps.getProactiveFacts(key);
@@ -9825,7 +9867,7 @@ async function main() {
     return {ok:true,receiptStatus:'sent'};
   };
   taskCaps.sendNotification=async(key,body,meta={})=>(await taskCaps.sendNotificationDetailed(key,body,meta)).ok===true;
-  taskCaps.scheduledContactReady=({key})=>dshReady && currentMode==='reserved2' && !socialV2.paused && cfg.socialV2?.enabled!==false && isSessionAllowedInCurrentMode(key);
+  taskCaps.scheduledContactReady=({key})=>dshReady && pluginHost.callService('scheduler','transportReady')===true && currentMode==='reserved2' && !socialV2.paused && cfg.socialV2?.enabled!==false && isSessionAllowedInCurrentMode(key);
   taskCaps.requestScheduledContact=({key,id})=>{
     const st=getSocialV2State(key);if(st.mutedUntilReengaged)st.mutedUntilReengaged=null;
     return sendWakePromptV2(key,'scheduledContact:'+id);
@@ -9859,7 +9901,7 @@ async function main() {
     if (target === from) return { ok:false,error:'目标不能是发起会话本身' };
     const targetResolved = (() => { try { return resolveRelayTargetV2(target); } catch { return null; } })();
     if (!targetResolved || targetResolved !== target) return { ok: false, error: '目标不在白名单：' + target };
-    const isOwnerRelay = from === 'private:' + String(cfg.ownerQQ ?? '');
+    const isOwnerRelay = hasAdminEnvironment(from);
     const guardCfg = resolveBridgeGuardConfig(cfg);
     const guarded = textBody ? guardRelayText(textBody, { config: guardCfg }) : { action:'allow',text:'' };
     if (guarded.action === 'reject') {
@@ -9947,6 +9989,7 @@ async function main() {
   };
 
   // ── 记忆存储组件（ctx-memory-store）的环境能力 ───────────────────────
+  taskCaps.runtimeStartedAt = BRIDGE_STARTED_AT;
   taskCaps.memoryConfig = () => ({
     enabled: cfg.socialV2?.enabled !== false,
     mode: currentMode,
@@ -9960,6 +10003,7 @@ async function main() {
   taskCaps.listConversationKeys = () => [...socialV2.conversations.keys()].filter((k) => isSessionAllowedInCurrentMode(k));
   // 给组件（绰号表/人物卡）用：谁是管理员，认人时才能把别名接到「管理员」这个身份上。
   taskCaps.getOwnerQQ = () => String(cfg.ownerQQ ?? '');
+  taskCaps.hasAdminEnvironment = (key) => hasAdminEnvironment(key);
   taskCaps.getSelfReviewConfig = () => ({
     enabled: cfg.socialV2?.selfReview?.enabled !== false,
     autoOptimize: cfg.socialV2?.selfReview?.autoOptimize !== false,
@@ -9994,8 +10038,8 @@ async function main() {
   taskCaps.requestMemoryWrite = (key, opts = {}) => {
     if (currentMode !== 'reserved2' || socialV2.paused || !pluginHost.allowsWake('memoryWrite',{key})) return false;
     const stMem = getSocialV2State(key);
-    if (!stMem || stMem.mutedUntilReengaged) return false;
-    // force=true：每晚 22:00 强制刷新日记时用，跳过「会话繁忙」判断（唤醒会排队，等空闲再投递）。
+    if (!stMem || stMem.mutedUntilReengaged || stMem.pendingMemoryWrite) return false;
+    // 定时强制刷新可排队等待空闲；已有记忆回合时返回 false，不能冒用手动刷新完成记录。
     if (!opts.force && isConversationBusyV2(key, stMem)) return false;
     stMem.pendingMemoryWrite = true;
     saveSocialV2State();
@@ -10008,6 +10052,7 @@ async function main() {
   // 返回 false 表示当前不允许（例如静音中）——组件据此保留条目、下个 tick 再试，不丢提醒。
   taskCaps.requestReminderWake = (key, items) => {
     try {
+      if (pluginHost.callService('scheduler','transportReady') !== true) return false;
       if (currentMode !== 'reserved2' || socialV2.paused || cfg.socialV2?.enabled === false) return false;
       if (!/^(private|group):\d+$/.test(String(key || '')) || !isSessionAllowedInCurrentMode(key)) return false;
       const st = getSocialV2State(key);
@@ -10121,7 +10166,7 @@ async function main() {
       moodState:mood?{...mood,policy:pluginHost.callService('mood','policy'),history:pluginHost.callService('mood','history',{key,limit:5})?.items||[]}:null,
       stickerEntries,stickerConfig:cfg.socialV2?.sticker||{},hasUnreadNow:st.unread.length>0,
       recentOwnMessages:getSocialV2State(key).recentMessages.filter(m=>m?.isSelf).slice(-6),
-      isPrivate:key.startsWith('private:'),isOwnerKey:isAdminDevKey(key),
+      isPrivate:key.startsWith('private:'),isOwnerKey:isAdminDevKey(key),isAdminEnvironment:hasAdminEnvironment(key),
     },{only:moduleIds});
     return {modules,receiptState:receiptStateView(live),expression:pluginHost.callService('chatExpression','current',{key})};
   };
@@ -10130,16 +10175,24 @@ async function main() {
   function scheduleForcedTask(key,field,run,delay) {
     const at=Date.now()+Math.max(0,Number(delay)||0),id='bridge:'+field+':'+key;
     const grace=['timeBubbleTimer','startupGreetTimer','newsTimer','reminderTimer','replyCheckTimer'].includes(field)?15*60000:Infinity;
-    return pluginHost.callService('scheduler','schedule',{id,type:field,owner:forcedOwners[field],at,run,
+    const requiresTransport=field.startsWith('timeBubbleQuietRetry:')||['timeBubbleTimer','startupGreetTimer','newsTimer','reminderTimer','replyCheckTimer','careTimer','idleRescueTimer','proactiveTimer','sleepTimer','pendingWakeTimer','rateLimitRetryTimer'].includes(field);
+    return pluginHost.callService('scheduler','schedule',{id,type:field,owner:forcedOwners[field],at,run,requiresTransport,
       ...(field==='idleRescueTimer'?{intervalMs:delay}:{}),expiresAt:Number.isFinite(grace)?at+grace:undefined,
-      onExpire(){const st=socialV2.conversations.get(key);if(st?.[field]?.scheduledId===id)st[field]=null;}
+      onExpire(){const st=socialV2.conversations.get(key);if(st?.[field]?.scheduledId===id){st[field]=null;if(field==='timeBubbleTimer')pluginHost.callService('timeBubble','expired',{key});}}
     });
   }
   taskCaps.readBiliSharePlan=key=>structuredClone(socialV2.conversations.get(String(key))?.pendingBiliShare||null);
+  taskCaps.getTransportReadiness = () => {
+    const h=snowlumaHealthSnapshot(),now=Date.now();
+    return {ready:dshReady && lastDshReadyAt>0 && now-lastDshReadyAt>=0 && now-lastDshReadyAt<=15000
+      && h.connected===true && h.accountOnline===true && h.good===true
+      && Number.isFinite(h.lastPacketAgoMs) && h.lastPacketAgoMs>=0 && h.lastPacketAgoMs<=45000};
+  };
   taskCaps.getProactiveFacts=key=>{
     const st=socialV2.conversations.get(key),sid=state.sessions[key];
     const active=activeTurnEnvelopes.get(sid);
     return {allowed:outboundServicesInitialized&&pluginHost.hasService('replyPlan','reserve')&&currentMode==='reserved2'&&cfg.socialV2?.enabled!==false&&isSessionAllowedInCurrentMode(key),
+      transportReady:pluginHost.callService('scheduler','transportReady')===true,
       conversationAwake:!!st?.pendingWakeTimer||!!pendingTurnEnvelopes.get(sid)?.some(e=>!e.cancelled&&!e.waitRoundClosed)||!!(active&&!active.cancelled&&!active.waitRoundClosed),
       paused:socialV2.paused,busy:!!activeTurnEnvelopes.get(sid)||!!pendingTurnEnvelopes.get(sid)?.some(e=>!e.cancelled)||isConversationBusyV2(key,st)||!!queued.get(key)?.length,
       pendingPurpose:!!st?.pendingReminderItems?.length||!!st?.pendingTimeBubble||!!st?.pendingWakeReasons?.some(x=>!['replyCheck','timeout','proactiveCheck'].includes(x.reason)),
@@ -11166,7 +11219,7 @@ async function main() {
     const requestedDay = String(opts.day || '');
     const day = /^\d{4}-\d{2}-\d{2}$/.test(requestedDay)
       ? requestedDay : dateKeyLocalV2(new Date(now));
-    const result = await pluginHost.callService('memory','sendDiaryDetailed',{key,now,day,allowArchiveRetry:opts.allowArchiveRetry===true,manualRequestId:opts.manualRequestId});
+    const result = await pluginHost.callService('memory','sendDiaryDetailed',{key,now,day,allowArchiveRetry:opts.allowArchiveRetry===true,manualRequestId:opts.manualRequestId,confirmLegacyUnsent:opts.confirmLegacyUnsent===true,purpose:opts.catchUp?'catchup':''});
     return result && typeof result === 'object' ? result : { ok: false, reason: 'memory_plugin_unavailable', day };
   }
   function dailyDiaryErrorText(result, day) {
@@ -11190,7 +11243,7 @@ async function main() {
   }
 
   function scheduleDailyDiaryV2(key) {
-    // 每日日记调度已由 ctx-memory-store 组件 onTick 负责（22:00，含重启补发）。
+    // 每日日记由 ctx-memory-store 按配置时刻调度；手动与定时发送独立防重。
   }
 
   // ── 时间冒泡（三餐 / 起床 / 睡觉）────────────────────────────────────────
@@ -11376,7 +11429,7 @@ async function main() {
           st.pendingTimeBubble = { label: slot.label, hint: slot.hint };
           saveSocialV2State();
           log('[reserved2] 时间冒泡（补发刚错过的）：' + key + ' ' + slot.label);
-          pluginHost.callService('scheduler','schedule',{id:'time-bubble-catchup:'+key+':'+sid,owner:'life-proactive-time-bubble',type:'time-bubble-catchup',at:nowMs,expiresAt:at+15*60000,run:()=>sendWakePromptV2(key,'timeBubble')});
+          pluginHost.callService('scheduler','schedule',{id:'time-bubble-catchup:'+key+':'+sid,owner:'life-proactive-time-bubble',type:'time-bubble-catchup',requiresTransport:true,at:nowMs,expiresAt:at+15*60000,run:()=>sendWakePromptV2(key,'timeBubble')});
           break;
         }
       }
@@ -11445,6 +11498,7 @@ async function main() {
               id: 'time-bubble-quiet:' + key + ':' + id,
               owner: 'life-proactive-time-bubble',
               type: 'time-bubble-quiet',
+              requiresTransport: true,
               at: quietAt,
               expiresAt,
               run: () => fireTimeBubbleV2(key, id)
@@ -11499,6 +11553,11 @@ async function main() {
     st.startupGreetTimer?.unref?.();
     log(`[reserved2] 已安排启动问候冒泡 ${key}，约 ${Math.round(delay / 1000)}s 后`);
   }
+  taskCaps.refreshStartupGreeting = ({ key } = {}) => {
+    if (!isSessionAllowedInCurrentMode(key)) return false;
+    scheduleStartupGreetingV2(key);
+    return true;
+  };
 
   loadSocialV2State();
   await pluginReady;
@@ -13447,6 +13506,7 @@ async function main() {
 
         isPrivate: String(key).startsWith('private:'),
         isOwnerKey: isAdminDevKey(key),
+        isAdminEnvironment: hasAdminEnvironment(key),
         persistentMemory: readPersistMemoryV2(key),
         memoryWindow: Math.max(1, Number(cfg.socialV2?.context?.contextWindow) || 20),
         affairsContext: pluginHost.callService('affairs', 'context', { key,
@@ -13486,10 +13546,10 @@ async function main() {
     // 时间感放在 base 的最末尾：紧接着就是【唤醒】原因与行动指令，位置最显眼。
     // 管理员开发模式：只对 owner 私聊注入本机开发能力说明（其他会话的 preset 没有本地工具，注入也无害但没必要）。
     let adminDevLine = '';
-    if (isAdminDevKey(key) && (currentMode === 'closed-agent' || adminDevCfgV2().enabled)) {
+    if (hasAdminEnvironment(key)) {
       const aliasEntries = Object.entries(cfg.socialV2?.relayAliases || {}).map(([k, v]) => k + '=' + v).join('、');
       adminDevLine = pluginHost.callService('admin-dev', 'line', {
-        toolOnly: modePreset(key, currentMode, cfg) === 'qq-admin',
+        toolOnly: currentMode === 'reserved2' || modePreset(key, currentMode, cfg) === 'qq-admin',
         aliasEntries,
         rootEscaped: ROOT.replace(/\\/g, '\\\\')
       }) || '';
@@ -14480,6 +14540,7 @@ async function main() {
         if (isAdminDevKey(key)) await sendToQQ(key, '管理命令仅管理员可用。');
         return;
       }
+      if (!hasAdminEnvironment(key)) {await sendToQQ(key,'此操作需要在控制台启用管理员环境并选择高权限预设。');return;}
       if (plainContent === '/reset' || plainContent === '/new') {
         const old = state.sessions[key];
         if (old) {
@@ -14613,7 +14674,7 @@ async function main() {
         // 交给整个群；私聊至少能落到具体的人。内容统一过 content-guard（防提示词注入/违规），
         // 非 owner 另有频次上限。目标只能命中白名单（resolveRelayTargetV2 已强制）。
         // 支持：① 一句话带内容（“给十二带句话，就说晚安”）；② 先指定人再发内容；③ 名字找不到时补 QQ 号。
-        const isOwnerRelay = key === 'private:' + String(cfg.ownerQQ ?? '');
+        const isOwnerRelay = hasAdminEnvironment(key);
         const relaySessionOk = !isOwnerRelay && String(key).startsWith('private:') && isSessionAllowedInCurrentMode(key);
         if (isOwnerRelay || relaySessionOk) {
           // 传话 = L 层组件 life-relay-message：意图解析/目标补全/pending 状态都在插件里，
@@ -15673,7 +15734,7 @@ async function main() {
               }
               // 管理员开发模式：standard preset 的 agent 习惯直接把结果写成文本，
               // 这里把它的文本转发到 QQ（它若已用发送工具则跳过，避免重复）。
-              if (isAdminDevKey(key) && (currentMode === 'closed-agent' || adminDevCfgV2().enabled) && modePreset(key, currentMode, cfg) !== 'qq-admin' && !sendToolSucceeded && !wasMemoryTurn && plain.trim() && !shouldBlockSilentReply(key)) {
+              if (currentMode !== 'reserved2' && hasAdminEnvironment(key) && !sendToolSucceeded && !wasMemoryTurn && plain.trim() && !shouldBlockSilentReply(key)) {
                 try {
                   await sendAgentReplyV2(key, plain.trim(), { wakeOrigin: completedWake });
                   log('[adminDev] 已转发管理员会话文本 ' + key + '（' + plain.trim().length + ' 字）');
@@ -15802,7 +15863,7 @@ async function main() {
         const key = reverse.get(frame.sessionId);
         if (!key) continue;
         if (!isCurrentSession(key, frame.sessionId)) { await cancelPendingEntry({ ...frame, kind: 'approval' }); continue; }
-        if (!isAdminDevKey(key)) { await cancelPendingEntry({ ...frame, kind: 'approval' }); continue; }
+        if (!hasAdminEnvironment(key)) { await cancelPendingEntry({ ...frame, kind: 'approval' }); continue; }
         const rawReason = frame.reason ?? '';
         const sensitiveReason = shouldAuditKey(key) && isSensitiveText(rawReason, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules);
         if (sensitiveReason) log(`⚠️ 审批理由含敏感信息，已隐藏 (${key})`);
@@ -15813,7 +15874,7 @@ async function main() {
         if (sensitiveTool) log(`⚠️ 审批工具名含敏感信息，已隐藏 (${key})`);
         const safeToolName = sensitiveTool ? '（含敏感信息，已隐藏）' : rawToolName;
         // 管理员开发会话：工具审批静默自动通过（不再频繁发 QQ 让管理员点通过）。
-        if (isAdminDevKey(key) && (currentMode === 'closed-agent' || adminDevCfgV2().enabled) && cfg.socialV2?.adminDev?.autoApprove !== false) {
+        if (hasAdminEnvironment(key) && cfg.socialV2?.adminDev?.autoApprove === true) {
           try {
             await withTimeout(api.respond({
               clientId: frame.clientId,

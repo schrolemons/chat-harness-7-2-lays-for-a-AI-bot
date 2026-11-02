@@ -1,5 +1,5 @@
 {
-  "build": "e0cdc65056b2b750",
+  "build": "86dce18bfc4f6080",
   "inputs": [
     "console/app.js",
     "console/layers/C/affairs-budget.js",
@@ -24,6 +24,8 @@
     "console/layers/C/learning-common.js",
     "console/layers/C/learning.css",
     "console/layers/C/light-memory.js",
+    "console/layers/C/memory-sessions.js",
+    "console/layers/C/memory.css",
     "console/layers/C/mood.js",
     "console/layers/C/ownership.js",
     "console/layers/C/parameter-examples.js",
@@ -178,6 +180,7 @@
     "console/shared/theme-init.js",
     "console/shared/theme.js",
     "console/styles.css",
+    "plugins/qq-components/ctx-memory-store/diary-delivery.mjs",
     "src/bridge-core/context-limits.mjs",
     "src/tools/flags.js"
   ]

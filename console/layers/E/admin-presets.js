@@ -8,7 +8,7 @@ function help() {
   if(!select||!target)return;
   const row=rows.find(p=>p.id===select.value);
   const current=rows.find(p=>p.isDefault);
-  target.textContent=select.value ? (row ? presetInfo(row).description : '当前预设尚未由 DSH 列出，请确认已安装。') : '跟随 DSH 默认'+(current ? '：'+presetInfo(current).label+' · '+current.id : '（等待 DSH 返回默认项）')+'。控制基础指令与可用工具。';
+  target.textContent=select.value ? (row ? presetInfo(row).description : '当前预设尚未由 DSH 列出，请确认已安装。') : '跟随 DSH 默认'+(current ? '：'+presetInfo(current).label+' · '+current.id : '（等待 DSH 返回默认项）')+'。启用环境后才使用其能力；普通聊天或只读预设不会获得管理权限。';
 }
 export function renderAdminPresets(value=selected) {
   const select=document.getElementById('v2AdminDevPreset');

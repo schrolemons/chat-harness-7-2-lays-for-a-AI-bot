@@ -5,8 +5,26 @@ test('notification batch never resends an existing item when batch composition c
 test('failed or uncertain QQ send is not marked sent and is not replayed automatically',async()=>{
  const h=await bridgeHarness();try{h.setMode('reserved2');let attempts=0;h.bot.sendPrivateMessage=async()=>{attempts++;throw Error('fixture transport timeout');};const now=Date.now(),item={id:'uncertain-report',text:'fixture',sourceAt:now,expiresAt:now+3600000};const result=await h.taskCaps.sendNotificationBatch('private:123',[item]);assert.equal(result.uncertain,true);await h.taskCaps.sendNotificationBatch('private:123',[item]);assert.equal(attempts,1);}finally{await h.close();}
 });
-test('manual and scheduled diary share receipts across plugin reload',async()=>{
+test('the same confirmed diary delivery is deduplicated across plugin reload',async()=>{
  const h=await bridgeHarness();try{h.setMode('reserved2');const now=Date.now(),d=new Date(now),day=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),key='private:123',id='diary:'+key+':'+day;h.pluginHost.callService('memory','write',{key,text:'【日记】\nTODAY_DIARY'});assert.equal(h.taskCaps.deliveryStatus(id).status,'absent');const result=await h.pluginHost.callService('memory','sendDiaryDetailed',{key,now,day});assert.equal(result.ok,true);assert.equal(h.taskCaps.deliveryStatus(id).status,'sent');await h.pluginHost.reload('ctx-memory-store');const duplicate=await h.pluginHost.callService('memory','sendDiaryDetailed',{key,now,day});assert.equal(duplicate.reason,'already_sent');assert.equal(h.calls.sent.filter(x=>x.text.includes('TODAY_DIARY')).length,1);}finally{await h.close();}
+});
+
+test('scheduled refresh cannot reuse a manual memory turn already in progress',async()=>{
+ const h=await bridgeHarness();try{h.setMode('reserved2');const key='private:123',st=h.getSocialV2State(key);st.pendingMemoryWrite=true;st.diaryRequestedId='manual-click-existing';
+ assert.equal(h.taskCaps.requestMemoryWrite(key,{force:true}),false);assert.equal(st.diaryRequestedId,'manual-click-existing');
+ }finally{await h.close();}
+});
+
+test('AI diary HTTP read/update is scoped, switchable and does not send QQ',async()=>{
+ const h=await bridgeHarness({config:{allow:{private:['123','124'],groups:['456']}}});let server;
+ try{h.setMode('reserved2');h.getSocialV2State('private:123').agentToken='diary-token';h.getSocialV2State('private:124').agentToken='other-token';
+ server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port+'/api/socialV2/diary',headers={'x-console-token':'fixture-console-token','x-agent-call':'1','x-agent-token':'diary-token','content-type':'application/json'};
+ const read=await fetch(base+'?key=private:123',{headers});assert.equal(read.status,200);const current=await read.json();assert(current.day);
+ const write=await fetch(base,{method:'POST',headers,body:JSON.stringify({key:'private:123',day:current.day,text:'AI_UPDATED_CURRENT_DIARY'})});assert.equal(write.status,200);assert.equal((await write.json()).sent,false);assert.equal(h.calls.sent.length,0);
+ assert.equal((await fetch(base+'?key=private:124',{headers})).status,403);
+ assert.equal((await fetch(base,{method:'POST',headers,body:JSON.stringify({key:'private:123',day:'2000-01-01',text:'STALE'})})).status,409);
+ h.cfg.socialV2.tools.memory=false;assert.equal((await fetch(base+'?key=private:123',{headers})).status,403);
+ }finally{server?.closeAllConnections?.();if(server?.listening)await new Promise(r=>server.close(r));await h.close();}
 });
 test('each completed manual diary refresh can send the latest same-day summary with a unique receipt',async()=>{
  const h=await bridgeHarness();try{h.setMode('reserved2');const now=Date.now(),d=new Date(now),day=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),key='private:123';
@@ -25,7 +43,7 @@ test('each completed manual diary refresh can send the latest same-day summary w
 });
 test('diary API requests a fresh memory turn before sending only today',async()=>{
  const h=await bridgeHarness({config:{socialV2:{dailyDiary:{hour:0,minute:0}}}});let server;try{
-  h.setMode('reserved2');const now=Date.now(),d=new Date(now),day=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),key='private:123';
+  h.setMode('reserved2');const now=Date.now(),d=new Date(now),day=h.pluginHost.callService('memory','diaryTargetDay',{now}).day,key='private:123';
   h.getSocialV2State(key);h.pluginHost.callService('memory','write',{key,text:'【日记】\nAPI_DIARY_FIXTURE'});
   server=h.startConsoleServer();if(!server.listening)await new Promise(resolve=>server.once('listening',resolve));
   const url='http://127.0.0.1:'+server.address().port+'/api/socialV2/daily-diary?token=fixture-console-token';
@@ -44,7 +62,7 @@ test('diary API requests a fresh memory turn before sending only today',async()=
 });
 test('diary archive-only state is visible and manual catch-up requires explicit action',async()=>{
  const h=await bridgeHarness({config:{socialV2:{dailyDiary:{hour:0,minute:0}}}});let server;try{
-  h.setMode('reserved2');const now=Date.now(),d=new Date(now),day=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),key='private:123';
+  h.setMode('reserved2');const now=Date.now(),d=new Date(now),day=h.pluginHost.callService('memory','diaryTargetDay',{now}).day,key='private:123';
   h.getSocialV2State(key);const archive=path.join(h.temp,'state','memory','diary',day+'.md');fs.mkdirSync(path.dirname(archive),{recursive:true});fs.writeFileSync(archive,'# '+day+' 日记\n\n## '+key+' · 21:00\nARCHIVE_ONLY_DIARY\n');
   server=h.startConsoleServer();if(!server.listening)await new Promise(resolve=>server.once('listening',resolve));
   const url='http://127.0.0.1:'+server.address().port+'/api/socialV2/daily-diary?token=fixture-console-token';

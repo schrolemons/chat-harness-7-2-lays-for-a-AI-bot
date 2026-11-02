@@ -140,6 +140,7 @@
 .diary-session-card{display:flex;flex-direction:column;min-width:0;padding:15px;border:1px solid var(--card-border);border-radius:13px;background:var(--surface);box-shadow:0 3px 12px rgba(25,40,70,.04)}
 .diary-session-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.diary-session-key{min-width:0;overflow-wrap:anywhere;color:var(--text-strong);font-size:13px;font-weight:700}
 .diary-session-state{flex:0 0 auto;padding:4px 9px;border:1px solid var(--border-subtle);border-radius:999px;font-size:11px;line-height:1.35;font-weight:650}
+.diary-session-state.missing{color:#bc3446;background:rgba(188,52,70,.08);border-color:rgba(188,52,70,.25)}
 .diary-session-state.sent{color:#16835d;background:rgba(22,131,93,.08);border-color:rgba(22,131,93,.2)}.diary-session-state.pending{color:#996000;background:rgba(199,139,21,.09);border-color:rgba(199,139,21,.22)}.diary-session-state.muted{color:var(--text-muted);background:var(--surface-subtle)}
 .diary-session-window{margin-top:12px;color:var(--text-secondary);font-size:12px;line-height:1.5;font-variant-numeric:tabular-nums}.diary-session-detail{margin-top:6px;color:var(--text-muted);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
 .diary-session-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:14px}.diary-session-actions button{min-height:34px}.diary-session-actions button:disabled{opacity:.55;cursor:not-allowed}

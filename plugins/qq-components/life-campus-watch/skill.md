@@ -17,6 +17,7 @@ L 层「生命周期与编排」组件，负责 campus-watch 脚本的定时拉�
 - 调桥接能力 `spawnCampusWatch()` 拉起脚本，脚本使用原子 PID 租约与180秒浏览器阶段看门狗；活进程的锁不因120秒时间窗口而失效。
 
 ## 登录与浏览器交接
+- 学术报告应用的认证选择页（`yjsrzfwapp/dbLogin`）、CAS登录页及查询HTTP 401均作为认证失效处理，立即进入该研究生平台自己的登录协助；不等数据请求超时后继续用旧cookie或重复DOM选课流程。BB登录成功只恢复BB，不合并两个平台的凭据。检查失败/待登录不会在日志中报告“无变化”。
 - `scripts/campus-browser-session.mjs` 统一租约、登录页识别、cookie 保存/恢复及可见→无头交接；`scripts/login-window.mjs` 为本轮失败的监控网址打开登录页，不依赖个人姓名或无关的研究生应用。
 - 登录窗口持有 `state/login-window.lock` 与监控租约；组件及脚本都暂停后台访问。登录等待只读取DOM，每3秒查看一次，不自动刷新、输入凭据。
 - 连接现存浏览器时保留最新 cookie；仅新启动的浏览器从 `campus-cookies.json` 恢复，避免旧快照覆盖刚登录的会话。健康检查结束保存最新 cookie。

@@ -15,7 +15,7 @@ test('each source has a separate block and normal chat excludes display diary an
     persistentMemory: { text: '【重要事实】\n- 用户原话\n【用户画像】\n- 今日比较忙\n【日记】\n展示日记', updatedAt: now },
     affairsContext: { text: '[事务ID] 等报告结果' }, midTermText: '不再读取的旧笔记' });
   const all = blocks.join('\n');
-  assert.equal(blocks.length, 5);
+  assert.equal(blocks.length, 6);
   for(const label of ['当前事务','事务数据规则','每轮复核','持久化会话记忆'])assert.ok(blocks.some(block=>block.includes(label)),label);
   for (const value of ['周末去哪玩', '加班到几点', '本轮说话急', '用户原话', '等报告结果']) assert.ok(all.includes(value));
   for (const value of ['窗口外印象', '展示日记', '不再读取的旧笔记']) assert.ok(!all.includes(value));
@@ -50,7 +50,7 @@ test('refresh declares three persistent columns, independent affairs and evidenc
   for (const value of ['逐条', '用户原话', '玩笑', '聊天喜好', '来源和日期', '临时人物画像', 'profile_get', 'profile_update', 'qq_task_note', 'expectedRevision', '向上更新', '不要发任何 QQ 消息']) assert.ok(text.includes(value), value);
   assert.ok(!text.includes('\n【未完成事项】\n'));
   assert.ok(text.includes('【重要事实】') && text.includes('【用户画像】') && text.includes('【日记】'));
-  assert.match(text, /前一日.{0,16}22:00.{0,30}XX 日当晚 22:00/s);
+  assert.match(text, /本次日记窗口/);assert.match(text,/不续写、润色或拼接昨天的日记/);
 });
 
 
@@ -58,4 +58,8 @@ test('ordinary chat actively reconciles affairs even before the first item exist
  const text=build({key:'private:1',st:{}}).join('');
  for(const required of ['优先更新同一条','不重复新增','expectedRevision','done','cancelled','superseded','不反复追问','沉默'])assert.ok(text.includes(required),required);
  assert.ok(!build({key:'private:1',st:{},reason:'memoryWrite'}).join('').includes('每轮复核'));
+});
+
+test('disabled memory tool does not leave an unavailable diary instruction in the prompt',()=>{
+ assert.ok(!build({key:'private:1',st:{}},{},{isToolEnabled:()=>false}).join('').includes('qq_diary'));
 });

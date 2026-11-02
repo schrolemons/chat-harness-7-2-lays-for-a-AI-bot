@@ -27,8 +27,8 @@ export function presetBindings({mode,admin={},defaultPreset='',ownerLoadedPreset
   const ownerExpected=owner.id||defaultPreset,sim=simulationPreset(mode);
   const editor=id=>sim===id?{page:'persona',target:'simPromptText',label:'编辑当前模式的仿真提示词'}:{page:'overview',target:'section-mode',label:'切换到对应运行模式后编辑提示词'};
   return [
-    {key:'owner',label:'管理员当前私聊',preset:ownerExpected,active:true,description:mode==='closed-agent'||a.enabled?'使用管理员环境的预设；包括此会话中的日常聊天。':'管理员环境未启用，日常聊天跟随当前运行模式。',loadedPreset:ownerLoadedPreset||null,hasSession:ownerHasSession,edit:{page:'environment-admin',target:'v2AdminDevPreset',label:'调整管理员环境'}},
-    {key:'admin',label:'管理员专用环境',preset:a.preset||defaultPreset,active:mode==='closed-agent'||a.enabled,description:(a.preset?'指定预设。':'跟随 DSH 默认。')+'封闭 Agent 始终使用；其他模式仅在管理员环境开关启用时用于 owner 私聊。',edit:{page:'environment-admin',target:'v2AdminDevPreset',label:'调整管理员环境'}},
+    {key:'owner',label:'管理员当前私聊',preset:ownerExpected,active:true,description:a.enabled?'使用管理员环境的预设；包括此会话中的日常聊天。':'管理员环境未启用，日常聊天跟随当前运行模式。',loadedPreset:ownerLoadedPreset||null,hasSession:ownerHasSession,edit:{page:'environment-admin',target:'v2AdminDevPreset',label:'调整管理员环境'}},
+    {key:'admin',label:'管理员专用环境',preset:a.preset||defaultPreset,active:a.enabled,description:(a.preset?'指定预设。':'跟随 DSH 默认。')+'所有运行模式都必须主动开启管理员环境；高权限仅在所选预设装配完成后生效，owner 身份不单独授权。',edit:{page:'environment-admin',target:'v2AdminDevPreset',label:'调整管理员环境'}},
     {key:'v1',label:'普通聊天／一代仿真',preset:FIXED_PRESETS.chat,active:['chat','reserved'].includes(mode),description:'固定控制一代回复与静默协议。',edit:editor(FIXED_PRESETS.chat)},
     {key:'v2',label:'二代仿真',preset:FIXED_PRESETS.reserved2,active:mode==='reserved2',description:'固定控制读消息、工具发送、等待和潜水；普通用户及未启用管理员环境的 owner 使用此预设。',edit:editor(FIXED_PRESETS.reserved2)},
     {key:'task',label:'独立任务会话',preset:FIXED_PRESETS.task,description:'固定用于管理员委派的工作会话；不替代聊天会话。'},

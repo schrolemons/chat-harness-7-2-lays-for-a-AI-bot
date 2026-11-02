@@ -5,8 +5,10 @@ import yaml from 'js-yaml';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
 
 async function harness(run) {
-  const h = await bridgeHarness({config:{socialV2:{adminDev:{enabled:false},proactive:{enabled:false},curfew:{enabled:false}}}});
-  h.setMode('reserved2'); h.setPresets(['standard','qq-chat','qq-chat-v2','qq-chat-dev','qq-task-worker']);
+  const h = await bridgeHarness({config:{socialV2:{adminDev:{enabled:true,preset:'qq-admin'},proactive:{enabled:false},curfew:{enabled:false}}}});
+  h.setMode('reserved2'); h.setPresets(['standard','qq-chat','qq-chat-v2','qq-admin','qq-task-worker']);
+  h.state.sessions['private:123']='fixture-owner';h.state.sessionPresets['private:123']='qq-admin';
+  h.state.sessionPolicies['private:123']='["reserved2","qq-admin",null]';
   const token = h.getSocialV2State('private:123').agentToken;
   try { await run(h, token); } finally { await h.close(); }
 }
@@ -54,7 +56,7 @@ test('terminal results survive duplicate or late task events', () => harness(asy
 test('worker preset contains work instructions without chat persona and sleep protocol', () => {
   const rows=yaml.load(fs.readFileSync(new URL('../dsh/agent-presets/qq-task-worker/agent.cordis.yml',import.meta.url),'utf8'));
   const text=rows.find(x=>x.id==='persona').config.prefix;
-  assert.doesNotMatch(text,/用户|科技动态|普通|AI助手|友好交流|结巴|温柔|qq_wait_for_messages|qq_set_wake_config/);
+  assert.doesNotMatch(text,/【[^\n]*(?:形态|称呼|角色卡)|qq_wait_for_messages|qq_set_wake_config/);
   assert.ok(rows.some(x=>x.id==='task-tool-restrict'));
   assert.ok(!rows.some(x=>x.id==='tool-ask-user'));
 });

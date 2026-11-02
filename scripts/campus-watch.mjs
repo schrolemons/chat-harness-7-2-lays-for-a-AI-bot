@@ -238,6 +238,7 @@ async function refreshCookieJar(page) {
     }
   } catch (error) {
     logLine('刷新抢课 cookie 失败（会话可能需重登）：' + String(error?.message ?? error).slice(0, 140));
+    if(error.error_type==='auth')throw error;
   }
   return false;
 }
@@ -297,8 +298,16 @@ async function checkLectures(page, state, changes, force = false) {
   Object.assign(health,{checkedAt:Date.now(),auth:'unknown',hint:'正在验证讲座应用与监管脚本'});
   // 优先专用抢课脚本；脚本不可用/失败再回退 DOM（DOM 同时是操作普通网页的泛用能力）。
   // 跑之前先从浏览器刷新 cookie（导出快照会过期，直连 API 就会 403）。
-  const freshSession = page ? await refreshCookieJar(page) : false;
   const GRAB_HEARTBEAT = 'scripts/ustc-grab-report-course/grab_report_cli.py';
+  let freshSession=false;
+  try { freshSession=page ? await refreshCookieJar(page) : false; }
+  catch(error){
+    if(error.error_type!=='auth')throw error;
+    Object.assign(health,{fetch:'green',auth:'red',hint:'研究生平台登录失效，需要重新认证'});
+    reportScriptHeartbeat(ROOT,GRAB_HEARTBEAT,false,error.message);
+    await loginFailed({url:portal,name:'讲座平台'},health);
+    return;
+  }
   const scriptResult = MONITOR_SCRIPTS.has('grab') ? (freshSession ? runGrabScript() : {ok:false,error_type:'initialization',error:'学术报告应用会话未初始化；未使用旧 cookie 执行脚本'}) : null;
   if (scriptResult) handleGrabResult(scriptResult, state, changes);
   if (scriptResult && scriptResult.ok === true) {
@@ -606,6 +615,7 @@ async function main() {
     saveState(state);
     logLine('QQ 通知确认成功：' + delivery.count + ' 条');
   } else if (delivery.count) logLine('QQ 通知未确认成功，保留待重试内容');
+  else if (Object.values(state.monitorHealth||{}).some(health=>health.fetch==='red'||health.auth==='red')) logLine('检查完成：部分网站检查失败或需要登录，请查看监控状态');
   else if (!changes.length) logLine('检查完成：无变化');
   else logLine('检查完成：' + new Set(changes.map(c => c.msg)).size + ' 处变化');
   reportScriptHeartbeat(ROOT, 'scripts/campus-watch.mjs', true, '最近一次检查完成');

@@ -231,6 +231,7 @@ export function createPlugin(ctx) {
       const x={id:makeId(),reporter,source:String(payload.key||''),text:issue,kind:'用户反馈',origin:'user',queue:'user',fingerprint,status:'待修复',attempts:0,createdAt:new Date(now).toISOString()}; s.issueLedger.push(x); const event=record(s,'submitted',x,'用户反馈'); persist(s); ctx.capabilities.recordFeedbackSummary?.(event); ctx.log('反馈已写入历史账本及用户处理队列');
     },
     beforePrompt(payload={}) {
+      if(!payload.isAdminEnvironment)return '';
       const reason=String(payload.reason||'');
       if(reason==='userFeedbackReview') {
         const user=batch('user'), cap=ctx.capabilities.getSelfReviewConfig?.()||{};

@@ -22,6 +22,7 @@ import { NodeApiClient, unwrap } from '../../../src/dsh-client.js';
 import { createGatewayRecovery } from '../../../scripts/gateway-recovery.mjs';
 import { processRunsFile } from '../../../scripts/launcher-process-identity.mjs';
 import { resolveSnowHome } from '../../../scripts/snow-runtime-location.mjs';
+import {FIXED_PRESETS} from '../../../src/preset-policy.js';
 
 export const name = 'qq-launcher';
 export const inject = [];
@@ -238,6 +239,7 @@ export function createLauncher(ctx, config, deps = {}) {
     // 真正的判据用 SnowLuma 与桥接是否在监听：SnowLuma 起得来就说明 QQ 挂着。
     const health = bridgeDir ? await checkHealth({ root: bridgeDir, timeoutMs: 1500 }) : null;
     let presetsReady = false;
+    let presetError = '';
     if (health?.healthy) {
       try {
         const response = await fetch(`http://127.0.0.1:${consolePort}/api/presets`, {
@@ -245,12 +247,15 @@ export function createLauncher(ctx, config, deps = {}) {
           signal: AbortSignal.timeout(2000)
         });
         const data = await response.json();
-        const ids = new Set((data.presets || []).map(p => p.id));
-        presetsReady = response.ok && ['qq-chat', 'qq-chat-v2', 'qq-chat-dev', 'qq-task-worker'].every(id => ids.has(id));
-      } catch {}
+        const presets = new Map((data.presets || []).map(p => [p.id,p]));
+        const unavailable = [...new Set(Object.values(FIXED_PRESETS))].filter(id => !presets.has(id) || presets.get(id).broken);
+        presetsReady = response.ok && unavailable.length === 0;
+        if (!presetsReady) presetError = unavailable.length ? '预设缺失或不可用：'+unavailable.join('、') : '读取预设失败';
+      } catch { presetError = '读取预设失败，请检查 DSH 预设服务'; }
     }
     const replacementPending = starting() && (!runner || (replacedBridgePid && lockPid === replacedBridgePid));
     const ready = health?.healthy === true && presetsReady && operation !== 'stopping' && !stopped && !replacementPending;
+    const awaitingPresets = health?.healthy === true && !presetsReady && !stopped && operation !== 'stopping' && !replacementPending;
     let progress = null;
     try {
       const saved = JSON.parse(fs.readFileSync(path.join(bridgeDir, 'state', 'startup-progress.json'), 'utf8'));
@@ -275,8 +280,8 @@ export function createLauncher(ctx, config, deps = {}) {
       starting: starting(),
       stopped,
       operation,
-      phase: ready ? 'ready' : starting() ? progress?.phase || 'starting' : stopped ? 'stopped' : gatewayPromise ? 'recovering_gateway' : health?.verdict || 'unknown',
-      message: ready ? 'bot 已就绪' : starting() ? progress?.message || '' : stopped ? 'bot 已关闭' : gatewayPromise ? '正在恢复 SnowLuma 网关，保留桥接' : health?.reason || '',
+      phase: ready ? 'ready' : awaitingPresets ? 'waiting_presets' : starting() ? progress?.phase || 'starting' : stopped ? 'stopped' : gatewayPromise ? 'recovering_gateway' : health?.verdict || 'unknown',
+      message: ready ? 'bot 已就绪' : awaitingPresets ? presetError : starting() ? progress?.message || '' : stopped ? 'bot 已关闭' : gatewayPromise ? '正在恢复 SnowLuma 网关，保留桥接' : health?.reason || '',
       ready,
       botUin,
       settingsRequired: !botUin,

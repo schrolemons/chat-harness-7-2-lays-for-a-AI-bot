@@ -1,15 +1,15 @@
 <section id="section-environment-admin" data-page="environment-admin" class="card span-all environment-page">
   <h2>管理员环境</h2>
-  <p class="meta">管理员私聊的开发模式与预设。</p>
+  <p class="meta">高权限能力的统一入口；管理员身份本身不授予执行权限。</p>
       <div class="comp-card env-card">
         <div class="env-card-heading"><h3>管理员助手</h3><span class="meta">开发开关与预设</span></div>
         <div class="env-card-body" id="envAdminControls">
-          <p class="meta">封闭 Agent 与管理员私聊使用同一套预设。启用后，聊天及仿真模式中的管理员私聊也使用此环境。</p>
+          <p class="meta">主动启用并选择高权限预设后，管理员私聊才能执行命令、委派任务、查看管理信息或跨会话管理。关闭时按普通聊天权限处理；封闭 Agent 也遵守此开关。</p>
           <div class="env-admin-fields">
             <div class="env-admin-field">
-              <span class="env-admin-label" id="envAdminModeLabel">用于聊天与仿真</span>
+              <span class="env-admin-label" id="envAdminModeLabel">启用管理员环境</span>
               <label class="env-admin-switch" for="v2AdminDevEnabled"><input type="checkbox" id="v2AdminDevEnabled" aria-labelledby="envAdminModeLabel" aria-describedby="envAdminEnabledExample"><span>启用</span></label>
-              <small class="parameter-example" id="envAdminEnabledExample" data-example-for="v2AdminDevEnabled">例：开启后使用所选开发预设；关闭后回到当前聊天模式的预设。</small>
+              <small class="parameter-example" id="envAdminEnabledExample" data-example-for="v2AdminDevEnabled">关闭后立即拒绝后续管理调用并取消未完成的委派任务；选择普通聊天或只读预设不会获得高权限。</small>
             </div>
             <div class="env-admin-field">
               <label for="v2AdminDevPreset">管理员预设</label>

@@ -5,9 +5,11 @@ import { prepareReportSession } from './ustc-session.mjs';
 function browserFor(data) {
   const events=[];
   const page={
+    url:()=> 'https://example.invalid/gsapp/sys/xsbgglappustc/*default/index.do',
+    evaluate:async()=>({url:'https://example.invalid/gsapp/sys/xsbgglappustc/*default/index.do',title:'学术报告',text:'学术报告选课',password:false}),
     waitForResponse(predicate) {
       assert.equal(predicate({url:()=>'/wxbgbgdz.do',status:()=>200,request:()=>({postData:()=>'*searchMeta=1'})}),false);
-      return Promise.resolve({json:async()=>data});
+      return Promise.resolve({status:()=>200,json:async()=>data});
     },
     async goto(url) {events.push(url);},
     browserContext:()=>({cookies:async()=>[{name:'_WEU',value:'app-session'}]}),

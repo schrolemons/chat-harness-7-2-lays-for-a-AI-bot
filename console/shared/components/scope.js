@@ -1,6 +1,7 @@
 // These are plugin configuration scopes, not the scope of the data editors below them.
-const LOCAL = new Set(['exec-browser-manager','exec-image-generation','life-campus-watch','tool-user-checking','tool-codex-chat']);
+const LOCAL = new Set(['exec-browser-manager','exec-image-generation','life-campus-watch','tool-user-checking','tool-codex-chat','personal-core']);
 const NOTES = {
+  'personal-core':'本机挂载目录与阅读参数，供此 bot 的适用会话使用；目录提示范围不改变MCP读取权限，不改写原稿。',
   'tool-user-checking':'所有会话共用这一份桌面txt，不按群拆分，也不把内容发送到QQ。',
   'obs-session-recovery':'失败次数、冷却和24小时上限按群分别记录。仅归档并重建故障群的模型会话，记忆、心情、日程与消息收据保留。',
   'ctx-user-mood':'心情分数、每日恢复和回应等待按会话分别记录。',

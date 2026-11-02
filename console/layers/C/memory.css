@@ -1,0 +1,66 @@
+#section-setting-c-1 > .settings-group > summary {
+  font-size: 16px;
+  font-weight: 750;
+}
+
+.memory-budget-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-block: 18px;
+}
+
+.memory-budget-grid > .setting-field {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.memory-budget-grid label { font-weight: 650; }
+.memory-budget-grid input { width: 120px; max-width: 100%; }
+.memory-budget-grid .parameter-example { grid-column: 1; margin: 0; }
+#v2MemoryKey, #v2PmKey { width: 100%; min-width: 0; }
+#section-setting-c-1 select {
+  appearance: none;
+  padding-right: 40px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 19px) center, calc(100% - 14px) center;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.light-memory-output { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 16px; margin-top: 16px; }
+.light-memory-section { border: 1px solid var(--card-border); border-radius: 10px; overflow: hidden; min-width: 0; }
+.light-memory-section > header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; background: var(--surface-subtle, rgba(127, 168, 255, .04)); border-bottom: 1px solid var(--card-border); }
+#section-setting-c-1 .light-memory-section h4 { font-size: 14px; font-weight: 650; margin: 0; padding: 0; border: 0; }
+.memory-count { font-size: 12px; color: var(--text-secondary); }
+.light-memory-section > header > button { margin-left: auto; flex: none; min-height: 30px; padding: 4px 9px; }
+.light-memory-items { padding: 0 14px; }
+.memory-empty { padding: 22px 0; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
+.light-memory-item { padding: 14px 0; }
+.light-memory-item + .light-memory-item { border-top: 1px solid var(--card-border); }
+.light-memory-text p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+.light-memory-text small { display: block; margin-top: 6px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.light-memory-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+.affairs-empty { display: grid; gap: 8px; padding: 20px; border: 1px dashed var(--card-border); border-radius: 10px; color: var(--text-secondary); line-height: 1.6; }
+.affairs-empty strong { font-size: 14px; font-weight: 600; color: var(--text-strong); }
+.affairs-empty span { font-size: 13px; }
+.affairs-pagination[hidden] { display: none; }
+#v2AffairsPanel .affairs-pagination { justify-content: flex-end; gap: 10px; margin: 12px 0; padding-top: 12px; border-top: 1px solid var(--card-border); }
+#v2AffairsPanel .affairs-pagination button { min-height: 32px; padding: 5px 10px; }
+#v2AffairsPanel .affairs-pagination .meta { font-size: 12px; }
+#v2AffairsPanel .affair-diagnostics { margin-top: 16px; border: 1px solid var(--card-border); border-radius: 10px; overflow: hidden; }
+#v2AffairsPanel .affair-diagnostics > summary { display: flex; align-items: center; gap: 10px; list-style: none; padding: 12px 14px; cursor: pointer; background: var(--surface-subtle, rgba(127, 168, 255, .04)); color: var(--text-strong); font-size: 13px; font-weight: 600; }
+#v2AffairsPanel .affair-diagnostics > summary::-webkit-details-marker { display: none; }
+#v2AffairsPanel .affair-diagnostics > summary::before { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); flex: none; }
+#v2AffairsPanel .affair-diagnostics[open] > summary::before { transform: rotate(45deg); }
+#v2AffairsPanel .affair-diagnostics > summary small { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--text-secondary); }
+.affair-preview-body { padding: 12px 14px; border-top: 1px solid var(--card-border); }
+.affair-preview-body p { margin: 0 0 10px; line-height: 1.6; }
+.affair-preview-body pre { margin: 0; padding: 12px; max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 8px; background: var(--surface-subtle, rgba(127, 168, 255, .04)); font-size: 12px; line-height: 1.65; }
+
+@media (max-width: 640px) {
+  .memory-budget-grid { grid-template-columns: 1fr; gap: 20px; }
+}

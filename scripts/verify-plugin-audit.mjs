@@ -18,11 +18,14 @@ names.push('test-context-assembly.mjs','test-context-composer.mjs','test-context
 names.push('test-games-current.mjs','test-games-mcp.mjs');
 names.push('test-context-knowledge.mjs','test-context-assembly.mjs','test-context-composer.mjs','test-context-routes.mjs','test-prompt-unicode.mjs','test-knowledge-quota-behavior.mjs','test-knowledge-quota-ingress.mjs','test-knowledge-quota-semantic.mjs','test-mood-lifecycle.mjs','test-mood-daily-recovery.mjs','test-mood-identity-style.mjs');
 names.splice(0,names.length,...new Set(names));
+names.push('test-sleep-recovery.mjs');
+names.push('test-ustc-report-login.mjs','test-ustc-session.mjs','test-campus-login-flow.mjs','test-campus-login-recovery.mjs');
 const onlyArgument=process.argv.slice(2).find(argument=>argument.startsWith('--only='));
 if(onlyArgument){const selected=new Set(onlyArgument.slice('--only='.length).split(','));if([...selected].some(name=>!names.includes(name)))throw Error('Unknown isolated audit test');names.splice(0,names.length,...names.filter(name=>selected.has(name)));}
 try{
  for(const dir of ['src','scripts','plugins','dsh','roles','public','console','private-libraries','examples','docs'])if(fs.existsSync(path.join(repo,dir)))fs.cpSync(path.join(repo,dir),path.join(root,dir),{recursive:true,filter:file=>!['.git','node_modules','__pycache__'].includes(path.basename(file))});
- fs.copyFileSync(path.join(repo,'package.json'),path.join(root,'package.json'));fs.symlinkSync(path.join(repo,'node_modules'),path.join(root,'node_modules'),'junction');fs.mkdirSync(path.join(root,'state'));
+ for(const name of ['package.json','dsh-mcp-entry.mjs','dsh-entry.mjs','dsh-client.js','cordis.patch.yml'])if(fs.existsSync(path.join(repo,name)))fs.copyFileSync(path.join(repo,name),path.join(root,name));
+ fs.symlinkSync(path.join(repo,'node_modules'),path.join(root,'node_modules'),'junction');fs.mkdirSync(path.join(root,'state'));
  fs.writeFileSync(path.join(root,'config.json'),JSON.stringify({dsh:{baseUrl:'http://127.0.0.1:1',authToken:'fixture-only',model:'deepseek-flash',reasoningEffort:'low'},ownerQQ:123,allow:{private:['123'],groups:['456']},consolePort:0,consoleToken:'fixture-console-token'}));
  let cursor=0;async function worker(){while(cursor<names.length){const name=names[cursor++],start=Date.now();const result=await new Promise(resolve=>execFile(process.execPath,['scripts/'+name],{cwd:root,timeout:['test-token-economy.mjs','test-plugin-matrix.mjs'].includes(name)?240000:90000,maxBuffer:2e6,windowsHide:true},(error,stdout,stderr)=>resolve({name,ok:!error,ms:Date.now()-start,...(error?{error:error.message,output:(stdout+'\n'+stderr).slice(-7000)}:{})})));results.push(result);console.log((result.ok?'PASS ':'FAIL ')+name);}}
  await Promise.all([worker(),worker(),worker()]);

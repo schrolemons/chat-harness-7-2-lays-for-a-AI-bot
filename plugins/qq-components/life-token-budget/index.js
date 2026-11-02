@@ -18,7 +18,7 @@ export function createPlugin(ctx) {
   }
   function isExempt(key) {
     const owner = ownerPolicy();
-    return owner.budgetEnabled === false && owner.key !== null && key === owner.key;
+    return owner.budgetEnabled === false && owner.key !== null && key === owner.key && ctx.capabilities?.hasAdminEnvironment?.(key)===true;
   }
   const sessions = () => ctx.config?.sessions && typeof ctx.config.sessions === 'object' && !Array.isArray(ctx.config.sessions) ? ctx.config.sessions : {};
   const entries = (kind) => {

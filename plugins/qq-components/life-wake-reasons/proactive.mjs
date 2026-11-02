@@ -24,6 +24,7 @@ export function createProactive(ctx) {
     if (!valid.ok) return 'invalid_policy';
     if (!p.proactiveEnabled || p.disabledReasons.includes('proactiveCheck')) return 'disabled';
     if (!facts || facts.allowed !== true) return 'not_allowed';
+    if (facts.transportReady === false) return 'transport';
     if (facts.paused) return 'paused';
     if (facts.quiet) return 'quiet';
     if (isProactiveCurfew(p, now)) return 'curfew';
@@ -65,7 +66,7 @@ export function createProactive(ctx) {
     }
     const result = plan({ key, now, facts, random });
     if (!result.allowed) return result;
-    ctx.scheduler.schedule({ id: jobId(key), owner: 'life-wake-reasons', type: 'proactive', at: result.nextAt, run: async ({ now: dueNow = Date.now() } = {}) => {
+    ctx.scheduler.schedule({ id: jobId(key), owner: 'life-wake-reasons', type: 'proactive', requiresTransport: true, at: result.nextAt, run: async ({ now: dueNow = Date.now() } = {}) => {
       const latest = factsFor(key), check = plan({ key, now: dueNow, facts: latest, random });
       if (!check.allowed || check.nextAt > dueNow) return;
       let s = get(key);

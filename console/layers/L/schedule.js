@@ -28,7 +28,6 @@ async function refreshV2Schedule() {
     const previousBubbleKey = bubbleKey?.value;
     fillKeys(bubbleKey);
     if (bubbleKey && bubbleKey.value !== previousBubbleKey) bubbleKey.dispatchEvent(new Event('change'));
-    fillKeys(document.getElementById('v2PmKey'));
     const followupKey = document.getElementById('v2FollowupSessionKey');
     if (followupKey) {
       const previous = followupKey.value;

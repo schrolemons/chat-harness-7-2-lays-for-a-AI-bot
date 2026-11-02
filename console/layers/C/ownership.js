@@ -44,7 +44,8 @@ export default {
     "page": "setting-c-1"
   },
   "ctx-memory-context": {
-    "page": "setting-c-1"
+    "page": "setting-c-1",
+    "selector": "#v2MemoryInjectionBudgets"
   },
   "ctx-memory-profile-facts": {
     "page": "setting-c-1"

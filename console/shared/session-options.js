@@ -4,7 +4,7 @@ export function initialize() {
  let keys=[],sessions=[];
  function enhance(){
   for(const input of document.querySelectorAll('input[type=text],input:not([type]),textarea')){
-   if(input.matches('.comp-form-json') || input.dataset.sessionPicker || input.closest('.session-options') || /token|secret|password|apikey/i.test(input.id))continue;
+   if(input.matches('.comp-form-json') || input.dataset.sessionPicker || input.closest('.session-options,[data-session-picker-scope="explicit"]') || /token|secret|password|apikey/i.test(input.id))continue;
    const field=input.closest('[data-config-key]'),name=field?.dataset.configKey||'',hint=(input.placeholder||'')+' '+input.id;
    const opaque=/sessionId/i.test(input.id),kindId=splitKinds[input.id];
    if(!opaque&&!kindId&&!/(?:group:|private:|session|会话)/i.test(hint)&&!/(?:session|conversation|targetKey|notifyKey)/i.test(name))continue;

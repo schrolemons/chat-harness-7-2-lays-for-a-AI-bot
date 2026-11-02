@@ -1006,6 +1006,18 @@ server.tool(
 );
 
 server.tool(
+  'qq_diary',
+  '读取或更新当前会话本日记窗口的日记，不发送QQ。需要整理上下文或发生值得记录的事时可主动更新；先read，再update提交完整当天日记。day须沿用read结果，换窗后重读；跨日另起一份，可明确对比昨天聊天，不续写昨天日记。',
+  {key:z.string().describe('当前会话key'),token:z.string().describe('当前会话令牌'),action:z.enum(['read','update']),day:z.string().optional().describe('update时填read返回的日记日期'),text:z.string().max(20000).optional().describe('完整当天日记，保留同一窗口内此前发生的事')},
+  async({key,token,action,day,text})=>{
+    try{
+      const data=await agentApi('/api/socialV2/diary'+(action==='read'?'?'+new URLSearchParams({key}):''),{method:action==='read'?'GET':'POST',headers:{'x-agent-token':token},...(action==='update'?{body:JSON.stringify({key,day,text})}:{})});
+      return {content:[{type:'text',text:serializeModelData(data)}]};
+    }catch(error){return {content:[{type:'text',text:'日记操作失败：'+(error?.message??error)}],isError:true};}
+  }
+);
+
+server.tool(
   'qq_memory_append',
   '记录当前窗口的轻量记忆：activeTopic=当前话题；pendingThought=bot待说想法；memberImpression=窗口内实际发言用户的行为观察。持续价值先提炼成会话事实；稳定作息/爱好写人物档案，任务/承诺/随口安排写qq_task_note。不把印象当稳定性格。',
   {

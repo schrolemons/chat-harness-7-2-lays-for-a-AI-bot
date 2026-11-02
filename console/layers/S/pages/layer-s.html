@@ -1,26 +1,35 @@
 <section id="section-layer-s" data-page="layer-s" class="card span-all">
-  <h2>私人资料目录与管理</h2>
-  <p class="meta">挂载本机资料包，AI 按需查目录、读卡片。</p>
-  <div class="tool-reference-list"><div class="tool-reference-item"><code>core_status</code><span>查看当前资料包是否可用、作者与规模</span></div><div class="tool-reference-item"><code>core_topics</code><span>浏览主题目录、出处与适用情境</span></div><div class="tool-reference-item"><code>core_read</code><span>按主题 ID 读取卡片；按 @guide 读取作者导读</span></div></div>
-  <div class="row" style="gap:8px;margin:12px 0"><button id="sLayerRefresh" class="small">刷新挂载信息</button></div>
+  <section class="core-panel core-reading-guide" aria-label="阅读与定位规则">
+  <header class="core-panel-heading"><h2>阅读与定位规则</h2></header>
+  <div class="core-panel-body">
+  <p class="meta">先分批浏览 topic 目录，再读所需卡片；遇到理解困难时才读导读，不做向量检索。</p>
+  <div class="tool-reference-list"><div class="tool-reference-item"><code>core_status</code><span>查看资料包简介、作者与规模</span></div><div class="tool-reference-item"><code>core_topics</code><span>分批返回主题标题、简短摘要和 ID</span></div><div class="tool-reference-item"><code>core_read</code><span>短卡完整读；长卡按章节展开；每卡附定位与上下文摘要</span></div></div>
+  <ol class="meta"><li>目录按批查看，沿用已有问题卡和标题结构，选中相关 topic ID。</li><li>短卡一次读完，同时提供原文标题位置、本卡用途、同篇前后卡的已有摘要；不会改写或重新切分原卡。长内容才按章节或分页兜底。</li><li>特殊术语、引用边界或意思容易误解时，再读取 GUIDE.md；短导读也一次返回全文。</li></ol>
+  <p class="meta">上下文摘要来自已有目录，不是重新生成的作者原句，也不代表已读相邻卡全文；需要完整论证时再按相邻 ID 读取。</p>
+  <p class="meta">读取不等于永久记住。正文离开当前上下文、被压缩或文件更新后，可能需要重读；文件缓存只减少服务端读盘。</p>
+  </div></section>
+  <div class="core-refresh-row"><button id="sLayerRefresh" class="small" type="button">刷新挂载信息</button><span id="sLayerRefreshStatus" class="meta" role="status" aria-live="polite"></span></div>
   <div id="sLayerRoot"></div>
-  <details class="settings-group core-preparation-guide"><summary>为自己的文档准备资料包</summary><div class="settings-content">
-    <p>以项目目录 <code>D:\qq-bridge</code> 为例：把原稿放入 <code>originals</code>，其余交给 AI 建立。</p>
+  <details class="settings-group core-preparation-guide"><summary>整理与校验资料包</summary><div class="settings-content">
+    <p>以 <code>D:\qq-bridge</code> 为例：保留原稿，沿用已有问题与标题分卡，不为新阅读方式重新切卡。</p>
     <pre class="core-package-tree" aria-label="资料包目录结构">D:\qq-bridge\private-libraries\my-core\  ← 挂载此目录
 ├─ sources\
 │  ├─ originals\     你放入的原稿
 │  └─ converted\     AI 转换的文本
-├─ topics\           AI 整理的主题卡片（含出处）
+├─ topics\           既有问题卡或按标题整理的卡片（含出处）
 ├─ manifest.json     资料包信息
 ├─ catalog.json      主题索引
 └─ GUIDE.md          可选：资料阅读导读</pre>
-    <p class="meta">AI 校验通过后，将树中的根目录填入上方并保存。示例中的项目目录和包名请换成实际值。</p>
-    <details class="core-developer-reference"><summary>AI 整理要求与开发参考</summary><div class="settings-content">
+    <p class="meta">整理后先复核含义与出处，再运行程序校验，将根目录填入上方保存。路径和包名请替换为实际值。</p>
+    <details class="settings-group core-developer-reference"><summary>整理提示与校验命令</summary><div class="settings-content">
       <p class="meta">可将以下要求交给 AI：</p>
       <pre>请阅读 D:\qq-bridge\docs\personal-core\README.md。
 将 D:\qq-bridge\private-libraries\my-core\sources\originals 中的原稿整理为资料包，保存于 D:\qq-bridge\private-libraries\my-core。
-保留原稿，区分原文、解读与未核实内容，记录出处；按规范完成索引与校验，返回挂载路径和结果。</pre>
-      <p class="meta"><code>README.md</code> 是项目自带的建包规范；<code>GUIDE.md</code> 是 AI 可选生成的资料导读。</p>
+保留原稿和已有问题/标题分卡，区分原文、解读与未核实内容，核对出处行号。
+目录摘要保持简短、忠实；卡片定位和同文前后摘要由读取器按原文与现有目录提供，不臆写作者意图。
+GUIDE.md 只用于理解困难、术语或引用边界的消歧，不设为每次必读。
+按规范完成索引与程序校验，返回挂载路径和结果。</pre>
+      <p class="meta"><code>README.md</code> 是建包规范；<code>GUIDE.md</code> 是可选的理解与引用导读，不是每次阅读的前置步骤。卡片按完整观点整理，长内容使用 Markdown 标题分章，不按固定字数机械切卡。</p>
       <pre>node "D:\qq-bridge\scripts\personal-core.mjs" validate "D:\qq-bridge\private-libraries\my-core"</pre>
       <p class="meta">项目相对路径从项目目录解析。资料按需读取，不覆盖人设与权限。</p>
     </div></details>

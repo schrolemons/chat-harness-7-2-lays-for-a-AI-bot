@@ -1,7 +1,7 @@
 // 执行后端声明（E 层，最小可用版）
 //
 // 桥接本身不负责执行，执行发生在三处：DSH 沙箱（workspace-write / danger-full-access）、
-// 管理端开发模式（owner 私聊，自动放行）、真实浏览器（Edge CDP 9227）。
+// 管理端开发模式（启用管理员环境的 owner 私聊）、真实浏览器（Edge CDP 9227）。
 // 这个插件把三者与边界声明出来，让 AI 动手前能查「该走哪条路、要不要审批、允许碰什么」。
 
 const BACKENDS = [
@@ -17,7 +17,7 @@ const BACKENDS = [
     id: 'dsh-full',
     name: 'DSH 危险模式',
     defaultMode: 'danger-full-access',
-    approval: '每次升级需说明理由（owner 会话自动通过）',
+    approval: '每次升级需说明理由（由 DSH 审批策略决定）',
     scope: '仓库外写入、读取 state/、重启进程',
     when: '改桥接仓库/state/、需要真实文件系统访问时；先备份再动'
   },
@@ -25,7 +25,7 @@ const BACKENDS = [
     id: 'admin-dev',
     name: '管理端开发模式',
     defaultMode: 'owner 私聊专用',
-    approval: '自动通过（受治理规则约束）',
+    approval: '须启用管理员环境，审批按配置执行',
     scope: '本机 pwsh、文件读写、浏览器、发文件、GitHub',
     when: '管理员要求的本机运维/开发；仍拒绝凭据外发与越权'
   },

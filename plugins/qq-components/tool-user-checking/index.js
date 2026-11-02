@@ -142,7 +142,7 @@ export function createPlugin(ctx) {
     hooks: {
       onTick(){startup.flush();notebook.flush();},
       beforePrompt(payload) {
-        if (!payload?.isOwnerKey) return '';
+        if (!payload?.isAdminEnvironment) return '';
         const c = conf();
         const name = safeFileName(c.noteFileName, 'AI助手想说的话.txt');
         return '【自查与桌面便签】机主开了 user_checking 这个工具，不用每次讨授权就能用：\n'

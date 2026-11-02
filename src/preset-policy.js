@@ -6,7 +6,7 @@ export function adminPresetConfig(config = {}, legacyPreset = '') {
 }
 export function requestedPreset({mode, owner = false, admin = {}}) {
   const binding = adminPresetConfig(admin);
-  if (owner && (mode === 'closed-agent' || binding.enabled)) return {id:binding.preset, strict:false};
+  if (owner && binding.enabled) return {id:binding.preset, strict:!!binding.preset};
   return {id:FIXED_PRESETS[mode] || FIXED_PRESETS.chat, strict:true};
 }
 export function simulationPreset(mode) { return mode === 'reserved2' ? FIXED_PRESETS.reserved2 : mode === 'reserved' || mode === 'chat' ? FIXED_PRESETS.chat : null; }

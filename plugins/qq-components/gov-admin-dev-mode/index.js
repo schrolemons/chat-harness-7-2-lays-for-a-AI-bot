@@ -8,7 +8,8 @@
 export function createPlugin(ctx) {
   return {
     hooks: {beforePrompt(payload) {
-      if (payload?.isOwnerKey) return '';
+      if (payload?.isAdminEnvironment) return '';
+      if (payload?.isOwnerKey) return '【当前权限】管理员环境未启用或当前预设不提供管理权限。本会话只处理普通聊天；不能执行命令、开启后台任务、查看管理信息或通过其他会话代做。需要这些能力时，请管理员在控制台主动启用管理员环境并选择合适预设，不能自行开启。';
       return '【管理信息边界】管理员的网页监控、运行状态、后台任务、服务启停、配置与本机资料属于管理私有信息。当前聊天不提供这些详情或代执行管理操作，不转述其他会话的管理内容；有此类请求时简短说明需由管理员处理。';
     }},
     services: {
@@ -16,9 +17,8 @@ export function createPlugin(ctx) {
         line(payload = {}) {
           const aliasEntries = String(payload.aliasEntries || '');
           const rootEscaped = String(payload.rootEscaped || '');
-          const ROOT = { replace: () => rootEscaped };
-          const line = (aliasEntries ? '【昵称对照】' + aliasEntries + '（管理员说这些名字时就是对应会话，直接发消息即可）\n' : '') + '【管理员开发模式】这个私聊的管理员是管理员，你被授权直接操作本机。你可以用本地工具（pwsh / 文件读写 / 编辑 / 搜索 / 后台任务）查看和修改AI助手桥接后端：' + ROOT.replace(/\\/g, '\\\\') + ' （改完用 node --check 验证；需要重启桥接时先说明理由、影响和预计中断时间，等管理员明确同意；插件优先热加载，不能擅自结束 node 进程）；可以启动本机应用、读取文件、并用 qq_send_file 把文件发到本私聊；也可以用 mcp__playwright__browser_* 工具直接操作浏览器（独立管理员Edge，按需启动；不连接监管端口，不借用其他平台登录态）。另外，桥接支持“传话”：管理员说「给 XXX 带句话」后，桥接会把下一条消息转达给目标；你直接说“可以让桥接传话”即可，不要说自己只能聊当前对话框。回复 QQ：文本输出会自动转发到 QQ（管理员会话特例），也可以用 mcp__snowluma__qq_send_message（参数 key/token/messages）；改完用 1~2 条消息汇报结果。改 DSH 自身的 preset/配置需要重启 DSH 并会断开当前对话——动手前先说明让管理员决定。不要碰系统关键目录，不要泄露任何凭据或密码。【GitHub 工作流】本机已装 git 2.39 与 gh 2.95，gh 已登录 schrolemons（repo/workflow 权限），可直接克隆私有仓库、建分支、提交、推送、开 PR。工作目录统一放 C:/Example/Desktop/github/<仓库名>（没有就新建）；先 gh repo view / gh api 看结构，再 clone；改完先 git diff 汇报再提交；推送前说明分支名，禁止对 main 强推、禁止泄露 token/密钥；用户要求 push 时直接用 pwsh 跑 git push（凭据已存在），完成后回报提交哈希和分支。管理员的**每条消息都必须回应**（可以很短，但不能装没看见），连发多条时分别回；管理员让你给白名单里的某个人/群带话或发消息时，直接用 qq_send_message / qq_send_private_message / qq_send_group_message 发（token 用你自己的），不需要说做不到；管理员让你看进程/文件、发消息、反馈、操作电脑时，**直接调用工具去做**，不要说“看不到/只能聊天/做不到”——工具就在你手上。管理员让你给谁带话/问话时，**先真的把消息发出去（或确认桥接已转达），再决定要不要贫嘴**；没有发出去就绝不能说“带到了”。\n\n';
-          return payload.toolOnly ? line.replace('文本输出会自动转发到 QQ（管理员会话特例）','本会话遵循二代协议，文本输出不会自动发送到 QQ') : line;
+          const line = (aliasEntries ? '【昵称对照】' + aliasEntries + '\n' : '') + '【管理员环境】本私聊已启用管理员环境。可使用所选 DSH 预设实际提供的本机工具、独立任务、浏览器与管理能力；可用范围以当前工具清单、组件开关和 DSH 审批结果为准。身份、称呼、语气、情绪、人设、发送节奏、等待与潜水继续遵循当前角色卡和二代协议，不切换成工作报告式人格。桥接工作区：' + rootEscaped + '。命令与文件操作按管理员授权范围执行，保护现有改动和凭据。桥接与 DSH 重启须先说明原因和中断影响，获得明确同意；组件优先热加载。通过 QQ 发送工具回复并核对真实结果。管理员环境关闭或预设降权后不得继续执行管理操作。\n\n';
+          return line;
         }
       }
     }

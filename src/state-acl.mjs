@@ -18,18 +18,16 @@
 //
 // 合并成一份实现，从结构上杜绝两份逻辑再次漂移。
 //
-// 正确顺序是四步，缺一不可：
-//   1. 目录上停止继承；
-//   2. 按 **SID** 删除宽松主体（不受系统显示语言影响）；
-//   3. 对**每一个**条目显式授权 —— 不带 (OI)(CI)，所以对文件同样有效；
-//   4. 给目录补一份可继承 ACE，让以后新建的文件自动拿到权限。
-// 最后自检由调用方按需做（{@link isHardened}）。
+// 启动先用结构化 SID 检查整棵真实目录；安全时不改写。需要修复时按条目
+// 收紧根继承、移除宽松授权、保证属主/SYSTEM/管理员可访问并保留拒绝规则。
+// 文件不套目录继承标志，目录给新文件继承；联接只检查自身，不跟随外部目标。
+// 强制修复与普通启动共用 state-acl-check.ps1，修复后重新检查，不凭退出码报成功。
 
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
 // Authenticated Users=S-1-5-11, BUILTIN\Users=S-1-5-32-545, Everyone=S-1-1-0
-const PERMISSIVE_SIDS = ['*S-1-5-11', '*S-1-5-32-545', '*S-1-1-0'];
 
 /** icacls 的可执行封装（统一超时与隐藏窗口）。 */
 export function icacls(args, timeout = 30000) {
@@ -68,37 +66,47 @@ export function isHardened(target) {
   return !hasInheritedPermissionAce(out) && !hasPermissiveTrustee(out);
 }
 
-/**
- * 收紧一个**目录**及其整棵子树的权限。
- * @param {string} dir - 目标目录。
- * @returns {{ok: boolean, detail: string}}
- */
-export function hardenDir(dir) {
+// Structured ACL access avoids localized icacls names and verbose recursive output.
+function runDirAcl(dir, repair=false) {
+  const script = fileURLToPath(new URL('./state-acl-check.ps1', import.meta.url));
+  let command;
+  try { command=fs.readFileSync(script,'utf8'); }
+  catch { return {ok:false,inspectionFailed:true,detail:'ACL 检查实现不可读'}; }
+  const res = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
+    encoding:'utf8', timeout:repair?120000:15000, windowsHide:true, maxBuffer:1024*1024,
+    env:{...process.env,QQ_STATE_ACL_TARGET:dir,QQ_STATE_ACL_REPAIR:repair?'1':'0'}
+  });
+  if (res.error || res.status !== 0) return {ok:false,inspectionFailed:true,detail:res.error?.message || 'ACL 检查进程失败'};
+  try { const result=JSON.parse(res.stdout.trim()); return result.ok===true ? result : {ok:false,detail:result.detail || 'ACL 检查未通过'}; }
+  catch { return {ok:false,inspectionFailed:true,detail:'无法读取 ACL 检查结果'}; }
+}
+
+export function inspectDirAcl(dir) { return runDirAcl(dir); }
+
+/** Verify a directory tree; repair only if unsafe, or explicitly forced. */
+export function hardenDir(dir, {force=false} = {}) {
   if (process.platform !== 'win32') {
     try { fs.chmodSync(dir, 0o700); return { ok: true, detail: 'chmod 700' }; }
     catch (error) { return { ok: false, detail: error?.message ?? String(error) }; }
   }
   const user = process.env.USERNAME;
   if (!user) return { ok: false, detail: '无法确定当前用户名（%USERNAME% 为空）' };
-  const steps = [
-    [dir, '/inheritance:r', '/C', '/Q'],
-    [dir, '/remove:g', ...PERMISSIVE_SIDS, '/T', '/C', '/Q'],
-    [dir, '/T', '/C', '/Q', '/grant', `${user}:F`, '/grant', 'SYSTEM:F', '/grant', 'Administrators:F'],
-    [dir, '/Q', '/grant', `${user}:(OI)(CI)F`, '/grant', 'SYSTEM:(OI)(CI)F', '/grant', 'Administrators:(OI)(CI)F']
-  ];
-  for (const args of steps) {
-    const res = icacls(args);
-    const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
-    if (res.error) return { ok: false, detail: res.error.message };
-    // /C 会让 icacls 继续处理剩余文件、即使全失败退出码仍是 0，所以必须看输出。
-    if (/access is denied/i.test(out)) {
-      return { ok: false, detail: out.split('\n').filter(Boolean).slice(-3).join(' / ') };
-    }
+  // Read the whole tree by SID, including protected descendants. A private root
+  // alone cannot prove that imported files have safe ACLs. Do not rewrite a
+  // healthy tree (browser profiles and audits can contain tens of thousands of files).
+  if (!force) {
+    const checked=inspectDirAcl(dir);
+    if (checked.ok) return {ok:true,unchanged:true,checked:checked.checked,detail:'ACL 已验证，无需重复修改'};
+    if (checked.inspectionFailed) return {ok:false,detail:'无法确认 ACL，未盲目执行全量改写：'+checked.detail};
   }
+  const repaired=runDirAcl(dir,true);
+  if (!repaired.ok) return {ok:false,detail:'ACL 修复未完成：'+repaired.detail};
   // 自检：属主必须仍能读到目录内容（防止把 DACL 清空这种"成功"的破坏）。
   try { fs.readdirSync(dir); }
   catch (error) { return { ok: false, detail: `收紧后目录已不可读，请检查 ACL（${error?.message ?? error}）` }; }
-  return { ok: true, detail: 'icacls' };
+  const verified=inspectDirAcl(dir);
+  if (!verified.ok) return {ok:false,detail:'收紧后 ACL 检查未通过：'+verified.detail};
+  return { ok: true, detail: 'ACL 已修复并验证', checked:verified.checked };
 }
 
 /**
@@ -130,11 +138,6 @@ export function hardenFile(file) {
  */
 export function manualDirCommand(dir) {
   if (process.platform !== 'win32') return `chmod -R go-rwx "${dir}"`;
-  const d = `"${dir}"`;
-  return [
-    `icacls ${d} /inheritance:r /C /Q`,
-    `icacls ${d} /remove:g "*S-1-5-11" "*S-1-5-32-545" "*S-1-1-0" /T /C /Q`,
-    `icacls ${d} /T /C /Q /grant "%USERNAME%:F" /grant "SYSTEM:F" /grant "Administrators:F"`,
-    `icacls ${d} /Q /grant "%USERNAME%:(OI)(CI)F" /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F"`
-  ].join('\n             ');
+  const script=fileURLToPath(new URL('../scripts/repair-state-acl.mjs',import.meta.url));
+  return `node "${script}" "${dir}"`;
 }

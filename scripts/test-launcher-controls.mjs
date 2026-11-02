@@ -6,6 +6,22 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { saveLauncherSettings } from './launcher-settings.mjs';
+import {FIXED_PRESETS} from '../src/preset-policy.js';
+
+test('healthy launcher accepts current fixed presets without the retired admin preset and reports missing or broken ones',async t=>{
+ const original=globalThis.fetch;
+ let catalogue=[...new Set(Object.values(FIXED_PRESETS))].map(id=>({id}));
+ globalThis.fetch=async(url,options)=>String(url).endsWith('/api/presets')?{ok:true,json:async()=>({presets:catalogue})}:original(url,options);
+ t.after(()=>{globalThis.fetch=original;});
+ const f=await fixture(t,{health:async()=>({healthy:true,verdict:'ready'}),tcpProbe:async()=>true});
+ let result=await f.status();assert.equal(result.ready,true);assert.equal(result.checks.presetsReady,true);
+ catalogue=catalogue.map(row=>row.id===FIXED_PRESETS.task?{...row,broken:'configuration error'}:row);
+ result=await f.status();assert.equal(result.ready,false);assert.equal(result.checks.presetsReady,false);
+  assert.equal(result.phase,'waiting_presets');
+ assert.match(result.message,/预设/);assert.match(result.message,/qq-task-worker/);
+ catalogue=catalogue.filter(row=>row.id!==FIXED_PRESETS.learning);
+ result=await f.status();assert.equal(result.ready,false);assert.match(result.message,/qq-learning/);
+});
 
 async function fixture(t, extra = {}) {
   const runners = [];

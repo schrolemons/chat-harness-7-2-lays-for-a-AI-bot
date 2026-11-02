@@ -75,6 +75,16 @@ test('scheduled checks respect a ten minute interval', async () => {
 test('failed application initialization never reuses an old cookie export for Python',async()=>{let calls=0;const {sandbox,logs,beats}=runner(()=>{calls++;return '{}';});sandbox.refreshCookieJar=async()=>false;await sandbox.checkLectures({}, {}, []);assert.equal(calls,0);assert.ok(logs.includes('DOM fallback'));assert.equal(beats.at(-1)[4],'fallback');});
 test('capacity failures are not login failures',()=>{const {sandbox}=runner(()=>{}),changes=[];sandbox.handleGrabResult({failed:[{error:'full'}]}, {},changes);assert.equal(changes.some(c=>c.kind==='login'),false);});
 
+test('recognized report authentication failure immediately requests its own login without Python or DOM retry',async()=>{
+ let pythonCalls=0;const failures=[];
+ const {sandbox,logs,beats}=runner(()=>{pythonCalls++;return '{}';},{enabled:true,portalUrl:'https://lecture.example/'});
+ sandbox.refreshCookieJar=async()=>{throw Object.assign(Error('学术报告需要重新登录'),{error_type:'auth'});};
+ sandbox.loginFailed=async(target,health)=>{failures.push(target.url);health.auth='red';};
+ const state={};await sandbox.checkLectures({},state,[],true);
+ assert.deepEqual(failures,['https://lecture.example/']);assert.equal(pythonCalls,0);assert.equal(logs.includes('DOM fallback'),false);
+ assert.equal(state.monitorHealth['https://lecture.example/'].auth,'red');assert.equal(beats.at(-1)[2],false);
+});
+
 test('a successful lecture retry completes recovery and updates the visible website health',async()=>{
  const {sandbox,recoveries}=runner((_exe,args)=>args[0].endsWith('sync_cookies.py')?'':'{"ok":true,"grabbed":[],"withdrawn":[]}',{enabled:true,portalUrl:'https://lecture.example/',intervalMinutes:10});
  const state={};await sandbox.checkLectures({},state,[],true);

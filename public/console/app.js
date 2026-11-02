@@ -40,7 +40,7 @@
     let keys = [], sessions = [];
     function enhance() {
       for (const input of document.querySelectorAll("input[type=text],input:not([type]),textarea")) {
-        if (input.matches(".comp-form-json") || input.dataset.sessionPicker || input.closest(".session-options") || /token|secret|password|apikey/i.test(input.id)) continue;
+        if (input.matches(".comp-form-json") || input.dataset.sessionPicker || input.closest('.session-options,[data-session-picker-scope="explicit"]') || /token|secret|password|apikey/i.test(input.id)) continue;
         const field = input.closest("[data-config-key]"), name = field?.dataset.configKey || "", hint = (input.placeholder || "") + " " + input.id;
         const opaque = /sessionId/i.test(input.id), kindId = splitKinds[input.id];
         if (!opaque && !kindId && !/(?:group:|private:|session|会话)/i.test(hint) && !/(?:session|conversation|targetKey|notifyKey)/i.test(name)) continue;
@@ -125,7 +125,7 @@
     "life-schedule-reminder": "本次资料提供适用的日程状态；日程状态改变与真正到点触发提醒是两个环节。文字出现在请求里不表示提醒已发送。",
     "message-snapshot": "C36 是当前收件状态索引的唯一来源，每次请求只读刷新窗口内的真实 seq 与双戳。索引不包含正文，也不证明正文已经交给模型。聊天原文按批次接入原执行时间线；待处理包含未读及已读未回复，历史工具回执保留原位。窗口上限不删除原始 QQ 记录。",
     "wake-action": "桥接给 bot 的本次处理要求及触发原因，不是 QQ 人类发言。新的来信可以接入同一次持续处理，不表示每条任务记录都从空闲重新唤醒。",
-    "personal-core": "按会话与话题条件提供目录导读；资料正文由工具按需读取，不整库注入。目录导读开关和读取工具权限是两个控制点。"
+    "personal-core": "先分批看topic目录，短卡整读并附原文位置、用途和上下文目录摘要；长文才按章节读，理解困难时再读@guide。入口开关不改变工具权限。"
   };
   function componentGuide(row) {
     const description = row.description || "这是请求装配中的组件来源；是否实际携带，以所选请求的正文和来源证据为准。";
@@ -1134,10 +1134,10 @@
   }
   function card(m, editable) {
     const delivery = !editable ? m.notCaptured && typeof m.inRequest !== "boolean" ? "未采集，不能判定实发" : m.included === false ? "未注入：" + reasonText(m.reason) : m.inRequest === true ? "已在实际请求正文中确认" : m.inRequest === false ? "实际请求未完整包含此模块" : "旧记录没有逐模块实发证据" : m.truncated ? "内容超过组件上限，已截断" : "";
-    const locked = m.protected || !editable, title = (editable ? data.knowledge?.[m.id]?.name : null) || m.name || m.id, tag = m.placement === "fixed" ? "系统设定与角色要求" : m.placement === "stable" ? "稳定会话资料（user 前缀）" : m.id === "wake-action" ? "本次要处理什么" : m.id === "message-snapshot" ? "收件处理进度与聊天原文" : m.id === "personal-core" ? "按需注入（目录导读与资料读取）" : "当前资料（只保留最新版本）", placeholder = !m.text?.trim();
+    const locked = m.protected || !editable, title = (editable ? data.knowledge?.[m.id]?.name : null) || m.name || m.id, tag = m.placement === "fixed" ? "系统设定与角色要求" : m.placement === "stable" ? "稳定会话资料（user 前缀）" : m.id === "wake-action" ? "本次要处理什么" : m.id === "message-snapshot" ? "收件处理进度与聊天原文" : m.id === "personal-core" ? "按需注入（目录提示与资料读取）" : "当前资料（只保留最新版本）", placeholder = !m.text?.trim();
     const content = "<pre>" + esc(m.text || "（这部分没有文字内容）") + "</pre>";
     const tone = Number.isInteger(m.index) ? " context-tone-" + m.index % 5 : "";
-    return '<article class="context-module' + tone + (placeholder ? " is-placeholder" : m.included === false ? " is-excluded" : "") + '" data-context-id="' + esc(m.id) + '"><div class="context-module-head">' + (editable ? '<button type="button" class="context-drag" draggable="true" data-context-move="drag" aria-label="拖动 ' + esc(title) + '">⠿</button>' : "") + "<h3>" + (Number.isInteger(m.index) ? '<span class="context-number">C' + String(m.index + 1).padStart(2, "0") + "</span> " : "") + esc(title) + "</h3>" + (editable ? '<label title="' + (locked ? "身份、权限和任务等必要内容不能在这里关闭" : "勾选表示允许把这部分内容发给 AI；保存后适用于所有会话") + '"><input type="checkbox" data-context-toggle="' + esc(m.id) + '" ' + (!draft.disabled.includes(m.id) || locked ? "checked " : "") + (locked ? "disabled " : "") + ">" + (locked ? "必要内容，不能关闭" : "允许发给 AI") + '</label><button type="button" data-context-move="up" aria-label="上移 ' + esc(title) + '">↑</button><button type="button" data-context-move="down" aria-label="下移 ' + esc(title) + '">↓</button>' : "") + '</div><div class="context-source"><span class="context-pill">' + esc(sourceText(m.source) || m.layer || "系统") + "</span>" + (editable ? '<span class="context-pill">' + esc(tag) + "</span>" : "") + "<span>" + esc(m.chars ?? m.text?.length ?? 0) + " 字符</span>" + (delivery ? '<span class="context-delivery">' + esc(delivery) + "</span>" : "") + (!placeholder && m.reason ? "<span>" + esc(reasonText(m.reason)) + "</span>" : "") + "</div>" + (m.toolCalls?.length || m.toolResults?.length ? '<p class="context-knowledge-note">' + (m.toolCalls || []).map((c) => "具体调用：" + esc(c.name) + " · 调用ID " + esc(c.id)).join("；") + (m.toolResults || []).map((c) => "返回对应调用ID：" + esc(c.toolCallId)).join("；") + "</p>" : "") + (m.id === "personal-core" ? '<p class="context-knowledge-note">按需注入：本会话适用且有新的对话输入时附带资料包目录导读，正文由工具按需读取，不会整库注入；本轮没有导读不代表资料库为空。' + (editable ? "此处开关只控制导读文字，不控制 core_status、core_topics、core_read 的工具权限。" : "资料正文由读取工具按需返回。") + "</p>" : "") + (editable ? componentGuide({ ...data.catalog?.find((slot) => slot.id === m.id), ...m }) : "") + knowledgePanel(m, data.knowledge?.[m.id], { actual: !editable, allowed: editable ? !(draft?.enabled !== false && draft.disabled.includes(m.id)) : m.included !== false }) + (m.id === "message-snapshot" && m.parts?.length ? '<p class="context-knowledge-note">两部分共用开关；新增来信按消息序号去重。</p>' + m.parts.map((part) => "<details><summary>" + esc(partLabel(part)) + "</summary>" + (receiptIndexHtml(part.text) || "<pre>" + esc(part.text || "本轮无新增正文") + "</pre>") + "</details>").join("") : placeholder ? '<p class="context-placeholder">本轮暂无内容，位置保留。</p>' : '<details class="context-content"><summary>' + (editable ? "查看组件原文" : "查看原文") + "</summary>" + content + "</details>") + "</article>";
+    return '<article class="context-module' + tone + (placeholder ? " is-placeholder" : m.included === false ? " is-excluded" : "") + '" data-context-id="' + esc(m.id) + '"><div class="context-module-head">' + (editable ? '<button type="button" class="context-drag" draggable="true" data-context-move="drag" aria-label="拖动 ' + esc(title) + '">⠿</button>' : "") + "<h3>" + (Number.isInteger(m.index) ? '<span class="context-number">C' + String(m.index + 1).padStart(2, "0") + "</span> " : "") + esc(title) + "</h3>" + (editable ? '<label title="' + (locked ? "身份、权限和任务等必要内容不能在这里关闭" : "勾选表示允许把这部分内容发给 AI；保存后适用于所有会话") + '"><input type="checkbox" data-context-toggle="' + esc(m.id) + '" ' + (!draft.disabled.includes(m.id) || locked ? "checked " : "") + (locked ? "disabled " : "") + ">" + (locked ? "必要内容，不能关闭" : "允许发给 AI") + '</label><button type="button" data-context-move="up" aria-label="上移 ' + esc(title) + '">↑</button><button type="button" data-context-move="down" aria-label="下移 ' + esc(title) + '">↓</button>' : "") + '</div><div class="context-source"><span class="context-pill">' + esc(sourceText(m.source) || m.layer || "系统") + "</span>" + (editable ? '<span class="context-pill">' + esc(tag) + "</span>" : "") + "<span>" + esc(m.chars ?? m.text?.length ?? 0) + " 字符</span>" + (delivery ? '<span class="context-delivery">' + esc(delivery) + "</span>" : "") + (!placeholder && m.reason ? "<span>" + esc(reasonText(m.reason)) + "</span>" : "") + "</div>" + (m.toolCalls?.length || m.toolResults?.length ? '<p class="context-knowledge-note">' + (m.toolCalls || []).map((c) => "具体调用：" + esc(c.name) + " · 调用ID " + esc(c.id)).join("；") + (m.toolResults || []).map((c) => "返回对应调用ID：" + esc(c.toolCallId)).join("；") + "</p>" : "") + (m.id === "personal-core" ? '<p class="context-knowledge-note">按需注入：本会话适用且有新对话时提供资料入口提示；先分批查topic，短卡整读、长卡按章节读，理解困难时才读GUIDE。没有入口提示不代表资料库为空。' + (editable ? "此处开关只控制入口文字，不控制 core_status、core_topics、core_read 的工具权限。" : "资料正文由读取工具按需返回。") + "</p>" : "") + (editable ? componentGuide({ ...data.catalog?.find((slot) => slot.id === m.id), ...m }) : "") + knowledgePanel(m, data.knowledge?.[m.id], { actual: !editable, allowed: editable ? !(draft?.enabled !== false && draft.disabled.includes(m.id)) : m.included !== false }) + (m.id === "message-snapshot" && m.parts?.length ? '<p class="context-knowledge-note">两部分共用开关；新增来信按消息序号去重。</p>' + m.parts.map((part) => "<details><summary>" + esc(partLabel(part)) + "</summary>" + (receiptIndexHtml(part.text) || "<pre>" + esc(part.text || "本轮无新增正文") + "</pre>") + "</details>").join("") : placeholder ? '<p class="context-placeholder">本轮暂无内容，位置保留。</p>' : '<details class="context-content"><summary>' + (editable ? "查看组件原文" : "查看原文") + "</summary>" + content + "</details>") + "</article>";
   }
   async function refresh(keepDraft = false) {
     const ticket = ++revision;
@@ -1694,7 +1694,7 @@
     if (!select || !target) return;
     const row = rows.find((p) => p.id === select.value);
     const current = rows.find((p) => p.isDefault);
-    target.textContent = select.value ? row ? presetInfo(row).description : "当前预设尚未由 DSH 列出，请确认已安装。" : "跟随 DSH 默认" + (current ? "：" + presetInfo(current).label + " · " + current.id : "（等待 DSH 返回默认项）") + "。控制基础指令与可用工具。";
+    target.textContent = select.value ? row ? presetInfo(row).description : "当前预设尚未由 DSH 列出，请确认已安装。" : "跟随 DSH 默认" + (current ? "：" + presetInfo(current).label + " · " + current.id : "（等待 DSH 返回默认项）") + "。启用环境后才使用其能力；普通聊天或只读预设不会获得管理权限。";
   }
   function renderAdminPresets(value2 = selected) {
     const select = document.getElementById("v2AdminDevPreset");
@@ -2809,8 +2809,8 @@
     },
     "memory": {
       "group": "记忆、心情与排程",
-      "label": "窗口轻量记忆",
-      "example": "例：开启并保存后，可维护当前话题、待说想法与临时印象；仍受会话权限与额度约束。"
+      "label": "轻量记忆与当天日记",
+      "example": "例：可维护当前话题、想法与临时印象，也可主动读写当天日记；写日记不会发到QQ，换窗后另起一份。"
     },
     "schedule": {
       "group": "记忆、心情与排程",
@@ -2945,6 +2945,7 @@
     qq_get_active_members: "getActiveMembers",
     qq_get_group_members: "getGroupMembers",
     qq_task_note: "taskNote",
+    qq_diary: "memory",
     qq_memory_append: "memory",
     qq_memory_query: "memory",
     qq_memory_remove: "memory",
@@ -3359,7 +3360,7 @@
       "video": ["视频", "视频", "预留栏目；尚未接入视频生成或处理服务。"],
       "layer-v": ["失败回归", "失败回归", "将失败记录整理为可复查的用例。"],
       "human": ["human", "HUMAN IN THE LOOP", "我也是一个组件。"],
-      "layer-s": ["私人资料库", "私人资料库", "挂载个人思想与知识资料包，按目录选择、按需读取原文。"],
+      "layer-s": ["私人资料库", "私人资料库", "分批看目录，整卡读原文，并结合定位与上下文摘要理解。"],
       reference: ["工具参考", "每一种能力，都清晰可见。", "查看桥接提供给 DSH 的 MCP 工具与用途。"],
       registry: ["扩展组件", "扩展组件", "查看接入的扩展项目。"]
     };
@@ -4118,11 +4119,13 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     try {
       const plugin = await readConfig();
       if (dirty || saving) return;
-      const input = el("v2AffairsBudget"), rule = plugin.configSchema.affairsMaxChars;
-      input.min = rule.min;
-      input.max = rule.max;
-      input.value = plugin.config.affairsMaxChars;
-      input.disabled = false;
+      for (const [id, key2] of [["v2FactsBudget", "maxChars"], ["v2AffairsBudget", "affairsMaxChars"]]) {
+        const input = el(id), rule = plugin.configSchema[key2];
+        input.min = rule.min;
+        input.max = rule.max;
+        input.value = plugin.config[key2];
+        input.disabled = false;
+      }
       el("v2AffairsBudgetSave").disabled = false;
       el("v2AffairsBudgetMsg").textContent = "";
     } catch (error) {
@@ -4130,30 +4133,32 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     }
   }
   function initializeAffairsBudget(refreshPreview) {
-    const input = el("v2AffairsBudget"), button = el("v2AffairsBudgetSave"), message2 = el("v2AffairsBudgetMsg");
-    input.addEventListener("input", () => {
+    const input = el("v2AffairsBudget"), facts = el("v2FactsBudget"), button = el("v2AffairsBudgetSave"), message2 = el("v2AffairsBudgetMsg");
+    for (const field of [input, facts]) field.addEventListener("input", () => {
       dirty = true;
       message2.textContent = "尚未保存";
     });
     button.addEventListener("click", async () => {
-      if (!input.reportValidity()) return;
-      const value2 = input.valueAsNumber;
-      if (!Number.isInteger(value2)) {
+      if (!facts.reportValidity() || !input.reportValidity()) return;
+      const value2 = input.valueAsNumber, factsValue = facts.valueAsNumber;
+      if (!Number.isInteger(value2) || !Number.isInteger(factsValue)) {
         message2.textContent = "请填写整数预算";
         return;
       }
       saving = true;
       input.disabled = true;
+      facts.disabled = true;
       button.disabled = true;
       message2.textContent = "保存中…";
       let saved2 = false;
       try {
-        const result = await api("/api/plugins/config", "POST", { id: componentId, config: { affairsMaxChars: value2 } });
+        const result = await api("/api/plugins/config", "POST", { id: componentId, config: { maxChars: factsValue, affairsMaxChars: value2 } });
         if (!result.ok) throw Error(result.error || "保存失败");
         saved2 = true;
         const plugin = await readConfig();
-        if (plugin.config.affairsMaxChars !== value2) throw Error("预算读回不一致，请刷新核对");
+        if (plugin.config.affairsMaxChars !== value2 || plugin.config.maxChars !== factsValue) throw Error("预算读回不一致，请刷新核对");
         input.value = plugin.config.affairsMaxChars;
+        facts.value = plugin.config.maxChars;
         dirty = false;
         const refreshed = await refreshPreview();
         message2.textContent = "已保存并重载" + (refreshed ? "，预览已刷新" : "");
@@ -4162,9 +4167,24 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       } finally {
         saving = false;
         input.disabled = false;
+        facts.disabled = false;
         button.disabled = false;
       }
     });
+  }
+
+  // console/layers/C/memory-sessions.js
+  async function refreshMemorySessions() {
+    const results = await Promise.allSettled([api("/api/socialV2/states"), api("/api/sessions")]);
+    const available = results.filter((result) => result.status === "fulfilled" && result.value.ok !== false).map((result) => result.value);
+    if (!available.length) throw Error("无法读取会话，请刷新页面重试");
+    const keys = [...new Set(available.flatMap((data2) => [...data2.conversations || [], ...data2.sessions || []]).map((item) => item.key))].filter((key2) => /^(private|group):\d+$/.test(key2));
+    for (const id of ["v2MemoryKey", "v2AffairsKey", "v2PmKey"]) {
+      const select = document.getElementById(id), previous = select.value;
+      select.replaceChildren(...keys.length ? keys.map((key2) => new Option((key2.startsWith("group:") ? "群聊 · " : "私聊 · ") + key2.split(":")[1], key2)) : [new Option("暂无可选会话", "")]);
+      if (keys.includes(previous)) select.value = previous;
+    }
+    return keys;
   }
 
   // console/layers/C/affairs.js
@@ -4201,12 +4221,17 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const result = await api("/api/socialV2/affairs?" + query);
       if (requestId !== sequence || requestKey !== key()) return;
       if (!result.ok) throw new Error(result.error || "加载失败");
+      if (offset > 0 && offset >= result.total) {
+        offset = Math.max(0, Math.floor((result.total - 1) / 20) * 20);
+        return load();
+      }
       items = new Map(result.items.map((item) => [item.id, item]));
       total = result.total;
-      el2("v2AffairsList").innerHTML = result.items.length ? result.items.map((item) => `<article class="affair-card"><div class="affair-card-heading"><strong>${esc(item.title)}</strong><span class="affair-badge" data-status="${esc(item.status)}">${esc(labels2[item.status])}</span></div><p class="affair-progress">${esc(item.detail || "尚无进度记录")}</p>${item.nextAction ? `<div class="affair-next"><span>下一步</span>${esc(item.nextAction)}</div>` : ""}<div class="affair-card-footer"><span class="meta">${item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() + " 更新" : ""}</span><div><button class="small" type="button" data-affair-id="${esc(item.id)}">编辑</button>${["needs_review", "pending", "doing", "waiting"].includes(item.status) ? `<button class="small" type="button" data-affair-done="${esc(item.id)}">标记完成</button>` : ""}</div></div></article>`).join("") : "当前范围没有事务";
-      el2("v2AffairsPage").textContent = `共 ${total} 项 · 第 ${Math.floor(offset / 20) + 1} 页`;
+      el2("v2AffairsList").innerHTML = result.items.length ? result.items.map((item) => `<article class="affair-card"><div class="affair-card-heading"><strong>${esc(item.title)}</strong><span class="affair-badge" data-status="${esc(item.status)}">${esc(labels2[item.status])}</span></div><p class="affair-progress">${esc(item.detail || "尚无进度记录")}</p>${item.nextAction ? `<div class="affair-next"><span>下一步</span>${esc(item.nextAction)}</div>` : ""}<div class="affair-card-footer"><span class="meta">${item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() + " 更新" : ""}</span><div><button class="small" type="button" data-affair-id="${esc(item.id)}">编辑</button>${["needs_review", "pending", "doing", "waiting"].includes(item.status) ? `<button class="small" type="button" data-affair-done="${esc(item.id)}">标记完成</button>` : ""}</div></div></article>`).join("") : '<div class="affairs-empty"><strong>当前范围没有事务</strong><span>可切换查看范围，或点击“新建事务”记录需要跟进的事。</span></div>';
+      el2("v2AffairsPage").textContent = `第 ${Math.floor(offset / 20) + 1} / ${Math.max(1, Math.ceil(total / 20))} 页 · 共 ${total} 项`;
       el2("v2AffairsPrev").disabled = offset === 0;
       el2("v2AffairsNext").disabled = offset + 20 >= total;
+      el2("v2AffairsPrev").parentElement.hidden = total <= 20;
       el2("v2AffairsPreview").textContent = result.preview?.text || "（当前预算未选中事务）";
       el2("v2AffairsPreviewInfo").textContent = `选中 ${result.preview?.selectedIds?.length || 0} 项，未选中 ${result.preview?.omittedIds?.length || 0} 项。组合记忆总预算可能进一步收紧；未选中内容仍完整保存。`;
       message("已加载 " + result.items.length + " 项");
@@ -4218,11 +4243,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   }
   async function loadKeys() {
     try {
-      const result = await api("/api/socialV2/states");
-      if (!result.ok) throw new Error(result.error || "无法读取会话");
-      const previous = key(), keys = result.conversations.map((item) => item.key).filter((value2) => /^(private|group):\d+$/.test(value2));
-      el2("v2AffairsKey").innerHTML = keys.map((value2) => `<option value="${esc(value2)}">${esc(value2)}</option>`).join("");
-      if (keys.includes(previous)) el2("v2AffairsKey").value = previous;
+      await refreshMemorySessions();
       await load();
     } catch (error) {
       message("读取会话失败：" + error.message);
@@ -4428,7 +4449,21 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
 
   // console/layers/S/page.js
   function initialize23() {
-    const load2 = () => componentUI.renderLayer("S", "sLayerRoot");
+    const load2 = async () => {
+      const button = document.getElementById("sLayerRefresh"), status = document.getElementById("sLayerRefreshStatus");
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      status.textContent = "正在读取挂载信息…";
+      try {
+        await componentUI.renderLayer("S", "sLayerRoot", { refresh: true });
+        status.textContent = "已刷新组件列表；校验时间以状态框为准。";
+      } catch (error) {
+        status.textContent = "刷新失败：" + error.message;
+      } finally {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    };
     registerPageLoader("layer-s", load2);
     document.getElementById("sLayerRefresh").addEventListener("click", load2);
   }
@@ -4763,7 +4798,6 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const previousBubbleKey = bubbleKey?.value;
       fillKeys(bubbleKey);
       if (bubbleKey && bubbleKey.value !== previousBubbleKey) bubbleKey.dispatchEvent(new Event("change"));
-      fillKeys(document.getElementById("v2PmKey"));
       const followupKey = document.getElementById("v2FollowupSessionKey");
       if (followupKey) {
         const previous = followupKey.value;
@@ -5234,15 +5268,24 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     document.getElementById("v2PmClear").addEventListener("click", () => clearV2PersistentMemory(document.getElementById("v2PmKey").value));
   }
 
-  // console/layers/O/diary.js
-  function diaryWindowForDay(day) {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || ""));
-    if (!match) return "时间窗未知";
-    const start = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
-    start.setDate(start.getDate() - 1);
-    const key2 = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-    return key2(start) + " 22:00 — " + String(day) + " 22:00";
+  // plugins/qq-components/ctx-memory-store/diary-delivery.mjs
+  var datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  function diaryClock(config = {}) {
+    const hour = Number(config.hour), minute = Number(config.minute);
+    return { hour: Math.min(23, Math.max(0, Number.isFinite(hour) ? Math.trunc(hour) : 22)), minute: Math.min(59, Math.max(0, Number.isFinite(minute) ? Math.trunc(minute) : 0)) };
   }
+  var shift = (day, days) => new Date(Date.parse(day + "T12:00:00Z") + days * 864e5).toISOString().slice(0, 10);
+  function diaryWindow(day, config = {}) {
+    if (!datePattern.test(String(day))) return null;
+    const { hour, minute } = diaryClock(config), clock = String(hour).padStart(2, "0") + ":" + String(minute).padStart(2, "0"), start = shift(day, -1) + " " + clock, end = day + " " + clock;
+    return { day, start, end, label: start + " 至 " + end };
+  }
+
+  // console/layers/O/diary.js
+  function diaryWindowForDay(day, config) {
+    return diaryWindow(day, config)?.label || "时间窗未知";
+  }
+  var sentTime = (value2) => new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(Number(value2)) + "（北京时间）";
   async function refreshV2Diary() {
     const listEl = document.getElementById("v2DdList");
     const msg = document.getElementById("v2DdMsg");
@@ -5262,7 +5305,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
             const day = String(entry?.date || "");
             if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
             for (const delivery of Array.isArray(entry.deliveries) ? entry.deliveries : []) {
-              if (["absent", "archive_only"].includes(delivery.status)) catchUpKeys.add(String(delivery.key || "") + "|" + day);
+              if (["absent", "archive_only", "legacy_unconfirmed"].includes(delivery.status)) catchUpKeys.add(String(delivery.key || "") + "|" + day);
             }
           }
         }
@@ -5272,33 +5315,39 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const rows2 = convs.map((c) => {
         const last = c.lastDiaryDate || "未发过";
         const state = c.hasDiary ? "目标日记 " + c.diaryChars + " 字（" + (c.diarySource === "archive" ? "归档" : "当前记忆") + "）" : "没有 " + (c.targetDate || "目标日期") + " 的日记内容";
-        const delivery = { sent: "目标日已确认发送", claimed: "发送处理中", uncertain: "发送结果未确认", absent: "目标日尚无发送凭据", archive_only: "仅有归档，未确认发送", unavailable: "凭据状态不可用" }[c.deliveryStatus] || "状态未知";
-        const alreadySent = c.targetSent === true;
-        const unresolved = ["claimed", "uncertain", "unavailable"].includes(c.deliveryStatus);
-        const blocked = c.diaryPending;
+        const confirmed = c.deliveryStatus === "sent" && c.targetSent === true && Number(c.sentAt) > 0;
+        const deliveryStatus = c.deliveryStatus === "sent" && !confirmed ? "legacy_unconfirmed" : c.deliveryStatus;
+        const alreadySent = confirmed;
+        const unresolved = ["claimed", "uncertain", "unavailable", "legacy_unconfirmed"].includes(deliveryStatus);
+        const blocked = c.diaryPending || ["claimed", "unavailable"].includes(deliveryStatus);
         const blockReason = !c.hasDiary ? "目标日期没有日记内容" : unresolved ? "发送凭据尚未确认，请先检查 QQ 会话和记录" : "";
-        const statusLabel = c.diaryPending ? "刷新或发送处理中" : alreadySent ? delivery : unresolved ? delivery : c.hasDiary ? "待发送" : "暂无内容";
-        const statusClass = c.diaryPending || unresolved ? "pending" : alreadySent ? "sent" : "muted";
+        const previousUnknown = ["claimed", "uncertain", "unavailable"].includes(c.previousDiaryStatus);
+        const statusLabel = c.previousDiaryMissing ? previousUnknown ? "昨日日记发送未确认" : "昨日日记未发送" : c.diaryPending ? "刷新或发送处理中" : "当前窗口进行中";
+        const statusClass = c.previousDiaryMissing ? "missing" : c.diaryPending ? "pending" : "muted";
         const title = "发送对象：" + c.key + (blockReason ? "；" + blockReason : "");
-        const catchUpAvailable = hasCatchUpFor(c.key, c.targetDate);
-        const sendDateLabel = alreadySent && c.sentAt ? "最近确认发送：" + new Date(c.sentAt).toLocaleString() : "上次发送日期：" + last;
-        return '<article class="diary-session-card" title="' + esc(title) + '"><div class="diary-session-head"><b class="diary-session-key">' + esc(c.key) + '</b><span class="diary-session-state ' + statusClass + '">' + esc(statusLabel) + '</span></div><div class="diary-session-window">' + esc(c.targetDate || "目标日期") + " 日记时间窗 · " + esc(diaryWindowForDay(c.targetDate)) + '</div><div class="diary-session-detail">' + esc(state) + " · " + esc(sendDateLabel) + '</div><div class="diary-session-actions"><button class="small" title="每次点击都会重新总结当前记忆并发送今天的日记" ' + (blocked ? "disabled" : "") + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-day="' + esc(c.targetDate || "") + '" data-dd-action="sendNow">刷新并发送今日日记</button><button class="small" title="只补发今天以前、尚未确认发送的归档日记" ' + (c.diaryPending || !catchUpAvailable ? "disabled" : "") + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-action="catchUpAll">补发未发送日记</button></div></article>';
+        const catchUpAvailable = c.previousDiaryMissing && c.previousDiaryAvailable && !previousUnknown || hasCatchUpFor(c.key, c.targetDate);
+        const confirmedAt = Number(c.lastConfirmedSentAt) || (alreadySent ? Number(c.sentAt) : 0), confirmedDay = c.lastConfirmedDiaryDate || (alreadySent ? c.targetDate : "");
+        const sendDateLabel = confirmedAt ? "最近确认发送：" + sentTime(confirmedAt) + " · 所属日记：" + confirmedDay : c.lastDiaryDate ? "旧日期记录：" + last + "（没有确认回执，不代表已发送）" : "尚无确认发送记录";
+        const windowLabel2 = c.windowStart && c.windowEnd ? c.windowStart + " 至 " + c.windowEnd : diaryWindowForDay(c.targetDate, r.config);
+        const scheduledLabel = c.previousDiaryMissing ? "上一窗口：" + c.previousDay + " 日记 · " + (c.previousDiaryAvailable ? "可直接补发已有正文，不调用模型" : "暂无可补发正文") : c.previousSentAt ? "上一窗口已发送：" + sentTime(c.previousSentAt) : "手动发送不抵扣本窗口结束时的定时发送";
+        return '<article class="diary-session-card" title="' + esc(title) + '"><div class="diary-session-head"><b class="diary-session-key">' + esc(c.key) + '</b><span class="diary-session-state ' + statusClass + '">' + esc(statusLabel) + '</span></div><div class="diary-session-window">' + esc(c.targetDate || "目标日期") + " 日记时间窗 · " + esc(windowLabel2) + '</div><div class="diary-session-detail">' + esc(state) + " · " + esc(sendDateLabel) + '</div><div class="diary-session-detail">' + esc(scheduledLabel) + '</div><div class="diary-session-actions"><button class="small" title="重新总结并发送此窗口日记；窗口分界读取已配置的时、分" ' + (blocked ? "disabled" : "") + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-day="' + esc(c.targetDate || "") + '" data-dd-confirm="' + (["legacy_unconfirmed", "uncertain"].includes(deliveryStatus) ? "1" : "0") + '" data-dd-action="sendNow">刷新并发送 ' + esc(c.targetDate || "当前窗口") + ' 日记</button><button class="small" title="只补发当前窗口之前的归档日记；旧日期记录需先核对QQ" ' + (c.diaryPending || !catchUpAvailable ? "disabled" : "") + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-action="catchUpAll">补发未发送日记</button></div></article>';
       });
-      if (catchUpButton) catchUpButton.disabled = !historyAvailable || !convs.some((c) => !c.diaryPending && hasCatchUpFor(c.key, c.targetDate));
+      if (catchUpButton) catchUpButton.disabled = !convs.some((c) => !c.diaryPending && (c.previousDiaryMissing && c.previousDiaryAvailable && !["claimed", "uncertain", "unavailable"].includes(c.previousDiaryStatus) || hasCatchUpFor(c.key, c.targetDate)));
       listEl.innerHTML = rows2.join("") || "（暂无会话）";
       listEl.querySelectorAll("[data-dd-key]").forEach((btn) => btn.addEventListener("click", async () => {
         const key2 = decodeURIComponent(btn.dataset.ddKey);
         const action = btn.dataset.ddAction;
-        if (action === "catchUpAll" && !window.confirm("将按日期逐条补发 " + key2 + " 所有未确认发送的日记。请先核对 QQ 历史；发送凭据不明的日期会自动跳过。继续吗？")) return;
+        if (action === "catchUpAll" && !window.confirm("请确认已核对QQ：将补发 " + key2 + " 当前窗口之前、未确认发送的归档日记。只有旧日期记录的也会尝试补发；处理中或结果不明的真实发送凭据会跳过，避免重复。继续吗？")) return;
+        if (action === "sendNow" && btn.dataset.ddConfirm === "1" && !window.confirm("该窗口的旧发送记录没有确认回执。请先核对QQ；继续会重新总结并发送 " + btn.dataset.ddDay + " 日记，可能重复已收到的内容。继续吗？")) return;
         const row = btn.closest(".diary-session-card");
         row?.querySelectorAll("button").forEach((item) => {
           item.disabled = true;
         });
-        let finalMessage = action === "sendNow" ? "正在重新总结 " + key2 + " 当前最新记忆；完成后发送今天的日记…" : "正在逐日补发 " + key2 + " 的历史日记…";
+        let finalMessage = action === "sendNow" ? "正在重新总结 " + key2 + " 当前窗口记忆；完成后发送 " + btn.dataset.ddDay + " 日记…" : "正在逐日补发 " + key2 + " 的历史日记…";
         if (msg) msg.textContent = finalMessage;
         try {
-          const rr = await api("/api/socialV2/daily-diary", "POST", { action, key: key2, day: btn.dataset.ddDay });
-          finalMessage = rr.pending === true ? "⏳ " + (rr.message || "已请求刷新今天的记忆，发送完成后状态会更新。") : action === "catchUpAll" ? "补发完成：成功 " + (rr.sentCount || 0) + " 篇；" + (rr.results || []).filter((x) => !x.ok && x.reason !== "already_sent").length + " 篇跳过/失败。" + (rr.results || []).map((x) => x.day + " " + (x.ok ? "✅" : "· " + (x.reason || "未确认"))).join("；") : rr.sent === true ? "✅ 已发送 " + (rr.day || btn.dataset.ddDay) + " 日记：" + key2 : "❌ " + (rr.error || "发送未获确认");
+          const rr = await api("/api/socialV2/daily-diary", "POST", { action, key: key2, day: btn.dataset.ddDay, ...action === "catchUpAll" ? { confirmLegacyUnsent: true } : {} });
+          finalMessage = rr.pending === true ? "⏳ " + (rr.message || "已请求刷新此窗口记忆，发送完成后状态会更新。") : action === "catchUpAll" ? "补发完成：成功 " + (rr.sentCount || 0) + " 篇；" + (rr.results || []).filter((x) => !x.ok && x.reason !== "already_sent").length + " 篇跳过/失败。" + (rr.results || []).map((x) => x.day + " " + (x.ok ? "✅" : "· " + (x.reason || "未确认"))).join("；") : rr.sent === true ? "✅ 已发送 " + (rr.day || btn.dataset.ddDay) + " 日记：" + key2 : "❌ " + (rr.error || "发送未获确认");
         } catch (e) {
           finalMessage = "发送请求失败：" + (e && e.message ? e.message : e);
         } finally {
@@ -5317,6 +5366,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     document.getElementById("v2DdCatchUp").addEventListener("click", async () => {
       const msg = document.getElementById("v2DdMsg");
       const button = document.getElementById("v2DdCatchUp");
+      if (!window.confirm("请确认已核对QQ：将按各会话当前配置的窗口分界，补发更早且未确认发送的归档日记。仅有旧日期记录的也会尝试补发；真实凭据仍处于处理中或结果不明时会跳过。继续吗？")) return;
       button.disabled = true;
       let finalMessage = "";
       try {
@@ -5328,7 +5378,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
             failures.push({ key: c.key, reason: "今日刷新/发送处理中" });
             continue;
           }
-          const result = await api("/api/socialV2/daily-diary", "POST", { action: "catchUpAll", key: c.key });
+          const result = await api("/api/socialV2/daily-diary", "POST", { action: "catchUpAll", key: c.key, confirmLegacyUnsent: true });
           const sentDays = (result.results || []).filter((x) => x.ok).map((x) => x.day);
           if (sentDays.length) successes.push(...sentDays.map((day) => c.key + " " + day));
           const skipped = (result.results || []).filter((x) => !x.ok && x.reason !== "already_sent");
@@ -5350,6 +5400,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
 
   // console/layers/O/diary-history.js
   var v2DiaryHistorySection;
+  var diaryConfig;
+  var windowLabel = (date) => diaryConfig ? diaryWindowForDay(date, diaryConfig) : "窗口分界配置暂不可用";
   var V2_DA_EMPTY;
   function setV2DaMsg(text) {
     const el3 = document.getElementById("v2DaMsg");
@@ -5368,7 +5420,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         return;
       }
       pre.textContent = result.text || "（这一天没有内容）";
-      setV2DaMsg("已读取 " + date + " 日日记 · " + diaryWindowForDay(date));
+      setV2DaMsg("已读取 " + date + " 日日记 · " + windowLabel(date));
     } catch (e) {
       pre.textContent = "读取失败：" + (e && e.message ? e.message : e);
     }
@@ -5380,7 +5432,11 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     listEl.classList.add("is-loading");
     setV2DaMsg("读取中…");
     try {
-      const res = await api("/api/plugins/call", "POST", { tool: "diary_history", input: { limit: 60 } });
+      const [res, settings] = await Promise.all([
+        api("/api/plugins/call", "POST", { tool: "diary_history", input: { limit: 60 } }),
+        api("/api/socialV2/daily-diary").catch(() => null)
+      ]);
+      diaryConfig = settings?.config;
       const result = res && res.result || {};
       const dates = Array.isArray(result.dates) ? result.dates : [];
       if (result.ok !== true || !dates.length) {
@@ -5392,7 +5448,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       listEl.innerHTML = dates.map((d) => {
         const date = String(d && d.date || "");
         const sentCount = (Array.isArray(d.deliveries) ? d.deliveries : []).filter((item) => item.status === "sent").length;
-        return '<button class="diary-history-date" type="button" data-da-date="' + esc(date) + '"><b>' + esc(date) + " 日记</b><small>" + esc(diaryWindowForDay(date)) + "</small><small>" + esc(String(d && d.count || 0)) + " 个会话 · " + esc(String(d && d.chars || 0)) + " 字 · 已确认发送 " + sentCount + "</small></button>";
+        return '<button class="diary-history-date" type="button" data-da-date="' + esc(date) + '"><b>' + esc(date) + " 日记</b><small>" + esc(windowLabel(date)) + "</small><small>" + esc(String(d && d.count || 0)) + " 个会话 · " + esc(String(d && d.chars || 0)) + " 字 · 已确认发送 " + sentCount + "</small></button>";
       }).join("");
       listEl.querySelectorAll("[data-da-date]").forEach((btn) => btn.addEventListener("click", () => loadV2DiaryArchive(btn.dataset.daDate)));
       setV2DaMsg("共 " + dates.length + " 天归档");
@@ -5953,58 +6009,51 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     const topics = Array.isArray(raw.activeTopics) ? raw.activeTopics : [];
     const thoughts = Array.isArray(raw.pendingThoughts) ? raw.pendingThoughts : [];
     const impressions = raw.memberImpressions && typeof raw.memberImpressions === "object" ? raw.memberImpressions : {};
-    let html = '<div style="padding:8px">';
-    html += '<div class="memory-section"><b>进行中的话题</b> <button class="small" data-action="clear" data-cat="activeTopic">清空</button>';
-    if (!topics.length) html += '<div class="meta">（空）</div>';
-    for (const t of topics) {
-      const text = esc(String(t?.text || ""));
-      const extra = t?.pendingQuestion ? `；待追问：${esc(String(t.pendingQuestion))}` : "";
-      html += `<div style="margin:4px 0">📌 ${text}${extra} <button class="small" data-action="edit" data-cat="activeTopic" data-content="${esc(String(t?.text || ""))}">编辑</button> <button class="small" data-action="remove" data-cat="activeTopic" data-content="${esc(String(t?.text || ""))}">删除</button></div>`;
-    }
-    html += "</div>";
-    html += '<div class="memory-section"><b>你想说但还没说的</b> <button class="small" data-action="clear" data-cat="pendingThought">清空</button>';
-    if (!thoughts.length) html += '<div class="meta">（空）</div>';
-    for (const t of thoughts) {
-      html += `<div style="margin:4px 0">💭 ${esc(String(t?.text || ""))}${t?.motivation ? `（${esc(String(t.motivation))}）` : ""} <button class="small" data-action="edit" data-cat="pendingThought" data-content="${esc(String(t?.text || ""))}">编辑</button> <button class="small" data-action="remove" data-cat="pendingThought" data-content="${esc(String(t?.text || ""))}">删除</button></div>`;
-    }
-    html += "</div>";
-    html += '<div class="memory-section"><b>当前小上下文窗口内对用户的行为印象</b> <button class="small" data-action="clear" data-cat="memberImpression">清空</button>';
     const names2 = Object.keys(impressions);
-    if (!names2.length) html += '<div class="meta">（空）</div>';
-    for (const name of names2) {
+    const section2 = (title, category, count, rows2, empty) => `<section class="light-memory-section"><header><h4>${title}</h4><span class="memory-count">${count}</span><button class="small" data-action="clear" data-cat="${category}"${count ? "" : " disabled"}>清空</button></header><div class="light-memory-items">${rows2 || `<p class="memory-empty">${empty}</p>`}</div></section>`;
+    const textItems = (items2, category, extraKey, extraLabel) => items2.map((item) => {
+      const text = esc(String(item?.text || ""));
+      return `<article class="light-memory-item"><div class="light-memory-text"><p>${text}</p>${item?.[extraKey] ? `<small>${extraLabel}：${esc(String(item[extraKey]))}</small>` : ""}</div><div class="light-memory-actions"><button class="small" data-action="edit" data-cat="${category}" data-content="${text}">编辑</button><button class="small" data-action="remove" data-cat="${category}" data-content="${text}">删除</button></div></article>`;
+    }).join("");
+    const memberRows = names2.map((name) => {
       const im = impressions[name] || {};
       const traits = Array.isArray(im.traits) ? im.traits : [];
-      html += `<div style="margin:4px 0">👤 ${esc(name)}：${traits.length ? esc(traits.join("、")) : "暂无记录"}（互动 ${Number(im.interactionCount) || 0} 次） <button class="small" data-action="edit" data-cat="memberImpression" data-target="${esc(name)}" data-traits="${esc(traits.join(", "))}">编辑</button> <button class="small" data-action="remove" data-cat="memberImpression" data-target="${esc(name)}">删除</button></div>`;
-    }
-    html += "</div></div>";
-    box.innerHTML = html;
+      return `<article class="light-memory-item"><div class="light-memory-text"><p><b>${esc(name)}</b> · ${traits.length ? esc(traits.join("、")) : "暂无特质记录"}</p><small>互动 ${Number(im.interactionCount) || 0} 次</small></div><div class="light-memory-actions"><button class="small" data-action="edit" data-cat="memberImpression" data-target="${esc(name)}" data-traits="${esc(traits.join(", "))}">编辑</button><button class="small" data-action="remove" data-cat="memberImpression" data-target="${esc(name)}">删除</button></div></article>`;
+    }).join("");
+    box.innerHTML = section2("进行中的话题", "activeTopic", topics.length, textItems(topics, "activeTopic", "pendingQuestion", "待追问"), "暂无进行中的话题") + section2("待说的想法", "pendingThought", thoughts.length, textItems(thoughts, "pendingThought", "motivation", "缘由"), "暂无待说的想法") + section2("窗口内行为印象", "memberImpression", names2.length, memberRows, "当前窗口暂无用户印象");
   }
   function loadV2Memory() {
     const key2 = document.getElementById("v2MemoryKey").value.trim();
     const msg = document.getElementById("v2MemoryMsg");
     if (!key2) {
-      msg.textContent = "请输入会话 key";
+      msg.textContent = "请选择会话";
       msg.className = "meta err";
       return;
     }
     msg.textContent = "加载中…";
     msg.className = "meta";
     return api("/api/socialV2/memory?key=" + encodeURIComponent(key2)).then((r) => {
+      if (document.getElementById("v2MemoryKey").value !== key2) return;
       renderV2Memory(r);
       msg.textContent = r.ok ? "✅ 已加载" : "❌ " + (r.error || "失败");
       msg.className = r.ok ? "meta ok" : "meta err";
     }).catch((e) => {
+      if (document.getElementById("v2MemoryKey").value !== key2) return;
       msg.textContent = "❌ " + (e.message || e);
       msg.className = "meta err";
     });
   }
   function initialize39() {
+    document.getElementById("v2MemoryKey").addEventListener("change", () => {
+      document.getElementById("v2MemoryOutput").innerHTML = '<p class="memory-empty">已切换会话，请点击“加载记忆”查看。</p>';
+      document.getElementById("v2MemoryMsg").textContent = "";
+    });
     document.getElementById("v2MemoryLoad").addEventListener("click", loadV2Memory);
     document.getElementById("v2MemoryClearAll").addEventListener("click", async () => {
       const key2 = document.getElementById("v2MemoryKey").value.trim();
       const msg = document.getElementById("v2MemoryMsg");
       if (!key2) {
-        msg.textContent = "请输入会话 key";
+        msg.textContent = "请选择会话";
         msg.className = "meta err";
         return;
       }
@@ -6020,7 +6069,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const key2 = document.getElementById("v2MemoryKey").value.trim();
       const msg = document.getElementById("v2MemoryMsg");
       if (!key2) {
-        msg.textContent = "请输入会话 key";
+        msg.textContent = "请选择会话";
         msg.className = "meta err";
         return;
       }
@@ -6634,7 +6683,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       "page": "setting-c-1"
     },
     "ctx-memory-context": {
-      "page": "setting-c-1"
+      "page": "setting-c-1",
+      "selector": "#v2MemoryInjectionBudgets"
     },
     "ctx-memory-profile-facts": {
       "page": "setting-c-1"
@@ -6824,11 +6874,11 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   function markup(plugin) {
     const info = plugin.state?.mountInspection || {}, disabled = plugin.enabled === false, when = info.validatedAt ? new Date(info.validatedAt).toLocaleString("zh-CN", { hour12: false }) : "暂无记录";
     const title = disabled ? "组件已停用" : !plugin.config?.libraryDir ? "尚未挂载资料包" : info.ok ? "当前挂载：" + info.title : "资料包未就绪";
-    return '<div class="core-mount-heading"><b>' + esc(title) + '</b><button class="small" type="button" data-core-recheck' + (disabled ? " disabled" : "") + ">重新校验当前目录</button></div>" + (info.ok ? '<dl class="core-mount-facts"><div><dt>作者</dt><dd>' + esc(info.author) + "</dd></div><div><dt>版本</dt><dd>" + esc(info.version) + "</dd></div><div><dt>主题</dt><dd>" + esc(info.topicCount) + "</dd></div><div><dt>原稿</dt><dd>" + esc(info.sourceCount) + "</dd></div></dl>" : '<p class="meta">' + esc(info.error || "填写目录并保存后开始使用。") + "</p>") + '<p class="meta core-mount-path">当前根目录：<code>' + esc(plugin.config?.libraryDir || "未设置") + '</code></p><p class="meta">最近校验：' + esc(when) + '。编辑后保存生效。</p><p class="core-mount-message meta" role="status"></p>';
+    return '<header class="core-panel-heading core-mount-heading"><b>' + esc(title) + '</b><button class="small" type="button" data-core-recheck' + (disabled ? " disabled" : "") + '>重新校验已保存目录</button></header><div class="core-panel-body">' + (info.ok ? '<dl class="core-mount-facts"><div><dt>作者</dt><dd>' + esc(info.author) + "</dd></div><div><dt>版本</dt><dd>" + esc(info.version) + "</dd></div><div><dt>主题</dt><dd>" + esc(info.topicCount) + "</dd></div><div><dt>原稿</dt><dd>" + esc(info.sourceCount) + "</dd></div></dl>" : '<p class="meta">' + esc(info.error || "填写目录并保存后开始使用。") + "</p>") + '<p class="meta core-mount-path">已保存根目录：<code>' + esc(plugin.config?.libraryDir || "未设置") + '</code></p><p class="meta">最近校验：' + esc(when) + '。下方输入保存后才会应用。</p><p class="meta">本页显示桥接组件的挂载与参数；MCP工具进程需单独重载，刷新页面不会更新工具代码。</p><p class="core-mount-message meta" role="status"></p></div>';
   }
   function mountPersonalCore({ id, body, p }) {
     const panel = document.createElement("section");
-    panel.className = "core-mount-status";
+    panel.className = "core-panel core-mount-status";
     panel.setAttribute("aria-label", "当前资料包挂载状态");
     const fields = body.querySelector(".component-fields");
     fields.before(panel);
@@ -7609,7 +7659,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     { key: "classificationTimeoutSeconds", label: "AI识别最长等待（秒）", help: "包括后台工作队列等待；超时、模型不可用或结果无效时使用兜底关键词规则，不阻塞后续聊天。", example: "设为12：最多等待12秒，迟到结果不会补扣用量。", type: "number", min: 1, max: 30 },
     { key: "dailyLimit", label: "每个计数对象每日可回答次数", help: "达到此次数后，后续命中的专业问题会改为使用下方的自然带过提示。设为 0 表示不允许额度内回答。", type: "number", min: 0, max: 1e3 },
     { key: "resetHour", label: "每日重置时间（小时）", help: "按桥接所在时区重置每日计数。填 0 表示午夜重置；填 4 表示每天凌晨 4 点重置。", type: "number", min: 0, max: 23 },
-    { key: "exemptOwner", label: "管理员不受配额限制", help: "开启后，管理员发起的专业问题不计入配额，也不会被配额拦截。", type: "boolean" },
+    { key: "exemptOwner", label: "管理员环境不受配额限制", help: "仅在主动启用管理员环境且高权限预设已生效时豁免；普通聊天中的 owner 仍按配额处理。", type: "boolean" },
     { key: "countBy", label: "配额计数方式", help: "session：同一群或私聊共用额度；user：群内每位发言者各自计算，私聊仍按会话计算。", type: "select", options: ["session", "user"] },
     { key: "deflectText", label: "超额时实际发送的短句", help: "超额后直接发送这句话，停止本条请求的模型调度。最多 120 字；空白使用默认短句。", type: "textarea" },
     { key: "keywords", label: "规则兜底关键词（逗号分隔）", help: "AI识别关闭或失败时，才结合明确提问/任务表达判定；AI正常工作时无需命中这些词。匹配不区分英文大小写。", type: "comma-list" }
@@ -7831,19 +7881,18 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   // console/layers/S/components/personal-core.js
   var personal_core_default = {
     "title": "目录挂载与按需阅读",
-    "saveLabel": "保存并校验资料包挂载",
+    "saveLabel": "保存挂载与阅读设置",
     "fields": [
       {
         "key": "libraryDir",
         "label": "资料包根目录（本机路径）",
         "type": "text",
         "maxLength": 4096,
-        "group": "目录挂载",
-        "help": "例：D:\\qq-bridge\\private-libraries\\my-core。填写含 manifest.json 的根目录；留空卸载。"
+        "group": "目录挂载"
       },
       {
         "key": "referenceSessionKeys",
-        "label": "自动导读适用会话（留空为全部）",
+        "label": "目录提示适用会话（留空为全部）",
         "type": "lines",
         "group": "会话适用范围"
       },
@@ -7854,13 +7903,13 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       },
       {
         "key": "catalogPageSize",
-        "label": "目录默认分页条数",
+        "label": "目录每批默认条数",
         "type": "number",
         "group": "按需阅读预算"
       },
       {
         "key": "maxReadChars",
-        "label": "单次正文读取上限（字符）",
+        "label": "短卡整读／单页正文上限（字符）",
         "type": "number"
       }
     ]
@@ -8152,8 +8201,9 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   }
 
   // console/shared/components/scope.js
-  var LOCAL = /* @__PURE__ */ new Set(["exec-browser-manager", "exec-image-generation", "life-campus-watch", "tool-user-checking", "tool-codex-chat"]);
+  var LOCAL = /* @__PURE__ */ new Set(["exec-browser-manager", "exec-image-generation", "life-campus-watch", "tool-user-checking", "tool-codex-chat", "personal-core"]);
   var NOTES = {
+    "personal-core": "本机挂载目录与阅读参数，供此 bot 的适用会话使用；目录提示范围不改变MCP读取权限，不改写原稿。",
     "tool-user-checking": "所有会话共用这一份桌面txt，不按群拆分，也不把内容发送到QQ。",
     "obs-session-recovery": "失败次数、冷却和24小时上限按群分别记录。仅归档并重建故障群的模型会话，记忆、心情、日程与消息收据保留。",
     "ctx-user-mood": "心情分数、每日恢复和回应等待按会话分别记录。",
@@ -8263,7 +8313,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
           body.dataset.loaded = "";
           await loadComponentDetail(id, el3);
           const readbackMsg = body.querySelector(".comp-msg");
-          if (readbackMsg) readbackMsg.textContent = "已保存并重载，已重新读取";
+          if (readbackMsg) readbackMsg.textContent = id === "personal-core" ? "已保存并校验挂载设置，已重新读取；此操作不重载MCP工具进程。" : "已保存并重载，已重新读取";
           el3.dispatchEvent(new CustomEvent("component-config-saved", { bubbles: true, detail: { id } }));
         };
         body.querySelector(".comp-save")?.addEventListener("click", async (event) => {
@@ -8422,9 +8472,10 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         { id: "", name: "组件注册中心" }
       ];
       let compCache = [];
-      componentUI.renderLayer = async (layerId, rootOrId) => {
-        if (!compCache.length) {
+      componentUI.renderLayer = async (layerId, rootOrId, { refresh: refreshInventory = false } = {}) => {
+        if (refreshInventory || !compCache.length) {
           const d = await api("/api/plugins");
+          if (d.ok === false) throw Error(d.error || "组件列表读取失败");
           compCache = d.plugins || [];
         }
         const root = typeof rootOrId === "string" ? document.getElementById(rootOrId) : rootOrId;
@@ -8477,7 +8528,6 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
           ["life-schedule-reminder", "v2ScheduleRefresh", "enabled,advanceMinutes,intervalMinutes,lateMinutes,horizonDays,maxItems,maxPromptItems"],
           ["ctx-media-sticker-pick", "v2StickerEnabled"],
           ["ctx-memory-profile-facts", "v2PmEnabled"],
-          ["ctx-memory-context", "v2ContextRecentLimit", "maxChars"],
           ["ctx-chat-topic-drive", "v2FollowupGlobalAnchor", "privateFollowupEnabled,minIntervalMinutes,dailyLimit,followUpCooldownMinutes,newTopicCooldownMinutes,newTopicMaxPerHour,followupWeight,newTopicWeight"]
         ];
         const mergedIds = /* @__PURE__ */ new Set();
@@ -8813,8 +8863,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const data2 = await api("/api/presets/overview");
       if (!data2.ok) throw Error(data2.error || "预设总览接口尚未加载，请确认桥接版本。");
       const owner = data2.bindings.find((b) => b.key === "owner");
-      const usingAdmin = data2.mode === "closed-agent" || data2.adminEnabled;
-      document.getElementById("presetOverviewExplanation").innerHTML = "<p><strong>管理员日常聊天：</strong>" + esc(usingAdmin ? "当前整个管理员私聊使用管理员环境预设，包括日常聊天。" : "当前管理员环境未启用，日常聊天使用当前运行模式的预设。") + "当前选定 <code>" + esc(owner?.preset || "待确定") + "</code>。</p><p>预设按整个会话选择，不按单条消息的内容自动切换。管理员身份决定管理接口权限，预设决定工具与工作规则；角色卡仍独立提供AI助手人设。</p><p>“跟随 DSH 默认”当前解析为 <code>" + esc(data2.defaultPreset || "待确定") + "</code>，与一、二代运行模式独立。</p>";
+      const usingAdmin = data2.adminEnabled === true;
+      document.getElementById("presetOverviewExplanation").innerHTML = "<p><strong>管理员日常聊天：</strong>" + esc(usingAdmin ? "管理员环境已开启，整个私聊使用所选预设；高权限还须该预设实际装配完成。" : "当前管理员环境未启用，日常聊天使用当前运行模式的预设，owner 身份不单独授予高权限。") + "当前选定 <code>" + esc(owner?.preset || "待确定") + "</code>。</p><p>权限需要主动启用管理员环境并选择合适预设；普通聊天和只读预设不会获得执行权限。内置 qq-admin 与二代共用人设、发送、等待及上下文规则，只扩充工具权限；自定义预设仍遵循自身配置。预设不按单条消息自动切换。</p><p>“跟随 DSH 默认”当前解析为 <code>" + esc(data2.defaultPreset || "待确定") + "</code>，与一、二代运行模式独立。</p>";
       document.getElementById("presetOverviewRows").innerHTML = data2.bindings.map((binding) => {
         const config = binding.configuration;
         const phase = binding.active === true ? "当前使用" : binding.active === false ? "当前未启用" : "按用途调用";
@@ -8980,7 +9030,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const DONE = { expired: "已过期", cancelled: "已取消", dispatched: "已派发", triggered: "已触发" };
       const typeLabel = (p) => p.kind === "quiet" && p.indefinite ? "无限期免打扰" : KIND[p.kind] || p.kind || "—";
       const section2 = document.getElementById("availabilityRefresh")?.closest("details.settings-group");
-      const windowLabel = (p) => {
+      const windowLabel2 = (p) => {
         if (p.kind === "daily") {
           const ws = Array.isArray(p.windows) ? p.windows : Number.isFinite(p.start) ? [{ start: p.start, end: p.end }] : [];
           return ws.map((w) => fmtMin(w.start) + " – " + fmtMin(w.end)).join("、") || "—";
@@ -9006,7 +9056,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
           const rows2 = keys.map((k) => {
             const p = plans[k] || {};
             const st = p.finished ? DONE[p.finished] || p.finished : "生效中";
-            return "<tr><td>" + esc(k) + "</td><td>" + esc(typeLabel(p)) + "</td><td>" + esc(windowLabel(p)) + "</td><td>" + esc(st) + "</td></tr>";
+            return "<tr><td>" + esc(k) + "</td><td>" + esc(typeLabel(p)) + "</td><td>" + esc(windowLabel2(p)) + "</td><td>" + esc(st) + "</td></tr>";
           }).join("");
           root.innerHTML = "<table><tr><th>会话</th><th>类型</th><th>时段</th><th>状态</th></tr>" + rows2 + "</table>";
         } catch (e) {

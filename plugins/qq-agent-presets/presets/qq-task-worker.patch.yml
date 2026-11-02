@@ -75,3 +75,5 @@
                   thresholdChars: 16000
                   headChars: 12000
                   tailChars: 2000
+          - id: admin-environment-guard
+            name: qq-agent-presets/admin-environment-guard.mjs

@@ -50,6 +50,15 @@ for (const name of PRESETS) {
 
   // 与源行列表逐字对比：只允许守卫行的 name 被改写。
   const source = load(path.join(REPO_ROOT, 'dsh', 'agent-presets', name, 'agent.cordis.yml'));
+  if(name==='qq-admin'){
+    const base=load(patchFileFor('qq-chat-v2'))[0].insert[0].config.plugins;
+    const marker='【二代仿真模式 —— 工具协议';
+    const prefix=list=>list.find(row=>row.id==='persona').config.prefix;
+    assert.equal(prefix(row.config.plugins).slice(prefix(row.config.plugins).indexOf(marker)),prefix(base).slice(prefix(base).indexOf(marker)));
+    for(const id of ['compaction','qq-context-composer','tool-todo','tool-ask-user'])assert.deepEqual(row.config.plugins.find(row=>row.id===id),base.find(row=>row.id===id));
+    ok(true,'qq-admin: 聊天规则与共同机制派生自 qq-chat-v2，只追加权限配置');
+    continue;
+  }
   const expected = structuredClone(source);
   for (const r of expected) if (r.name === './qq-tool-restrict.mjs') r.name = GUARD_SPECIFIER;
   assert.deepEqual(row.config.plugins, expected, `${name}: config.plugins 必须与 agent.cordis.yml 完全一致（守卫名除外）`);

@@ -1,6 +1,8 @@
 // Semantic extraction policy shared by chat candidates and scheduled memory refresh.
 const activityUrl=new URL('./activity-pattern-policy.mjs',import.meta.url);activityUrl.search=new URL(import.meta.url).search;
 const {CHAT_ACTIVITY_MODELING_POLICY}=await import(activityUrl.href);
+const initiativeUrl=new URL('./initiative-policy.mjs',import.meta.url);initiativeUrl.search=new URL(import.meta.url).search;
+const {MEMORY_INITIATIVE_POLICY}=await import(initiativeUrl.href);
 export const PROFILE_EXTRACTION_POLICY = [
   CHAT_ACTIVITY_MODELING_POLICY,
   '四类记忆流向：窗口话题/待说想法/行为印象 → 有来源的会话重要事实 → 今日临时画像或当前事务 → 经本人表达证实的稳定QQ档案/明确提醒日程。每一步独立核实并确认工具成功；不整段复制、不用日记自证、不把事务流水作为档案。已晋升的稳定值以QQ档案为准，事实仍可保留原始语境作证据，不再另维护一份权威档案。',
@@ -10,4 +12,4 @@ export const PROFILE_EXTRACTION_POLICY = [
   '稳定性：明确固定作息、饮食偏好、稳定兴趣及本人更正可以直接提取；刚起床、一次吃饭口味、一次学课、单次玩笑/辱骂、重复投递或短时刷屏不能当固定习惯、长期爱好或口头禅。未明确的关系类型、对方动机、长期辣度和三餐时间不推断、不臆测。当天近况、临时画像和待核实信息留本会话重要事实/用户画像；当前话题、bot待说想法、短窗口行为印象才放轻量记忆。',
   '写入步骤：先 profile_get 读取现有档案，逐栏比较后只对有新增/更正依据的字段调用 profile_update({userId,key,profile})；传入该字段合并后的完整字符串，保留无关旧事实和来源归属，去除语义重复；同一证据重试不重复追加。明确更正才替换冲突事实，证据冲突先留待核实，不清空整个字段。记录日期、来源会话与消息ID/seq（确有才写），不要伪造来源。工具确认成功后才记为已更新；失败/不可用时把未写入候选留在本会话记忆里供下次重试，不声称成功。',
   '权限：普通私聊只写本人，群聊只写本轮工具允许的真实发言者；跨档案更新仍需管理员私聊明确授权。不得因为一次整理就自动扩大读写范围，也不把私人关系从其他会话搬进群聊。临时 memberImpression 不会自动晋升；实际原话证据成立且身份可核对才按同一标准提炼，不以“正向亲近感”作为写档案的条件。自动提取不调用 profile_delete 或删除整份档案。'
-].join('\n');
+].concat(MEMORY_INITIATIVE_POLICY).join('\n');

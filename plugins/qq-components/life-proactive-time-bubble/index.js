@@ -48,7 +48,9 @@ export function createPlugin(ctx) {
     return {state,today,count:entry.day===today ? Number(entry.count)||0 : 0,max:Number.isFinite(configured) ? Math.max(0, Math.round(configured)) : 3};
   };
   return {
-    services: { timeBubble: { releaseDirect({ key } = {}) {
+    services: { timeBubble: { expired({ key } = {}) {
+      return ctx.capabilities?.refreshTimeBubble?.({ key });
+    }, releaseDirect({ key } = {}) {
       const { state, today, count } = quota(key);
       ctx.state.set({ byKey: { ...(state.byKey || {}), [String(key)]: { day: today, count: Math.max(0, count - 1) } } });
     }, prepareDirect({ key, label, context } = {}) {

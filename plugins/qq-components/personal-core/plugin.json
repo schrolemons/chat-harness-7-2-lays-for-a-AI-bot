@@ -1,8 +1,8 @@
 {
   "id": "personal-core",
   "name": "私人资料目录与管理",
-  "version": "1.0.0",
-  "description": "挂载标准私人资料包；先浏览目录再按ID读取，作者数据与程序分离。",
+  "version": "1.1.0",
+  "description": "沿用已有分卡，整卡读取并附定位与上下文摘要；长文才展开，理解困难时再读导读。",
   "category": "个人思想与知识",
   "layer": "S",
   "order": 90,
@@ -27,31 +27,36 @@
     "libraryDir": {
       "type": "string",
       "label": "资料包根目录（本机路径）",
-      "example": "例：D:\\qq-bridge\\private-libraries\\my-core。填写含 manifest.json 的根目录；留空卸载。"
+      "description": "选择包含manifest.json的根目录；保存前校验，留空表示卸载，不删除文件。",
+      "example": "D:\\qq-bridge\\private-libraries\\my-core"
     },
     "referenceSessionKeys": {
       "type": "array",
-      "label": "自动导读适用会话（留空为全部）",
-      "example": "选择private:10001：只在该会话提供资料导读；这是提示词适用范围，不是MCP读取权限。"
+      "label": "目录提示适用会话（留空为全部）",
+      "description": "只控制对话中的目录入口提示，不自动读取GUIDE，也不改变MCP读取权限。",
+      "example": "填入private:10001只在该会话显示入口；留空对所有会话适用。"
     },
     "careSessionKeys": {
       "type": "array",
       "label": "优先关怀会话（可选）",
-      "example": "选择private:10001：仅当资料包声明的关怀语境匹配时收敛闲聊；不扩大任何权限。"
+      "description": "所列会话匹配资料包的关怀语境时收敛闲聊，不扩展读取或发送权限。",
+      "example": "填入private:10001：仅在该会话匹配关怀规则时生效；留空不指定优先会话。"
     },
     "catalogPageSize": {
       "type": "number",
       "min": 1,
       "max": 30,
-      "label": "目录默认分页条数",
-      "example": "设为12：core_topics未指定limit时一次返回12个主题；AI再按需要翻页。"
+      "label": "目录每批默认条数",
+      "description": "主题目录和章节目录的每批默认条目数，不是正文分页长度。",
+      "example": "12：每批12项，按nextOffset或nextSectionOffset续看；短卡仍整篇返回。"
     },
     "maxReadChars": {
       "type": "number",
       "min": 200,
       "max": 20000,
-      "label": "单次正文读取上限（字符）",
-      "example": "设为4000：一次core_read最多读取4000字；正文较长时按nextOffset继续读，不丢弃剩余原文。"
+      "label": "短卡整读／单页正文上限（字符）",
+      "description": "不超过此值的卡片/导读整篇返回；只限制正文字符，不是整份工具结果的token上限。",
+      "example": "4000：超限先选章节，章节仍超长或无标题才分页；不改写或重新切分原卡。"
     }
   }
 }

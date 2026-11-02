@@ -1,3 +1,5 @@
+import {assertReportAuthenticated,assertReportResponse} from './ustc-report-auth.mjs';
+
 const APP_URL = 'https://example.invalid/gsapp/sys/xsbgglappustc/*default/index.do#/xsbgxk';
 const isReportData = r => r.url().includes('/wxbgbgdz.do') && !r.request().postData()?.includes('*searchMeta=1');
 
@@ -7,8 +9,9 @@ export async function openReportTableDOM(browser, query) {
     const ready = page.waitForResponse(isReportData, { timeout: 20000 });
     ready.catch(() => {});
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    await assertReportAuthenticated(page);
     const initial = await ready;
-    if (initial.status() !== 200) throw new Error('学术报告页面查询失败：HTTP ' + initial.status());
+    assertReportResponse(initial);
     await page.waitForFunction(() => typeof window.jQuery?.fn?.emapdatatable === 'function' &&
       window.jQuery('#wxbg-index-table').length > 0, { timeout: 10000 });
     const loaded = page.waitForResponse(isReportData, { timeout: 20000 });
@@ -19,7 +22,7 @@ export async function openReportTableDOM(browser, query) {
       });
     }, query);
     const response = await loaded;
-    if (response.status() !== 200) throw new Error('学术报告筛选失败：HTTP ' + response.status());
+    assertReportResponse(response);
     const payload = await response.json();
     const rows = payload?.datas?.wxbgbgdz?.rows;
     if (!Array.isArray(rows)) throw new Error('学术报告页面未返回有效列表');
@@ -30,9 +33,8 @@ export async function openReportTableDOM(browser, query) {
     const domRows = await page.evaluate(() => window.jQuery('#wxbg-index-table').jqxDataTable('getRows'));
     return { page, rows: domRows };
   } catch (error) {
-    if (/\/cas\/login|id\.ustc\.edu\.cn\/cas\//i.test(page.url())) error.error_type = 'auth';
-    await page.close().catch(() => {});
-    throw error;
+    try { await assertReportAuthenticated(page);throw error; }
+    finally { await page.close().catch(() => {}); }
   }
 }
 

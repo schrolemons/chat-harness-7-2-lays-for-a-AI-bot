@@ -4,11 +4,12 @@ import { createPlugin } from '../plugins/qq-components/ctx-knowledge-quota/index
 
 const answer = category => JSON.stringify({ category, confidence: 0.95, reason: '当前消息的意图' });
 const message = (id = 'm1', text = '什么是矩阵的秩？') => ({ key: 'private:124', plainContent: text, userId: '124', messageId: id, allowed: true, reason: 'message' });
-function fixture({ model = async () => answer('professional'), config = {}, initial = {}, guard, active = () => true, signal } = {}) {
+function fixture({ model = async () => answer('professional'), config = {}, initial = {}, guard, active = () => true, signal,admin=false } = {}) {
   let state = structuredClone(initial), calls = 0; const sends = [];
   const plugin = createPlugin({ config: { enabled: true, dailyLimit: 3, resetHour: 0, exemptOwner: true, countBy: 'session', keywords: ['算法', '代码'], semanticEnabled: true, classificationTimeoutSeconds: 1, ...config },
     state: { get: () => structuredClone(state), set: patch => { state = { ...state, ...structuredClone(patch) }; } },
     isActive: active, signal, warn() {}, registerTool() {}, capabilities: {
+      hasAdminEnvironment:()=>admin,
       learningPrompt: async (text, options) => { calls++; return model(text, options); },
       ...(guard ? { budgetRecoveryStatus: guard } : {}), sendSessionText: async (key, text) => { sends.push({ key, text }); return true; }
     } });
@@ -62,12 +63,13 @@ test('classifier timeout falls back promptly and ignores a late professional ver
   release(answer('professional')); await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.service.usage('private:124').used, 0);
 });
-test('owner exemption, maintenance, forbidden sessions and exhausted model budget avoid classification calls', async () => {
-  const f = fixture();
+test('admin environment exemption, maintenance, forbidden sessions and exhausted model budget avoid classification calls', async () => {
+  const f = fixture({admin:true});
   await f.service.preflight({ ...message(), isOwner: true });
   await f.service.preflight({ ...message(), reason: 'timeBubble' });
   await f.service.preflight({ ...message(), allowed: false });
   assert.equal(f.calls(), 0);
+  const ordinary=fixture();await ordinary.service.preflight({...message(),isOwner:true});assert.equal(ordinary.calls(),1);
   const exhausted = fixture({ guard: () => ({ allowed: false }) });
   await exhausted.service.preflight(message('budget', '请解释算法'));
   assert.equal(exhausted.calls(), 0);

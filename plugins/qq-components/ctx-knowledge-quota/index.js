@@ -87,7 +87,7 @@ export function createPlugin(ctx) {
     if (NON_REQUEST_REASONS.has(String(payload.reason || '').split(':')[0])) return ignore('nonrequest_round');
     if (!/^(private|group):\d+$/.test(key)) return ignore('invalid_session');
     const message = currentMessage(payload); if (!message?.text) return ignore('no_message');
-    if (c.exemptOwner !== false && (payload.isOwnerKey || payload.isOwner === true || message.isOwner)) return ignore('owner_exempt');
+    if (c.exemptOwner !== false && ctx.capabilities?.hasAdminEnvironment?.(key)===true) return ignore('admin_environment_exempt');
     const bucketKey = c.countBy === 'user' && key.startsWith('group:') && /^\d+$/.test(message.userId) ? `${key}#${message.userId}` : key;
     const identity = message.messageId ? ['messageId', message.messageId] : Number.isSafeInteger(message.seq) ? ['seq', message.seq] : ['fallback', message.userId, message.at || '', message.text];
     // Real message IDs and session-local sequence numbers already identify the

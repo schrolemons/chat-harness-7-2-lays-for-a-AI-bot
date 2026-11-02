@@ -30,6 +30,7 @@ test('existing whisper tool and automatic incident notes use the same append-onl
   assert.equal(tool.handler({action:'note',text:'悄悄话原文'}).ok,true);assert.equal(p.services.desktopNotes.reportIssue(issue).ok,true);
   const text=fs.readFileSync(path.join(home,'Desktop/fixture.txt'),'utf8');assert(text.includes('悄悄话原文'));assert(text.includes('HTTP400'));assert.equal((text.match(/悄悄话原文/g)||[]).length,1);
   assert.equal(p.hooks.beforePrompt(),'', 'local desktop notes must not be injected into ordinary sessions');
-  assert(p.hooks.beforePrompt({isOwnerKey:true}).includes('限额'));assert(p.hooks.beforePrompt({isOwnerKey:true}).includes('难缠'));assert(!JSON.stringify(tool.schema).includes(home));
+  assert.equal(p.hooks.beforePrompt({isOwnerKey:true}),'','owner identity alone does not grant the admin environment');
+  assert(p.hooks.beforePrompt({isAdminEnvironment:true}).includes('限额'));assert(p.hooks.beforePrompt({isAdminEnvironment:true}).includes('难缠'));assert(!JSON.stringify(tool.schema).includes(home));
  }finally{stub.mock.restore();fs.rmSync(home,{recursive:true,force:true});}
 });

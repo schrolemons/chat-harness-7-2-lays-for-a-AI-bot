@@ -2,6 +2,8 @@
 import { api, esc } from '../../shared/api.js';
 import { diaryWindowForDay } from './diary.js';
 let v2DiaryHistorySection;
+let diaryConfig;
+const windowLabel=date=>diaryConfig?diaryWindowForDay(date,diaryConfig):'窗口分界配置暂不可用';
 // layers/O/diary-history: explicit imports; initialize is called in the application startup order.
 
 
@@ -19,7 +21,7 @@ async function loadV2DiaryArchive(date) {
     const result = (res && res.result) || {};
     if (result.ok !== true) { pre.textContent = result.error || V2_DA_EMPTY; return; }
     pre.textContent = result.text || '（这一天没有内容）';
-    setV2DaMsg('已读取 ' + date + ' 日日记 · ' + diaryWindowForDay(date));
+    setV2DaMsg('已读取 ' + date + ' 日日记 · ' + windowLabel(date));
   } catch (e) {
     pre.textContent = '读取失败：' + (e && e.message ? e.message : e);
   }
@@ -32,7 +34,11 @@ async function refreshV2DiaryHistory() {
   listEl.classList.add('is-loading');
   setV2DaMsg('读取中…');
   try {
-    const res = await api('/api/plugins/call', 'POST', { tool: 'diary_history', input: { limit: 60 } });
+    const [res,settings] = await Promise.all([
+      api('/api/plugins/call', 'POST', { tool: 'diary_history', input: { limit: 60 } }),
+      api('/api/socialV2/daily-diary').catch(()=>null)
+    ]);
+    diaryConfig=settings?.config;
     const result = (res && res.result) || {};
     const dates = Array.isArray(result.dates) ? result.dates : [];
     if (result.ok !== true || !dates.length) {
@@ -44,7 +50,7 @@ async function refreshV2DiaryHistory() {
     listEl.innerHTML = dates.map((d) => {
       const date = String((d && d.date) || '');
       const sentCount = (Array.isArray(d.deliveries) ? d.deliveries : []).filter(item => item.status === 'sent').length;
-      return '<button class="diary-history-date" type="button" data-da-date="' + esc(date) + '"><b>' + esc(date) + ' 日记</b><small>' + esc(diaryWindowForDay(date)) + '</small><small>' + esc(String((d && d.count) || 0)) + ' 个会话 · ' + esc(String((d && d.chars) || 0)) + ' 字 · 已确认发送 ' + sentCount + '</small></button>';
+      return '<button class="diary-history-date" type="button" data-da-date="' + esc(date) + '"><b>' + esc(date) + ' 日记</b><small>' + esc(windowLabel(date)) + '</small><small>' + esc(String((d && d.count) || 0)) + ' 个会话 · ' + esc(String((d && d.chars) || 0)) + ' 字 · 已确认发送 ' + sentCount + '</small></button>';
     }).join('');
     listEl.querySelectorAll('[data-da-date]').forEach((btn) => btn.addEventListener('click', () => loadV2DiaryArchive(btn.dataset.daDate)));
     setV2DaMsg('共 ' + dates.length + ' 天归档');

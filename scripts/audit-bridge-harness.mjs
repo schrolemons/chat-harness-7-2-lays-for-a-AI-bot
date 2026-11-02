@@ -1,4 +1,5 @@
 import * as presetOverview from '../src/console/preset-overview.js';
+import {buildDshBundle} from './build-dsh-bundle.mjs';
 import * as presetPolicy from '../src/preset-policy.js';
 import * as adminToolPolicy from '../src/tools/admin-policy.js';
 import * as dialogueSequence from '../src/bridge-core/dialogue-sequence.mjs';
@@ -36,6 +37,7 @@ import {routeContextManagement} from '../src/console/context-management.js';
 import {routeLearningManagement} from '../src/console/learning-management.js';
 import {routeFeedbackRepairs} from '../src/console/feedback-repairs.js';
 import { routeMemoryManagement } from '../src/console/memory-management.js';
+import {routeDiaryManagement} from '../src/console/diary-management.js';
 import * as scheduleLocks from '../plugins/qq-components/life-proactive-time-bubble/schedule-locks.mjs';
 import * as gamesStore from '../plugins/qq-components/tool-games/games-store.mjs';
 import {createPluginHost} from '../src/plugin-host.js';
@@ -61,6 +63,11 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   fs.copyFileSync(path.join(root,'src/bridge.js'),path.join(temp,'src/bridge.js'));
   fs.copyFileSync(path.join(root,'src/plugin-host.js'),path.join(temp,'src/plugin-host.js'));
   fs.cpSync(path.join(root,'console'),path.join(temp,'console'),{recursive:true});
+  fs.cpSync(path.join(root,'dsh/agent-presets'),path.join(temp,'dsh/agent-presets'),{recursive:true});
+  fs.cpSync(path.join(root,'plugins/qq-agent-presets'),path.join(temp,'plugins/qq-agent-presets'),{recursive:true});
+  fs.mkdirSync(path.join(temp,'plugins/qq-launcher/lib'),{recursive:true});
+  fs.copyFileSync(path.join(root,'plugins/qq-launcher/lib/client.js'),path.join(temp,'plugins/qq-launcher/lib/client.js'));
+  fs.copyFileSync(path.join(root,'cordis.patch.yml'),path.join(temp,'cordis.patch.yml'));
   fs.cpSync(path.join(root,'public/console'),path.join(temp,'public/console'),{recursive:true});
   fs.mkdirSync(path.join(temp, 'state'));
   fs.writeFileSync(path.join(temp, 'config.json'), JSON.stringify({
@@ -201,6 +208,9 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   if(cleanupStart<0||cleanupEnd<cleanupStart)throw Error('mux cleanup audit boundary missing');
   const muxCleanup=source.slice(cleanupStart,cleanupEnd);
   source = source.replace('  bot.onPrivateMessage(async (event) => {', `
+  // The external DSH/QQ boundary is healthy by default in this offline fixture.
+  // Sleep-recovery tests override this fact; raw host freshness has its own test.
+  taskCaps.getTransportReadiness = () => ({ready:dshReady});
   return {
     pluginHost, taskCaps, tokenLedger, tokenBudgetOf, shouldBlockSilentReply,
     finishIdleWaitTurn: typeof finishIdleWaitTurn === 'function' ? finishIdleWaitTurn : undefined,
@@ -264,10 +274,10 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, migrateOutboundMood, migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...contextLimits, ...dialogueSequence, ...receiptIndex, ...costPolicy, ...consoleDocument, ...toolCatalog,
-    ...sessionRecovery, ...presetPolicy, ...adminToolPolicy, ...presetOverview,
+    ...sessionRecovery, ...presetPolicy, ...adminToolPolicy, ...presetOverview,buildDshBundle,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
     routePluginManagement,
-    routeMemoryManagement,routeLearningManagement,routeContextManagement,routeFeedbackRepairs,
+    routeMemoryManagement,routeDiaryManagement,routeLearningManagement,routeContextManagement,routeFeedbackRepairs,
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
     sniffImage: mediaNormalize.sniffImage,
@@ -307,6 +317,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   bridge.pluginHost.setEnabled('tool-user-checking',false);
   bridge.setPresets(['standard', 'qq-chat', 'qq-chat-v2']);
   bridge.setReady(true);
+  bridge.pluginHost.callService('scheduler','transportReady',{now:Date.now()-30000});
   return { ...bridge, calls, temp, async close() {
     await bridge.pluginHost.dispose();
     for (const timer of timers) clearTimeout(timer);

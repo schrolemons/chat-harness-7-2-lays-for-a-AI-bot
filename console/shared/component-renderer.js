@@ -52,8 +52,8 @@ export function initialize() {
 
 
   // 暴露给 V/S 等单层页复用：渲染某层全部组件（含配置编辑）。
-  componentUI.renderLayer = async (layerId, rootOrId) => {
-    if (!compCache.length) { const d = await api('/api/plugins'); compCache = d.plugins || []; }
+  componentUI.renderLayer = async (layerId, rootOrId, {refresh: refreshInventory = false} = {}) => {
+    if (refreshInventory || !compCache.length) { const d = await api('/api/plugins'); if(d.ok===false)throw Error(d.error||'组件列表读取失败');compCache = d.plugins || []; }
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return;
     const items = compCache.filter((p) => !isInternalPromptComponent(p) && (p.layer || '') === layerId && !(layerId === 'V' && p.id === 'human'));
@@ -99,7 +99,6 @@ export function initialize() {
       ['life-schedule-reminder', 'v2ScheduleRefresh', 'enabled,advanceMinutes,intervalMinutes,lateMinutes,horizonDays,maxItems,maxPromptItems'],
       ['ctx-media-sticker-pick', 'v2StickerEnabled'],
       ['ctx-memory-profile-facts', 'v2PmEnabled'],
-      ['ctx-memory-context', 'v2ContextRecentLimit', 'maxChars'],
       ['ctx-chat-topic-drive', 'v2FollowupGlobalAnchor', 'privateFollowupEnabled,minIntervalMinutes,dailyLimit,followUpCooldownMinutes,newTopicCooldownMinutes,newTopicMaxPerHour,followupWeight,newTopicWeight'],
 
     ];

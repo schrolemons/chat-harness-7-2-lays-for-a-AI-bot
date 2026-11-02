@@ -1,9 +1,11 @@
 import { build } from 'esbuild';
+import {buildPatches} from './build-agent-preset-patches.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+buildPatches({root});
 const result = await build({
   absWorkingDir: root, entryPoints: { app: 'console/app.js', 'theme-init': 'console/shared/theme-init.js' },
   outdir: 'public/console', bundle: true, format: 'iife', target: ['es2022'],

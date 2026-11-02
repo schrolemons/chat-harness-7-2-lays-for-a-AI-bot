@@ -11,6 +11,8 @@ AI助手自己的 MCP 定义以 `src/tools/servers.js` 为目录；DSH 内置工
 
 应分别证明：注册成功、preset 可见、请求实际携带 schema、调用成功、出站实际送达。这五个状态不能互相代替。
 
+日记工具 `qq_diary` 由 snowluma MCP 注册，私聊和群聊都可用，沿用 `memory` 开关。read 返回当前窗口日期和正文；update 必须提交该 day 与完整日记正文，换窗返回409要求重读。只操作当前会话日记，不改事实/画像、不发送QQ；HTTP拥有源为 `src/console/diary-management.js`，窗口和存储拥有源为 `ctx-memory-store`。测试 `scripts/test-diary-mcp.mjs` 使用真实stdio握手和模拟HTTP验证，不能当作生产DSH已加载的证据。
+
 学习资料工具：`qq_term_query`、`qq_slang_query`、`qq_alias_query` 与 `qq_knowledge_sources` 的来源/查询/修改合同见 [LEARNING_SOURCES.md](LEARNING_SOURCES.md)。新增 schema 及独立开关必须以真实 stdio 握手、tools/list 和调用转发验证；不代表既有 DSH 客户端已刷新。
 
 

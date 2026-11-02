@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {createPlugin} from '../plugins/qq-components/ctx-memory-store/index.js';
+import {createPlugin as createMemoryPlugin} from '../plugins/qq-components/ctx-memory-store/index.js';
+import {withDiaryDelivery} from './fixtures/diary-delivery.mjs';
+const createPlugin=ctx=>createMemoryPlugin({...ctx,capabilities:withDiaryDelivery(ctx.root,ctx.capabilities)});
 
 for(const stage of ['weak','silent'])test(stage+': scheduled diary sends existing dated content without asking a model to refresh it',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'budget-diary-')),now=Date.now(),key='private:1';

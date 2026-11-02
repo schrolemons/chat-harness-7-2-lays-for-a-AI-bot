@@ -65,9 +65,10 @@ test('offline backlog drains each conversation independently',async()=>{
 });
 
 test('a stalled independent task admission leaves owner private chat and group chat responsive',async()=>{
- const h=await bridgeHarness({config:{socialV2:{adminDev:{enabled:false},proactive:{enabled:false},curfew:{enabled:false}}}});
+ const h=await bridgeHarness({config:{socialV2:{adminDev:{enabled:true,preset:'qq-admin'},proactive:{enabled:false},curfew:{enabled:false}}}});
  let release,entered;const blocked=new Promise(r=>release=r),started=new Promise(r=>entered=r);
- h.setMode('reserved2');h.setPresets(['standard','qq-chat','qq-chat-v2','qq-task-worker']);
+ h.setMode('reserved2');h.setPresets(['standard','qq-chat','qq-chat-v2','qq-admin','qq-task-worker']);
+ await h.ensureSession('private:123');
  const token=h.getSocialV2State('private:123').agentToken;
  h.api.sessions.prompt=async p=>{if(p.content[0].text.includes('WORKER_BUSY')){entered();await blocked;}h.calls.prompts.push(p);return {result:{ok:true,value:{}}};};
  let spawning,owner,group;

@@ -87,7 +87,7 @@ export async function loadComponentDetail(id, el) {
           body.dataset.loaded = '';
           await loadComponentDetail(id, el);
           const readbackMsg = body.querySelector('.comp-msg');
-          if (readbackMsg) readbackMsg.textContent = '已保存并重载，已重新读取';
+          if (readbackMsg) readbackMsg.textContent = id==='personal-core'?'已保存并校验挂载设置，已重新读取；此操作不重载MCP工具进程。':'已保存并重载，已重新读取';
           el.dispatchEvent(new CustomEvent('component-config-saved', {bubbles:true, detail:{id}}));
         };
         body.querySelector('.comp-save')?.addEventListener('click', async event => {

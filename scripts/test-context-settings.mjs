@@ -21,7 +21,7 @@ test('settings follow loading layers, keep source numbers, and omit context mana
 test('layer and component guides explain mechanisms and state the limits of the Tavern analogy',()=>{
  const guide=contextLayerGuide();for(const term of ['主提示词','世界书','角色','历史后注入','工具定义','独立','不改变'])assert(guide.includes(term),term);
  const c10=componentGuide({id:'ctx-chat-topic-drive',description:'话题推进'});for(const term of ['等待工具返回','冷却','发送成功'])assert(c10.includes(term),term);
- const c40=componentGuide({id:'personal-core'});assert.match(c40,/目录导读/);assert.match(c40,/按需读取/);
+ const c40=componentGuide({id:'personal-core'});for(const term of ['topic目录','短卡整读','原文位置','上下文目录摘要','理解困难时再读@guide'])assert(c40.includes(term),term);assert.doesNotMatch(c40,/必须先读导读/);
  assert(!componentGuide({id:'unknown',description:'<script>说明</script>'}).includes('<script>'));
  assert(moduleCatalog(process.cwd()).find(row=>row.id==='ctx-chat-topic-drive').description);
 });

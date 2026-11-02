@@ -1,5 +1,7 @@
 # skill：时间冒泡（time-bubble）
 
+睡眠期间错过并过期的时段不重放；`services.timeBubble.expired({key})` 通过桥接已有 `refreshTimeBubble` 能力续排后续时段，避免早间任务过期后整天不再冒泡。中心调度器也在热载和睡眠恢复后重建未来计划。
+
 ## 它解决什么
 桥接按分会话时段安排一次「主动开口」。AI助手可在本人私聊明确分享作息，或跨多天真实主动来信形成可靠活跃窗口后，通过 `time_bubble_manage` 查看并调整该 session 的计划。
 

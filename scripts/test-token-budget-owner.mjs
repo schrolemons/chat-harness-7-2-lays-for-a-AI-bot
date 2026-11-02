@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { bridgeHarness } from './audit-bridge-harness.mjs';
 
 const file = 'state/plugins/config/life-token-budget.json';
+async function enableAdmin(h){h.setMode('reserved2');h.cfg.socialV2.adminDev={enabled:true,preset:'standard'};await h.ensureSession('private:123');}
 const billed = sid => ({ sessionId: sid, at: Date.now() - 10, model: 'deepseek-flash', event: {
   type: 'assistant/message', seq: 1, data: { turn: 1, step: 1, usage: { inputTokens: 1_000_000, outputTokens: 100 } }
 } });
@@ -11,6 +12,7 @@ test('owner exemption bypasses personal/global tiers but still accounts spend an
   const h = await bridgeHarness({ files: { [file]: { ownerBudgetEnabled: false, globalHardLimitYuan: 0.1,
     sessions: { 'private:123': { coldLimitYuan: 0.01, hardLimitYuan: 0.02, weakMinIntervalMin: 30 } } } } });
   try {
+    await enableAdmin(h);
     const sid = await h.ensureSession('private:123');
     h.tokenLedger.ingestEvent(billed(sid));
     const owner = h.tokenBudgetOf('private:123');
@@ -33,6 +35,7 @@ test('persisted owner tasks inherit exemption; other tasks and maintenance remai
   const h = await bridgeHarness({ files: { [file]: { ownerBudgetEnabled: false, globalHardLimitYuan: 0.1 },
     'state/tasks.json': { tasks } } });
   try {
+    await enableAdmin(h);
     const sid = await h.ensureSession('group:456');
     h.tokenLedger.ingestEvent(billed(sid));
     await h.api.sessions.prompt({ sessionId: 'owner-task', content: [] });
@@ -43,6 +46,7 @@ test('persisted owner tasks inherit exemption; other tasks and maintenance remai
 
 test('console owner switch defaults on, validates, persists and hot reloads both directions', async () => {
   const h = await bridgeHarness({ files: { [file]: { globalHardLimitYuan: 0.1 } } });
+  await enableAdmin(h);
   const server = h.startConsoleServer();
   try {
     if (!server.listening) await new Promise(resolve => server.once('listening', resolve));

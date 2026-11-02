@@ -76,13 +76,16 @@ test('full-text fallback without message IDs avoids eighty-character collisions'
   assert.equal(f.svc.usage('private:124').used, 2);
 });
 
-test('owner exemption applies to actual group author and can be disabled', () => {
+test('identity alone never grants quota exemption; only an active private admin environment can opt out', () => {
   for (const key of ['private:124', 'group:456']) {
     const f = fixture(); f.before(request(undefined, { key, isOwner: true }));
-    assert.equal(f.svc.usage(key).used, 0);
+    assert.equal(f.svc.usage(key).used, 1);
     const nonExempt = fixture({ exemptOwner: false }); nonExempt.before(request(undefined, { key, isOwner: true }));
     assert.equal(nonExempt.svc.usage(key).used, 1);
   }
+  const admin=fixture({}, {hasAdminEnvironment:key=>key==='private:124'});admin.before(request());
+  assert.equal(admin.svc.usage('private:124').used,0);
+  const limited=fixture({exemptOwner:false},{hasAdminEnvironment:()=>true});limited.before(request());assert.equal(limited.svc.usage('private:124').used,1);
 });
 
 test('group session buckets share usage; user buckets isolate authors and private remains one session', () => {

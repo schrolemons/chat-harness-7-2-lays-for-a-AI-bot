@@ -3,6 +3,7 @@ import './affairs.css';
 import { api, esc } from '../../shared/api.js';
 import { registerPageLoader } from '../../shared/page-loaders.js';
 import { initializeAffairsBudget, loadAffairsBudget } from './affairs-budget.js';
+import { refreshMemorySessions } from './memory-sessions.js';
 const labels = { needs_review: '待核实', pending: '待处理', doing: '进行中', waiting: '等待结果', done: '已完成', cancelled: '已取消', superseded: '被替代' };
 const el = id => document.getElementById(id);
 let selected = null, offset = 0, total = 0, sequence = 0;
@@ -27,10 +28,12 @@ async function load() {
     const result = await api('/api/socialV2/affairs?' + query);
     if (requestId !== sequence || requestKey !== key()) return;
     if (!result.ok) throw new Error(result.error || '加载失败');
+    if (offset > 0 && offset >= result.total) { offset = Math.max(0, Math.floor((result.total - 1) / 20) * 20); return load(); }
     items = new Map(result.items.map(item => [item.id, item])); total = result.total;
-    el('v2AffairsList').innerHTML = result.items.length ? result.items.map(item => `<article class="affair-card"><div class="affair-card-heading"><strong>${esc(item.title)}</strong><span class="affair-badge" data-status="${esc(item.status)}">${esc(labels[item.status])}</span></div><p class="affair-progress">${esc(item.detail || '尚无进度记录')}</p>${item.nextAction ? `<div class="affair-next"><span>下一步</span>${esc(item.nextAction)}</div>` : ''}<div class="affair-card-footer"><span class="meta">${item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() + ' 更新' : ''}</span><div><button class="small" type="button" data-affair-id="${esc(item.id)}">编辑</button>${['needs_review','pending','doing','waiting'].includes(item.status) ? `<button class="small" type="button" data-affair-done="${esc(item.id)}">标记完成</button>` : ''}</div></div></article>`).join('') : '当前范围没有事务';
-    el('v2AffairsPage').textContent = `共 ${total} 项 · 第 ${Math.floor(offset / 20) + 1} 页`;
+    el('v2AffairsList').innerHTML = result.items.length ? result.items.map(item => `<article class="affair-card"><div class="affair-card-heading"><strong>${esc(item.title)}</strong><span class="affair-badge" data-status="${esc(item.status)}">${esc(labels[item.status])}</span></div><p class="affair-progress">${esc(item.detail || '尚无进度记录')}</p>${item.nextAction ? `<div class="affair-next"><span>下一步</span>${esc(item.nextAction)}</div>` : ''}<div class="affair-card-footer"><span class="meta">${item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() + ' 更新' : ''}</span><div><button class="small" type="button" data-affair-id="${esc(item.id)}">编辑</button>${['needs_review','pending','doing','waiting'].includes(item.status) ? `<button class="small" type="button" data-affair-done="${esc(item.id)}">标记完成</button>` : ''}</div></div></article>`).join('') : '<div class="affairs-empty"><strong>当前范围没有事务</strong><span>可切换查看范围，或点击“新建事务”记录需要跟进的事。</span></div>';
+    el('v2AffairsPage').textContent = `第 ${Math.floor(offset / 20) + 1} / ${Math.max(1, Math.ceil(total / 20))} 页 · 共 ${total} 项`;
     el('v2AffairsPrev').disabled = offset === 0; el('v2AffairsNext').disabled = offset + 20 >= total;
+    el('v2AffairsPrev').parentElement.hidden = total <= 20;
     el('v2AffairsPreview').textContent = result.preview?.text || '（当前预算未选中事务）';
     el('v2AffairsPreviewInfo').textContent = `选中 ${result.preview?.selectedIds?.length || 0} 项，未选中 ${result.preview?.omittedIds?.length || 0} 项。组合记忆总预算可能进一步收紧；未选中内容仍完整保存。`;
     message('已加载 ' + result.items.length + ' 项');
@@ -39,11 +42,7 @@ async function load() {
 }
 async function loadKeys() {
   try {
-    const result = await api('/api/socialV2/states');
-    if (!result.ok) throw new Error(result.error || '无法读取会话');
-    const previous = key(), keys = result.conversations.map(item => item.key).filter(value => /^(private|group):\d+$/.test(value));
-    el('v2AffairsKey').innerHTML = keys.map(value => `<option value="${esc(value)}">${esc(value)}</option>`).join('');
-    if (keys.includes(previous)) el('v2AffairsKey').value = previous;
+    await refreshMemorySessions();
     await load();
   } catch (error) { message('读取会话失败：' + error.message); }
 }

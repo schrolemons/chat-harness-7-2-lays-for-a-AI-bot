@@ -103,6 +103,7 @@ export function createPlugin(ctx) {
         id: 'availability:' + key + ':' + p.id,
         owner: ctx.id || 'life-user-availability',
         type: 'user-availability',
+        requiresTransport: p.kind === 'later',
         at: p.end,
         expiresAt: p.end + CONTACT_TASK_EXPIRY_MS,
         run: async () => {
