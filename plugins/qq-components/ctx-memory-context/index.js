@@ -10,6 +10,7 @@
 const memoryModule = relative => { const url = new URL(relative, import.meta.url); url.search = new URL(import.meta.url).search; return import(url.href); };
 const { selectPersistentContext } = await memoryModule('../ctx-memory-store/sections.mjs');
 const { windowImpressions } = await memoryModule('./light-window.mjs');
+const {DIARY_WRITING_POLICY}=await memoryModule('../ctx-memory-update/diary-style.mjs');
 
 function formatLightMemory(st, now = Date.now(), windowSize = 20) {
   if (!st) return '';
@@ -76,7 +77,7 @@ export function createPlugin(ctx) {
           add(`【当前事务】还有 ${affairs.omittedIds.length} 项因预算未带入，内容仍完整保存；相关时用 qq_task_note(action="list") 查看，不能当作没有事务。`);
         }
         if (payload.key && !/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview)$/.test(String(payload.reason || ''))) {
-          if(ctx.capabilities?.isToolEnabled?.('memory')!==false)ctx.addPromptBlock('【当天日记维护】需要总结上下文或遇到值得记录的新经历时，可用 qq_diary 先read再update完整的本窗口日记，不需要发QQ。同一窗口的事情可持续更新；换窗后另起一份。历史聊天可用于明确的昨日对比，不当作今日新事。',{placement:'stable'});
+          if(ctx.capabilities?.isToolEnabled?.('memory')!==false)ctx.addPromptBlock('【当天日记维护】遇到有趣、在意或值得记住的新经历时，可用 qq_diary 先read再update本窗口日记的完整成稿，不需要发QQ。同一窗口重新取舍精简；换窗后另起一份。历史聊天可用于明确的昨日对比，不当作今日新事。\n'+DIARY_WRITING_POLICY,{placement:'stable'});
           ctx.addPromptBlock('【事务维护｜每轮复核】像短期记忆一样检查本轮涉及的任务、承诺和随口安排：先对照已有ID，优先更新同一条的现状与下一步，不重复新增。用户明确做完、取消、改期，或工具结果证实变化时，立即用 qq_task_note 按ID及expectedRevision更新；确认完成用done、取消用cancelled、被新安排替代用superseded。旧项待核实且与眼前对话相关时自然确认一次，不反复追问。缺少完成证据就保留等待，绝不把沉默、时间经过或“知道了”当完成。只在写入成功后声称已更新。',{placement:'stable'});
         }
         const pm = payload.persistentMemory && typeof payload.persistentMemory === 'object' ? payload.persistentMemory : null;

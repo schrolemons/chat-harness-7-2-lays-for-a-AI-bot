@@ -5,6 +5,7 @@ Games is an independent T-layer MCP for small, optional text interactions. Its t
 ## Games
 
 - `spark` / 轻微电流：虚构文字演出，可以由bot主动接梗，无需开始前本人同意。payload支持bodyPart、durationSec、intensityLevel和waveform，未指定时使用console默认值。正常输出不反复解释强度微小；可以描写轻松酥麻的演出效果，不写疼痛、伤口或伤害。对方拒绝、不适、退开或要求停止时立即结束。它不连接设备，不发送QQ，也不产生物理电流参数。
+- 针对bot的辱骂、讽刺、攻击均可成为“电一电”的触发情境，不必等对方主动邀请；由bot结合上下文决定是否轻松接梗，保持拒绝/不适/停止优先，不连续纠缠，也不额外唤醒或绕过原费用、频率及权限规则。普通聊天预设引用相同的Games目录规则，不再另设“必须本人同意”的启动门槛。
 - `dice`: a configurable 2–20-sided dice roll, with no money, stakes, or punishment.
 - `riddle`: one fixed short riddle, a hint, and a configurable 1–10 answers.
 - Custom games: the `games_create` tool turns a user's explicit description into a bounded JSON GameAdapter and persists it. The runtime interprets data only; it never executes generated code.

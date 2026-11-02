@@ -1,5 +1,7 @@
 # 架构与拥有源
 
+日记写法由 `ctx-memory-update/diary-style.mjs` 统一用于普通维护和记忆整理：选有趣、在意或有触动的片段，通常2～4段、300～600字，每次重选精简，已有归档保留。Games 允许针对bot的辱骂、讽刺、攻击触发虚构文字“电一电”；两套聊天预设遵循当前目录规则，拒绝、不适或停止优先，仍沿用费用、频率、唤醒和权限规则。
+
 根包 `qq-bridge` 是 DSH 组合插件，注册启动面板、模式设置、七个 MCP 接口及六套预设。安装入口和依赖见 README。`scripts/build-dsh-bundle.mjs` 从 `dsh/agent-presets` 与既有预设拥有源生成根 `cordis.patch.yml`；生成产物不是第二份可独立编辑的配置。
 
 `src/bridge.js` 负责连接、协议、鉴权与能力分发。提示词、行为策略、记忆提取、调度规则由 `plugins/qq-components` 拥有，业务任务统一使用 life-scheduler。控制台按 C/T/E/L/O/V/G/S 分层，前端拥有源在 console，public/console.html 是生成产物。

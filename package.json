@@ -307,7 +307,10 @@
       "scripts/test-task-delivery-dedupe.mjs",
       "scripts/test-task-group-admission.mjs",
       "scripts/test-task-initial-admission.mjs",
-      "scripts/test-task-lease-boundaries.mjs"
+      "scripts/test-task-lease-boundaries.mjs",
+      "scripts/test-diary-truth.mjs",
+      "scripts/test-memory-initiative-policy.mjs",
+      "scripts/test-games-current.mjs"
     ]
   }
 }

@@ -21,7 +21,7 @@ test('configured Beijing boundary changes the current window at the exact minute
 function scheduledFixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'diary-bell-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const sent=[],requests=[],now=Date.parse('2026-11-01T18:30:00+08:00'),state={lastWriteAt:{[key]:now}};
- const capabilities=withDiaryDelivery(root,{runtimeStartedAt:now-3600000,memoryConfig:()=>({enabled:true,dailyDiary:{enabled:true,hour:18,minute:30}}),listConversationKeys:()=>[key],requestMemoryWrite:(key,opts)=>{requests.push({key,opts});return true;},sendNotification:(key,body,meta)=>{sent.push({key,body,meta});return true;}});
+ const capabilities=withDiaryDelivery(root,{runtimeStartedAt:now-3600000,memoryConfig:()=>({enabled:true,dailyDiary:{enabled:true,hour:18,minute:30}}),listConversationKeys:()=>[key],requestMemoryWrite:(key,opts)=>{requests.push({key,opts});return true;},sendNotification:(key,body,meta)=>{sent.push({key,body,meta});return true;}},{now:()=>now});
  const ctx={root,config:{},state:{get:()=>state,set:patch=>Object.assign(state,patch)},log:()=>{},warn:()=>{},registerTool:()=>{},capabilities};
  return {root,state,sent,requests,now,ctx,plugin:createPlugin(ctx)};
 }

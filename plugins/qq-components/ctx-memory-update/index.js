@@ -6,6 +6,8 @@ policyUrl.search = new URL(import.meta.url).search;
 const { PROFILE_EXTRACTION_POLICY } = await import(policyUrl.href);
 const sourceUrl=new URL('./diary-source.mjs',import.meta.url);sourceUrl.search=new URL(import.meta.url).search;
 const {diaryEvidence}=await import(sourceUrl.href);
+const styleUrl=new URL('./diary-style.mjs',import.meta.url);styleUrl.search=new URL(import.meta.url).search;
+const {DIARY_WRITING_POLICY}=await import(styleUrl.href);
 const clockUrl=new URL('../ctx-memory-store/diary-delivery.mjs',import.meta.url);clockUrl.search=new URL(import.meta.url).search;
 const {diaryTargetDay,diaryWindow}=await import(clockUrl.href);
 
@@ -36,10 +38,12 @@ export function createPlugin(ctx) {
           '【用户画像】',
           '- （从今日重要事实提取的临时人物画像，注明对象、日期与依据；区分本人表达和推测，不因当天观察覆盖稳定档案。稳定信息经确认提炼后可向上更新QQ人物档案或冒泡时段；仅写候选不能声称已更新。历史候选保留原日期，不改写为今日行为）',
           '【日记】',
-          '（提交本窗口的完整最新日记：同一窗口已有的经历可以保留并根据新消息更新；跨窗口必须另起一份，不续写、润色或拼接昨天的日记。用第一人称以1~5句口语写经历、感受和后续想法；感受不冒充他人的客观性格。允许结合历史聊天偶尔与昨天对比，但须明确写为旧事，不能说成今天刚发生；证据少就如实写少，不补编整天的经历。）',
+          '（提交本窗口经过取舍的完整日记成稿；跨窗口另起一份，不续写、润色或拼接昨天的日记。证据少就如实写少，不补编整天的经历。）',
+          DIARY_WRITING_POLICY,
+          '允许结合历史聊天偶尔与昨天对比，但须明确写为旧事，不能说成今天刚发生。',
           '</MEMORY>',
           '【本次日记窗口】'+window.day+' 日记：'+window.start+' 至 '+window.end+'（北京时间，按消息发生时间归属；窗口未结束时只总结截至当前的部分）。',
-          window.sameWindowDiary?'【同一窗口已有日记｜保留本日已发生内容，结合新消息更新；这不是上一窗口日记】\n'+window.sameWindowDiary:'【新日记窗口】没有本窗口日记，从可核实的本日行为开始写；不要拿昨天的日记填空。',
+          window.sameWindowDiary?'【同一窗口已有日记｜仅作素材，结合新消息重新取舍、合并和精简，不要求逐条保留；这不是上一窗口日记】\n'+window.sameWindowDiary:'【新日记窗口】没有本窗口日记，从可核实的本日行为开始写；不要拿昨天的日记填空。',
           '【本窗口当前可用行为证据｜不额外套用C层最近N条限制】'+(evidence.length?'\n'+evidence.map(m=>new Date(m.at).toISOString()+' '+m.sender+'：'+m.text).join('\n'):'没有可核实的新行为；不要虚构更新。'),
           `要求：简洁准确、不编造；总长不超过 ${maxChars} 字；**不要发任何 QQ 消息、不要调用发送工具**；输出这段后直接收尾。`
         ].filter(Boolean).join('\n');
