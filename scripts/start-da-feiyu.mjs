@@ -36,6 +36,7 @@ import { discoverSnowLumaConnection } from '../src/snowluma-conn.js';
 import { readLauncherSettings } from './launcher-settings.mjs';
 import { processRunsFile, stopVerifiedRecords } from './launcher-process-identity.mjs';
 import { resolveSnowHome } from './snow-runtime-location.mjs';
+import {createBridgeRecovery,normalizeBridgeRecovery,restartBridgeChild} from './bridge-recovery-policy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -930,47 +931,49 @@ async function main() {
   }
 
   // 6) 守护（退出重拉 + 健康巡检见下面）
-  // 7) 健康巡检：DSH 重启换了端口时，桥接自己跟不过去，会一直 dshReady=false。
-  //    这里发现「桥接活着但 DSH 掉线」就重新探测一次，地址变了就改配置 + 重启自己拉起的桥接。
-  let unhealthyStreak = 0;
-  let lastAutoFixAt = 0;
+  // 7) 传输巡检：只读取本桥接状态；持续失败超时后重启自己管理的 bridge。
+  //    DSH 换端口时保留地址发现能力，不重启 QQ/DSH 或读取 QQ 历史与文件。
+  const recoveryFile=path.join(STATE_DIR,'bridge-recovery.json');
+  let recoveryState={},recoveryReadable=true;
+  try{
+    recoveryState=JSON.parse(fs.readFileSync(recoveryFile,'utf8'));
+    if(!recoveryState || recoveryState.version!==1 || !Array.isArray(recoveryState.attempts)
+      || recoveryState.attempts.some(at=>!Number.isFinite(at)||at<=0))throw Error('Invalid recovery state');
+  }
+  catch(error){recoveryState={};if(error.code!=='ENOENT'){recoveryReadable=false;log('[watchdog] 无法读取恢复次数记录，已停止自动重启，保留当前进程');}}
+  const recovery=createBridgeRecovery({...normalizeBridgeRecovery(cfg.bridgeRecovery),state:recoveryState,save:value=>{
+    if(!recoveryReadable)return;
+    const temporary=recoveryFile+'.'+process.pid+'.tmp';
+    fs.writeFileSync(temporary,JSON.stringify({...value,supervisorPid:process.pid},null,2)+'\n');fs.renameSync(temporary,recoveryFile);
+  }});
   let healthChecking = false;
   const healthTimer = setInterval(async () => {
     if (stopping || healthChecking) return;
     healthChecking = true;
     try {
+    const observedChild=child;
+    const isCurrent=()=>!stopping&&child===observedChild&&observedChild?.exitCode===null&&observedChild?.signalCode===null;
+    if(!isCurrent())return;
     const st = await consoleStatus(consolePort);
-    if (!st.ok || !st.data) return; // 桥接本身没应答：交给上面的退出/重拉逻辑
-    if (st.data.dshReady === true) {
-      unhealthyStreak = 0;
-      return;
+    if(!isCurrent())return;
+    const decision=recovery.observe({probe:st,enabled:recoveryReadable&&normalizeBridgeRecovery(loadConfig().bridgeRecovery).enabled});
+    if(decision.action==='blocked'){log(`[watchdog] 10分钟内自动重启已达到上限（${decision.attempts}次），停止本轮重试；请检查 state/bridge-recovery.json`);return;}
+    if(decision.action!=='restart')return;
+    log(`[watchdog] 连续 ${Math.round(decision.timeoutMs/1000)} 秒未恢复（${decision.reason}），仅重启 bridge；保留QQ、SnowLuma和DSH，不补取历史消息`);
+    if(st.data?.dshReady===false){
+      const found=await discoverDsh(cfg);
+      if(!isCurrent())return;
+      if(found&&found.baseUrl!==activeDshBase){writeConfigBaseUrl(found.baseUrl);activeDshBase=found.baseUrl;cfg.dsh.baseUrl=found.baseUrl;}
     }
-    unhealthyStreak += 1;
-    if (unhealthyStreak < 3) return; // 约 3 分钟仍连不上 DSH 才动手
-    if (Date.now() - lastAutoFixAt < 5 * 60 * 1000) return;
-    lastAutoFixAt = Date.now();
-    log('⚠️ 桥接在跑但连不上 DSH（可能 DSH 重启换了端口），重新探测…');
-    const found = await discoverDsh(cfg);
-    if (!found) {
-      log('   仍然没探测到可用的 DSH；等它起来后我会再试');
-      return;
-    }
-    if (found.baseUrl === activeDshBase) {
-      log(`   DSH 还是 ${found.baseUrl}，但桥接连不上：可能是 DSH 侧鉴权/协议问题，不动它`);
-      return;
-    }
-    log(`   检测到 DSH 换地址：${activeDshBase} → ${found.baseUrl}，重启桥接以跟上`);
-    writeConfigBaseUrl(found.baseUrl);
-    activeDshBase = found.baseUrl;
-    cfg.dsh.baseUrl = found.baseUrl;
-    unhealthyStreak = 0;
-    try {
-      child?.kill();
-    } catch {}
+    await restartBridgeChild({child:observedChild,isCurrent,sleep,requestGraceful:async()=>{
+      const base=`http://127.0.0.1:${consolePort}`;
+      const res=await fetch(base+'/api/restart',{method:'POST',headers:{'x-console-token':readConsoleToken(),'Content-Type':'application/json',Origin:base},body:'{}',signal:AbortSignal.timeout(3000)});
+      return res.ok;
+    }});
     // onChildExit owns the one replacement launch. Scheduling here as well creates two children.
     } catch(error) {log('健康复查失败，保留当前实例：'+(error?.code||error?.name||'UNKNOWN'));}
     finally {healthChecking=false;}
-  }, 60000);
+  }, 10000);
   healthTimer.unref?.();
 
   const shutdown = () => {
@@ -993,6 +996,7 @@ async function main() {
 
 // 允许被 import（自测脚本会 import parseNetstatPorts）；只有直接运行时才真正启动。
 export { parseNetstatPorts, parseDshProcessIds, probeDsh, discoverDsh, onChildExit, waitForBridgeExit, stopBridgePair, buildSnowLaunch, ensureSnowLuma, commandHasFile, lockPidReused, resolveBotUin, selectBotProcesses };
+export {createBridgeRecovery,restartBridgeChild};
 
 const invokedDirectly = (() => {
   const entry = process.argv[1] ? path.resolve(process.argv[1]) : '';

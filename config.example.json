@@ -1,4 +1,9 @@
 {
+  "bridgeRecovery": {
+    "enabled": true,
+    "timeoutMs": 90000,
+    "maxRestarts": 2
+  },
   "dsh": {
     "baseUrl": "http://127.0.0.1:3080",
     "provider": "deepseek-official",

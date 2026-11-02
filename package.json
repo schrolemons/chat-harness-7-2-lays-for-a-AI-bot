@@ -195,6 +195,7 @@
       "scripts/test-web-change-summary.mjs",
       "scripts/test-scheduler.mjs",
       "scripts/test-sleep-recovery.mjs",
+      "scripts/test-bridge-recovery-watchdog.mjs",
       "scripts/test-availability.mjs",
       "scripts/test-notification-delivery.mjs",
       "scripts/test-plugin-contract.mjs",
