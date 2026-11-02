@@ -8,7 +8,8 @@ import {createProactive} from '../plugins/qq-components/life-wake-reasons/proact
 import {bridgeHarness} from './audit-bridge-harness.mjs';
 import {createPlugin as createAvailability} from '../plugins/qq-components/life-user-availability/index.js';
 
-const start=Date.parse('2026-11-02T07:59:00+08:00');
+// Bubble hours use the host local clock; keep the fixture in that same zone.
+const start=new Date(2026,10,2,7,59).getTime();
 function clock(){
  let ready=true;
  const runtime={},refreshed=[],greetings=[];
@@ -123,7 +124,7 @@ test('real host expires missed morning bubble and retains a future noon timer wh
   h.setMode('reserved2');h.taskCaps.getTransportReadiness=()=>({ready:false});
   const st=h.getSocialV2State('private:123');h.taskCaps.refreshTimeBubble({key:'private:123'});
   const before=st.timeBubbleTimer;assert.ok(before);
-  now=Date.parse('2026-11-02T10:13:00+08:00');await h.pluginHost.tick(now);
+  now=new Date(2026,10,2,10,13).getTime();await h.pluginHost.tick(now);
   assert.ok(st.timeBubbleTimer,'the real continuation creates a future timer');
   assert.ok(st.timeBubbleTimer.generation>before.generation);
   assert.equal(st.pendingTimeBubble??null,null,'missed morning slot is not replayed');
@@ -147,7 +148,7 @@ test('real reminder and scheduled-conversation capabilities refuse offline dispa
 });
 
 test('catchup bubble stays queued instead of invoking DSH while offline',async()=>{
- const now=Date.parse('2026-11-02T08:05:00+08:00');
+ const now=new Date(2026,10,2,8,5).getTime();
  class FixtureDate extends Date{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}}
  const h=await bridgeHarness({globals:{Date:FixtureDate},files:{'state/time-bubbles.json':{'private:123':[
   {id:'morning',hour:8,minute:0,label:'morning',enabled:true}]}}});
