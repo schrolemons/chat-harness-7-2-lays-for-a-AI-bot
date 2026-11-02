@@ -9,11 +9,46 @@ async function open(t){
  const h=await bridgeHarness({config:{sendDelayMs:0},files:{
   'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},
   'state/plugins/life-wake-reasons.json':{proactiveByKey:{[key]:{stage:4,willingness:60,source:'default',phase:'idle',availabilityVersion:1,activeConversationCount:0}}},
-  'state/plugins/config/ctx-chat-reply-shape.json':{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0}
+  'state/plugins/config/ctx-chat-reply-shape.json':{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0,maxMessagesNormal:1,maxMessagesCasual:1,maxMessagesSerious:1,maxSendPerMinute:1,maxSendPerHour:1}
  }});t.after(()=>h.close());h.setMode('reserved2');h.getSocialV2State(key).bootstrapSent=true;
  const sid=await h.ensureSession(key);return {h,sid};
 }
 function event(extra={}){return {key,id:'milk-test',plugin:'tool-deepseek-balance',reason:'milkStock',sourceAt:Date.now(),expiresAt:Date.now()+60000,allowedKinds:['text'],...extra};}
+
+function fillSendWindow(h){
+ const call=h.pluginHost.callService.bind(h.pluginHost),plan=call('replyPlan','resolve',{key,turnId:'baseline'});
+ assert.equal(call('replyPlan','reserve',{key,plan,operationId:'baseline'}).ok,true);
+ call('replyPlan','commit',{key,operationId:'baseline',deliveryId:'baseline'});
+}
+
+test('real milk admission and physical send both use a one-off timer slot after minute and hour saturation',async t=>{
+ const {h,sid}=await open(t);fillSendWindow(h);
+ assert.equal(h.taskCaps.getProactiveFacts(key).rateAllowed,false);
+ assert.equal((await h.taskCaps.requestScheduledConversation(key,event())).ok,true);
+ const envelope=h.pendingTurnEnvelopes.get(sid)[0];assert.equal(envelope.replyPlan.scheduledGrant.ids.length,1);
+ assert.equal(await h.sendToQQ(key,'API预算提醒',{wakeOrigin:envelope,conversationReply:true}),true);
+ assert.equal(await h.sendToQQ(key,'不得重复',{wakeOrigin:envelope,conversationReply:true}),false);
+ assert.equal(h.calls.sent.length,1);
+});
+
+test('real reminder envelope carries every trusted due item into one bounded multi-message plan',async t=>{
+ const {h,sid}=await open(t);fillSendWindow(h);const now=Date.now();
+ h.getSocialV2State(key).pendingReminderItems=['a','b','c'].map(id=>({id,text:'待办'+id,dueAt:now+60000,requestedAt:now}));
+ await h.deliverPrompt(key,'',{silent:true,wakeReason:'reminder'});
+ const envelope=h.pendingTurnEnvelopes.get(sid)[0];
+ assert.equal(envelope.replyPlan.scheduledGrant?.ids.length,3);assert.equal(envelope.replyPlan.maxMessages,3);
+ for(const text of ['提醒a','提醒b','提醒c'])assert.equal(await h.sendToQQ(key,text,{wakeOrigin:envelope,conversationReply:true}),true);
+ assert.equal(await h.sendToQQ(key,'不得多发',{wakeOrigin:envelope,conversationReply:true}),false);
+});
+
+test('claimed fixed timer notifications share the same temporary overflow and still deduplicate receipts',async t=>{
+ const {h}=await open(t);fillSendWindow(h);const now=Date.now();
+ const meta={id:'claimed-fixed',sourceAt:now,expiresAt:now+60000};
+ assert.equal((await h.taskCaps.sendNotificationDetailed(key,'固定定时通知',meta)).ok,true);
+ assert.equal((await h.taskCaps.sendNotificationDetailed(key,'不得重复',meta)).ok,false);
+ assert.equal((await h.taskCaps.sendNotificationBatch(key,[{id:'batch-a',sourceAt:now,expiresAt:now+60000,text:'通知a'},{id:'batch-b',sourceAt:now,expiresAt:now+60000,text:'通知b'}])).sent,true);
+ assert.equal(h.calls.sent.length,2);
+});
 
 test('milk alarms, calendar reminders and time bubbles all count as active conversation on real delivery',()=>{
  const facts=[],transport=createOutboundTransport({callService:(s,m,p)=>{if(s==='proactive'&&m==='observe')facts.push(p);}});

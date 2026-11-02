@@ -20,6 +20,10 @@
 
 ## 发送计划
 
+真实定时事件可临时突破单轮及分钟/小时发送上限：日程用 id/dueAt/requestedAt、时间冒泡用实际时段日期ID、稍后联系用约定ID、API预算告警用组件事件ID，固定通知须先成功认领发送凭据。每项最多一条，单批最多20项，额外额度从首次授予起有效2分钟；同一会话滚动一小时最多额外20次物理发送。普通聊天不能凭文字或自报原因领额度；所有成功和未知预占仍计入普通限频。模式、权限、免打扰、预算和事件过期继续生效。
+
+额度和已占用的事件ID随发送账本持久保存，换回合、重读消息和重载不续领；只有确定未发送才释放。排队结束后 `replyPlan.authorize` 再核对临时额度，睡眠或长等待不能带着过期突发额度发送。尚未使用的过期额度不再突破限制，但有效事件可在普通额度恢复后处理。策略在 `scheduled-grants.mjs`，桥接仅传已有调度事实。
+
 本组件属于 L 层，拥有全部实际出站的分钟/小时账本、间隔和对话回合条数。桥接在真实模型投递前调用 `replyPlan.resolve`，冻结结果并随 pending/active/completed envelope 携带；beforePrompt 只展示该计划，表情选择也消费同一个计划。
 
 `resolve({key,turnId,incomingText,mood,reason,referenceMode?,agent=true,now?})` 返回不可变 kind/maxMessages/hourlyLimit/minIntervalMs/detailLevel/maxMessageChars/delayPlan/line。心情 replyCeiling 可收紧条数；有效欢迎可采用 casual 上限，仍服从 serious 和资料讨论（最多1条）。没有另一套低心情阈值或最近连发判断。

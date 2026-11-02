@@ -11,8 +11,15 @@ export function createPlugin(ctx) {
   replyPlan.resolve=payload=>{const plan=planReplyShape({...payload,willingness:ctx.callService?.('proactive','availability',{key:payload?.key})?.willingness??100,config:ctx.config,referenceMode:payload?.referenceMode??referencePolicy(payload).mode});if(payload?.budgetStage!=='weak')return plan;const maxMessages=String(payload.key).startsWith('private:')?1:Math.max(1,Math.min(60,Number(payload.batchMessageCount)||1));return Object.freeze({...plan,budgetStage:'weak',maxMessages,line:plan.line.replace(/合计最多 \d+ 条/,'合计最多 '+maxMessages+' 条')+' 冷漠固定批次：处理窗口后结束，不追问或等待。'});};
   const resolve=replyPlan.resolve;
   replyPlan.resolve=payload=>{const plan=resolve(payload);return payload?.reason==='milkStock'?Object.freeze({...plan,maxMessages:1,line:plan.line.replace(/合计最多 \d+ 条/,'合计最多 1 条')+' 本次是定时API预算告警：只发送一条短句，不追加媒体或追问。'}):plan;};
+  const resolveScheduled=replyPlan.resolve;
+  replyPlan.resolve=payload=>{
+    const plan=resolveScheduled(payload),grant=payload?.budgetStage&&payload.budgetStage!=='normal'?null:replyPlan.scheduledGrant(payload);
+    if(!grant)return plan;
+    const maxMessages=grant.ids.length;
+    return Object.freeze({...plan,maxMessages,baseMaxMessages:plan.maxMessages,scheduledGrant:grant,line:plan.line.replace(/合计最多 \d+ 条/,'合计最多 '+maxMessages+' 条')+' 本次有 '+maxMessages+' 项真实定时事件，每项最多一条；额外额度仅短时有效，勿补发旧消息或凑满条数。'});
+  };
   const forMessages=createBatchGrants(payload=>replyPlan.resolve(payload));
-  replyPlan.forMessages=payload=>forMessages({...payload,canRenew:payload?.reason!=='milkStock'&&payload?.canRenew!==false});
+  replyPlan.forMessages=payload=>forMessages({...payload,canRenew:!['milkStock','reminder','timeBubble','scheduledContact'].includes(String(payload?.reason||'').split(':')[0])&&payload?.canRenew!==false});
   return {validateConfig:validateReplyPolicy,services:{replyPlan},hooks:{beforePrompt:payload=>{
     const plan=payload?.replyPlan;if(!plan)return '';
     const progress=replyPlan.progress({plan});

@@ -14,6 +14,8 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
  async function deliver(now){
   const pending=read().pendingAlert;if(!pending||!alive())return;
   if(now>pending.expiresAt){write({pendingAlert:null});return;}
+  if(now<(pending.notBefore||0))return;
+  if(read().lastError&&pending.kind!=='query_failed')return; // Keep the verified event, but revalidate before speaking after a failed sample.
   if(deliveryMetas.has(pending.id))return;
   if(read().scheduledNotice?.id===pending.id){write({pendingAlert:null});return;} // Crash/reload after dispatch: outcome may be unknown.
   const owner=String(ctx.capabilities?.getOwnerQQ?.()||'');if(!/^[1-9]\d*$/.test(owner)||typeof ctx.capabilities?.requestScheduledConversation!=='function')return;
@@ -39,8 +41,9 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
    const current=read(),c=milkPolicy(ctx.config);
    if(result?.ok!==true){
     const failures=(current.failures||0)+1;
-    const pending=notify&&failures>=3&&(!current.lastNoticeAt||now-current.lastNoticeAt>=c.notificationCooldownMin*60000)?{id:'milk-stock:'+randomUUID(),kind:'query_failed',stage:'unknown',text:'API预算余额连续核对失败，当前余额未核实。这不表示API预算归零；请检查余额接口或本机密钥配置。',sourceAt:now,expiresAt:now+2*3600000}:null;
-    write({lastResult:result,lastError:{at:now,message:result?.error||'余额查询失败'},failures,pendingAlert:pending,scheduledNotice:null,nextCheckAt:now+Math.min(30,c.checkIntervalMin*2**Math.min(3,failures-1))*60000});return result;
+    const diagnostic=!current.pendingAlert&&notify&&failures>=3&&(!current.lastNoticeAt||now-current.lastNoticeAt>=c.notificationCooldownMin*60000);
+    const pending=diagnostic?{id:'milk-stock:'+randomUUID(),kind:'query_failed',stage:'unknown',text:'API预算余额连续核对失败，当前余额未核实。这不表示API预算归零；请检查余额接口或本机密钥配置。',sourceAt:now,expiresAt:now+2*3600000}:current.pendingAlert;
+    write({lastResult:result,lastError:{at:now,message:result?.error||'余额查询失败'},failures,pendingAlert:pending,scheduledNotice:diagnostic?null:current.scheduledNotice,nextCheckAt:now+Math.min(30,c.checkIntervalMin*2**Math.min(3,failures-1))*60000});return result;
    }
    const previous=current.lastSuccess,stock=selectedStock(result,c),change=stockChange(previous,{...result,stock},c)||(current.failures>=3&&stock.stage!=='unknown'?{kind:'query_restored',urgent:true,stock}:null);
    const event=change?{...change,id:'milk:'+randomUUID(),at:now}:null;
@@ -49,14 +52,22 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
    out.milk.responseGuidance+='\n'+milkChangeGuidance;
    let pending=current.pendingAlert;
    if(pending&&pending.stage!==stock.stage)pending=null;
-   if(c.monitorEnabled&&event&&(event.urgent||!current.lastNoticeAt||now-current.lastNoticeAt>=c.notificationCooldownMin*60000))pending={id:'milk-stock:'+randomUUID(),kind:event.kind,stage:stock.stage,text:stockNotice(event),sourceAt:now,expiresAt:now+2*3600000};
+   if(c.monitorEnabled&&event)pending={id:'milk-stock:'+randomUUID(),kind:event.kind,stage:stock.stage,text:stockNotice(event),sourceAt:now,expiresAt:now+2*3600000,notBefore:event.urgent?now:Math.max(now,(current.lastNoticeAt||0)+c.notificationCooldownMin*60000)};
    const scheduledNotice=current.scheduledNotice?.stage===stock.stage&&!event?current.scheduledNotice:null;
    write({lastResult:out,lastSuccess:sample,lastError:null,failures:0,nextCheckAt:now+c.checkIntervalMin*60000,pendingAlert:pending,scheduledNotice});
    social.observe(event,now);
    return out;
   })().finally(()=>{inflight=null;});const result=await inflight;if(notify)await deliver(now);return result;
  }
- async function queryResult(){const result=await refresh();if(!result?.ok)return result;const stock=selectedStock(result,milkPolicy(ctx.config));return stock.stage===result.milk?.stock?.stage?result:{...result,milk:{...result.milk,stock,change:null}};}
+ async function queryResult(){const result=await refresh();if(!result?.ok)return result;
+  // Manual and automatic reads share one baseline and one event. Dispatch promptly
+  // without coupling the balance response to a possibly slow model admission.
+  if(milkPolicy(ctx.config).monitorEnabled){
+   const pending=read().pendingAlert;
+   if(pending?.notBefore>clock())write({pendingAlert:{...pending,notBefore:clock()}});
+   void deliver(clock()).catch(()=>ctx.warn?.('API预算变化投递暂未完成，保留待处理事件'));
+  }
+  const stock=selectedStock(result,milkPolicy(ctx.config));return stock.stage===result.milk?.stock?.stage?result:{...result,milk:{...result.milk,stock,change:null}};}
  return {query:queryResult,async queryFor({key}={}){if(!validMilkKey(key))return {ok:false,error:'无效会话'};const result=await queryResult();return key==='private:'+String(ctx.capabilities?.getOwnerQQ?.()||'')?result:social.publicResult(result,key);},sent:payload=>social.sent(payload),noteStatus:payload=>social.noteStatus(payload),noteWritten:payload=>social.noteWritten(payload),async tick({now=clock()}={}){const c=milkPolicy(ctx.config);if(!c.monitorEnabled||!alive())return;if(!read().nextCheckAt||now>=read().nextCheckAt)await refresh({notify:true,now});else await deliver(now);},
   wakeTail({key,reason,scheduledEvent}={}){
    const n=read().scheduledNotice;

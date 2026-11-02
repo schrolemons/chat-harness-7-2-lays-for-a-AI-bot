@@ -8418,7 +8418,7 @@ async function main() {
     if (!Object.hasOwn(options, 'wakeOrigin') && !options.messageAck && !options.origin && options.conversationReply!==false && scoped?.plan) return scoped;
     const envelope = options.wakeOrigin || null;
     const origin = options.origin || (options.messageAck || options.budgetMechanical && options.conversationReply === false ? 'mechanical' : envelope ? 'conversation' : 'operator');
-    return Object.freeze({...actualOutbound.capture({key,envelope,origin,reason:options.originReason || (options.messageAck ? 'thinkingAck' : origin),agent:!!envelope}),
+    return Object.freeze({...actualOutbound.capture({key,envelope,origin,reason:options.originReason || (options.messageAck ? 'thinkingAck' : origin),agent:!!envelope,scheduledNotifications:options.scheduledNotifications}),
       budgetMechanical: options.budgetMechanical === true});
   }
   function sdkOutbound(kind,id,message,context,rawText='',assertAllowed) {
@@ -9842,7 +9842,8 @@ async function main() {
     if(!pluginHost.allowsWake(reason,{key})||pluginHost.callService('availability','canWake',{key,reason})===false||pluginHost.callService('proactive','allowsReason',{reason})?.allowed===false)return {ok:false,reason:'wake_blocked'};
     const facts=taskCaps.getProactiveFacts(key);
     if(facts.busy||promptQueues.get(key)?.running||promptQueues.get(key)?.queue?.length)return {ok:false,reason:'busy'};
-    if(!facts.budgetAllowed||!facts.rateAllowed)return {ok:false,reason:'budget_or_rate'};
+    const timedRate=!facts.rateAllowed&&pluginHost.callService('replyPlan','preview',{key,scheduled:{reason,scheduledEvent:event}})?.burstAllowed===true;
+    if(!facts.budgetAllowed||!facts.rateAllowed&&!timedRate)return {ok:false,reason:'budget_or_rate'};
     const result=await deliverPrompt(key,'',{silent:true,wakeReason:reason,scheduledEvent:event,pluginId:plugin,pluginSignal:event.signal,pluginMode:currentMode});
     return {ok:result?.ok===true&&!result.skipped,reason:result?.skipped?'dispatch_blocked':result?.error};
   };
@@ -9855,7 +9856,7 @@ async function main() {
       const reason=claimed?.reason||'ledger_unavailable';
       return {ok:false,reason:reason==='sent'?'already_sent':reason==='claimed'||reason==='uncertain'?'delivery_unconfirmed':'receipt_'+reason,receiptStatus:reason};
     }
-    let sent=false;try{sent=await sendToQQ(key,body,{budgetMechanical:true,conversationReply:false,wakeOrigin:null,origin:'purpose',originReason:String(meta?.reason||'notification'),allow:()=>automaticNotificationAllowed(key)&&Number.isFinite(meta.expiresAt)&&Date.now()<=meta.expiresAt});}catch{}
+    let sent=false;try{sent=await sendToQQ(key,body,{budgetMechanical:true,conversationReply:false,wakeOrigin:null,origin:'purpose',originReason:String(meta?.reason||'notification'),scheduledNotifications:[{...meta,key,claimed:true}],allow:()=>automaticNotificationAllowed(key)&&Number.isFinite(meta.expiresAt)&&Date.now()<=meta.expiresAt});}catch{}
     const finished=pluginHost.callService('scheduler','finishDelivery',{id:meta.id,sent});
     if(!finished?.ok){
       log('[notification] 发送结果已记录前发生回执写入错误 '+String(meta.id||''));
@@ -9884,7 +9885,7 @@ async function main() {
       else if(['ledger_busy','ledger_invalid','ledger_unavailable'].includes(result.reason))return {ok:false,reason:result.reason};
     }
     if(!claimed.length)return {ok:true,sent:false,skipped:true};
-    let sent=false;try{sent=await sendToQQ(key,claimed.map(x=>x.text).join('\n'),{budgetMechanical:true,conversationReply:false,wakeOrigin:null,origin:'purpose',originReason:'notification',allow:()=>automaticNotificationAllowed(key)&&claimed.every(x=>Number.isFinite(x.expiresAt)&&Date.now()<=x.expiresAt)});}catch{}
+    let sent=false;try{sent=await sendToQQ(key,claimed.map(x=>x.text).join('\n'),{budgetMechanical:true,conversationReply:false,wakeOrigin:null,origin:'purpose',originReason:'notification',scheduledNotifications:claimed.map(x=>({id:x.receiptId,key,expiresAt:x.expiresAt,claimed:true})),allow:()=>automaticNotificationAllowed(key)&&claimed.every(x=>Number.isFinite(x.expiresAt)&&Date.now()<=x.expiresAt)});}catch{}
     for(const item of claimed){pluginHost.callService('scheduler','finishDelivery',{id:item.receiptId,sent});if(sent)appendNotificationReceiptV2(key,'通知已发：'+item.id+'｜'+new Date().toISOString()+'｜'+String(item.text).slice(0,80));}
     return {ok:true,sent,uncertain:!sent};
   };
@@ -11426,7 +11427,7 @@ async function main() {
         if (timeBubbleDoneV2(st, sid)) continue;
         if (nowMs >= at && nowMs <= at + 15 * 60 * 1000) {
           markTimeBubbleDoneV2(st, sid);
-          st.pendingTimeBubble = { label: slot.label, hint: slot.hint };
+          st.pendingTimeBubble = { id:sid,label: slot.label, hint: slot.hint };
           saveSocialV2State();
           log('[reserved2] 时间冒泡（补发刚错过的）：' + key + ' ' + slot.label);
           pluginHost.callService('scheduler','schedule',{id:'time-bubble-catchup:'+key+':'+sid,owner:'life-proactive-time-bubble',type:'time-bubble-catchup',requiresTransport:true,at:nowMs,expiresAt:at+15*60000,run:()=>sendWakePromptV2(key,'timeBubble')});
@@ -11512,7 +11513,7 @@ async function main() {
           }
         } else {
           markTimeBubbleDoneV2(st, id);
-          st.pendingTimeBubble = { label: hit.label, hint: hit.hint };
+          st.pendingTimeBubble = { id,label: hit.label, hint: hit.hint };
           saveSocialV2State();
           log('[reserved2] 时间冒泡：' + key + ' ' + hit.label);
           void sendWakePromptV2(key, 'timeBubble').catch((error) => log('[reserved2] 时间冒泡唤醒异常 ' + key + ': ' + (error?.message ?? error)));
@@ -11817,7 +11818,8 @@ async function main() {
     envelope.budgetStage=tokenBudgetOf(key).stage;envelope.replyGrantThroughSeq=getSocialV2State(key).lastUnreadSeq||0;
     envelope.mood=pluginHost.callService('mood','read',{key});
     envelope.replyPlan=pluginHost.callService('replyPlan','resolve',{key,turnId:envelope.actionId,state:modelFacingStateV2(key),
-      incomingText:opts.wakeReason?lastIncomingTextV2(modelFacingStateV2(key)):promptText,mood:envelope.mood,reason:envelope.reason,budgetStage:envelope.budgetStage,batchMessageCount:modelFacingStateV2(key).unread.length});
+      incomingText:opts.wakeReason?lastIncomingTextV2(modelFacingStateV2(key)):promptText,mood:envelope.mood,reason:envelope.reason,budgetStage:envelope.budgetStage,batchMessageCount:modelFacingStateV2(key).unread.length,
+      reminders:envelope.reminders,scheduledEvent:envelope.scheduledEvent,timeBubble:opts.wakeReason==='timeBubble'?getSocialV2State(key).pendingTimeBubble:null});
     if(!envelope.replyPlan)throw Error('发送编排组件未启用/不可用');
     let wakeState;
     let wakeToken;

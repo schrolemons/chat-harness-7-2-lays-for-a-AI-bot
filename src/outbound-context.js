@@ -27,10 +27,10 @@ export const outboundScope=new AsyncLocalStorage();
 export function createOutboundTransport({callService,contextFacts=()=>({}),guard=()=>()=>{},log=()=>{},clock=Date.now,sleep=ms=>new Promise(r=>setTimeout(r,ms))}) {
   const call=(s,m,p)=>callService(s,m,p);
   const chains=new Map();
-  function capture({key,envelope,origin='operator',reason='operator',agent=false,conversationIntent,topicId}={}) {
+  function capture({key,envelope,origin='operator',reason='operator',agent=false,conversationIntent,topicId,scheduledNotifications}={}) {
     const actionId=envelope?.actionId||randomUUID();
     const mood=envelope?.mood||call('mood','read',{key});
-    const plan=envelope?.replyPlan||call('replyPlan','resolve',{key,turnId:agent?'':actionId,agent,incomingText:'',mood});
+    const plan=envelope?.replyPlan||call('replyPlan','resolve',{key,turnId:agent?'':actionId,agent,incomingText:'',mood,reason,scheduledNotifications});
     const originReason=envelope?.reason||reason;
     const ordinary=/^(message|reply|private|question|atMention|nameMention|keyword|probability|anyMessage|speaker|poke|bootstrap)(:|$)/.test(originReason);
     if(origin==='conversation'&&!ordinary&&!['proactiveCheck','timeBubble','startupGreeting','privateFollowup','milkStock'].includes(originReason))origin='purpose';
@@ -89,6 +89,8 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),guard
       if(reservation.waitMs>0)await sleep(reservation.waitMs);
       assertGuard();
       assertContext();
+      const authorization=metered?call('replyPlan','authorize',{key,operationId,now:clock()}):null;
+      if(metered&&authorization?.ok!==true){const error=Error('发送计划拒绝：'+(authorization?.reason||'authorization_unavailable'));error.knownFailed=true;throw error;}
       if(c.agent===false&&c.origin==='mechanical'&&c.reason==='budgetExceeded'&&call('tokenBudget','authorizeMechanicalSend',{key,now:clock()})?.ok!==true){const error=Error('满额固定回复已限流，不排队补发');error.knownFailed=true;throw error;}
       assertRecommendation();
       if(call('conversationDrive','authorize',{key,lease:topicLease})?.ok===false){const e=Error('话题动作已因新来信失效');e.knownFailed=true;throw e;}

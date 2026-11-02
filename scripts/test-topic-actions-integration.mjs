@@ -8,7 +8,7 @@ const memory = initial => { let data = initial || {}; return { get: () => data, 
 function fixture() {
   const key = 'private:1', now = 10000000, topicState = memory(), proactiveState = memory({ proactiveByKey: { [key]: { stage: 3, willingness: 60, source: 'ai', availabilityVersion: 1, phase: 'scheduled', nextAt: now + 1000 } } });
   const proactive = createProactive({ config: { curfewEnabled: false }, state: proactiveState });
-  const services = { proactive, mood: { sent() {} }, replyPlan: { reserve: () => ({ ok: true, waitMs: 0 }), commit() {}, release() {}, resolve: () => ({ maxMessageChars: 500 }) } };
+  const services = { proactive, mood: { sent() {} }, replyPlan: { reserve: () => ({ ok: true, waitMs: 0 }), authorize: () => ({ok:true}), commit() {}, release() {}, resolve: () => ({ maxMessageChars: 500 }) } };
   const call = (service, method, payload) => services[service]?.[method]?.(payload) ?? null;
   const topics = createTopics({ config: {}, state: topicState, capabilities: {}, callService: call, registerTool() {}, log() {}, warn() {} });
   services.conversationDrive = topics.services.conversationDrive;

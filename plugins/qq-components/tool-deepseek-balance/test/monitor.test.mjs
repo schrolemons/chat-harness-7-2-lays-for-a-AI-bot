@@ -18,6 +18,50 @@ test('ordinary use stays quiet; real changes request one scheduled owner convers
  f.next(account('20'));await f.monitor.tick();assert.match(f.notices.at(-1).text,/补充|恢复/);assert.equal(f.notices.at(-1).key,'private:123');
  const count=f.notices.length;f.next(account('20'));await f.monitor.tick();assert.equal(f.notices.length,count);
 });
+
+test('manual balance samples immediately dispatch meaningful changes without waiting for the periodic tick',async()=>{
+ const f=fixture();await f.monitor.query();assert.equal(f.notices.length,0);
+ f.next(account('0.50'),1);await Promise.all([f.monitor.query(),f.monitor.query()]);
+ assert.equal(f.notices.length,1);assert.equal(f.requests(),2);
+ assert.equal(f.monitor.status().lastSuccess.balance_infos[0].total_balance,'0.50');
+ await f.monitor.query();await f.monitor.tick();assert.equal(f.notices.length,1);
+});
+
+test('an explicit balance check reports replenishment promptly even inside the ordinary notification cooldown',async()=>{
+ const f=fixture();await f.monitor.query();f.next(account('0.50'));await f.monitor.query();
+ f.next(account('10'));await f.monitor.query();const count=f.notices.length;
+ f.next(account('11'),1);await f.monitor.query();
+ assert.equal(f.notices.length,count+1);assert.equal(f.notices.at(-1).meta.kind,'replenished');
+});
+
+test('periodic nonurgent changes are retained and coalesced until the configured cooldown opens',async()=>{
+ const f=fixture();await f.monitor.tick();f.next(account('0.50'));await f.monitor.tick();
+ f.next(account('10'));await f.monitor.tick();const count=f.notices.length;
+ f.next(account('11'),1);await f.monitor.tick({now:f.now()});
+ // Force another scheduled sample, rather than waiting the regular five-minute poll.
+ f.next(account('11'),5);await f.monitor.tick();
+ assert.equal(f.notices.length,count);assert.equal(f.state().milk.pendingAlert?.kind,'replenished');
+ f.next(account('11'),30);await f.monitor.tick();assert.equal(f.notices.length,count+1);
+});
+
+test('a failed balance sample keeps a queued verified warning for revalidation rather than deleting it',async()=>{
+ const f=fixture();await f.monitor.query();f.ctx.capabilities.requestScheduledConversation=async()=>({ok:false,reason:'busy'});
+ f.next(account('0.50'));await f.monitor.tick();const id=f.state().milk.pendingAlert.id;
+ f.next({ok:false,error:'network'});await f.monitor.query();
+ assert.equal(f.state().milk.pendingAlert?.id,id);
+ f.next(account('0.50'));f.ctx.capabilities.requestScheduledConversation=async(key,meta)=>{f.notices.push({key,meta});return {ok:true};};
+ await f.monitor.query();assert.equal(f.notices.length,1);assert.equal(f.notices[0].meta.id,id);
+});
+
+test('manual query delivery cannot block a newer balance sample and disabled monitoring stays silent',async()=>{
+ const f=fixture();await f.monitor.query();let entered,release;
+ const ready=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
+ f.ctx.capabilities.requestScheduledConversation=async()=>{entered();await gate;return {ok:true};};
+ f.next(account('0'));await f.monitor.query();await ready;
+ f.ctx.config.monitorEnabled=false;f.next(account('12'));const result=await f.monitor.query();
+ assert.equal(result.balance_infos[0].total_balance,'12');release();
+ assert.equal(f.notices.length,0);
+});
 test('periodic interval, toggle and cached manual reads avoid repeated network calls',async()=>{
  const f=fixture({checkIntervalMin:5});await f.monitor.tick();f.next(account('9'),1);await f.monitor.tick();assert.equal(f.requests(),1);
  f.ctx.config.monitorEnabled=false;f.next(account('8'),10);await f.monitor.tick();assert.equal(f.requests(),1);
@@ -64,9 +108,9 @@ test('a late query after deactivation cannot save a balance or emit a notice',as
  const monitor=createMilkMonitor(ctx,{query:()=>new Promise(r=>release=r)}),pending=monitor.query();controller.abort();release(account('0',false));await pending;assert.equal(monitor.status().lastSuccess,undefined);assert.equal(sent,0);
 });
 test('a queued alert loses its physical expiry on recovery, and querying is not blocked behind delivery',async()=>{
- const f=fixture();await f.monitor.tick();let release,entered;const gate=new Promise(r=>release=r),ready=new Promise(r=>entered=r);let sent=0;
- f.ctx.capabilities.requestScheduledConversation=async(_key,meta)=>{entered();await gate;if(meta.expiresAt<=f.now())return {ok:false,reason:'expired'};sent++;return {ok:true};};
- f.next(account('0',false));const waiting=f.monitor.tick();await ready;f.next(account('12'));const result=await f.monitor.query();assert.equal(result.balance_infos[0].total_balance,'12');release();await waiting;assert.equal(sent,0);
+ const f=fixture();await f.monitor.tick();let release,entered;const gate=new Promise(r=>release=r),ready=new Promise(r=>entered=r),sent=[];
+ f.ctx.capabilities.requestScheduledConversation=async(_key,meta)=>{entered();await gate;if(meta.expiresAt<=f.now())return {ok:false,reason:'expired'};sent.push(meta.kind);return {ok:true};};
+ f.next(account('0',false));const waiting=f.monitor.tick();await ready;f.next(account('12'));const result=await f.monitor.query();assert.equal(result.balance_infos[0].total_balance,'12');release();await waiting;assert.deepEqual(sent,['recovered']);
 });
 test('deactivation revokes the expiry of a queued notification before physical delivery',async()=>{
  let release,entered,meta;const gate=new Promise(r=>release=r),ready=new Promise(r=>entered=r),controller=new AbortController();
