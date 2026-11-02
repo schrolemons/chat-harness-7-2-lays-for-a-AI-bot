@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bridgeHarness} from './audit-bridge-harness.mjs';
+import {bridgeHarness,fixtureTaskTurn} from './audit-bridge-harness.mjs';
 import {apply} from '../plugins/qq-agent-presets/qq-tool-restrict.mjs';
 import {isAdminPluginTool} from '../src/tools/admin-policy.js';
 test('ordinary schemas and execution deny operational tools; chat task notes remain usable',()=>{
@@ -19,6 +19,8 @@ test('real plugin route rejects private/group tokens and forged owner fields bef
     h.cfg.socialV2.adminDev={enabled:true,preset:'qq-admin'};h.setPresets(['standard','qq-chat-v2','qq-admin']);
     h.state.sessions['private:123']='fixture-owner';h.state.sessionPresets['private:123']='qq-admin';
     const owner=h.getSocialV2State('private:123'),other=h.getSocialV2State('private:789'),group=h.getSocialV2State('group:456');
+    await fixtureTaskTurn(h,'private:123');
+    const admittedSessionCount=h.calls.created.length;
     server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));
     const call=(tool,token)=>fetch('http://127.0.0.1:'+server.address().port+'/api/plugins/call',{method:'POST',headers:{'content-type':'application/json','x-console-token':'fixture-console-token','x-agent-call':'1','x-agent-token':token},body:JSON.stringify({tool,input:{token,callerKey:'private:123',key:'private:123',isOwnerKey:true}})});
     for(const state of [other,group])for(const tool of ['campus_watch_status','task_spawn','task_list','task_result','task_input','task_cancel','user_checking','bridge_health_help','worklog_history','exec_backends']) {
@@ -27,6 +29,6 @@ test('real plugin route rejects private/group tokens and forged owner fields bef
     }
     assert.equal((await call('campus_watch_status',owner.agentToken)).status,200);
     assert.equal((await call('task_list',owner.agentToken)).status,200);
-    assert.equal(h.calls.created.length,0);assert.equal(h.calls.sent.length,0);
+    assert.equal(h.calls.created.length,admittedSessionCount);assert.equal(h.calls.sent.length,0);
   } finally {if(server)await new Promise(r=>server.close(r));await h.close();}
 });

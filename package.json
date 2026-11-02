@@ -297,7 +297,17 @@
       "scripts/test-task-isolation.mjs",
       "scripts/test-campus-grab.mjs",
       "scripts/test-ustc-session.mjs",
-      "scripts/test-ustc-report-login.mjs"
+      "scripts/test-ustc-report-login.mjs",
+      "scripts/test-content-transport.mjs",
+      "scripts/test-mcp-content-carrier.mjs",
+      "scripts/test-reply-content-integration.mjs",
+      "scripts/test-reply-content-scopes.mjs",
+      "scripts/test-task-admission-queue.mjs",
+      "scripts/test-task-budget-exemption.mjs",
+      "scripts/test-task-delivery-dedupe.mjs",
+      "scripts/test-task-group-admission.mjs",
+      "scripts/test-task-initial-admission.mjs",
+      "scripts/test-task-lease-boundaries.mjs"
     ]
   }
 }

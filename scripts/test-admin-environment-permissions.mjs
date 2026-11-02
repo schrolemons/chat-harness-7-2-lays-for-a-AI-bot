@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bridgeHarness} from './audit-bridge-harness.mjs';
+import {bridgeHarness,fixtureTaskTurn} from './audit-bridge-harness.mjs';
 import {isAdminPluginTool} from '../src/tools/admin-policy.js';
 
 const management=['task_spawn','task_list','task_result','task_input','task_cancel','campus_watch_status','bridge_health_help','worklog_history','diary_history','user_checking','exec_backends','browser_policy','eval_list_cases','integration_howto','gov_policy_rules','image_generation_status'];
@@ -31,6 +31,7 @@ test('ordinary selected preset, stale loaded preset and disabled switch cannot a
 
 test('active admin environment authorizes management only for its private session and revokes on disable',async t=>{
  const f=await fixture(t,{enabled:true});
+ await fixtureTaskTurn(f.h,'private:123');
  for(const tool of ['task_list','campus_watch_status','exec_backends']){const r=await f.call(tool);assert.equal(r.status,200,tool);await r.json();}
  for(const state of [f.other,f.group])for(const tool of management){const r=await f.call(tool,state.agentToken,{isOwnerKey:true,key:'private:123'});assert.equal(r.status,403,tool);await r.json();}
  f.h.cfg.socialV2.adminDev.enabled=false;
@@ -50,6 +51,7 @@ test('disabling admin through the real config endpoint cancels outstanding deleg
 
 test('every currently registered management tool uses the same gate; dangerous handlers are replaced by permission probes',async t=>{
  const f=await fixture(t,{enabled:true});
+ await fixtureTaskTurn(f.h,'private:123');
  const headers={'x-console-token':'fixture-console-token'};
  const inventory=await(await fetch(f.base+'/api/plugins',{headers})).json();
  const names=inventory.tools.map(tool=>tool.name).filter(isAdminPluginTool);

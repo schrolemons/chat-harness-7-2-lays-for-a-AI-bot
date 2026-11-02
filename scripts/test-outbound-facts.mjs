@@ -8,7 +8,7 @@ import {bridgeHarness} from './audit-bridge-harness.mjs';
 function fixture() {
   let state={};const svc=createPlugin({config:{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},state:{get:()=>structuredClone(state),set:p=>{state={...state,...p};}},capabilities:{},isPluginEnabled:()=>false}).services.replyPlan;
   const facts=[];const transport=createOutboundTransport({callService:(s,m,p)=>s==='replyPlan'?svc[m](p):(facts.push({s,m,p}),s==='mood'&&m==='read'?{replyCeiling:3}:null),sleep:async()=>{},clock:()=>1000});
-  const plan=svc.resolve({key:'private:1',turnId:'turn',incomingText:'你好',mood:{replyCeiling:3},now:1000});
+  const plan=svc.resolve({key:'private:1',turnId:'turn',incomingText:'你好',autonomousSource:{id:'round',kind:'proactiveCheck'},mood:{replyCeiling:3},now:1000});
   const context=transport.capture({key:'private:1',envelope:{key:'private:1',actionId:'round',reason:'proactiveCheck',replyPlan:plan},origin:'conversation',agent:true});
   return {transport,context,facts,svc};
 }
@@ -16,7 +16,7 @@ test('partial successes and all media share one frozen envelope and receipts',as
   const {transport,context,facts,svc}=fixture();
   for(const [i,kind] of ['text','image','sticker','voice','poke','file'].entries()){
     if(i===1){await assert.rejects(transport.perform({key:'private:1',context,kind,send:async()=>{throw Object.assign(Error('rejected'),{knownFailed:true});}}));continue;}
-    if(i>3){await assert.rejects(transport.perform({key:'private:1',context,kind,send:async()=>({message_id:i})}),/turn_limit/);continue;}
+    if(i>3){await assert.rejects(transport.perform({key:'private:1',context,kind,send:async()=>({message_id:i})}),/content_limit/);continue;}
     await transport.perform({key:'private:1',context,kind,send:async()=>({message_id:i})});
   }
   const sent=facts.filter(x=>x.s==='mood'&&x.m==='sent');assert.equal(sent.length,3);
@@ -44,7 +44,7 @@ test('real bridge initializes canonical services and freezes before prompt const
   const key='private:123',st=h.getSocialV2State(key);st.bootstrapSent=true;
   await h.deliverPrompt(key,'hello',{wakeReason:'private'});
   assert.ok(h.calls.prompts.length);
-  assert.match(JSON.stringify(h.calls.prompts.at(-1)),/全部文字、图片、语音和表情合计/);
+  assert.match(JSON.stringify(h.calls.prompts.at(-1)),/每个完整用户语义内容/);
   assert.equal(typeof h.taskCaps.getProactiveFacts,'function');
   assert.equal(h.taskCaps.getProactiveFacts(key).busy,true,'accepted envelope is busy before turn/start');
 });
@@ -59,7 +59,7 @@ async function httpFixture(t,extra={}) {
   const post=async(route,body,token=st.agentToken)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+route,{method:'POST',headers:{'content-type':'application/json','x-console-token':'fixture-console-token',...(token?{'x-agent-call':'1','x-agent-token':token}:{})},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
   function turn(reason='private',cap=3) {
     const actionId='turn-'+Math.random(),mood={replyCeiling:cap,enabled:true,mode:'normal',welcomeBurstActive:true};
-    const replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'你好',mood});
+    const replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'你好',autonomousSource:{id:actionId,kind:reason==='proactiveCheck'?'proactiveCheck':'directMessage'},mood});
     const envelope={key,sessionId:sid,reason,actionId,replyPlan,mood};
     h.activeTurnEnvelopes.set(sid,envelope);return envelope;
   }
@@ -100,7 +100,7 @@ test('real OneBot leaf shares file/image/poke cap and reports successes exactly 
   await h.onebotHttpAction('upload_private_file',{user_id:123,file:'fixture.pdf',name:'fixture.pdf'});
   await h.onebotHttpAction('send_private_msg',{user_id:123,message:[{type:'image',data:{file:'fixture.png'}}]});
   await h.onebotHttpAction('send_poke',{user_id:123});
-  await assert.rejects(h.onebotHttpAction('send_custom_face',{user_id:123,emoji_id:'fixture'}),/turn_limit/);
+  await assert.rejects(h.onebotHttpAction('send_custom_face',{user_id:123,emoji_id:'fixture'}),/content_limit/);
  });
  assert.equal(h.pluginHost.callService('replyPlan','preview',{key}).successful,3);
  const m=h.pluginHost.get('ctx-user-mood').state.mood;
@@ -146,7 +146,7 @@ test('real voice and sticker success points report once each despite shared gate
  const h=await bridgeHarness({globals:{inspectAudio:async()=>({ok:true,size:100,duration:1,codec:'pcm',warnings:[]})},
  files:{'state/plugins/config/ctx-chat-reply-shape.json':{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false}}});
  t.after(()=>h.close());h.setMode('reserved2');const key='private:123';
- const replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:'media-turn',incomingText:'hi',mood:{replyCeiling:3,welcomeBurstActive:true}});
+ const replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:'media-turn',incomingText:'hi',autonomousSource:{id:'media-turn',kind:'proactiveCheck'},mood:{replyCeiling:3,welcomeBurstActive:true}});
  const envelope={key,actionId:'media-turn',reason:'proactiveCheck',replyPlan};const c=h.outboundContext(key,{wakeOrigin:envelope});
  h.bot.request=async action=>action==='fetch_custom_face_detail'?{status:'ok',retcode:0,data:[{emoji_id:'fixture-sticker',resId:'fixture-sticker',url:'https://public.invalid/sticker'}]}:{status:'ok',retcode:0,data:{}};
  await outboundScope.run(c,async()=>{
@@ -192,7 +192,7 @@ test('relay does not claim delivery when its SDK text write failed',async t=>{
 
 for(const targetKind of ['mention','quote','poke'])test('group actual '+targetKind+' target can answer without mentioning bot; other users cannot',async t=>{
  const {h,post}=await httpFixture(t);h.setSelfIdentity('bot','9');const key='group:456',sid=await h.ensureSession(key),st=h.getSocialV2State(key);
- const actionId='target-'+targetKind,replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'hi',mood:{replyCeiling:3,welcomeBurstActive:true}});
+ const actionId='target-'+targetKind,replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'hi',autonomousSource:{id:actionId,kind:'proactiveCheck'},mood:{replyCeiling:3,welcomeBurstActive:true}});
  h.activeTurnEnvelopes.set(sid,{key,sessionId:sid,actionId,reason:'proactiveCheck',replyPlan});
  h.bot.getGroupMemberList=async()=>[{user_id:123},{user_id:222}];
  h.bot.getMessage=async id=>({message_id:id,group_id:456,user_id:123,sender:{user_id:123,nickname:'person'},message:[{type:'text',data:{text:'hello'}}]});
@@ -212,7 +212,7 @@ test('optional mood and proactive owners may be disabled at startup without disa
 
 test('real multipart group send acquires only its first explicit target after the target part succeeds',async t=>{
  const {h,post,get}=await httpFixture(t);h.setSelfIdentity('bot','9');const key='group:456',sid=await h.ensureSession(key),st=h.getSocialV2State(key),actionId='multipart-target';
- const replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'hi',mood:{replyCeiling:3,welcomeBurstActive:true}});
+ const replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'hi',autonomousSource:{id:actionId,kind:'proactiveCheck'},mood:{replyCeiling:3,welcomeBurstActive:true}});
  h.activeTurnEnvelopes.set(sid,{key,sessionId:sid,actionId,reason:'proactiveCheck',replyPlan});
  let part=0;const send=async extra=>{const result=await post('/api/socialV2/send-message',{key,messages:'hello '+(++part),...extra},st.agentToken);assert.equal(result.body.ok,true,JSON.stringify(result));};
  const readWait=()=>Object.values(h.pluginHost.get('ctx-user-mood').state.mood.waits).find(x=>x.key===key);
@@ -242,7 +242,7 @@ test('prompt inspection has explicit absent plan and canonical topic config, and
 
 for(const addressedBy of ['name','at','quote'])test('review1: group wait ignores second-person/model/owner chatter and accepts actual '+addressedBy,async t=>{
  const {h,post}=await httpFixture(t);h.setSelfIdentity('AI助手','9');const key='group:456',sid=await h.ensureSession(key),st=h.getSocialV2State(key),actionId='direct-evidence-'+addressedBy;
- const replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'hi',mood:{replyCeiling:3}});
+ const replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'hi',autonomousSource:{id:actionId,kind:'proactiveCheck'},mood:{replyCeiling:3}});
  h.activeTurnEnvelopes.set(sid,{key,sessionId:sid,actionId,reason:'proactiveCheck',replyPlan});
  const sent=await post('/api/socialV2/send-message',{key,messages:'hello group'},st.agentToken);assert.equal(sent.body.ok,true,JSON.stringify(sent));
  h.socialV2.paused=true;

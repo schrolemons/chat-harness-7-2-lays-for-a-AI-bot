@@ -11,6 +11,7 @@ export const TOOL_CONFIG_FLAGS = {
   qq_mood: 'mood',
   qq_send_burst: 'sendBurst',
   qq_send_message: 'sendMessage',
+  qq_reply_contents: 'sendMessage',
   qq_wait_for_messages: 'waitMessages',
   qq_wait_for_quiet: 'waitMessages',
   qq_report_feedback: 'feedback',

@@ -24,17 +24,18 @@ export function messageAdmitted(envelope,message){
 
 // Transport identity only. Policy and durable counters live in component services.
 export const outboundScope=new AsyncLocalStorage();
-export function createOutboundTransport({callService,contextFacts=()=>({}),guard=()=>()=>{},log=()=>{},clock=Date.now,sleep=ms=>new Promise(r=>setTimeout(r,ms))}) {
+export function createOutboundTransport({callService,contextFacts=()=>({}),contentFacts=()=>({}),guard=()=>()=>{},log=()=>{},clock=Date.now,sleep=ms=>new Promise(r=>setTimeout(r,ms))}) {
   const call=(s,m,p)=>callService(s,m,p);
   const chains=new Map();
-  function capture({key,envelope,origin='operator',reason='operator',agent=false,conversationIntent,topicId,scheduledNotifications}={}) {
+  function capture({key,envelope,origin='operator',reason='operator',agent=false,conversationIntent,topicId,scheduledNotifications,contentId}={}) {
     const actionId=envelope?.actionId||randomUUID();
     const mood=envelope?.mood||call('mood','read',{key});
-    const plan=envelope?.replyPlan||call('replyPlan','resolve',{key,turnId:agent?'':actionId,agent,incomingText:'',mood,reason,scheduledNotifications});
+    let plan=envelope?.replyPlan||call('replyPlan','resolve',{key,turnId:agent?'':actionId,agent,incomingText:'',mood,reason,scheduledNotifications});
+    if(agent&&contentId){const bound=call('replyPlan','bindContent',{key,sourceKey:envelope?.key||key,plan,contentId,...contentFacts(envelope?.key||key,envelope)});if(bound?.ok)plan=bound.plan;}
     const originReason=envelope?.reason||reason;
     const ordinary=/^(message|reply|private|question|atMention|nameMention|keyword|probability|anyMessage|speaker|poke|bootstrap)(:|$)/.test(originReason);
     if(origin==='conversation'&&!ordinary&&!['proactiveCheck','timeBubble','startupGreeting','privateFollowup','milkStock'].includes(originReason))origin='purpose';
-    return Object.freeze({key,sourceKey:envelope?.key||key,envelope,actionId,plan,origin,reason:originReason,agent,mode:mood?.mode,
+    return Object.freeze({key,sourceKey:envelope?.key||key,envelope,actionId,plan,contentId,origin,reason:originReason,agent,mode:mood?.mode,
       conversationIntent:['reply','followup','newTopic'].includes(conversationIntent)?conversationIntent:undefined,
       topicId:typeof topicId==='string'?topicId.slice(0,120):undefined});
   }
@@ -51,14 +52,13 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),guard
   }
   function perform(args={}) {
     const {key}=args,context=args.context||outboundScope.getStore()||capture({key});
-    const assertAllowed=args.assertAllowed||guard(key,context);
-    const operation=(chains.get(key)||Promise.resolve()).then(()=>performNow({...args,context,assertAllowed}));
+    const operation=(chains.get(key)||Promise.resolve()).then(()=>performNow({...args,context}));
     const tail=operation.catch(()=>{});chains.set(key,tail);
     void tail.finally(()=>{if(chains.get(key)===tail)chains.delete(key);});
     return operation;
   }
   async function performNow({key,context,kind='text',text='',send,assertAllowed,requestedDelay,targetUserId,replyToMessageId}={}) {
-    const c=context||outboundScope.getStore()||capture({key});
+    let c=context||outboundScope.getStore()||capture({key});
     const operationId=randomUUID();
     const assertContext=()=>{
       if(!c.agent)return;
@@ -66,6 +66,11 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),guard
       if(checked?.ok===false){const error=Error(checked.reason+'；'+checked.hint);error.knownFailed=true;throw error;}
     };
     assertContext();
+    if(c.agent&&!c.plan?.scheduledGrant){
+      const bound=call('replyPlan','bindContent',{key,sourceKey:c.sourceKey,plan:c.plan,contentId:c.contentId||c.plan?.contentId,replyToMessageId,...contentFacts(c.sourceKey,c.envelope)});
+      if(bound?.ok!==true){const error=Error('发送内容范围拒绝：'+(bound?.reason||'content_scope_unavailable'));error.knownFailed=true;error.statusCode=409;throw error;}
+      c=Object.freeze({...c,plan:bound.plan,contentId:bound.content?.id||c.contentId});
+    }
     const scheduled=c.envelope?.scheduledEvent;
     if(scheduled&&(key!==scheduled.key||(Array.isArray(scheduled.allowedKinds)&&!scheduled.allowedKinds.includes(kind)))){const e=Error('定时事件不允许此发送目标或消息类型');e.knownFailed=true;throw e;}
     if(c.agent){const expression=call('chatExpression','validate',{key,text,kind});if(expression?.ok===false){const error=Error(expression.reason+'；'+expression.hint);error.knownFailed=true;throw error;}}
@@ -80,7 +85,8 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),guard
     if(topicLease?.ok===false){const e=Error('话题动作拒绝：'+topicLease.reason+(topicLease.hint?'；'+topicLease.hint:''));e.knownFailed=true;throw e;}
     const plan=topicLease?.timeoutAction ? call('replyPlan','resolve',{key,turnId:topicLease.episodeId,incomingText:'',mood:call('mood','read',{key})||c.envelope?.mood,agent:c.agent})||c.plan : c.plan;
     if(plan && String(text).length>plan.maxMessageChars){call('conversationDrive','release',{lease:topicLease});const e=Error('发送计划拒绝：message_length');e.knownFailed=true;throw e;}
-    const assertGuard=assertAllowed||guard(key,c);
+    const policyGuard=guard(key,c);
+    const assertGuard=()=>{assertAllowed?.();policyGuard();};
     const metered=!(c.agent===false&&c.origin==='mechanical'&&['thinkingAck','budgetExceeded'].includes(c.reason));
     const reservation=metered?call('replyPlan','reserve',{key,plan,operationId,kind,text,inputSeq:c.envelope?.replyGrantThroughSeq,deduplicate:c.origin==='conversation'||!!c.conversationIntent,requestedDelay,now:clock()}):{ok:true,waitMs:0};
     if(!reservation?.ok){call('conversationDrive','release',{lease:topicLease});const e=Error('发送计划拒绝：'+(reservation?.reason||'service_unavailable')+(reservation?.hint?'；'+reservation.hint:''));e.statusCode=429;e.knownFailed=true;throw e;}

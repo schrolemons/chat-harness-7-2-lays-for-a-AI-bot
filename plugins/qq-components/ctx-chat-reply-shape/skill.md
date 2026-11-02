@@ -12,34 +12,38 @@
 
 2026-10-31：reserve 接收真实准入水位 inputSeq 和拟发送正文，同一批来信的相同文字在成功发送、并发预占或结果未知时不重复执行，成功指纹随账本持久化。只有确定失败才释放；真实新来信的新水位可再次发送相同简短回应。机械通知及日程保持各自的投递语义，不因普通聊天去重被取消。
 
-## 发送上限与重复调用
+## 每份完整内容的拆分上限（2026-11-02）
 
-`send-rejection.mjs` 只将确定耗尽的本批次发送上限归类为 `TURN_SEND_LIMIT`，明确剩余0条、不可重试、先回执再等待新来信。仍有剩余条数、消息太长、鉴权、账户余额和网络错误分别处理，不能混为上限耗尽。
+本组件属于L层，拥有语义内容范围、持久拆分计数、普通聊天分钟/小时账本、间隔与单条长度。`maxMessagesNormal/Casual/Serious` 保留兼容键，默认均为3，表示每份普通/轻松/严肃内容最多拆分几条，不是每轮、每等待窗口或每个LLM请求的总上限。上限不是目标，不要求发满。
 
-`request-guard.mjs` 由既有 QQ preset 的 context-composer 注册。同一原生回合内，真实发送工具连续两次发生相同错误，且没有新认领入站或后台新授予的回复批次时，在下一次付费模型请求前收口；不杀会话、不重启进程、不删队列。校验原生 tool/call 与 tool/result 配对，只认可错误结果，聊天文字与读取工具错误均不能触发。新回合或实际发送成功清除旧连续失败计数；新认领的消息不被丢弃。它不是“群聊会话自动恢复”的重建机制。
+一份完整内容可由多条碎片来信合并，按完整含义分组，不按消息数量分配。一个等待窗口内三份独立含义各有最多3条，允许合计3+3+3；没有额外批次总门槛，普通聊天限频仍独立适用。内容范围只能来自实际准入的来信seq；同一内容跨请求、重读、等待或换工具仍共用计数。重复声明不续领，已开始发送后不得通过重分组增加额度。文字、引用、图片、语音、表情、拍一拍和文件共用所选内容的物理发送计数。
 
-## 发送计划
+桥接/传输层仅携带准入事实、内容ID、可信任务来源和冻结计划；语义分组及计数策略由组件拥有。不为分组额外调用模型。逐请求进度刷新只读，不重新授权发送，剩余条数不要求发满，已答内容不能换说法重发。
 
-真实定时事件可临时突破单轮及分钟/小时发送上限：日程用 id/dueAt/requestedAt、时间冒泡用实际时段日期ID、稍后联系用约定ID、API预算告警用组件事件ID，固定通知须先成功认领发送凭据。每项最多一条，单批最多20项，额外额度从首次授予起有效2分钟；同一会话滚动一小时最多额外20次物理发送。普通聊天不能凭文字或自报原因领额度；所有成功和未知预占仍计入普通限频。模式、权限、免打扰、预算和事件过期继续生效。
+## 普通聊天动态限频
 
-额度和已占用的事件ID随发送账本持久保存，换回合、重读消息和重载不续领；只有确定未发送才释放。排队结束后 `replyPlan.authorize` 再核对临时额度，睡眠或长等待不能带着过期突发额度发送。尚未使用的过期额度不再突破限制，但有效事件可在普通额度恢复后处理。策略在 `scheduled-grants.mjs`，桥接仅传已有调度事实。
+聊天意愿从 `proactive.availability` 读取，调用方不能用payload伪造。心情和意愿共用 `engagement.mjs` 的F系数，仅缩放普通聊天分钟/小时基础频次，不缩减每份内容拆分上限；`detailLevel` 按F分档，`styleInstruction` 只来自心情。低忙闲分数不改人设，严肃问题仍需完整回答。
 
-本组件属于 L 层，拥有全部实际出站的分钟/小时账本、间隔和对话回合条数。桥接在真实模型投递前调用 `replyPlan.resolve`，冻结结果并随 pending/active/completed envelope 携带；beforePrompt 只展示该计划，表情选择也消费同一个计划。
+两个时间窗口分别求解：基础值大于0时，有效额度为 `max(1, ceil(基础额度 × F))`；基础0始终表示该窗口不限。心情与意愿均50时F为0.36，基础8点/分钟得到3点/分钟，基础60点/小时得到22点/小时。普通聊天每条实际发送占1点，任务接手与其共享额度但整组只占1点。每份普通内容3条仍保持3条。没有心情replyCeiling或资料讨论固定1条等额外内容上限。
 
-`resolve({key,turnId,incomingText,mood,reason,referenceMode?,agent=true,now?})` 返回不可变 kind/maxMessages/hourlyLimit/minIntervalMs/detailLevel/maxMessageChars/delayPlan/line。心情 replyCeiling 可收紧条数；有效欢迎可采用 casual 上限，仍服从 serious 和资料讨论（最多1条）。没有另一套低心情阈值或最近连发判断。
+配置唯一来源为 `plugin.json`：`maxMessagesNormal/Casual/Serious`、`longIncomingChars`、`intervalMinMs/MaxMs`、`longGapProbability`、`longGapMinMs/MaxMs`、`maxSendPerMinute/Hour`、`maxMessageChars`。条数必须1–20，0间隔表示无需等待；普通/长间隔合法有序，fixed延迟也受计划边界约束。`src/reply-shape.js` 的纯 `validateReplyPolicy` 供宿主与迁移共用。
 
-配置唯一来源为 plugin.json：maxMessagesNormal/Casual/Serious、longIncomingChars、intervalMinMs/MaxMs、longGapProbability、longGapMinMs/MaxMs、maxSendPerMinute/Hour、maxMessageChars。0频次上限表示不限制该时间窗口，0间隔表示无需等待；条数必须1–20。普通/长间隔必须合法有序，请求 fixed 延迟也受同计划边界约束。`src/reply-shape.js` 导出纯 `validateReplyPolicy` 供宿主与迁移共用。
+## 可信任务与投递守卫
 
-发送调用 `reserve({key,plan,operationId,kind,now,requestedDelay?})`，同步持久预占成功才允许网络写入；`commit({key,operationId,sentAt,deliveryId})` 在物理成功后记账；`release({key,operationId,knownFailed:true})` 只释放确定失败。未知结果保留预占，不伪造成功、不自动重试。`remaining({key,plan})` 跨目标合计同一模型回合的条数；全部文字、图片、语音、表情、拍一拍和文件都占一条真实物理发送。
+显式任务执行、传话（规则组件或模型均可）、日程创建/修改/取消及真实到期提醒、报告查看/检索/摘要和完成汇报按同任务组计点：接手任务组在共享分钟/小时额度中只占1点，组内执行及完成汇报发送不重复扣点，也不限普通内容拆分条数。任务来源必须由真实准入/受信执行链证明；用户普通文字或模型自报标签不能凭空铸造准入或新的已付点任务组。到期任务提醒适用任务组规则，优先于旧定时突发配额。普通时间冒泡等闲聊不会只因定时发生而变成任务。
 
-`initialize({conversations:[{key,sendTimes}],now?})` 仅在没有组件拥有账本的会话导入旧成功时间历史；不重复导入。`preview({key,now?})` 只读返回 minute/hour/successful/inflight/allowed/nextAt。`policy()` 返回配置；`delay({plan,requested?,random?})` 是唯一间隔求解。账本位于组件 state.sendLedger，重载/重启保留预占与成功凭据。
+任务开始仍检查原有唤醒、费用与弱限频，冷漠私聊默认每5条唯一来信、群聊按配置间隔准入。共享分钟/小时无点时保留已读未处理来源，额度恢复后自动复查开始条件，成功占1点再执行；同组跨请求、续跑或重载不重复扣点。通过检查后持久保存原任务范围内的准入权限；执行中跨过费用软/硬阈值，可继续原任务并及时汇报。所有实际费用照常计入会话和全局账本。原任务续权不能开启无关新任务或为普通聊天续费，任务标签也不能替代费用检查。
 
-`progress({plan})` 只读返回冻结批次的 successful/inflight/remaining，未知结果仍计为预占，不编造成功。该组件加入逐模型请求刷新名单；beforePrompt 同时展示原计划和最新发送进度，明确已答内容不换说法重发、剩余额度不是目标条数。刷新不调用 resolve/reserve，不授予新额度；真实新来信仍按原批次准入机制处理。
+任务接手计点记录独立于实际QQ投递收据；接手不是消息已送达，不将来源伪标为已回复/已完成。任务组内的实际发送仍逐项记录成功、确定失败或未知结果；只有真实成功回执能确认送达。
 
-停用或缺失本组件会明确拒绝模型投递与发送，不退回旧 socialV2.send 或无上限。操作者/机械/通知没有模型整轮条数，但仍共享实际目标的频次和间隔；可信存储通知保留既有模型预算豁免及暂停、静默、白名单、时效、收据防重守卫。
+豁免不取消模式、权限、白名单、跨会话与媒体授权、免打扰、暂停、时效、维护回合禁发、防重和持久投递凭据。普通非任务定时事件仍按既有 `scheduled-grants.mjs` 规则校验真实事件ID与时效，不能以任务自报绕过。
 
-验证：scripts/test-resolved-send-plan.mjs、test-outbound-facts.mjs、test-outbound-host.mjs 与隔离 test:plugin-audit；这些是模拟网关/模型证据，不代表生产QQ发送验收。
+发送须先持久预占，成功后 `commit` 登记实际回执；只有确定失败可 `release`。未知结果保留预占，不编造成功、不自动重试。账本位于组件 `state.sendLedger`，重载/重启保留预占与成功凭据；导入旧发送时间只在无组件账本时执行一次。`preview`、`progress` 为只读查询，不授予额外内容额度。停用或缺失组件明确拒绝模型投递与发送，不退回无上限路径。
 
-聊天意愿由proactive.availability读取，调用方不能用payload伪造。与心情共用ctx-chat-reply-shape/engagement.mjs的F公式，先缩放条数再施加现有上限；detailLevel按F分档，styleInstruction只来自心情。低忙闲分数不改变语气或人设；严肃问题仍需完整回答。
+普通聊天费用预算耗尽后保持安静，不发送thinkingAck、超时道歉或budgetExceeded机械补话。已准入任务若在执行中达到费用阈值，其继续执行和必要结果汇报使用原任务权限，不因超限丢弃；新任务仍须重新满足开始条件。
 
-2026-10-31 回复批次与错误保护：实际读到新的、超过本回合已准入水位的人类来信时，replyPlan.forMessages只授予一次新批次额度，重复读取旧消息不刷新。桥接读取结果仅在实际授予时带replyBatch.renewed/id/throughSeq；preset不把历史seq本身当作新输入。两次相同真实发送错误后阻断无新认领输入的下一次模型请求，部分成功不算全失败。冷漠私聊计划固定1条、群聊按所选窗口条数，普通分钟上限满时冷漠批次等待释放后继续；小时上限仍有效。可信thinkingAck和budgetExceeded不占普通对话账本，后者另受tokenBudget独立防刷屏。
+## 重复调用与验证边界
+
+发送上限错误只在对应普通内容额度确实耗尽时表示不可通过重试续领；消息过长、鉴权、账户余额和网络错误分别处理。`request-guard.mjs` 校验原生tool/call与tool/result配对，只认可真实发送错误；连续相同错误且无新准入事实时收口下一次付费空转，不杀会话、不重启、不删队列。新认领消息和独立内容不因旧内容耗尽被丢弃。
+
+规则与示例见 `docs/guides/REPLY_CONTENT_SCOPES.md`。验证须覆盖3+3+3、同内容跨请求累计、碎片合并、重读不续领、任务组只扣1点/无点等待/恢复后自动接手、来源防伪、接手计点与实际回执分离、普通预算耗尽无补话、防重和失败收据。隔离网关/模型测试不能代替生产QQ投递、配置保存、热加载或部署验收。

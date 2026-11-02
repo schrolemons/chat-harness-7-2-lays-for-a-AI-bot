@@ -34,6 +34,7 @@ async function open({ savedState } = {}) {
     // 控制台服务端即使对 agent 调用也会先过 x-console-token 鉴权，缺了就是 401。
     const headers = { 'x-console-token': 'fixture-console-token' };
     if (agent) headers['x-agent-token'] = token ?? st.agentToken;
+    if (body?.contentId) headers['x-reply-content-id'] = body.contentId;
     if (body !== undefined) headers['content-type'] = 'application/json';
     const req = http.request({
       hostname: '127.0.0.1', port,
@@ -63,6 +64,7 @@ async function open({ savedState } = {}) {
   const readSavedState = () => JSON.parse(fs.readFileSync(statePath, 'utf8'));
   return {
     h, call, append, readSavedState,
+    async declare(groups){const result=await call('reply-contents',{body:{groups}});assert.equal(result.status,200,JSON.stringify(result.data));return result.data.contents;},
     st: () => h.getSocialV2State(KEY),
     async close() { await new Promise((resolve) => server.close(resolve)); await h.close(); },
   };
@@ -253,7 +255,8 @@ await test('a reply waits for a newer complete body and only stamps explicitly r
     const blocked = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply' } });
     assert.notEqual(blocked.status,200);assert.match(blocked.data.error,/message_context_pending/);
     await c.call('unread');
-    const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply' } });
+    const [content]=await c.declare([{seqs:[1,2],kind:'chat'}]);
+    const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply',contentId:content.id } });
     assert.equal(sent.status, 200);
     const report = await c.call('/api/socialV2/receipt-report', { body: { conversationId: KEY, receipts: [{ seq: 1, status: 'replied' }] } });
     assert.equal(report.status, 200, JSON.stringify(report.data));
@@ -394,7 +397,8 @@ await test('mark-read preserves seen messages until the JSON receipt reports rep
     assert.deepEqual(seqs(c.st().unread), [1, 2]);
     assert.ok(c.st().unread.every((m) => m.seenAt > 0 && !Number(m.repliedAt)));
 
-    const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply to both' } });
+    const [content]=await c.declare([{seqs:[1,2],kind:'chat'}]);
+    const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply to both',contentId:content.id } });
     assert.equal(sent.status, 200);
     const report = await c.call('/api/socialV2/receipt-report', { body: { conversationId: KEY, receipts: [{ seq: 1, status: 'replied' }, { seq: 2, status: 'replied' }] } });
     assert.equal(report.status, 200, JSON.stringify(report.data));
@@ -453,15 +457,16 @@ await test('preserving renewal refuses to close unread arrivals and leaves the c
  }finally{await c.close();}
 });
 
-await test('real HTTP sends reject duplicate text for the same read batch, but admit a new human batch',async()=>{
+await test('real HTTP sends deduplicate one semantic content while a distinct declared human content may reuse brief words',async()=>{
  const c=await open();try{
    c.append('first hello');await c.call('unread');
-   const sid=await fixtureReplyTurn(c.h,KEY),envelope=c.h.activeTurnEnvelopes.get(sid);envelope.replyPlan=Object.freeze({...envelope.replyPlan,maxMessages:10});
+   await fixtureReplyTurn(c.h,KEY);
    const body={token:c.st().agentToken,userId:'123',message:'我在呀。',conversationIntent:'reply'};
    const first=await c.call('/api/send/private',{body});assert.equal(first.status,200,JSON.stringify(first.data));
    const duplicate=await c.call('/api/send/private',{body});assert.notEqual(duplicate.status,200);assert.match(duplicate.data.error,/duplicate_delivery/);
    c.append('another human hello');await c.call('unread');
-   const next=await c.call('/api/send/private',{body});assert.equal(next.status,200,JSON.stringify(next.data));
+   const contents=await c.declare([{seqs:[1],kind:'chat'},{seqs:[2],kind:'chat'}]);
+   const next=await c.call('/api/send/private',{body:{...body,contentId:contents.find(content=>content.seqs.includes(2)).id}});assert.equal(next.status,200,JSON.stringify(next.data));
  }finally{await c.close();}
 });
 

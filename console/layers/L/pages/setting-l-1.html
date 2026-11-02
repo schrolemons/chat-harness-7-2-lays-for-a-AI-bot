@@ -1,6 +1,6 @@
 <section id="section-setting-l-1" data-page="setting-l-1" class="card span-all commercial-component" hidden>
 <h2>发送与等待</h2>
-<p class="meta">聊天意愿看用户是否有空、是否有精力；心情值看 bot 主观上是否想与对方聊天。两者影响主动概率、条数和深度，只有心情影响说话风格。缩放系数 F = (0.2 + 0.8×心情/100) × (0.2 + 0.8×聊天意愿/100)。</p>
+<p class="meta">聊天意愿看用户是否有空、是否有精力；心情值看 bot 主观上是否想与对方聊天。两者影响主动概率、普通聊天分钟/小时频次和深度，只有心情影响说话风格；每份内容的拆分上限不随两者缩减。缩放系数 F = (0.2 + 0.8×心情/100) × (0.2 + 0.8×聊天意愿/100)。</p>
 <details open class="settings-group"><summary>什么时候主动</summary><div class="settings-content">
 <div class="meta">静默阶段统一判定主动机会；最大静默是公共门槛允许时的兜底，仍受宵禁、免打扰和预算约束。</div>
 <div data-component-slot="life-wake-reasons" data-inline-fields="disabledReasons,proactiveEnabled,silenceMinutes,initialProbability,probabilityStep,probabilityMax,checkMinMinutes,checkMaxMinutes,intervalStepMinutes,checkFloorMinutes,minActiveGapMinutes,maxSilenceMinutes,initialWillingness,curfewEnabled,curfewStartHour,curfewEndHour" data-save-label="保存静默主动概率与间隔"></div>
@@ -8,7 +8,8 @@
 <div id="proactivePreview" class="runtime-preview-grid" aria-live="polite">读取中…</div>
 </div></details>
 <details open class="settings-group"><summary>发多少与多快</summary><div class="settings-content">
-<div class="meta">唯一发送计划统一约束每轮条数、每分钟与每小时上限、单条字数和条间间隔。关闭此组件将停止发送。</div>
+<div class="meta">按完整语义划分每份来信内容，可合并多条碎片；每份内容分别累计拆分条数，没有请求批次总条数上限。例如三份独立含义各最多3条，可合计3+3+3条。普通聊天每条实际发送占1点分钟/小时额度；接手同一任务及完成汇报整组共占1点，组内发送不重复扣点、不限拆分条数。</div>
+<div class="meta">任务无可用额度时保留已读未处理，额度恢复后复查费用、唤醒、弱限频等条件，自动扣1点接手，同组不重复扣点。已准入任务执行中跨费用软/硬阈值，可凭原任务权限继续并及时汇报；所有实际花费记账，不能据此无限开启新任务。接手凭据不等于QQ送达回执；权限、免打扰、时效、防重与真实回执仍有效。关闭此组件将停止发送。</div>
 <div data-component-slot="ctx-chat-reply-shape"></div>
 <details class="parameter-block"><summary>等新消息与等对方说完</summary>
       <h3>无人回复时收尾</h3>

@@ -7,9 +7,9 @@ const billedEvent = (sessionId) => ({ sessionId, at: Date.now() - 10, model: 'de
   type: 'assistant/message', seq: 1, data: { turn: 1, step: 1, usage: { inputTokens: 1_000_000, outputTokens: 100 } }
 } });
 
-test('hard mechanical replies attempt unique private arrivals or directed group arrivals',()=>{
+test('hard-exhausted arrivals stay silent and are deduplicated in recovery',()=>{
  let state={};const budget=createPlugin({config:{mechanicalPrivateReplies:['hard private'],mechanicalGroupReplies:['hard group']},state:{get:()=>state,set:p=>state={...state,...p}}}).services.tokenBudget;
- for(const [kind,expected] of [['private','hard private'],['group','hard group']])for(let i=1;i<=4;i++)assert.equal(budget.onSilentIncoming({key:kind+':1',kind,messageId:String(i),atSelf:kind==='group',stage:'silent',periodStart:123,at:10000+i*20000}).text,expected);
+ for(const kind of ['private','group'])for(let i=1;i<=4;i++)assert.equal(budget.onSilentIncoming({key:kind+':1',kind,messageId:String(i),atSelf:kind==='group',stage:'silent',periodStart:123,at:10000+i*20000}).text,null);
  assert.equal(budget.onSilentIncoming({key:'private:1',kind:'private',messageId:'4',stage:'silent',periodStart:123,at:200000}).duplicate,true);
 });
 
@@ -34,7 +34,7 @@ test('bridge forwards only verified same-group bot quote evidence to the silent 
   for(const id of [11,12,13,14,15])await h.handleIncoming('group',456,{self_id:999,user_id:222,group_id:456,message_id:100+id,message:[{type:'reply',data:{id:String(id)}},{type:'text',data:{text:'回复'}}]},h.cfg);
   assert.equal(h.calls.sent.length,0,'human, foreign-group and unresolved quotes cannot trigger a mechanical reply');
   await h.handleIncoming('group',456,{self_id:999,user_id:222,group_id:456,message_id:110,message:[{type:'reply',data:{id:'10'}}]},h.cfg);
-  assert.deepEqual(h.calls.sent.map(x=>[x.kind,x.text]),[['group','引用已收到']]);assert.equal(h.calls.prompts.length,0);
+  assert.deepEqual(h.calls.sent,[]);assert.equal(h.calls.prompts.length,0);
   const state=h.pluginHost.get('life-token-budget').state;assert.equal(state.recovery['group:456'].messages.find(x=>x.id==='110').quoteTargetIsSelf,true);
  }finally{await h.close();}
 });
@@ -135,7 +135,7 @@ test('maximum recovery window retains its last message without truncating the pr
   assert.ok(delivered[0].prompt.length < 80000);
 });
 
-test('hard cap routes private and group inbound messages to mechanical replies only', async () => {
+test('hard cap retains private and group arrivals without model calls or automatic mechanical replies', async () => {
   const h = await bridgeHarness({ files: { 'state/plugins/config/life-token-budget.json': {
     sessions: { 'private:123': { hardLimitYuan: 0.1 }, 'group:456': { hardLimitYuan: 0.1 } },
     mechanicalPrivateReplies: ['用户我好饿...'], mechanicalGroupReplies: ['咕噜，我在潜水~']
@@ -159,9 +159,10 @@ test('hard cap routes private and group inbound messages to mechanical replies o
       self_id: 999, user_id: 222, group_id: 456, message_id: 7,
       message: [{ type: 'at', data: { qq: '999' } }, { type: 'text', data: { text: 'AI助手' } }]
     }, h.cfg);
-    assert.deepEqual(h.calls.sent.map(x => [x.kind, x.text]), [
-      ['private', '用户我好饿...'], ['group', '咕噜，我在潜水~']
-    ]);
+    assert.deepEqual(h.calls.sent,[]);
+    assert.equal(h.pluginHost.callService('tokenBudget','recoveryPending',{key:'private:123'}),5);
+    assert.equal(h.pluginHost.callService('tokenBudget','recoveryPending',{key:'group:456'}),2);
+    assert.equal(h.messageAckArmed.size,0);
     assert.equal(h.calls.prompts.length, 0);
   } finally { await h.close(); }
 });
@@ -233,7 +234,7 @@ test('global cap blocks direct task and maintenance model prompts', async () => 
   } finally { await h.close(); }
 });
 
-test('hard cap blocks ordinary queued QQ sends while allowing mechanical replies', async () => {
+test('hard cap blocks ordinary queued sends while the explicit internal budget adapter retains its separate authorization', async () => {
   const h = await bridgeHarness({ files: { 'state/plugins/config/life-token-budget.json': { globalHardLimitYuan: 0.1 } } });
   try {
     const sid = await h.ensureSession('private:123');

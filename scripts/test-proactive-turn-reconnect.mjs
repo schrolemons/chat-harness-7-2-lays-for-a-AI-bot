@@ -28,7 +28,7 @@ for(const reason of ['startupGreeting','proactiveCheck','timeBubble'])test(reaso
   await h.disconnectMux();await snapshot([start]);
   assert.equal(h.activeTurnEnvelopes.get(sid)?.replyPlan?.turnId,id,'reconnect must preserve the dispatch grant');
   for(let i=1;i<cap;i++)assert.equal((await post('after reconnect '+i)).ok,true);
-  assert.match((await post('over cap')).error,/turn_limit|最多发送 0 条/);
+  assert.match((await post('over cap')).error,/content_limit|最多发送 0 条/);
   assert.equal(h.pluginHost.callService('replyPlan','preview',{key}).successful,cap);
 });
 test('accepted dispatch whose start was missed binds once from the open-turn snapshot',async t=>{
@@ -44,12 +44,12 @@ test('terminal snapshot revokes the old grant without replaying historical outpu
   await event(start.type,start.data);await h.disconnectMux();
   await snapshot([start,{type:'assistant/message',data:{turn:1,message:{content:[{type:'text',text:'must not replay'}]}}},end]);
   assert.equal(h.activeTurnEnvelopes.has(sid),false);assert.equal(h.calls.sent.length,0);
-  assert.match((await post('late stale greeting')).error,/turn_required/);
+  assert.match((await post('late stale greeting')).error,/turn_required|content_required/);
 });
 test('snapshot without a bridge dispatch never manufactures a grant',async t=>{
   const {h,sid,post,snapshot}=await setup(t);h.pendingTurnEnvelopes.delete(sid);
   await h.disconnectMux();await snapshot([start]);
-  assert.match((await post('orphan')).error,/turn_required/);assert.equal(h.calls.sent.length,0);
+  assert.match((await post('orphan')).error,/turn_required|content_required/);assert.equal(h.calls.sent.length,0);
 });
 test('replayed start cannot consume the next dispatch or refresh the current grant',async t=>{
   const {h,key,sid,event,snapshot}=await setup(t);

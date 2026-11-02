@@ -34,6 +34,17 @@ async function guardFixture(){
  const step=async(messages=[],turn=1)=>{let entered=0;const chain=(handlers.get('agent/pre-step')||[]).reduceRight((next,fn)=>()=>fn({agent:{session},turn,messages},next),async()=>{entered++;return {kind:'enter',messages};});const decision=await chain();return {decision,entered};};
  return {emit,failure,step};
 }
+
+test('one exhausted semantic content does not stop another declared content in the same native turn',async()=>{
+ const f=await guardFixture();
+ f.emit('tool/call',{turn:1,callId:'declare',name:'mcp__snowluma__qq_reply_contents'});
+ f.emit('tool/result',{turn:1,message:{toolCallId:'declare',content:[{type:'text',text:JSON.stringify({ok:true,contents:[{id:'content:a'},{id:'content:b'}]})}]}});
+ for(let n=0;n<2;n++){
+  const id='fail'+n;f.emit('tool/call',{turn:1,callId:id,name:'mcp__snowluma__qq_send_message',arguments:JSON.stringify({contentId:'content:a'})});
+  f.emit('tool/result',{turn:1,message:{toolCallId:id,isError:true,content:[{type:'text',text:'发送计划拒绝：content_limit'}]}});
+ }
+ assert.equal((await f.step()).decision.kind,'enter');
+});
 test('two actual send-cap failures stop the next model request, including across send tools',async()=>{
  const f=await guardFixture();f.failure();assert.equal((await f.step()).decision.kind,'enter');
  f.failure('mcp__snowluma__qq_send_sticker','发送表情失败：发送计划拒绝：turn_limit');

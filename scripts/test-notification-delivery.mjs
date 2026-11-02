@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import {bridgeHarness} from './audit-bridge-harness.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import {bridgeHarness,fixtureTaskTurn} from './audit-bridge-harness.mjs';
 test('notification batch never resends an existing item when batch composition changes',async()=>{
  const h=await bridgeHarness();try{h.setMode('reserved2');const now=Date.now(),item=(id,text)=>({id,text,sourceAt:now,expiresAt:now+3600000});await h.taskCaps.sendNotificationBatch('private:123',[item('report-one','FIRST')]);await h.taskCaps.sendNotificationBatch('private:123',[item('report-one','FIRST'),item('report-two','SECOND')]);assert.equal(h.calls.sent.filter(x=>x.text.includes('FIRST')).length,1);assert.equal(h.calls.sent.filter(x=>x.text.includes('SECOND')).length,1);}finally{await h.close();}
 });
@@ -17,7 +17,7 @@ test('scheduled refresh cannot reuse a manual memory turn already in progress',a
 
 test('AI diary HTTP read/update is scoped, switchable and does not send QQ',async()=>{
  const h=await bridgeHarness({config:{allow:{private:['123','124'],groups:['456']}}});let server;
- try{h.setMode('reserved2');h.getSocialV2State('private:123').agentToken='diary-token';h.getSocialV2State('private:124').agentToken='other-token';
+ try{h.setMode('reserved2');await fixtureTaskTurn(h,'private:123','帮我查看今天的日记');h.getSocialV2State('private:123').agentToken='diary-token';h.getSocialV2State('private:124').agentToken='other-token';
  server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port+'/api/socialV2/diary',headers={'x-console-token':'fixture-console-token','x-agent-call':'1','x-agent-token':'diary-token','content-type':'application/json'};
  const read=await fetch(base+'?key=private:123',{headers});assert.equal(read.status,200);const current=await read.json();assert(current.day);
  const write=await fetch(base,{method:'POST',headers,body:JSON.stringify({key:'private:123',day:current.day,text:'AI_UPDATED_CURRENT_DIARY'})});assert.equal(write.status,200);assert.equal((await write.json()).sent,false);assert.equal(h.calls.sent.length,0);

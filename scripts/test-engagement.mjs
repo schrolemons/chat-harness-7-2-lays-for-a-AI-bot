@@ -8,11 +8,12 @@ test('shared engagement formula multiplies subjective mood and objective availab
   assert.ok(Math.abs(f.factor - .4624) < 1e-10);
   assert.equal(engagementFactors({ enabled: false, score: 0 }, 100).factor, 1);
 });
-test('availability changes reply count and depth, never the mood style', () => {
+test('availability changes minute/hour rate and depth while preserving content parts and mood style', () => {
   const mood = { score: 100, replyCeiling: 3, styleInstruction: '温柔活泼' };
   const free = planReplyShape({ key: 'private:1', incomingText: '哈哈', mood, willingness: 100 });
   const busy = planReplyShape({ key: 'private:1', incomingText: '哈哈', mood, willingness: 0 });
-  assert.ok(free.maxMessages > busy.maxMessages);
+  assert.equal(free.maxParts,3);assert.equal(busy.maxParts,3);
+  assert.ok(free.maxSendPerMinute > busy.maxSendPerMinute);assert.ok(free.maxSendPerHour > busy.maxSendPerHour);
   assert.notEqual(free.detailLevel, busy.detailLevel);
   assert.equal(free.styleInstruction, busy.styleInstruction);
   assert.equal(busy.styleInstruction, '温柔活泼');

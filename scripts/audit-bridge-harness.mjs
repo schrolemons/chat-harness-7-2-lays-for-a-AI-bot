@@ -31,6 +31,7 @@ import {migrateOutboundMood} from '../src/migrations/outbound-mood.mjs';
 import {migrateGroupWake,RETIRED_GROUP_WAKE_FIELDS} from '../src/migrations/group-wake.mjs';
 import * as outboundTransport from '../src/outbound-context.js';
 import * as consoleDocument from '../src/console/document.js';
+import * as replyContentsRoute from '../src/console/reply-contents.mjs';
 import * as toolCatalog from '../src/tools/catalog.js';
 import { routePluginManagement } from '../src/console/plugin-management.js';
 import {routeContextManagement} from '../src/console/context-management.js';
@@ -272,7 +273,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     NodeApiClient: class { constructor() { return api; } },
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
-    ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, migrateOutboundMood, migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS,
+    ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, ...replyContentsRoute, migrateOutboundMood, migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...contextLimits, ...dialogueSequence, ...receiptIndex, ...costPolicy, ...consoleDocument, ...toolCatalog,
     ...sessionRecovery, ...presetPolicy, ...adminToolPolicy, ...presetOverview,buildDshBundle,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
@@ -330,6 +331,13 @@ export async function fixtureReplyTurn(h,key){
  const sid=await h.ensureSession(key);
  if(h.activeTurnEnvelopes.has(sid))return sid;
  await h.deliverPrompt(key,'fixture human reply');
+ await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:1}}}});
+ return sid;
+}
+export async function fixtureTaskTurn(h,key,text='帮我查看任务报告'){
+ h.appendSocialV2Message(key,'fixture user',text,text,false,true,'fixture-task-source',[],key.split(':')[1],[],undefined,false,{bodyComplete:true});
+ const sid=await h.ensureSession(key);
+ await h.deliverPrompt(key,'',{wakeReason:'private'});
  await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:1}}}});
  return sid;
 }

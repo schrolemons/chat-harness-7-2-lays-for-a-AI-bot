@@ -30,7 +30,7 @@ test('real host persists a/b/p/q, rejects invalid weights and reads authoritativ
     const key = 'private:1', mood = { score: 100, styleInstruction: '温柔' };
     host.callService('proactive', 'setWillingness', { key, value: 0, reason: '用户明确说正在开会' });
     const plan = host.callService('replyPlan', 'resolve', { key, incomingText: '哈哈', mood, willingness: 100 });
-    assert.equal(plan.willingness, 0, 'caller cannot spoof the authoritative assessment'); assert.equal(plan.maxMessages, 1);
+    assert.equal(plan.willingness, 0, 'caller cannot spoof the authoritative assessment'); assert.equal(plan.maxParts, 3);assert.equal(plan.maxSendPerMinute,2);assert.equal(plan.maxSendPerHour,20);
     assert.equal(plan.styleInstruction, '温柔');
   } finally { await host?.dispose(); assert.equal(path.dirname(root), os.tmpdir()); assert.ok(path.basename(root).startsWith('whale-topic-host-')); fs.rmSync(root, { recursive: true, force: true }); }
 });

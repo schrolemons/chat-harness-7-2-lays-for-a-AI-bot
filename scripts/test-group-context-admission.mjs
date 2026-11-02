@@ -56,7 +56,7 @@ test('a newly arrived body during send delay cancels the reserved send without c
  let state={},incomplete=false,sends=0;
  const svc=replyPlugin({config:{},state:{get:()=>state,set:s=>state={...state,...s}},isPluginEnabled:()=>false}).services.replyPlan;
  const transport=createOutboundTransport({callService:(s,m,p)=>s==='replyPlan'?svc[m]?.(p):null,contextFacts:()=>({pending:[{seq:2,required:true,complete:!incomplete}]}),sleep:async()=>{incomplete=true;}});
- const key='group:456',plan=svc.resolve({key,turnId:'delay',incomingText:''});
+ const key='group:456',plan=svc.resolve({key,turnId:'delay',incomingText:'',autonomousSource:{id:'actual-delay-admission',kind:'directMessage'}});
  const context=transport.capture({key,envelope:{key,actionId:'delay',reason:'replyCheck',replyPlan:plan},agent:true,origin:'conversation'});
  await transport.perform({key,context,text:'first',send:async()=>({message_id:1})});
  await assert.rejects(transport.perform({key,context,text:'delayed',requestedDelay:5000,send:async()=>{sends++;return {message_id:1};}}),/message_context_pending/);

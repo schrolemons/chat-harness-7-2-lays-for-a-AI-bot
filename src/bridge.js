@@ -9,6 +9,7 @@ import {routeFeedbackRepairs} from './console/feedback-repairs.js';
 import { migrateOutboundMood } from './migrations/outbound-mood.mjs';
 import { migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS } from './migrations/group-wake.mjs';
 import { createOutboundTransport, outboundScope, reportHumanIncoming, recordAdmittedMessages, messageAdmitted, messageContentComplete } from './outbound-context.js';
+import {declareReplyContents} from './console/reply-contents.mjs';
 import { routePluginManagement } from './console/plugin-management.js';
 import { routeContextManagement } from './console/context-management.js';
 import { sendDirectTimedNotice } from './bridge-core/direct-timed-notices.js';
@@ -2339,12 +2340,62 @@ async function main() {
       ...(pluginHost.callService('tokenBudget', 'assess', { key, cost: usage.cost, globalCost: globalUsage.cost, now: at }) || { stage: 'normal' }) };
   }
 
+  // Eligibility comes from admitted incoming sources or server-owned task records.
+  function taskProvenanceFor(key, reason = 'message', messages = null) {
+    const st = getSocialV2State(key), taskSources = {};
+    if (reason === 'taskDone') {
+      const record = tasksStore[st.pendingTaskReport?.taskId];
+      const policy = record?.originKey === key ? pluginHost.callService('tokenBudget','taskExemption',{taskRecord:record}) : null;
+      return {taskExempt:policy?.eligible === true,taskSources,taskRecord:policy?.eligible ? record : null,budgetAdmission:record?.budgetAdmission};
+    }
+    if (reason === 'reminder') return {taskExempt:(st.pendingReminderItems || []).length > 0,taskSources,taskKind:'calendar'};
+    if (reason !== 'message' && reason !== 'budgetWeak' && !isMessageWakeReason(reason)) return {taskExempt:false,taskSources};
+    for (const message of messages || pendingMessagesV2(st)) {
+      if (!message || message.isSelf || message.quotaAdmission === 'pending' || !isModelVisibleMessageV2(message) || !messageContentComplete(message)) continue;
+      const policy = pluginHost.callService('tokenBudget','taskExemption',{text:message.plain ?? message.text,reason});
+      if (policy?.eligible && Number.isSafeInteger(message.seq)) taskSources[String(message.seq)] = {...policy,sourceSeq:message.seq};
+    }
+    return {taskExempt:false,taskEligible:Object.keys(taskSources).length > 0,taskSources};
+  }
+  function validTaskBudgetAdmission(admission,key) {
+    const paid=admission?.groupId?pluginHost.callService('replyPlan','getTaskGroup',{key,groupId:admission.groupId}):null;
+    return paid && admission.creditId === paid.id && admission.originKey === key && typeof admission.id === 'string' && admission.id.length > 0 && Number.isFinite(admission.admittedAt) && admission.admittedAt > 0 && admission.admittedAt <= Date.now();
+  }
+  function taskAdmissionEntry(input) {
+    const row=input?.groupId?pluginHost.callService('taskAdmission','get',{groupId:input.groupId}):null;
+    if(!row || row.key!==input.key || row.originActionId!==input.originActionId || JSON.stringify(row.sourceSeqs)!==JSON.stringify(input.sourceSeqs) || JSON.stringify(row.messages)!==JSON.stringify(input.messages))return null;
+    return row;
+  }
+  function queuedTaskFeeAllowed(row,budget) {
+    if(!row || budget.stage==='silent')return false;
+    return budget.stage!=='weak' || row.originAdmission?.weakBatchConsumed===true || pluginHost.callService('tokenBudget','canDispatch',{key:row.key,stage:budget.stage})!==false;
+  }
+  function paidTaskSourceSeqs(envelope) {
+    const seqs=new Set();
+    const st=envelope?.key?getSocialV2State(envelope.key):null,live=[...(st?.unread || []),...(st?.recentMessages || [])];
+    for(const grant of [envelope?.budgetAdmission,...Object.values(envelope?.admittedTaskGroups || {})])if(validTaskBudgetAdmission(grant,envelope?.key))for(const seq of grant.sourceSeqs || []){
+      const copies=live.filter(message=>message.seq===seq),expected=grant.sourceBindings?.[seq];
+      if(copies.length && expected && copies.every(message=>taskSourceIdentity(message)===expected))seqs.add(seq);
+    }
+    return seqs;
+  }
+  function taskSourceIdentity(message) {
+    return crypto.createHash('sha256').update(JSON.stringify([String(message.messageId ?? ''),String(message.text ?? message.plain ?? '')])).digest('hex');
+  }
+  function trustedTaskEnvelope(key, envelope = activeTurnEnvelopes.get(state.sessions[key])) {
+    return envelope && !envelope.cancelled && [envelope.budgetAdmission,...Object.values(envelope.admittedTaskGroups || {})].some(grant=>validTaskBudgetAdmission(grant,envelope.key)) &&
+      (envelope === activeTurnEnvelopes.get(envelope.sessionId) || (pendingTurnEnvelopes.get(envelope.sessionId) || []).includes(envelope));
+  }
+
   // 所有由桥接发起的 DSH 模型请求共用最后一道额度闸门，含聊天、任务、学习和插件请求。
   const rawDshPrompt = api.sessions.prompt.bind(api.sessions);
   api.sessions.prompt = async (request, ...args) => {
     const key = reverse.get(request?.sessionId) || taskCaps.getTaskOriginKey?.(request?.sessionId);
     const budget = tokenBudgetOf(key || '__global');
-    if (budget.stage === 'silent') throw new Error('会话或全局额度硬上限已触发，拒绝新的模型调用');
+    const workerRecord=taskCaps.getTaskRecord?.(request?.sessionId);
+    const workerTask = workerRecord && ['running','waiting_input'].includes(workerRecord.status) && validTaskBudgetAdmission(workerRecord.budgetAdmission,workerRecord.originKey);
+    const envelope = activeTurnEnvelopes.get(request?.sessionId) || (pendingTurnEnvelopes.get(request?.sessionId) || []).find(item => !item.cancelled);
+    if (budget.stage === 'silent' && !workerTask && !trustedTaskEnvelope(key,envelope)) throw new Error('会话或全局额度硬上限已触发，拒绝新的模型调用');
     return rawDshPrompt(request, ...args);
   };
 
@@ -3470,8 +3521,9 @@ async function main() {
         if(target && target!==sourceKey){sendJson({ok:false,error:'跨会话读取需要启用管理员环境'},403);return;}
       }
       const sourceEnvelope=sourceKey?activeTurnEnvelopes.get(state.sessions[sourceKey]):null;
-      outboundScope.enterWith(actualOutbound.capture({key:sourceKey,envelope:sourceEnvelope,
-        origin:agentRequest?'conversation':'operator',agent:agentRequest}));
+      const requestOutbound=actualOutbound.capture({key:sourceKey,envelope:sourceEnvelope,
+        origin:agentRequest?'conversation':'operator',agent:agentRequest,contentId:req.headers['x-reply-content-id']});
+      outboundScope.enterWith(requestOutbound);
 
       // CSRF 防护：所有写操作必须是 application/json，且（若带 Origin）必须来自本机页面。
       // 默认未配 consoleToken 时，这可阻止任意网页用表单/跨站请求触发
@@ -5244,7 +5296,8 @@ async function main() {
             }
             input.adminCrossSession = isOwnerProfileSession && isCrossSessionTarget;
           }
-          const out = await pluginHost.callTool(body.tool, body.input || {});
+          if(isAgentPluginCall && /^(?:task_(?:spawn|list|result|input|cancel)|worklog_history|diary_history|diary_read)$/.test(String(body.tool)))assertAcceptedTaskOperation(requestOutbound,{allowMaintenance:/^(?:worklog_history|diary_history|diary_read)$/.test(String(body.tool))});
+          const out = await outboundScope.run(requestOutbound,()=>pluginHost.callTool(body.tool, body.input || {}));
           sendJson(out);
           return;
         }
@@ -5317,6 +5370,14 @@ async function main() {
           sendJson({ ok: true, key, messages: messages.map((message) => ({ ...message, receiptState: receiptStateV2(message) })), readThroughSeq, ...admission });
           return;
         }
+        if (req.method === 'POST' && url.pathname === '/api/socialV2/reply-contents') {
+          const body=await readBody(),key=String(body.key ?? '').trim();
+          const result=await declareReplyContents({key,sourceKey,envelope:sourceEnvelope,groups:body.groups,
+            messages:admittedContentMessages(sourceKey,sourceEnvelope),
+            allowed:agentRequest && agentTokenOk(key,sourceToken) && v2SessionAllowed(key) && v2ToolEnabled('sendMessage'),
+            callService:(service,method,payload)=>pluginHost.callService(service,method,payload),admitTaskContents:taskCaps.admitTaskContents});
+          sendJson(result.body,result.status);return;
+        }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/receipt-report') {
           const body = await readBody();
           const requestedKey = String(body.conversationId ?? body.key ?? '').trim();
@@ -5325,6 +5386,8 @@ async function main() {
           if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
           if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
           if (req.headers['x-agent-token'] && !v2ToolEnabled('reportReceipts')) { sendJson({ ok: false, error: '工具未启用：qq_report_message_receipts' }, 403); return; }
+          const receiptScope=pluginHost.callService('replyPlan','validateReceipts',{key,messages:admittedContentMessages(key,sourceEnvelope),receipts:body.receipts,taskSources:sourceEnvelope?.taskSources});
+          if(agentRequest && receiptScope?.ok===false){sendJson({ok:false,error:receiptScope.reason,seqs:receiptScope.seqs},409);return;}
           const result = applyMessageReceiptReportV2(key, getSocialV2State(key), body.receipts);
           sendJson(result, result.status || 200);
           return;
@@ -5584,7 +5647,7 @@ async function main() {
           }
           return;
         }
-        if(await routeDiaryManagement({req,url,readBody,sendJson,pluginHost,tokenOk:memoryTokenOk,sessionAllowed:v2SessionAllowed,toolEnabled:v2ToolEnabled}))return;
+        if(await routeDiaryManagement({req,url,readBody,sendJson,pluginHost,tokenOk:memoryTokenOk,sessionAllowed:v2SessionAllowed,toolEnabled:v2ToolEnabled,assertTaskAdmitted:()=>assertAcceptedTaskOperation(requestOutbound,{allowMaintenance:true})}))return;
         if(await routeLearningManagement({req,url,readBody,sendJson,pluginHost,tokenOk:memoryTokenOk,sessionAllowed:v2SessionAllowed,toolEnabled:v2ToolEnabled}))return;
         if (await routeMemoryManagement({ req, url, readBody, sendJson, pluginHost,
           agentTokenOk: memoryTokenOk,
@@ -6805,7 +6868,7 @@ async function main() {
               return;
             }
           }
-          if (req.headers['x-agent-token'] && tokenBudgetOf(key).stage === 'silent') {
+          if (req.headers['x-agent-token'] && tokenBudgetOf(key).stage === 'silent' && !trustedTaskEnvelope(key)) {
             sendJson({ ok: true, key, arrived: false, timeout: false, waitedMs: 0, newMessages: [], readThroughSeq: readThroughSeqV2(st), unreadCount: 0 });
             return;
           }
@@ -7579,6 +7642,7 @@ async function main() {
             if (!agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
             if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
             if (!v2ToolEnabled('schedule')) { sendJson({ ok: false, error: '工具未启用：qq_schedule' }, 403); return; }
+            assertAcceptedTaskOperation(requestOutbound);
           }
           // 控制台跨会话汇总（不带 key）。
           if (action === 'list' && !validKey) {
@@ -8386,7 +8450,24 @@ async function main() {
   const lastSendFailed = new Map(); // key -> true（下一次成功即清除）
 
   let outboundServicesInitialized=false;
+  function admittedContentMessages(key,envelope){
+    if(!key || !envelope)return [];
+    const view=modelFacingStateV2(key),bySeq=new Map();
+    for(const message of [...view.unread,...view.recentMessages])if(!message.isSelf && messageAdmitted(envelope,message))bySeq.set(message.seq,message);
+    return [...bySeq.values()];
+  }
+  function assertAcceptedTaskOperation(context,{allowMaintenance=false}={}){
+    const envelope=context?.envelope,key=context?.sourceKey;
+    if(allowMaintenance && envelope?.reason==='memoryWrite' && envelope.key===key && !envelope.cancelled && activeTurnEnvelopes.get(state.sessions[key])===envelope)return null;
+    const bound=pluginHost.callService('replyPlan','bindContent',{key,sourceKey:key,plan:context?.plan,contentId:context?.contentId || context?.plan?.contentId,messages:admittedContentMessages(key,envelope)});
+    const groupId=bound?.plan?.taskGroupId;
+    const grant=envelope?.admittedTaskGroups?.[groupId] || (envelope?.budgetAdmission?.groupId===groupId?envelope.budgetAdmission:null);
+    if(bound?.ok!==true || bound.plan.taskExempt!==true || !validTaskBudgetAdmission(grant,key) || !trustedTaskEnvelope(key,envelope))throw Object.assign(Error('task_group_not_admitted：先按完整来源声明任务并取得1点准入，待接手任务不可执行'),{statusCode:409});
+    captureSendGuard(key,{wakeOrigin:envelope,taskContentExempt:true})();
+    return bound.plan;
+  }
   const actualOutbound = createOutboundTransport({
+    contentFacts:(key,envelope)=>({messages:admittedContentMessages(key,envelope)}),
     contextFacts:(sourceKey,envelope,replyToMessageId)=>{
       if(!sourceKey||!envelope)return {};
       const view=modelFacingStateV2(sourceKey);
@@ -8401,7 +8482,7 @@ async function main() {
       return pluginHost.callService(service,method,payload);
     },
     log,
-    guard: (key, context) => captureSendGuard(key, { wakeOrigin: context.envelope || null, budgetMechanical: context.budgetMechanical === true, messageAck:context.reason==='thinkingAck'&&context.origin==='mechanical' })
+    guard: (key, context) => captureSendGuard(key, { wakeOrigin: context.envelope || null, taskContentExempt:context.plan?.taskExempt===true, budgetMechanical: context.budgetMechanical === true, messageAck:context.reason==='thinkingAck'&&context.origin==='mechanical' })
   });
   function setOutboundTarget(userId) {
     const c=outboundScope.getStore();if(c && /^[1-9]\d*$/.test(String(userId||'')))outboundScope.enterWith(Object.freeze({...c,targetUserId:String(userId)}));
@@ -9205,7 +9286,7 @@ async function main() {
   }
 
   // 入队校验无法约束排队等待期间的权限变化，每条消息临近实际发送时再次校验。
-  function captureSendGuard(key, { budgetMechanical = false, messageAck=false, wakeOrigin = activeTurnEnvelopes.get(state.sessions[key]) } = {}) {
+  function captureSendGuard(key, { budgetMechanical = false, messageAck=false, taskContentExempt, wakeOrigin = activeTurnEnvelopes.get(state.sessions[key]) } = {}) {
     const policy = sessionPolicy(key);
     const sessionId = state.sessions[key];
     return () => {
@@ -9219,8 +9300,8 @@ async function main() {
           || (sessionId && state.sessions[key] !== sessionId)) {
         throw new Error('发送已取消：会话、模式或白名单已变化');
       }
-      if(messageAck && (tokenBudgetOf(key).stage!=='normal'||!dshReady||!hasActiveMessageAckTurn(key)))throw Error('模型未运行或当前不可回复，取消补话');
-      if (!budgetMechanical && tokenBudgetOf(key).stage === 'silent') {
+      if(messageAck && (!ordinaryAckBudgetAllowed(key)||!dshReady||!hasActiveMessageAckTurn(key)))throw Error('模型未运行或当前不可回复，取消补话');
+      if (!budgetMechanical && tokenBudgetOf(key).stage === 'silent' && !(taskContentExempt!==false && trustedTaskEnvelope(key,wakeOrigin))) {
         throw new Error('发送已取消：额度硬上限已触发');
       }
     };
@@ -9230,7 +9311,7 @@ async function main() {
   function shouldBlockSilentReply(key) {
     const roleState = readRoleState();
     return (roleState.mode === 'silent' && key !== `private:${String(cfg.ownerQQ ?? '')}`)
-      || tokenBudgetOf(key).stage === 'silent';
+      || (tokenBudgetOf(key).stage === 'silent' && !trustedTaskEnvelope(key));
   }
 
   // 已知会话令牌出现在出站正文里：打码后照常发出，而不是整条丢弃。
@@ -9476,6 +9557,7 @@ async function main() {
   }
   const tasksStore = loadTasks();
   taskCaps.getTaskOriginKey = (sessionId) => tasksStore[tasksBySession.get(String(sessionId))]?.originKey;
+  taskCaps.getTaskRecord = (sessionId) => tasksStore[tasksBySession.get(String(sessionId))];
   function saveTasks() {
     try { atomicWriteJson(TASKS_FILE, { tasks: tasksStore }); } catch (error) { log('保存 tasks.json 失败：' + (error?.message ?? error)); }
   }
@@ -9501,6 +9583,12 @@ async function main() {
     if (!callerKey) throw new Error('任务委派需要启用管理员环境并使用已选高权限预设：令牌或环境校验失败');
     return taskSpawnCore({ callerKey, title, task });
   }
+  function selectedTaskBudgetAdmission(key) {
+    const scope=outboundScope.getStore(),envelope=activeTurnEnvelopes.get(state.sessions[key]);
+    if(!scope?.agent || scope.envelope!==envelope || (scope.sourceKey || scope.key)!==key || scope.plan?.taskExempt!==true || !trustedTaskEnvelope(key,envelope))return null;
+    const groupId=scope.plan.taskGroupId,grant=envelope.admittedTaskGroups?.[groupId];
+    return groupId && validTaskBudgetAdmission(grant,key)?grant:null;
+  }
   async function taskSpawnCore({ callerKey, title, task, feedbackIssueId = '', feedbackClaimId = '' }) {
     if (!hasAdminEnvironment(callerKey)) throw new Error('任务委派需要启用管理员环境并使用已选高权限预设');
     if (cfg.socialV2?.taskSession?.enabled === false) throw new Error('任务会话已停用');
@@ -9519,6 +9607,11 @@ async function main() {
         delete tasksStore[id];
       }
     }
+    const callerEnvelope=activeTurnEnvelopes.get(state.sessions[callerKey]);
+    const inheritedAdmission=selectedTaskBudgetAdmission(callerKey);
+    if(!inheritedAdmission && (callerEnvelope || outboundScope.getStore()?.agent))throw Error('新任务需要选择当前已经准入的任务组');
+    const startBudget=tokenBudgetOf(callerKey);
+    if(!inheritedAdmission && pluginHost.callService('tokenBudget','canDispatch',{key:callerKey,stage:startBudget.stage})===false)throw Error('任务尚未获额度准入，等待可回复批次');
     const taskWorkspaceDir = path.join(STATE_DIR, 'agents-tasks');
     fs.mkdirSync(taskWorkspaceDir, { recursive: true });
     const wsValue = unwrap(await api.workspace.create({ path: taskWorkspaceDir }), 'task workspace.create');
@@ -9534,8 +9627,18 @@ async function main() {
     }
     const id = 't-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
     const now = Date.now();
+    if(inheritedAdmission && selectedTaskBudgetAdmission(callerKey)!==inheritedAdmission){try{await api.workspace.archiveSession({sessionId});}catch{}throw Error('任务组准入已撤销');}
+    const finalStartBudget=tokenBudgetOf(callerKey);
+    if(!inheritedAdmission && pluginHost.callService('tokenBudget','canDispatch',{key:callerKey,stage:finalStartBudget.stage})===false){try{await api.workspace.archiveSession({sessionId});}catch{}throw Error('任务尚未获额度准入，等待可回复批次');}
+    let budgetAdmission=inheritedAdmission;
+    if(!budgetAdmission){
+      const groupId='worker:'+id,plan=pluginHost.callService('replyPlan','resolve',{key:callerKey,turnId:id,taskExempt:true});
+      const credit=pluginHost.callService('replyPlan','claimTaskGroup',{key:callerKey,groupId,plan});
+      if(credit?.ok!==true){try{await api.workspace.archiveSession({sessionId});}catch{}throw Error('任务组频率准入尚未允许：'+credit?.reason);}
+      budgetAdmission={id,originKey:callerKey,admittedAt:now,groupId,creditId:credit.admission.id};
+    }
     tasksStore[id] = {
-      id, originKey: callerKey, title, task, sessionId,
+      id, originKey: callerKey, title, task, sessionId,budgetAdmission,
       status: 'running', createdAt: now, updatedAt: now, result: '', error: ''
     };
     if (feedbackIssueId && feedbackClaimId) {
@@ -9626,7 +9729,8 @@ async function main() {
     try{await read;}finally{if(taskHistoryReads.get(t.id)===read)taskHistoryReads.delete(t.id);}
   }
   async function taskInput({token, taskId, input, requestId, replyToRequest, decision, answers}) {
-    if (!taskCapTokenKey(token)) throw new Error('任务输入仅管理员会话可用');
+    const callerKey=taskCapTokenKey(token);
+    if (!callerKey) throw new Error('任务输入仅管理员会话可用');
     const t = tasksStore[String(taskId)];
     if (!t) throw new Error('没有这个任务');
     const text = String(input || '').trim(), rid = String(requestId || '').trim();
@@ -9654,9 +9758,25 @@ async function main() {
         ids.add(answer.id);
       }
     }
+    let inputAdmission=existing?.budgetAdmission;
+    if(request){
+      inputAdmission=t.budgetAdmission;
+      if(!validTaskBudgetAdmission(inputAdmission,t.originKey))throw Error('原任务缺少有效的已准入任务组');
+    }else if(!validTaskBudgetAdmission(inputAdmission,callerKey)){
+      inputAdmission=selectedTaskBudgetAdmission(callerKey);
+      if(!inputAdmission){
+        if(activeTurnEnvelopes.has(state.sessions[callerKey]) || outboundScope.getStore()?.agent)throw Error('新任务输入需要选择当前已经准入的任务组');
+        const budget=tokenBudgetOf(callerKey);
+        if(pluginHost.callService('tokenBudget','canDispatch',{key:callerKey,stage:budget.stage})===false)throw Error('新任务输入尚未获额度准入');
+        const groupId='task-input:'+crypto.createHash('sha256').update(t.id+':'+rid).digest('hex'),plan=pluginHost.callService('replyPlan','resolve',{key:callerKey,turnId:groupId,taskExempt:true});
+        const credit=pluginHost.callService('replyPlan','claimTaskGroup',{key:callerKey,groupId,plan});
+        if(credit?.ok!==true)throw Error('新任务输入的任务组频率准入尚未允许：'+credit?.reason);
+        inputAdmission={id:groupId,originKey:callerKey,admittedAt:Date.now(),groupId,creditId:credit.admission.id,sourceSeqs:[]};
+      }
+    }
     const wireId='task-input:'+crypto.createHash('sha256').update(t.id+':'+rid).digest('hex');
-    if(existing){existing.delivery='pending';existing.settled=false;existing.error='';}
-    else t.inputs.push({requestId:rid,digest,wireId,kind:request?'control':'prompt',delivery:'pending',consumedTurn:null,settled:!!request,at:Date.now()});
+    if(existing){existing.delivery='pending';existing.settled=false;existing.error='';existing.budgetAdmission=inputAdmission;}
+    else t.inputs.push({requestId:rid,digest,wireId,budgetAdmission:inputAdmission,kind:request?'control':'prompt',delivery:'pending',consumedTurn:null,settled:!!request,at:Date.now()});
     const remaining=(t.pendingRequests||[]).filter(x=>x.id!==replyToRequest);
     t.status=remaining.length?'waiting_input':'running';t.pendingInput=remaining.length?'任务仍有其他待答请求，请逐项处理。':'';t.updatedAt=Date.now();
     saveTasks();
@@ -11363,7 +11483,7 @@ async function main() {
     if(!sourceKey || !actionId)return {ok:false,error:'source_action_required'};
     if(isConversationBusyV2(key,socialV2.conversations.get(key)) || (getSocialV2State(key).pendingReminderItems||[]).length)return {ok:false,error:'target_busy'};
     const envelope={key:sourceKey,actionId,reason:'privateFollowup',targetUserId:id,mood:pluginHost.callService('mood','read',{key})};
-    envelope.replyPlan=pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:message,mood:envelope.mood});
+    envelope.replyPlan=pluginHost.callService('replyPlan','resolve',{key:sourceKey,turnId:actionId,incomingText:message,mood:envelope.mood,autonomousSource:{id:actionId,kind:'privateFollowup'}});
     try {
       const sent = await sendToQQ(key,message,{wakeOrigin:envelope,origin:'conversation',originReason:'privateFollowup'});
       return sent ? { ok: true } : { ok: false, error: 'qq_send_failed' };
@@ -11778,13 +11898,17 @@ async function main() {
   // 实际的 DSH prompt 投递（不再直接对外暴露，统一走 promptQueues 串行队列）。
   async function deliverPromptNow(key, promptText, opts = {}) {
     if (!isSessionAllowedInCurrentMode(key)) throw new Error(`当前模式不允许会话 ${key}`);
+    let capturedTask = null;
+    const resume=opts.wakeReason==='taskResume'?taskAdmissionEntry(opts.taskAdmission):null;
+    const taskReason=resume?.wakeReason || String(opts.wakeReason || opts.modelReason || 'message');
     const budgetAllows = () => {
       const budget = tokenBudgetOf(key);
-      return { budget, allowed: (budget.stage!=='weak'||opts.wakeReason==='budgetWeak')&&pluginHost.callService('tokenBudget', 'canDispatch', { key, stage: budget.stage }) !== false };
+      const task = capturedTask || taskProvenanceFor(key,taskReason,resume?.messages);
+      return { budget, task, allowed: opts.wakeReason==='taskResume' ? !!resume && resume.status==='dispatching' && queuedTaskFeeAllowed(resume,budget) : validTaskBudgetAdmission(task.budgetAdmission,key) || (budget.stage!=='weak'||opts.wakeReason==='budgetWeak')&&pluginHost.callService('tokenBudget', 'canDispatch', { key, stage: budget.stage }) !== false };
     };
     // Recheck queued wakes at dispatch time: no model call while paused/disabled
     // and no reserved2 prompt leaking into an ordinary chat after a mode switch.
-    const wakeBlocked = () => opts.wakeReason && (currentMode !== 'reserved2' || socialV2.paused || cfg.socialV2?.enabled === false || !pluginHost.allowsWake(opts.wakeReason,{key}) || pluginHost.callService('availability','canWake',{key,reason:opts.wakeReason})===false);
+    const wakeBlocked = () => opts.wakeReason && (currentMode !== 'reserved2' || socialV2.paused || cfg.socialV2?.enabled === false || !pluginHost.allowsWake(resume?.wakeReason || opts.wakeReason,{key}) || pluginHost.callService('availability','canWake',{key,reason:resume?.wakeReason || opts.wakeReason})===false);
     const pluginBlocked = () => (opts.scheduledEvent && Date.now()>opts.scheduledEvent.expiresAt) || opts.pluginId && (opts.pluginSignal?.aborted || !pluginHost.isEnabled(opts.pluginId) || opts.pluginMode !== currentMode || (currentMode === 'reserved2' && (socialV2.paused || cfg.socialV2?.enabled === false)));
     const skipWake = () => {
       if(opts.wakeReason){pendingWakeKeys.delete(key);disarmPendingWakeLease(key);}
@@ -11792,6 +11916,7 @@ async function main() {
     };
     if (wakeBlocked() || pluginBlocked() || (opts.socialMode && opts.socialMode!==currentMode) || !budgetAllows().allowed) return skipWake();
     if (!dshReady) {
+      if(resume)return {ok:true,skipped:true,notAdmitted:true,reason:'transport_unavailable'};
       const items = queued.get(key) ?? [];
       if (items.length >= QUEUE_MAX) {
         items.shift();
@@ -11806,21 +11931,59 @@ async function main() {
       sessionId = await ensureSession(key, {reason:opts.modelReason || opts.wakeReason || (opts.pluginId ? 'maintenance' : 'message')});
     } catch (error) {
       if (String(error?.message ?? error).includes('会话创建期间已重置')) {
+        if(resume)return {ok:true,skipped:true,notAdmitted:true,reason:'session_reset'};
         enqueueForRetry(key, promptText, opts);
         return { ok: true, retried: true };
       }
       throw error;
     }
     if (wakeBlocked() || pluginBlocked() || !budgetAllows().allowed) return skipWake();
+    if(resume){
+      const st=getSocialV2State(key);
+      for(const message of resume.messages){if(!st.unread.some(item=>item.seq===message.seq))st.unread.push({...message});if(!st.recentMessages.some(item=>item.seq===message.seq))st.recentMessages.push({...message});}
+      st.unread.sort((a,b)=>a.seq-b.seq);st.recentMessages.sort((a,b)=>a.seq-b.seq);saveSocialV2State();
+    }
+    const inheritedTask=budgetAllows().task,inheritedSources=validTaskBudgetAdmission(inheritedTask.budgetAdmission,key)?new Set(inheritedTask.budgetAdmission.sourceSeqs || []):null;
+    const sourceMessages=resume?.messages || pendingMessagesV2(modelFacingStateV2(key)).filter(message=>!message.isSelf && messageContentComplete(message) && (!inheritedSources || inheritedSources.has(message.seq)));
     const envelope = { key, sessionId, actionId:crypto.randomUUID(), reason:String(opts.wakeReason || opts.modelReason || 'message'),
-      reminders:opts.wakeReason==='reminder'?(getSocialV2State(key).pendingReminderItems||[]).map(item=>({...item})):[],cancelled:false,scheduledEvent:opts.scheduledEvent };
+      reminders:opts.wakeReason==='reminder'?(getSocialV2State(key).pendingReminderItems||[]).map(item=>({...item})):[],cancelled:false,scheduledEvent:opts.scheduledEvent,taskAdmission:resume };
     envelope.wakeInboundAt = Number(messageAckInboundAt.get(key)) || 0;
-    envelope.budgetStage=tokenBudgetOf(key).stage;envelope.replyGrantThroughSeq=getSocialV2State(key).lastUnreadSeq||0;
+    envelope.originAdmission=resume?.originAdmission || {mode:currentMode,policy:sessionPolicy(key),admittedAt:Date.now(),budgetStage:tokenBudgetOf(key).stage,weakBatchConsumed:false};
+    capturedTask = budgetAllows().task;
+    Object.assign(envelope,capturedTask);
+    if(validTaskBudgetAdmission(envelope.budgetAdmission,key))envelope.admittedTaskGroups={[envelope.budgetAdmission.groupId]:envelope.budgetAdmission};
+    envelope.budgetStage=validTaskBudgetAdmission(envelope.budgetAdmission,key)?'normal':tokenBudgetOf(key).stage;envelope.rawBudgetStage=tokenBudgetOf(key).stage;envelope.replyGrantThroughSeq=getSocialV2State(key).lastUnreadSeq||0;
     envelope.mood=pluginHost.callService('mood','read',{key});
-    envelope.replyPlan=pluginHost.callService('replyPlan','resolve',{key,turnId:envelope.actionId,state:modelFacingStateV2(key),
+    envelope.replyPlan=pluginHost.callService('replyPlan','resolve',{key,turnId:envelope.actionId,state:modelFacingStateV2(key),messages:sourceMessages,taskSources:envelope.taskSources,taskGroupId:resume?.groupId || envelope.budgetAdmission?.groupId,
+      autonomousSource:!sourceMessages.length && (['proactiveCheck','startupGreeting','privateFollowup','timeBubble','newsShare'].includes(envelope.reason) ? {id:envelope.actionId,kind:envelope.reason} : !opts.wakeReason && String(promptText||'').trim() ? {id:envelope.actionId,kind:'directMessage'} : undefined),
       incomingText:opts.wakeReason?lastIncomingTextV2(modelFacingStateV2(key)):promptText,mood:envelope.mood,reason:envelope.reason,budgetStage:envelope.budgetStage,batchMessageCount:modelFacingStateV2(key).unread.length,
       reminders:envelope.reminders,scheduledEvent:envelope.scheduledEvent,timeBubble:opts.wakeReason==='timeBubble'?getSocialV2State(key).pendingTimeBubble:null});
     if(!envelope.replyPlan)throw Error('发送编排组件未启用/不可用');
+    const deferTask=(reason,credit)=>{
+      const groupId=envelope.replyPlan.taskGroupId || envelope.replyPlan.contentId;
+      if(!groupId || !sourceMessages.length)return skipWake();
+      const old=pluginHost.callService('taskAdmission','get',{groupId});
+      const budget=tokenBudgetOf(key),throughSeq=Math.max(...sourceMessages.map(message=>message.seq));
+      let weakBatchConsumed=resume?.originAdmission?.weakBatchConsumed===true;
+      if(!old && budget.stage==='weak' && opts.wakeReason==='budgetWeak'){
+        pluginHost.callService('tokenBudget','noteDispatch',{key,stage:'weak',throughSeq});weakBatchConsumed=true;
+      }
+      for(const message of sourceMessages)stampSeenAtV2(getSocialV2State(key),message.seq);
+      saveSocialV2State();cancelMessageReadAck(key);
+      const queued=old || pluginHost.callService('taskAdmission','enqueue',{key,groupId,sourceSeqs:sourceMessages.map(message=>message.seq),messages:sourceMessages,originActionId:envelope.actionId,wakeReason:taskReason,
+        originAdmission:{mode:currentMode,policy:sessionPolicy(key),admittedAt:Date.now(),budgetStage:budget.stage,weakBatchConsumed}});
+      if(queued?.ok===false)throw Error('任务准入排队失败：'+queued.reason);
+      skipWake();return {ok:true,skipped:true,taskAdmissionPending:true,groupId,reason:reason || credit?.reason};
+    };
+    if(envelope.replyPlan.taskPending){
+      const groupId=envelope.replyPlan.taskGroupId,credit=pluginHost.callService('replyPlan','claimTaskGroup',{key,groupId,plan:envelope.replyPlan});
+      if(credit?.ok!==true)return deferTask(credit?.reason,credit);
+      const bound=pluginHost.callService('replyPlan','bindContent',{key,plan:envelope.replyPlan,contentId:envelope.replyPlan.contentId,taskGroupId:groupId,messages:sourceMessages});
+      if(bound?.ok!==true)throw Error('任务组已准入但未能绑定：'+bound?.reason);
+      envelope.replyPlan=bound.plan;
+    }
+    envelope.taskExempt=envelope.replyPlan.taskExempt===true;
+
     let wakeState;
     let wakeToken;
     let wakeSnapshot;
@@ -11830,7 +11993,7 @@ async function main() {
       // offline queue may have received more messages since this wake was queued.
       wakeState = getSocialV2State(key);
       wakeToken = wakeState.agentToken;
-      const budgetStage = tokenBudgetOf(key).stage;
+      const budgetStage = envelope.budgetStage;
       promptText = buildWakePromptV2(key, opts.wakeReason, budgetStage, envelope);
       // 人格层：reserved2 下角色卡原本只在 qq_get_prompt 里能读到，于是"改了人设卡但不生效"。
       // 这里把当前角色卡拼到每条唤醒提示词最前面（仍受 role.maxInjectChars 截断），
@@ -11838,7 +12001,7 @@ async function main() {
       const roleHintNow = currentRoleHintV2();
       envelope.roleHint=roleHintNow;
       if (roleHintNow) promptText = `${roleHintNow.trim()}\n\n${promptText}`;
-      wakeSnapshot = opts.wakeReason === 'budgetRecovery' || opts.scheduledEvent ? null : buildWakeSnapshotV2(key, budgetStage === 'weak');
+      wakeSnapshot = opts.wakeReason === 'budgetRecovery' || opts.scheduledEvent ? null : buildWakeSnapshotV2(key, budgetStage === 'weak',envelope);
       if (wakeSnapshot) {
         promptText += `\n\n【本次消息快照】\n${JSON.stringify(wakeSnapshot)}\n【逐条看完，别只回最后一条】以上消息已提供，无需重复查询；snapshot.pendingFromSeq 是窗口内第一个还没双戳（seenAt+repliedAt）齐全的消息，重启后从它开始处理、不会重刷已回复过的旧消息；awaitingReply=true 或出现在 awaitingReplySeqs 里的消息是「已接收未回复」的旧账，必须逐条处理（回复，或在确认不接时用 qq_mark_read(throughSeq=…) 收尾）。snapshot.partial=true 或 includedUnreadCount < unreadCount 时，必须先用 qq_get_unread_messages(afterSeq=readThroughSeq) 把剩余未读读完再回复。先判断本批消息是否能由同一个回答完整回应，再按以下规则选择发送方式。\n${MULTI_MESSAGE_REPLY_POLICY}\n${PRIVATE_FOLLOWUP_POLICY}\n回复前如需确认对方是否说完，用 qq_wait_for_messages(purpose="reply") 补足短静默，已安静够久会立即返回。收尾只确认你真正处理过的 readThroughSeq（本地 seq，非 QQ messageId），传给 qq_mark_read 或 qq_set_wake_config 的 throughSeq；没回过的消息不要跟着一起标记已读。`;
       }
@@ -11888,7 +12051,15 @@ async function main() {
     // 媒体解析成功后再标记退场，避免解析异常时残留退场标记。
     if (!isCurrentSession(key, sessionId)) throw new Error('投递前会话已重置或权限已变化');
     const dispatchBudget = budgetAllows();
-    if (!dispatchBudget.allowed || wakeBlocked() || pluginBlocked()) return skipWake();
+    if (!dispatchBudget.allowed || wakeBlocked() || pluginBlocked()) return envelope.taskExempt && !resume ? deferTask('admission_changed') : skipWake();
+    if(envelope.taskExempt && !validTaskBudgetAdmission(envelope.budgetAdmission,key)){
+      const groupId=envelope.replyPlan.taskGroupId || envelope.replyPlan.contentId,paid=pluginHost.callService('replyPlan','getTaskGroup',{key,groupId});
+      if(!paid)throw Error('任务组尚未取得频率准入');
+      envelope.budgetAdmission={id:envelope.actionId,originKey:key,admittedAt:Date.now(),groupId,creditId:paid.id,sourceSeqs:sourceMessages.map(message=>message.seq),sourceBindings:Object.fromEntries(sourceMessages.map(message=>[message.seq,taskSourceIdentity(message)]))};
+      envelope.admittedTaskGroups={[groupId]:envelope.budgetAdmission};
+    }
+    const initialJournal=envelope.taskExempt && !resume && sourceMessages.length>0 ? pluginHost.callService('taskAdmission','beginDispatch',{key,groupId:envelope.budgetAdmission.groupId,sourceSeqs:sourceMessages.map(message=>message.seq),messages:sourceMessages,originActionId:envelope.actionId,wakeReason:taskReason,originAdmission:envelope.originAdmission}) : null;
+    if(initialJournal?.ok===false){cancelMessageReadAck(key);return {...skipWake(),taskAdmissionStatus:initialJournal.status};}
     if (opts.farewell) social.exitingSessions.add(sessionId);
     const dispatches = pendingTurnEnvelopes.get(sessionId) || [];
     dispatches.push(envelope);
@@ -11904,19 +12075,23 @@ async function main() {
       forgetEnvelope();
       if (opts.farewell) social.exitingSessions.delete(sessionId);
       if (opts.wakeReason) noteMessageAckRoundFailed(key, envelope.wakeInboundAt);
+      if(initialJournal?.ok)pluginHost.callService('taskAdmission','finishDispatch',{groupId:initialJournal.groupId,outcome:error?.notAdmitted===true?'notAdmitted':'unknown',reason:String(error?.message||error)});
       throw error;
     }
     if (!accepted.result.ok) {
+      if(initialJournal?.ok)pluginHost.callService('taskAdmission','finishDispatch',{groupId:initialJournal.groupId,outcome:'notAdmitted',reason:'provider_rejected'});
       forgetEnvelope();
       if (opts.farewell) social.exitingSessions.delete(sessionId);
       if (opts.wakeReason) noteMessageAckRoundFailed(key, envelope.wakeInboundAt);
       const errText = `${accepted.result.error.code}: ${accepted.result.error.message}`;
       const safeErrText = shouldAuditKey(key) && isSensitiveText(errText, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules) ? '（含敏感信息，已隐藏）' : errText;
       if (!opts.silent && isAdminDevKey(key)) await sendToQQ(key, `⚠️ 消息未被接受：${safeErrText}`);
-      return { ok: false, error: safeErrText };
+      return { ok: false,notAdmitted:true,error: safeErrText };
     }
+    if(initialJournal?.ok)pluginHost.callService('taskAdmission','finishDispatch',{groupId:initialJournal.groupId,outcome:'accepted'});
+    envelope.originAdmission.weakBatchConsumed=envelope.originAdmission.weakBatchConsumed || dispatchBudget.budget.stage==='weak';
     if (opts.wakeReason === 'startupGreeting') pluginHost.callService('startupGreeting', 'markDispatched', { key, dispatchedAt: Date.now() });
-    pluginHost.callService('tokenBudget', 'noteDispatch', { key, stage: dispatchBudget.budget.stage,throughSeq:wakeSnapshot?Math.max(0,...[...wakeSnapshot.messages,...wakeSnapshot.receiptWindow,...wakeSnapshot.recent].map(m=>Number(m.seq)||0)):getSocialV2State(key).lastUnreadSeq });
+    pluginHost.callService('tokenBudget', 'noteDispatch', { key, stage: resume?.originAdmission?.weakBatchConsumed?'normal':dispatchBudget.budget.stage,throughSeq:wakeSnapshot?Math.max(0,...[...wakeSnapshot.messages,...wakeSnapshot.receiptWindow,...wakeSnapshot.recent].map(m=>Number(m.seq)||0)):getSocialV2State(key).lastUnreadSeq });
     // 补话布点必须在「唤醒提示词真的被 DSH 接受」（模型开始生成）之后才落地：
     // 额度/静音/宵禁/模式闸门跳过的唤醒因此一条补话都不会留下，不会「先说了等我一下然后消失」。
     if(String(opts.wakeReason||'').startsWith('scheduledContact:'))pluginHost.callService('availability','markDispatched',{key,id:String(opts.wakeReason).split(':')[1]});
@@ -11936,6 +12111,66 @@ async function main() {
     }
     return { ok: true };
   }
+
+  taskCaps.admitTaskContents=async({key,envelope,contents=[],messages=[]}={})=>{
+    const known=envelope && !envelope.cancelled && envelope.key===key && state.sessions[key]===envelope.sessionId && (activeTurnEnvelopes.get(envelope.sessionId)===envelope || pendingTurnEnvelopes.get(envelope.sessionId)?.includes(envelope));
+    if(!known || !isSessionAllowedInCurrentMode(key) || socialV2.paused || cfg.socialV2?.enabled===false)return {ok:false,reason:'task_envelope_not_admitted'};
+    if(pluginHost.callService('availability','canWake',{key,reason:envelope.taskAdmission?.wakeReason || envelope.reason})===false)return {ok:false,reason:'task_environment_unavailable'};
+    const admitted=[],deferred=[],refreshed=[],bySeq=new Map(messages.map(message=>[message.seq,message]));
+    envelope.admittedTaskGroups ||= {};
+    for(const input of contents){
+      let content=pluginHost.callService('replyPlan','getContent',{key,contentId:input?.id});
+      if(!content)return {ok:false,reason:'task_content_not_found'};
+      if(content.kind!=='task'){refreshed.push(content);continue;}
+      const source=content.seqs.map(seq=>bySeq.get(seq));
+      if(source.some(message=>!message || !messageAdmitted(envelope,message) || !envelope.taskSources?.[message.seq]?.eligible))return {ok:false,reason:'task_sources_not_admitted'};
+      let grant=envelope.admittedTaskGroups[content.id];
+      const queuedBefore=pluginHost.callService('taskAdmission','get',{groupId:content.id});
+      if(queuedBefore && ['dispatching','unknown'].includes(queuedBefore.status) && !validTaskBudgetAdmission(grant,key))return {ok:false,reason:'task_admission_dispatch_conflict'};
+      const budget=tokenBudgetOf(key),original=envelope.originAdmission;
+      const feeAllowed=validTaskBudgetAdmission(grant,key) || budget.stage!=='silent' && (budget.stage!=='weak' || original?.weakBatchConsumed===true || pluginHost.callService('tokenBudget','canDispatch',{key,stage:budget.stage})!==false);
+      const credit=feeAllowed?pluginHost.callService('replyPlan','claimTaskGroup',{key,groupId:content.id,plan:envelope.replyPlan}):{ok:false,reason:'task_fee_admission_pending'};
+      if(credit?.ok!==true){
+        for(const message of source)stampSeenAtV2(getSocialV2State(key),message.seq);
+        const old=pluginHost.callService('taskAdmission','get',{groupId:content.id});
+        const queued=old || pluginHost.callService('taskAdmission','enqueue',{key,groupId:content.id,sourceSeqs:content.seqs,messages:source,originActionId:envelope.actionId,wakeReason:envelope.taskAdmission?.wakeReason || envelope.reason,originAdmission:original});
+        if(queued?.ok===false)return {ok:false,reason:queued.reason};deferred.push(content.id);
+      }else{
+        if(queuedBefore && ['waiting','creditClaimed'].includes(queuedBefore.status)){
+          const settled=pluginHost.callService('taskAdmission','acceptActive',{key,groupId:content.id});
+          if(settled?.ok!==true)return {ok:false,reason:settled?.reason || 'task_admission_dispatch_conflict'};
+        }
+        grant={id:envelope.actionId,originKey:key,admittedAt:Date.now(),groupId:content.id,creditId:credit.admission.id,sourceSeqs:[...content.seqs],sourceBindings:Object.fromEntries(source.map(message=>[message.seq,taskSourceIdentity(message)]))};
+        envelope.admittedTaskGroups[content.id]=grant;admitted.push(content.id);
+      }
+      content=pluginHost.callService('replyPlan','getContent',{key,contentId:content.id});refreshed.push(content);
+    }
+    saveSocialV2State();return {ok:true,contents:refreshed,admitted,deferred,admissions:{...envelope.admittedTaskGroups}};
+  };
+
+  taskCaps.taskAdmissionStatus=async(input={})=>{
+    const row=taskAdmissionEntry(input);
+    if(!row || !row.originAdmission || !['waiting','creditClaimed','dispatching'].includes(row.status))return {allowed:false,reason:'untrusted_task_admission'};
+    const key=row.key,st=getSocialV2State(key),budget=tokenBudgetOf(key);
+    if(row.originAdmission.mode!==currentMode || row.originAdmission.policy!==sessionPolicy(key))return {allowed:false,reason:'task_source_policy_changed'};
+    if(!dshReady || !isSessionAllowedInCurrentMode(key) || socialV2.paused || cfg.socialV2?.enabled===false || !pluginHost.allowsWake(row.wakeReason,{key}) || pluginHost.callService('availability','canWake',{key,reason:row.wakeReason})===false)return {allowed:false,reason:'task_environment_unavailable'};
+    if(!queuedTaskFeeAllowed(row,budget))return {allowed:false,reason:'task_fee_admission_pending'};
+    if(isConversationBusyV2(key,st) || activeTurnEnvelopes.has(state.sessions[key]) || pendingTurnEnvelopes.get(state.sessions[key])?.length)return {allowed:false,reason:'task_conversation_busy'};
+    const live=[...st.unread,...st.recentMessages];
+    if(Number(st.lastUnreadSeq)<Math.max(...row.sourceSeqs) || row.messages.some(original=>live.some(message=>message.seq===original.seq && taskSourceIdentity(message)!==taskSourceIdentity(original))))return {allowed:false,terminal:true,reason:'task_source_identity_changed'};
+    if(row.sourceSeqs.every(seq=>{const message=live.find(item=>item.seq===seq);return message && messageFullyProcessedV2(message);}))return {allowed:false,terminal:true,reason:'task_source_already_processed'};
+    const content=pluginHost.callService('replyPlan','getContent',{key,contentId:row.groupId});
+    if(!content || content.kind!=='task' || JSON.stringify([...content.seqs].sort((a,b)=>a-b))!==JSON.stringify([...row.sourceSeqs].sort((a,b)=>a-b)))return {allowed:false,terminal:true,reason:'task_source_binding_changed'};
+    const plan=pluginHost.callService('replyPlan','resolve',{key,turnId:row.originActionId,messages:row.messages,taskSources:taskProvenanceFor(key,row.wakeReason,row.messages).taskSources,taskGroupId:row.groupId,budgetStage:budget.stage});
+    return {allowed:!!plan,plan,reason:plan?'':'task_plan_unavailable'};
+  };
+  taskCaps.requestTaskAdmissionWake=async(input={})=>{
+    const row=taskAdmissionEntry(input),status=await taskCaps.taskAdmissionStatus(input);
+    if(!row || row.status!=='dispatching' || !status.allowed || !pluginHost.callService('replyPlan','getTaskGroup',{key:row.key,groupId:row.groupId}))return {accepted:false,notAdmitted:true,reason:status.reason||'task_group_credit_missing'};
+    const result=await deliverPrompt(row.key,'',{wakeReason:'taskResume',taskAdmission:row,silent:true});
+    if(result?.ok===true && !result.skipped && !result.queued && !result.retried)return {accepted:true};
+    return {accepted:false,notAdmitted:true,reason:result?.error || 'task_dispatch_not_admitted'};
+  };
 
   const pluginPromptCooldowns=new Map();
   taskCaps.budgetWeakStatus=(key)=>({stage:tokenBudgetOf(key).stage,allowed:dshReady&&isSessionAllowedInCurrentMode(key)&&!socialV2.paused&&cfg.socialV2?.enabled!==false&&pluginHost.callService('availability','canWake',{key,reason:'budgetWeak'})!==false&&pluginHost.callService('tokenBudget','canDispatch',{key,stage:tokenBudgetOf(key).stage})!==false,busy:isConversationBusyV2(key,getSocialV2State(key)),pendingCount:pendingMessagesV2(getSocialV2State(key)).length});
@@ -12469,7 +12704,11 @@ async function main() {
   function isModelMessageBlockedV2(key, messageId, { enforceWindow = true } = {}) {
     const st = getSocialV2State(key);
     const budget = tokenBudgetOf(key);
-    if (enforceWindow && budget.stage === 'silent') return true;
+    if (enforceWindow && budget.stage === 'silent') {
+      const envelope=activeTurnEnvelopes.get(state.sessions[key]),allowed=paidTaskSourceSeqs(envelope);
+      const message=[...(st.recentMessages || []),...(st.unread || [])].find(item=>String(item.messageId||'')===String(messageId)||String(item.seq)===String(messageId));
+      if(!message || !allowed.has(message.seq))return true;
+    }
     const found = [...(st.recentMessages || []), ...(st.unread || [])]
       .find(m => m && (String(m.messageId || '') === String(messageId) || String(m.seq) === String(messageId)));
     if (enforceWindow && budget.stage === 'weak') {
@@ -13157,7 +13396,10 @@ async function main() {
   }
 
   function noteModelMessagesV2(st, messages, key, admission, dispatchEnvelope) {
-    recordAdmittedMessages(dispatchEnvelope||activeTurnEnvelopes.get(state.sessions[key]),messages);
+    const taskEnvelope=dispatchEnvelope||activeTurnEnvelopes.get(state.sessions[key]);
+    if(tokenBudgetOf(key).stage==='silent'){const allowed=paidTaskSourceSeqs(taskEnvelope);messages=messages.filter(message=>allowed.has(message.seq));}
+    recordAdmittedMessages(taskEnvelope,messages);
+    if(taskEnvelope && !taskEnvelope.cancelled){const task=taskProvenanceFor(key,taskEnvelope.reason,messages);taskEnvelope.taskSources={...taskEnvelope.taskSources,...task.taskSources};if(task.taskEligible)taskEnvelope.taskEligible=true;}
     // Bound receipts by the actual unread buffer; historical/self messages need no receipt.
     const unread = new Set(st.unread.map((m) => m.seq));
     st.modelSeenSeqs = new Set([...st.modelSeenSeqs || []].filter((seq) => unread.has(seq)));
@@ -13167,7 +13409,7 @@ async function main() {
       st.modelSeenSeqs.add(msg.seq);
       stampSeenAtV2(st, msg.seq, now);
     }
-    if(key){const envelope=dispatchEnvelope||activeTurnEnvelopes.get(state.sessions[key]);if(envelope&&!envelope.cancelled){const stage=tokenBudgetOf(key).stage,allow=stage==='normal';const grant=pluginHost.callService('replyPlan','forMessages',{key,actionId:envelope.actionId,currentPlan:envelope.replyPlan,baselineSeq:envelope.replyGrantThroughSeq||0,messages,mood:envelope.mood,reason:envelope.reason,canRenew:allow});if(grant?.changed){envelope.replyPlan=grant.plan;envelope.replyGrantThroughSeq=grant.throughSeq;if(admission)admission.replyBatch={renewed:true,id:grant.plan.turnId,throughSeq:grant.throughSeq};}}}
+    if(key){const envelope=dispatchEnvelope||activeTurnEnvelopes.get(state.sessions[key]);if(envelope&&!envelope.cancelled){const stage=tokenBudgetOf(key).stage,allow=stage==='normal';const grant=pluginHost.callService('replyPlan','forMessages',{key,actionId:envelope.actionId,currentPlan:envelope.replyPlan,baselineSeq:envelope.replyGrantThroughSeq||0,messages,mood:envelope.mood,reason:envelope.reason,taskSources:envelope.taskSources,canRenew:allow});if(grant?.changed){envelope.replyPlan=grant.plan;envelope.replyGrantThroughSeq=grant.throughSeq;if(admission)admission.replyBatch={renewed:true,id:grant.plan.turnId,throughSeq:grant.throughSeq};}}}
     return readThroughSeqV2(st);
   }
 
@@ -13309,8 +13551,13 @@ async function main() {
     return `${lines.join('\n')}\n\n`;
   }
 
-  function modelFacingStateV2(key, { weak = false } = {}) {
+  function modelFacingStateV2(key, { weak = false,dispatchEnvelope=null } = {}) {
     const st = getSocialV2State(key), stage = tokenBudgetOf(key).stage;
+    if (dispatchEnvelope && validTaskBudgetAdmission(dispatchEnvelope.budgetAdmission,key) || (stage === 'silent' || stage === 'weak') && trustedTaskEnvelope(key)) {
+      const envelope = dispatchEnvelope || activeTurnEnvelopes.get(state.sessions[key]);
+      const allowedSeqs = paidTaskSourceSeqs(envelope);
+      return modelStateViewV2(st,{allowedSeqs});
+    }
     if (stage === 'silent') return modelStateViewV2(st, { allowedSeqs: new Set() });
     if (stage !== 'weak' && !weak) return modelStateViewV2(st);
     const active=activeTurnEnvelopes.get(state.sessions[key]);
@@ -13336,10 +13583,10 @@ async function main() {
     return modelStateViewV2(st, { allowedSeqs });
   }
 
-  function buildWakeSnapshotV2(key, weakBudget = false) {
+  function buildWakeSnapshotV2(key, weakBudget = false,dispatchEnvelope=null) {
     const context = cfg.socialV2?.context ?? {};
     if (context.inlineWakeMessages === false || (!v2ToolEnabled('getUnread') && !v2ToolEnabled('getRecent'))) return null;
-    const st = modelFacingStateV2(key, { weak: weakBudget });
+    const st = modelFacingStateV2(key, { weak: weakBudget,dispatchEnvelope });
     const limits = normalizeContextLimits(context);
     const maxChars = weakBudget ? limits.weakWakeMaxChars : limits.wakeMaxChars;
     const maxUnread = limits.wakeMessageLimit;
@@ -13458,7 +13705,7 @@ async function main() {
     // 角色卡本身由 deliverPromptNow 拼在最前面（见那里的 roleHintNow），这里只标名字。
     const st = getSocialV2State(key);
     if(reason==='newsShare'&&envelope)envelope.biliPlanId=st.pendingBiliShare?.id;
-    const modelView = modelFacingStateV2(key, { weak: budgetStage === 'weak' });
+    const modelView = modelFacingStateV2(key, { weak: budgetStage === 'weak',dispatchEnvelope:envelope });
     // 注意：黑话表不在这里注入，deliverPromptNow 的 withSlangContext 会统一注入，
     // 避免唤醒 prompt 出现两份黑话表。
     let mutedJustClearedNow = false;
@@ -13598,6 +13845,7 @@ async function main() {
         key,
         reason,
         scheduledEvent: envelope?.scheduledEvent,
+        taskAdmission:envelope?.taskAdmission,
         triggeredLine,
         preSleepMs,
         history,
@@ -13706,7 +13954,7 @@ async function main() {
     }
     const existingReminder = [activeTurnEnvelopes.get(state.sessions[key]), ...(pendingTurnEnvelopes.get(state.sessions[key]) || [])]
       .find(envelope => envelope?.reason === 'reminder' && !envelope.cancelled);
-    if (['reminder', 'timeBubble'].includes(reason) && tokenBudgetOf(key).stage !== 'normal'
+    if (['reminder', 'timeBubble'].includes(reason) && tokenBudgetOf(key).stage !== 'normal' && !validTaskBudgetAdmission(taskProvenanceFor(key,reason).budgetAdmission,key)
         && !(reason === 'reminder' && existingReminder?.reason === 'reminder' && !existingReminder.cancelled)) {
       await sendDirectTimedNotice({ key, reason, state: st, send: taskCaps.sendNotificationDetailed,
         status: taskCaps.deliveryStatus, prepareBubble: payload => pluginHost.callService('timeBubble', 'prepareDirect', payload),
@@ -14040,11 +14288,14 @@ async function main() {
   // 本会话的合并窗口时长（batchWindowMs）：取会话自己的 wakeConfig，缺省回落到全局配置。
   // 补话的计时起点就是这个窗口结束，保证「合并窗内对方还在继续补话」时不会冒出多余的一句。
   // 两组补话从最新完整入站消息计时，不依赖合并窗口、排队或新的 prompt 被接受。
+  function ordinaryAckBudgetAllowed(key) {
+    return tokenBudgetOf(key).stage === 'normal' && pluginHost.callService('replyPlan','preview',{key})?.allowed !== false;
+  }
   function scheduleMessageReadAck(key, inboundAt = Number(messageAckInboundAt.get(key)) || Date.now()) {
     const isPrivate = String(key).startsWith('private:');
     const isGroup = String(key).startsWith('group:');
     if (!isPrivate && !isGroup) return;
-    if(tokenBudgetOf(key).stage!=='normal')return;
+    if(!ordinaryAckBudgetAllowed(key))return;
     const ackCfg = cfg.socialV2?.readReceipt ?? {};
     if ((isPrivate && ackCfg.ackPrivate === false) || (isGroup && ackCfg.ackGroup === false)) return;
     cancelMessageReadAck(key);
@@ -14112,7 +14363,7 @@ async function main() {
           const lastOut = Number(messageAckLastOutbound.get(key)) || 0;
           if (lastOut >= expectedInboundAt || (Number(messageAckLastAttempt.get(key)) || 0) >= expectedInboundAt) return cancel('这批消息之后已有出站');
 
-          if (!dshReady || !hasActiveMessageAckTurn(key) || !isSessionAllowedInCurrentMode(key) || shouldBlockSilentReply(key) || tokenBudgetOf(key).stage!=='normal') return cancel('模型未运行或当前不可回复');
+          if (!dshReady || !hasActiveMessageAckTurn(key) || !isSessionAllowedInCurrentMode(key) || shouldBlockSilentReply(key) || !ordinaryAckBudgetAllowed(key)) return cancel('模型未运行或当前不可回复');
           const id = Number(String(key).split(':')[1]);
           if (!Number.isFinite(id) || id <= 0) return cancel('无法解析会话 id');
 
@@ -14128,7 +14379,7 @@ async function main() {
                 messageAck: true,
                 allow: () => messageAckArmed.get(key) === armed
                   && (Number(messageAckInboundAt.get(key)) || 0) === expectedInboundAt
-                  && tokenBudgetOf(key).stage==='normal'
+                  && ordinaryAckBudgetAllowed(key)
                   && (Number(messageAckLastAttempt.get(key)) || 0) < expectedInboundAt
               });
             }
@@ -14179,7 +14430,7 @@ async function main() {
   function armMessageReadAckV2(key, reason, inboundAt) {
     if (Number(messageAckInboundAt.get(key)) !== Number(inboundAt)) return;
     if (Number(messageAckLastArmedInbound.get(key)) === Number(inboundAt)) return;
-    if (!messageAckWakeEligible(key, reason) || tokenBudgetOf(key).stage!=='normal') return;
+    if (!messageAckWakeEligible(key, reason) || !ordinaryAckBudgetAllowed(key)) return;
     if (currentMode !== 'reserved2' || socialV2.paused || cfg.socialV2?.enabled === false) return;
     const st = getSocialV2State(key);
     if (!dshReady || st.mutedUntilReengaged || shouldBlockSilentReply(key)) return;

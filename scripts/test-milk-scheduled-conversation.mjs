@@ -16,7 +16,7 @@ async function open(t){
 function event(extra={}){return {key,id:'milk-test',plugin:'tool-deepseek-balance',reason:'milkStock',sourceAt:Date.now(),expiresAt:Date.now()+60000,allowedKinds:['text'],...extra};}
 
 function fillSendWindow(h){
- const call=h.pluginHost.callService.bind(h.pluginHost),plan=call('replyPlan','resolve',{key,turnId:'baseline'});
+ const call=h.pluginHost.callService.bind(h.pluginHost),plan=call('replyPlan','resolve',{key,turnId:'baseline',autonomousSource:{id:'baseline-admission',kind:'directMessage'}});
  assert.equal(call('replyPlan','reserve',{key,plan,operationId:'baseline'}).ok,true);
  call('replyPlan','commit',{key,operationId:'baseline',deliveryId:'baseline'});
 }
@@ -31,12 +31,12 @@ test('real milk admission and physical send both use a one-off timer slot after 
  assert.equal(h.calls.sent.length,1);
 });
 
-test('real reminder envelope carries every trusted due item into one bounded multi-message plan',async t=>{
+test('real reminder envelope carries independent persisted event slots without changing the content part policy',async t=>{
  const {h,sid}=await open(t);fillSendWindow(h);const now=Date.now();
  h.getSocialV2State(key).pendingReminderItems=['a','b','c'].map(id=>({id,text:'待办'+id,dueAt:now+60000,requestedAt:now}));
  await h.deliverPrompt(key,'',{silent:true,wakeReason:'reminder'});
  const envelope=h.pendingTurnEnvelopes.get(sid)[0];
- assert.equal(envelope.replyPlan.scheduledGrant?.ids.length,3);assert.equal(envelope.replyPlan.maxMessages,3);
+ assert.equal(envelope.replyPlan.scheduledGrant?.ids.length,3);assert.equal(envelope.replyPlan.maxMessages,1);
  for(const text of ['提醒a','提醒b','提醒c'])assert.equal(await h.sendToQQ(key,text,{wakeOrigin:envelope,conversationReply:true}),true);
  assert.equal(await h.sendToQQ(key,'不得多发',{wakeOrigin:envelope,conversationReply:true}),false);
 });

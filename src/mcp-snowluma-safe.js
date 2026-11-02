@@ -22,6 +22,8 @@ import { registerBilibiliTools } from './mcp-bilibili-tools.mjs';
 import { SENSITIVE_RE } from './sensitive.js';
 import { serializeModelData } from './qq-model-view.js';
 import { describeSendRejection } from '../plugins/qq-components/ctx-chat-reply-shape/send-rejection.mjs';
+import {createReplyContentCarrier} from './mcp-content-carrier.mjs';
+const replyContentCarrier=createReplyContentCarrier();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -194,7 +196,7 @@ function agentHeaders(extra = {}) {
   // 令牌本身仍然只在真有时才发：/api/status 的模式探测（legacyReadToolAllowed）本来就是
   // 无令牌调用，桥接对它单独放行并按最小对象返回。
   headers['x-agent-call'] = '1';
-  return headers;
+  return Object.fromEntries(replyContentCarrier.headers(headers));
 }
 
 /**
@@ -324,7 +326,7 @@ const disabledTools = [];
       disabledTools.push(`${name}(${flag})`);
       return undefined;
     }
-    return registerTool(name, ...rest);
+    return registerTool(name, ...replyContentCarrier.decorate(name,rest));
   };
 }
 
@@ -726,6 +728,13 @@ server.tool(
     }
   }
 );
+
+server.tool('qq_reply_contents','按完整用户内容声明回复分组：同一意思的连续碎片合并，三个不同意思分别成三份；只能引用本轮实际读到的seq，不凭LLM调用次数或重读增加份数。返回contentId，后续文字/引用/媒体发送携带对应ID。同一内容最多拆分配置条数，明确任务与完成汇报按服务端任务依据豁免。',{
+ key:z.string(),token:z.string(),groups:z.array(z.object({seqs:z.array(z.number().int().positive()).min(1),kind:z.enum(['chat','task']).optional()})).min(1).max(40)
+},async({key,token,groups})=>{
+ try{const data=await agentApi('/api/socialV2/reply-contents',{method:'POST',headers:{'x-agent-token':token},body:JSON.stringify({key,groups})});return {content:[{type:'text',text:serializeModelData(data)}]};}
+ catch(error){return {content:[{type:'text',text:'完整内容分组失败：'+(error?.message||'未知错误')}],isError:true};}
+});
 
 server.tool(
   'qq_send_message',

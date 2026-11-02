@@ -2937,6 +2937,7 @@
     qq_mood: "mood",
     qq_send_burst: "sendBurst",
     qq_send_message: "sendMessage",
+    qq_reply_contents: "sendMessage",
     qq_wait_for_messages: "waitMessages",
     qq_wait_for_quiet: "waitMessages",
     qq_report_feedback: "feedback",
@@ -7431,6 +7432,13 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
 
   // console/layers/L/parameter-examples.js
   var parameter_examples_default3 = {
+    "ctx-chat-reply-shape": {
+      "maxMessagesNormal": "设为3：一份完整语义最多拆分3条；三份独立含义可各3条共9条，没有请求批次总条数上限，普通限频仍有效。",
+      "maxMessagesCasual": "设为3：多条碎片若表达同一件事，可合并为一份内容；不是收到三条QQ消息就自动有三份额度。",
+      "maxMessagesSerious": "设为3：同一内容跨模型请求、重读及换发送工具仍合计最多3条；心情和聊天意愿不缩减此上限。",
+      "maxSendPerMinute": "基础8、F为0.36：向上取整后每分钟3点。普通聊天每条1点；接手一个任务及完成汇报整组共1点，组内发送不重复扣点。基础值大于0时最低1点，0不限。",
+      "maxSendPerHour": "基础60、F为0.36：向上取整后每小时22点。任务无点时保持已读未处理，恢复后复查条件自动接手并扣1点；同组执行/汇报不再扣点、不限拆分，实际花费照常统计。"
+    },
     "life-daily-worklog": {
       "hour": "小时23、分钟0：到23:00生成日报；启用发送时再按投递规则发出。",
       "minute": "小时23、分钟30：触发时间是23:30，而不是每30分钟一次。",
@@ -7438,10 +7446,10 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       "maxChars": "设为2000：约束面向聊天的摘要预算，完整归档不会因此只剩2000字。"
     },
     "life-message-ack": {
-      "privateWait": "设为8秒：私聊最新来信后仍未正式回复，才触发等待提示；新来信会重置本轮。",
-      "privateApology": "设为30秒：私聊思考继续超过延迟后可发这组补话，正式回复实际发送前取消计时。",
+      "privateWait": "设为8秒：私聊最新来信后仍未正式回复，才触发等待提示；新来信会重置本轮。普通聊天预算耗尽时不发送此类思考补话。",
+      "privateApology": "设为30秒：私聊思考继续超过延迟后可发这组补话，正式回复实际发送前取消计时；普通聊天预算耗尽时不发送。",
       "groupWait": "开启后，群内符合回应条件的未答消息使用这组等待话术；不是对所有群消息都提示。",
-      "groupApology": "填写多条话术：群内超时补话从本组选择，不与静默后预算机械回复共用词表。"
+      "groupApology": "填写多条话术：群内超时补话从本组选择；普通聊天预算耗尽时不发送思考、超时或机械补话。"
     },
     "life-proactive-startup-greeting": {
       "hint": "填“先看看对方现在是否方便”：开机问候生成时参考，不会原样当固定群发消息。",
@@ -7470,12 +7478,12 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       "maxTasks": "设为20时，新建任务优先清理最旧的已结束记录，进行中的任务保留。"
     },
     "life-token-budget": {
-      "sessions": "为某个private或group会话设置单独花费阈值，只影响该会话预算。",
-      "ownerBudgetEnabled": "开启后管理员会话也检查所设置的预算，不默认豁免。",
-      "globalHardLimitYuan": "设为2.5：本周期全局计费达到2.5元后，模型调用按硬上限阻断；不等于删除通知排程。",
+      "sessions": "按会话设置费用阈值；开始任务仍检查费用、弱限频（私聊默认每5条、群聊按间隔）和任务组1点接手额度。已准入任务执行中跨费用软/硬阈值，可继续原任务并及时汇报，实际花费照常统计。",
+      "ownerBudgetEnabled": "开启后管理员会话也检查费用与任务开始条件；关闭时沿用明确的管理员预算设置，任务标签本身不授予无限新任务权限。",
+      "globalHardLimitYuan": "设为2.5：全局硬上限约束新模型请求与新任务准入。已准入任务执行中达到上限，可按持久的原任务权限继续并及时汇报；所有实际费用仍计入账本。普通聊天满额后无机械补话。",
       "recoveryWindows": "私聊、群聊、管理员都设为5：恢复后只处理对应最近5条窗口，不把全部历史重新交给模型。",
-      "mechanicalPrivateReplies": "每行写一条私聊超额短句，硬上限后从这里选择，不调用LLM生成。",
-      "mechanicalGroupReplies": "每行写一条群聊超额短句；与模型思考期间四组补话分开维护。"
+      "mechanicalPrivateReplies": "兼容保留的历史配置；普通聊天预算耗尽时不发送机械短句。",
+      "mechanicalGroupReplies": "兼容保留的历史配置；普通聊天预算耗尽时不发送机械短句，也不发送思考或超时补话。"
     }
   };
 
@@ -7666,18 +7674,18 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   ] };
 
   // console/layers/L/components/ctx-chat-reply-shape.js
-  var ctx_chat_reply_shape_default = { saveLabel: "保存发送数量与间隔", title: "唯一发送计划", fields: [
-    { key: "maxMessagesNormal", label: "普通聊天每轮上限（条）", type: "number", group: "单轮数量", help: "只表示上限，不要求发满。" },
-    { key: "maxMessagesCasual", label: "轻松闲聊每轮上限（条）", type: "number" },
-    { key: "maxMessagesSerious", label: "严肃话题每轮上限（条）", type: "number" },
+  var ctx_chat_reply_shape_default = { saveLabel: "保存内容拆分与发送节奏", title: "唯一发送计划", fields: [
+    { key: "maxMessagesNormal", label: "普通聊天每份内容最多拆分（条）", type: "number", group: "完整内容拆分", help: "一份内容按完整语义判断，可合并多条碎片来信；不按QQ消息数、等待批次或模型请求数计份。只是上限，不要求发满。" },
+    { key: "maxMessagesCasual", label: "轻松闲聊每份内容最多拆分（条）", type: "number", help: "各份独立含义分别累计；同一份内容跨请求、换发送工具或重读都不刷新额度。" },
+    { key: "maxMessagesSerious", label: "严肃话题每份内容最多拆分（条）", type: "number", help: "心情和聊天意愿不缩减每份内容的拆分上限。" },
     { key: "longIncomingChars", label: "长来信判定（字符）", type: "number" },
     { key: "intervalMinMs", label: "普通间隔下限（毫秒）", type: "number", group: "逐条间隔" },
     { key: "intervalMaxMs", label: "普通间隔上限（毫秒）", type: "number" },
     { key: "longGapProbability", label: "长间隔概率（0–1）", type: "number" },
     { key: "longGapMinMs", label: "长间隔下限（毫秒）", type: "number" },
     { key: "longGapMaxMs", label: "长间隔上限（毫秒）", type: "number" },
-    { key: "maxSendPerMinute", label: "每分钟上限（条）", type: "number", group: "统一出站上限", help: "0 = 此时间窗口不限制。" },
-    { key: "maxSendPerHour", label: "每小时上限（条）", type: "number", help: "0 = 此时间窗口不限制。" },
+    { key: "maxSendPerMinute", label: "每分钟基础额度（点）", type: "number", group: "动态发送与任务接手额度", help: "有效额度 = 向上取整（基础额度 × 心情与聊天意愿系数F）；基础值大于0时最低1点，0表示此窗口不限。普通聊天每条实际发送1点；接手同一任务及完成汇报整组只占1点，组内发送不重复扣点。" },
+    { key: "maxSendPerHour", label: "每小时基础额度（点）", type: "number", help: "与分钟窗口分别计算；文字和媒体共用计数。任务无点时保留已读未处理，额度恢复后复查条件自动接手；同组不重复扣点，组内不限拆分条数。开始仍检查费用与弱限频，已准入原任务可跨费用阈值继续并及时汇报，实际花费仍记账。权限、免打扰、防重与真实回执仍有效。" },
     { key: "maxMessageChars", label: "单条最大长度（字符）", type: "number" }
   ] };
 

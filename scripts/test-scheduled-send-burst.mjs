@@ -7,17 +7,22 @@ function fixture(seed={}){
  let state=structuredClone(seed);
  const svc=createPlugin({config:{maxMessagesNormal:1,maxMessagesCasual:1,maxMessagesSerious:1,maxSendPerMinute:1,maxSendPerHour:1,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},
   state:{get:()=>structuredClone(state),set:p=>state={...state,...structuredClone(p)}},capabilities:{},callService:()=>null,isPluginEnabled:()=>false}).services.replyPlan;
- const resolve=(extra={})=>svc.resolve({key,turnId:'turn',incomingText:'',now,...extra});
+ const sources=new Map();
+ const resolve=(extra={})=>{
+  const turnId=extra.turnId||'turn';if(!sources.has(turnId))sources.set(turnId,sources.size+1);
+  const seq=sources.get(turnId),messages=extra.reason?[]:[{seq,messageId:'source'+seq,text:'实际用户来信',isSelf:false,bodyComplete:true}];
+  return svc.resolve({key,turnId,incomingText:'',messages,now,...extra});
+ };
  return {svc,resolve,state:()=>state};
 }
 const reminder=(id)=>({id,dueAt:now+60000,requestedAt:now});
 const event=id=>({key,id,plugin:'tool-deepseek-balance',reason:'milkStock',sourceAt:now,expiresAt:now+3600000});
 function send(f,plan,id,at=now){const result=f.svc.reserve({key,plan,operationId:id,kind:'text',now:at});if(result.ok)f.svc.commit({key,operationId:id,sentAt:at,deliveryId:id});return result;}
 
-test('multiple authenticated timer items receive one bounded slot each above turn and rate ceilings',()=>{
+test('multiple authenticated timer items receive one persisted event slot each above ordinary rate ceilings',()=>{
  const f=fixture();assert.equal(send(f,f.resolve({turnId:'ordinary'}),'ordinary').ok,true);
  const plan=f.resolve({reason:'reminder',reminders:['a','b','c'].map(reminder)});
- assert.equal(plan.maxMessages,3);
+ assert.equal(plan.maxMessages,1);assert.equal(plan.scheduledGrant.ids.length,3);
  for(let n=0;n<3;n++)assert.equal(send(f,plan,'timer'+n).ok,true);
  assert.equal(send(f,plan,'excess').ok,false);
  assert.equal(send(f,f.resolve({turnId:'ordinary2'}),'ordinary2').ok,false);
