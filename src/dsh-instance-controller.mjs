@@ -1,3 +1,4 @@
+import {createSessionOwnershipRecorder} from './instance-session-ownership.mjs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { claimInstanceRoot } from './instance-descriptor.mjs';
@@ -93,7 +94,15 @@ export async function mountInstanceController(ctx, descriptor, deps = {}) {
         ctx.effect(function* () { yield rawDispose; yield dispose; }, 'bot-instance.ordered-scope');
       },
     }); check();
-    runtime = await deps.createRuntime?.({ ctx: scope.ctx, descriptor, config: deps.config }); check();
+    let recorder;
+    const recordCreatedSession = async record => {
+      check();
+      recorder ??= createSessionOwnershipRecorder({ctx,descriptor,scope,hostImport,
+        hostBaseUrl:ctx.root.baseUrl || ctx.loader?.config?.baseUrl || ctx.loader?.ctx?.baseUrl,
+        isActive:()=>!closing && status.state==='ready'});
+      const append = await recorder; check(); return append(record);
+    };
+    runtime = await deps.createRuntime?.({ ctx: scope.ctx, descriptor, config: deps.config, presetMap:scope.presetMap, recordCreatedSession }); check();
     for (const serverName of Object.keys(BUNDLED_MCP)) {
       await (deps.mountMcp || mountBundledMcp)(scope.ctx, { root: descriptor.root, serverName, nodePath: deps.config?.nodePath, env: deps.env, hostImport }); check();
     }

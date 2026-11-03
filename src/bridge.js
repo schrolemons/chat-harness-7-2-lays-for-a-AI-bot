@@ -1,3 +1,4 @@
+import {loadInstanceSessionPolicy} from './instance-session-policy.mjs';
 import { presetBindings, summarizePreset } from './console/preset-overview.js';
 import {buildDshBundle} from '../scripts/build-dsh-bundle.mjs';
 import { isAdminPluginTool, isAdminEnvironmentAuthorized } from './tools/admin-policy.js';
@@ -102,6 +103,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const BRIDGE_STARTED_AT = Date.now();
 const STATE_DIR = path.join(ROOT, 'state');
+const instanceSessionPolicy = loadInstanceSessionPolicy({root:ROOT,env:process.env});
 migrateOutboundMood(ROOT);
 migrateGroupWake(ROOT);
 const imageAssetStore = createImageAssetStore({ root: ROOT });
@@ -2128,14 +2130,15 @@ async function main() {
     const preset = resolvePresetName('qq-learning', { strict: true });
     if (!preset) throw new Error('黑话学习缺少已验证的安全 preset，拒绝创建或复用会话');
     const saved = readJsonSafe(SLANG_SESSION_FILE, null);
-    // 旧记录没有 preset 元数据，无法证明其权限，必须重新创建。
-    if (saved?.preset !== preset) invalidateSlangLearnerSession();
+    // 旧记录无法证明预设权限时保留原 ID；不能为实例接线自动重建。
+    if (saved?.sessionId && !saved.preset) throw Error('旧学习会话缺少预设信息，保留原记录并拒绝自动重建');
+    if (saved?.preset && !instanceSessionPolicy.equivalentPreset(saved.preset,preset)) throw Error('旧学习会话预设不同，保留原记录并拒绝自动重建');
     if (slangLearnerSessionId) {
       learnerSessions.add(slangLearnerSessionId);
       api.events.follow(slangLearnerSessionId);
       return slangLearnerSessionId;
     }
-    if (saved?.sessionId && saved.preset === preset) {
+    if (saved?.sessionId && instanceSessionPolicy.equivalentPreset(saved.preset,preset)) {
       slangLearnerSessionId = String(saved.sessionId);
       learnerSessions.add(slangLearnerSessionId);
       api.events.follow(slangLearnerSessionId);
@@ -2144,11 +2147,11 @@ async function main() {
     }
     // 黑话学习并入「聊天管理」工作区（state/agents），不再单独开一个工作区；
     // 标题由聊天会话的工作区统一管理（cfg.workspaceTitle）。
-    const dir = path.join(STATE_DIR, 'agents');
+    const dir = instanceSessionPolicy.workspace('learning') || path.join(STATE_DIR, 'agents');
     fs.mkdirSync(dir, { recursive: true });
     const wsValue = unwrap(await api.workspace.create({ path: dir }), 'slang workspace.create');
     if (wsValue.created) {
-      try { await api.workspace.rename({ workspaceId: wsValue.workspace.workspaceId, title: cfg.workspaceTitle || '聊天管理' }); } catch {}
+      try { await api.workspace.rename({ workspaceId: wsValue.workspace.workspaceId, title: instanceSessionPolicy.workspaceTitle('learning') || cfg.workspaceTitle || '聊天管理' }); } catch {}
     }
     const params = { workspaceId: wsValue.workspace.workspaceId };
     params.agentPreset = preset;
@@ -2266,7 +2269,7 @@ async function main() {
     prefix: cfg.dsh.authPrefix,
     // 默认只允许把 launch token 交给回环地址；远程 DSH 需要显式 opt-in（见 dsh-client.ensureAuth）。
     allowRemote: cfg.dsh.allowRemote === true
-  });
+  }, {policy:instanceSessionPolicy,onOwnershipError:(error,record)=>log('会话归属未记录，保留现有 ID：'+record.sessionId+' '+error.message)});
   // DSH 的模型目录 RPC：0.1.5 是 `session/modelCatalog`。**不能走基类门面**
   // `api.sessions.modelCatalog` —— 桥接钉住的 `@deepseek-ai/dsh-host-apiproxy@0.1.1-rc.2`
   // 的 sessions 门面里根本没有这个方法（只有 `models` → 已下线的 `session/models`），
@@ -2615,7 +2618,7 @@ async function main() {
       if (typeof defaultPreset === 'string' && defaultPreset) {
         dshDefaultPreset = defaultPreset;
       }
-      const ns = s.namespaces.find((n) => n.ns === 'qq-mode');
+      const ns = s.namespaces.find((n) => n.ns === instanceSessionPolicy.settingsNamespace);
       // 规范化后再比较：`simulation` 也走这里（见 MODE_INPUT_ALIASES）。
       // 读取必须 user 层优先：DSH 0.2.0-rc.2 写完 settings 后同进程内 value 不更新，
       // 只读 value 会让控制台切的模式被 5 秒轮询改回去（issue #22）。
@@ -2733,7 +2736,7 @@ async function main() {
    *   一旦套在群聊会话上，群友即可驱动一个能操作本机的 agent（见 RULES.md「无本地工具」）。
    */
   function resolvePresetName(name, { strict = false } = {}) {
-    const wanted = String(name ?? '').trim();
+    const wanted = instanceSessionPolicy.resolvePreset(String(name ?? '').trim());
     if (!wanted) return strict ? '' : (dshDefaultPreset || '');
     // DSH 可能接受未知 preset 并套用默认值；清单未知时也必须 fail-closed。
     if (dshPresetIds.length === 0) return strict ? '' : wanted;
@@ -2766,7 +2769,8 @@ async function main() {
     const ownerKey = 'private:' + String(cfg.ownerQQ ?? '');
     const want = modePreset(ownerKey, currentMode, cfg) || '';
     const have = String(state.sessionPresets?.[ownerKey] ?? '');
-    if (state.sessions[ownerKey] && have !== String(want)) {
+    if (state.sessions[ownerKey] && (!have || !want)) { log('管理员会话预设信息不完整，保留原会话'); return; }
+    if (state.sessions[ownerKey] && !instanceSessionPolicy.equivalentPreset(have,String(want))) {
       log('管理员会话 preset 变更（' + (have || '未知') + ' → ' + (want || '默认') + '），退役旧会话，下一条消息重建');
       retireSession(ownerKey);
     }
@@ -2779,9 +2783,9 @@ async function main() {
   }
 
   function hasAdminEnvironment(key, {requireSession=true} = {}) {
-    const admin=adminDevCfgV2(),selected=admin.preset || dshDefaultPreset;
+    const admin=adminDevCfgV2(),selected=instanceSessionPolicy.resolvePreset(admin.preset || dshDefaultPreset);
     return isAdminEnvironmentAuthorized({owner:isAdminDevKey(key),enabled:admin.enabled,selectedPreset:selected,
-      loadedPreset:String(state.sessionPresets?.[key] || ''),hasSession:!!state.sessions?.[key],knownPresets:dshPresetIds,requireSession});
+      loadedPreset:String(state.sessionPresets?.[key] || ''),hasSession:!!state.sessions?.[key],knownPresets:dshPresetIds,requireSession,presetMap:instanceSessionPolicy.presetMap});
   }
 
   /** 判断一个会话 key 是否仍被当前模式/白名单允许（供唤醒调度与 HTTP 路由共用）。 */
@@ -2824,7 +2828,7 @@ async function main() {
 
   function isCurrentSession(key, sessionId) {
     return isSessionAllowedInCurrentMode(key) && state.sessions[key] === sessionId
-      && state.sessionPolicies[key] === sessionPolicy(key);
+      && instanceSessionPolicy.compareSessionPolicy(state.sessionPolicies[key],sessionPolicy(key)) === true;
   }
 
   /**
@@ -2920,6 +2924,7 @@ async function main() {
     // 一次网络抖动换来全体失忆，代价完全不成比例。清单为空时宁可不判定，等下一轮。
     if (dshPresetIds.length === 0) return;
     for (const [key, sessionId] of Object.entries(state.sessions)) {
+      if (instanceSessionPolicy.compareSessionPolicy(state.sessionPolicies[key],sessionPolicy(key)) === null) { log('既有会话策略信息不完整，保留原会话：'+key); continue; }
       if (!isCurrentSession(key, sessionId)) retireSession(key);
     }
   }
@@ -3683,7 +3688,7 @@ async function main() {
             const list = unwrap(await api.agentPresets.list({}), 'agentPresets.list').presets;
             const defaultPreset = list.find(p => p.isDefault)?.id || dshDefaultPreset;
             const ownerKey = 'private:' + String(cfg.ownerQQ ?? '');
-            const bindings = presetBindings({mode:currentMode, admin:adminDevCfgV2(), defaultPreset,
+            const bindings = presetBindings({sessionPolicy:instanceSessionPolicy,mode:currentMode, admin:adminDevCfgV2(), defaultPreset,
               ownerLoadedPreset:state.sessionPresets?.[ownerKey] || '', ownerHasSession:!!state.sessions?.[ownerKey]});
             const documents = new Map(await Promise.all([...new Set(bindings.map(b => b.preset).filter(Boolean))].map(async id => {
               const declared = list.find(p => p.id === id);
@@ -3733,7 +3738,7 @@ async function main() {
           try {
             // unwrap() 在 result.ok 为 false 时直接抛错，所以能执行到下一行即代表写穿已成功
             // （不要在这里再判断 updated?.ok —— 解包后的值恒为真，那样的分支是死代码）。
-            unwrap(await api.settings.update({ ns: 'qq-mode', patch: { mode: requestedMode } }), 'settings.update');
+            unwrap(await api.settings.update({ ns: instanceSessionPolicy.settingsNamespace, patch: { mode: requestedMode } }), 'settings.update');
             dshSynced = true;
           } catch (error) {
             log(`控制台：模式写穿 DSH 设置失败（${error?.message ?? error}）；本次仅写本地，下次 DSH 轮询会覆盖回滚`);
@@ -9487,6 +9492,7 @@ async function main() {
     if (!isSessionAllowedInCurrentMode(key)) throw new Error(`当前模式不允许会话 ${key}`);
     const existing = state.sessions[key];
     if (existing) {
+      if (instanceSessionPolicy.compareSessionPolicy(state.sessionPolicies[key],sessionPolicy(key)) === null) throw Error('既有会话策略信息不完整，保留原 ID 并拒绝自动重建');
       // reset/清空工作区期间旧映射可能尚未清理；发现代际不匹配必须丢弃旧会话，防止复活。
       if (!isCurrentSession(key, existing)) {
         retireSession(key);
@@ -9506,7 +9512,7 @@ async function main() {
     }
     if (sessionPromises.has(key)) return sessionPromises.get(key);
     const promise = (async () => {
-      const dir = cfg.sessionCwd ? String(cfg.sessionCwd) : path.join(STATE_DIR, 'agents');
+      const dir = instanceSessionPolicy.workspace('chat') || (cfg.sessionCwd ? String(cfg.sessionCwd) : path.join(STATE_DIR, 'agents'));
       fs.mkdirSync(dir, { recursive: true });
       let sessionId;
       let lastError = null;
@@ -9528,8 +9534,8 @@ async function main() {
       for (const withPreset of strictPreset ? [true] : [true, false]) {
         try {
           const wsValue = unwrap(await api.workspace.create({ path: dir }), 'workspace.create');
-          if (wsValue.created && cfg.workspaceTitle) {
-            await api.workspace.rename({ workspaceId: wsValue.workspace.workspaceId, title: cfg.workspaceTitle });
+          if (wsValue.created && (instanceSessionPolicy.active || cfg.workspaceTitle)) {
+            await api.workspace.rename({ workspaceId: wsValue.workspace.workspaceId, title: instanceSessionPolicy.workspaceTitle('chat') || cfg.workspaceTitle });
           }
           const params = { workspaceId: wsValue.workspace.workspaceId };
           if (withPreset && preset) params.agentPreset = preset;
@@ -9659,13 +9665,13 @@ async function main() {
     if(!inheritedAdmission && (callerEnvelope || outboundScope.getStore()?.agent))throw Error('新任务需要选择当前已经准入的任务组');
     const startBudget=tokenBudgetOf(callerKey);
     if(!inheritedAdmission && pluginHost.callService('tokenBudget','canDispatch',{key:callerKey,stage:startBudget.stage})===false)throw Error('任务尚未获额度准入，等待可回复批次');
-    const taskWorkspaceDir = path.join(STATE_DIR, 'agents-tasks');
+    const taskWorkspaceDir = instanceSessionPolicy.workspace('task') || path.join(STATE_DIR, 'agents-tasks');
     fs.mkdirSync(taskWorkspaceDir, { recursive: true });
     const wsValue = unwrap(await api.workspace.create({ path: taskWorkspaceDir }), 'task workspace.create');
     if (wsValue.created) {
-      try { await api.workspace.rename({ workspaceId: wsValue.workspace.workspaceId, title: 'AI助手任务' }); } catch {}
+      try { await api.workspace.rename({ workspaceId: wsValue.workspace.workspaceId, title: instanceSessionPolicy.workspaceTitle('task') || 'AI助手任务' }); } catch {}
     }
-    const created = unwrap(await api.sessions.create({ workspaceId: wsValue.workspace.workspaceId, agentPreset: 'qq-task-worker', title: '任务 · ' + title }), 'task session.create');
+    const created = unwrap(await api.sessions.create({ workspaceId: wsValue.workspace.workspaceId, agentPreset: instanceSessionPolicy.resolvePreset('qq-task-worker'), title: '任务 · ' + title }), 'task session.create');
     const sessionId = created.sessionId;
     api.events.follow(sessionId);
     if(await ensureChatModel(sessionId,callerKey,{task})!=='applied'){
@@ -13917,7 +13923,7 @@ async function main() {
     if (hasAdminEnvironment(key)) {
       const aliasEntries = Object.entries(cfg.socialV2?.relayAliases || {}).map(([k, v]) => k + '=' + v).join('、');
       adminDevLine = pluginHost.callService('admin-dev', 'line', {
-        toolOnly: currentMode === 'reserved2' || modePreset(key, currentMode, cfg) === 'qq-admin',
+        toolOnly: currentMode === 'reserved2' || instanceSessionPolicy.canonicalPreset(modePreset(key, currentMode, cfg)) === 'qq-admin',
         aliasEntries,
         rootEscaped: ROOT.replace(/\\/g, '\\\\')
       }) || '';

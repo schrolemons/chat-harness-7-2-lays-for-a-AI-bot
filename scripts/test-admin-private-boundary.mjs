@@ -17,7 +17,7 @@ test('real plugin route rejects private/group tokens and forged owner fields bef
   try {
     h.setMode('reserved2');
     h.cfg.socialV2.adminDev={enabled:true,preset:'qq-admin'};h.setPresets(['standard','qq-chat-v2','qq-admin']);
-    h.state.sessions['private:123']='fixture-owner';h.state.sessionPresets['private:123']='qq-admin';
+    await h.ensureSession('private:123');
     const owner=h.getSocialV2State('private:123'),other=h.getSocialV2State('private:789'),group=h.getSocialV2State('group:456');
     await fixtureTaskTurn(h,'private:123');
     const admittedSessionCount=h.calls.created.length;

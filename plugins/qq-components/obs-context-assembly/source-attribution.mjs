@@ -1,3 +1,4 @@
+import {loadInstanceSessionPolicy} from '../../../src/instance-session-policy.mjs';
 // Read-only comparisons against owned definitions. Matching current files is
 // explicitly weaker evidence than a historical configuration snapshot.
 import fs from 'node:fs';
@@ -31,11 +32,11 @@ const rules=[
  {id:'session-credential-policy',name:'AI助手会话令牌规则',source:'plugins/qq-components/obs-context-assembly/refill.mjs',text:SESSION_CREDENTIAL_RULE,roles:['system']},
  {id:'receipt-index-policy',name:'收件状态索引解释规则',source:'plugins/qq-components/obs-context-assembly/message-snapshot.mjs',text:RECEIPT_INDEX_RULE,roles:['user'],kinds:['qq-context-stable']}
 ];
-export function annotateRequestSources(root,request){
+export function annotateRequestSources(root,request,{sessionPolicy=loadInstanceSessionPolicy({root,env:{}})}={}){
  const sources=new Map(),definitions=new Map();
  const messages=(request.messages||[]).map(message=>{
   const preset=message.provenance?.agentPreset;
-  if(preset&&!definitions.has(preset))definitions.set(preset,presetParts(root,preset));
+  if(preset&&!definitions.has(preset))definitions.set(preset,presetParts(root,sessionPolicy.canonicalPreset(preset)));
   const candidates=[...(message.role==='system'?definitions.get(preset)||[]:[]),...rules.filter(row=>row.roles.includes(message.role)&&(!row.kinds||row.kinds.includes(message.source)))],ranges=[];
   const text=String(message.text||'');
   for(const row of candidates){

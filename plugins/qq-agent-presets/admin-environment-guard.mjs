@@ -1,3 +1,4 @@
+import {loadInstanceSessionPolicy} from '../../src/instance-session-policy.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -13,10 +14,11 @@ const read=(base,file)=>JSON.parse(fs.readFileSync(path.join(base,file),'utf8'))
 export function adminToolPermission(base,sessionId,{agent,agents}={}) {
   try {
     const cfg=read(base,'config.json'),state=read(base,'state/sessions.json');
+    const policy=loadInstanceSessionPolicy({root:base,env:{}});
     const ownerKey='private:'+String(cfg.ownerQQ||''),loaded=String(state.sessionPresets?.[ownerKey]||'');
-    const admin=cfg.socialV2?.adminDev||{},selected=String(admin.preset||loaded);
+    const admin=cfg.socialV2?.adminDev||{},selected=policy.resolvePreset(String(admin.preset||loaded));
     if(!isAdminEnvironmentAuthorized({owner:true,enabled:admin.enabled,selectedPreset:selected,loadedPreset:loaded,
-      hasSession:!!state.sessions?.[ownerKey],knownPresets:[loaded]}))return '管理员环境未启用或预设已降权，已拒绝执行';
+      hasSession:!!state.sessions?.[ownerKey],knownPresets:[loaded],presetMap:policy.presetMap}))return '管理员环境未启用或预设已降权，已拒绝执行';
     if(sessionId && sessionId===state.sessions[ownerKey])return;
     const tasks=fs.existsSync(path.join(base,'state/tasks.json')) ? read(base,'state/tasks.json').tasks||{} : {};
     const authorized=id=>id && (id===state.sessions[ownerKey] || Object.values(tasks).some(task=>task.sessionId===id&&task.originKey===ownerKey&&['running','waiting_input'].includes(task.status)));

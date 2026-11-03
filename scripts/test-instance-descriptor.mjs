@@ -95,7 +95,7 @@ test('descriptor has explicit identity, physical root and isolated defaults, wit
   const actual = await readInstanceDescriptor(a.root);
   assert.equal(actual.root, await fs.realpath(a.root));
   assert.equal(actual.registryDir, path.join(base, 'host', 'bot-instances', 'account-leases'));
-  assert.deepEqual(actual.workspaces, Object.fromEntries(['chat', 'learning', 'task'].map(kind => [kind, path.join(a.root, 'state', 'workspaces', 'alpha', kind)])));
+  assert.deepEqual(actual.workspaces, Object.fromEntries(['chat', 'learning', 'task', 'summary'].map(kind => [kind, path.join(a.root, 'state', 'workspaces', 'alpha', kind)])));
   assert.deepEqual(await fs.readdir(a.root), before);
   await fs.writeFile(path.join(a.root, '.qq-bridge-instance.json'), JSON.stringify({ ...descriptor, root: base }));
   await assert.rejects(readInstanceDescriptor(a.root), /DESCRIPTOR_INVALID/);
@@ -159,4 +159,14 @@ test('failed scope teardown retains its own root claim for other instance IDs to
   await assert.rejects(scope.dispose(), /Instance disposal failed/);
   await assert.rejects(claimInstanceRoot(ctx, { ...b, root: a.root }), /ROOT_CONFLICT/);
   await assert.rejects(createInstanceScope(ctx, { ...a, hostImport }), /INSTANCE_CONFLICT/);
+});
+
+test('explicit summary workspace survives the actual descriptor reader and validates like other workspaces', async t => {
+  const {a}=await fixture(t);
+  const value={...a,version:1,label:'Synthetic alpha',entryId:'alpha-mode',settingsNamespace:'alpha-mode',presetIdMap:{},workspaces:{summary:path.join(a.root,'state','alpha-summary')}};
+  const file=path.join(a.root,'.qq-bridge-instance.json');await fs.writeFile(file,JSON.stringify(value));
+  const before=await fs.readFile(file);const read=await readInstanceDescriptor(a.root);
+  assert.equal(read.workspaces.summary,value.workspaces.summary);assert.deepEqual(await fs.readFile(file),before);
+  const {readInstanceSessionPolicy}=await import('../src/instance-session-policy.mjs');assert.equal(readInstanceSessionPolicy({descriptor:read}).workspace('summary'),value.workspaces.summary);
+  value.workspaces.summary='relative-summary';await fs.writeFile(file,JSON.stringify(value));await assert.rejects(readInstanceDescriptor(a.root),/DESCRIPTOR_INVALID/);
 });

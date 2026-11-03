@@ -22,18 +22,21 @@ export function summarizePreset(content) {
   if(compaction){const bits=['上下文压缩'];if(Number.isFinite(compaction.retainTokens))bits.push('保留 '+compaction.retainTokens+' tokens');if(Number.isFinite(compaction.maxTokens))bits.push('摘要上限 '+compaction.maxTokens+' tokens');features.push(bits.join('；'));}
   return {features:features.length?features:['基础会话配置'],moduleCount:rows.length};
 }
-export function presetBindings({mode,admin={},defaultPreset='',ownerLoadedPreset='',ownerHasSession=false}) {
+export function presetBindings({mode,admin={},defaultPreset='',ownerLoadedPreset='',ownerHasSession=false,sessionPolicy}) {
+  const resolve=id=>sessionPolicy?.resolvePreset(id) ?? id;
+  const fixed=Object.fromEntries(Object.entries(FIXED_PRESETS).map(([key,id])=>[key,resolve(id)]));
   const a=adminPresetConfig(admin),owner=requestedPreset({mode,owner:true,admin:a});
-  const ownerExpected=owner.id||defaultPreset,sim=simulationPreset(mode);
+  a.preset=resolve(a.preset);owner.id=resolve(owner.id);
+  const ownerExpected=owner.id||defaultPreset,sim=resolve(simulationPreset(mode));
   const editor=id=>sim===id?{page:'persona',target:'simPromptText',label:'编辑当前模式的仿真提示词'}:{page:'overview',target:'section-mode',label:'切换到对应运行模式后编辑提示词'};
   return [
     {key:'owner',label:'管理员当前私聊',preset:ownerExpected,active:true,description:a.enabled?'使用管理员环境的预设；包括此会话中的日常聊天。':'管理员环境未启用，日常聊天跟随当前运行模式。',loadedPreset:ownerLoadedPreset||null,hasSession:ownerHasSession,edit:{page:'environment-admin',target:'v2AdminDevPreset',label:'调整管理员环境'}},
     {key:'admin',label:'管理员专用环境',preset:a.preset||defaultPreset,active:a.enabled,description:(a.preset?'指定预设。':'跟随 DSH 默认。')+'所有运行模式都必须主动开启管理员环境；高权限仅在所选预设装配完成后生效，owner 身份不单独授权。',edit:{page:'environment-admin',target:'v2AdminDevPreset',label:'调整管理员环境'}},
-    {key:'v1',label:'普通聊天／一代仿真',preset:FIXED_PRESETS.chat,active:['chat','reserved'].includes(mode),description:'固定控制一代回复与静默协议。',edit:editor(FIXED_PRESETS.chat)},
-    {key:'v2',label:'二代仿真',preset:FIXED_PRESETS.reserved2,active:mode==='reserved2',description:'固定控制读消息、工具发送、等待和潜水；普通用户及未启用管理员环境的 owner 使用此预设。',edit:editor(FIXED_PRESETS.reserved2)},
-    {key:'task',label:'独立任务会话',preset:FIXED_PRESETS.task,description:'固定用于管理员委派的工作会话；不替代聊天会话。'},
-    {key:'learning',label:"后台学习（黑话／词条／绰号）",preset:FIXED_PRESETS.learning,description:"黑话、词条和绰号学习共用 qq-learning 预设及同一个后台学习会话，串行执行各自任务；各组件的素材、审核规则与数据独立管理。仅允许后台抽取、分类和公开资料检索，不发送 QQ 或执行本机命令。"},
-    {key:'summary',label:'网页模型整理',preset:FIXED_PRESETS.summary,description:'固定整理网页监控差异，不发送 QQ 或调用本机工具。'},
+    {key:'v1',label:'普通聊天／一代仿真',preset:fixed.chat,active:['chat','reserved'].includes(mode),description:'固定控制一代回复与静默协议。',edit:editor(fixed.chat)},
+    {key:'v2',label:'二代仿真',preset:fixed.reserved2,active:mode==='reserved2',description:'固定控制读消息、工具发送、等待和潜水；普通用户及未启用管理员环境的 owner 使用此预设。',edit:editor(fixed.reserved2)},
+    {key:'task',label:'独立任务会话',preset:fixed.task,description:'固定用于管理员委派的工作会话；不替代聊天会话。'},
+    {key:'learning',label:"后台学习（黑话／词条／绰号）",preset:fixed.learning,description:"黑话、词条和绰号学习共用 qq-learning 预设及同一个后台学习会话，串行执行各自任务；各组件的素材、审核规则与数据独立管理。仅允许后台抽取、分类和公开资料检索，不发送 QQ 或执行本机命令。"},
+    {key:'summary',label:'网页模型整理',preset:fixed.summary,description:'固定整理网页监控差异，不发送 QQ 或调用本机工具。'},
     {key:'default',label:'DSH 新会话默认',preset:defaultPreset,description:'由 DSH 自身的预设设置管理，与桥接一、二代运行模式独立。'}
   ];
 }

@@ -63,11 +63,14 @@ await test('old prompt completion cannot delete replacement queue after reset', 
   assert.equal(h.promptQueues.get('group:456'), replacement);
   release[1](); await second;
 });
-await test('same-policy sessions are reused but legacy unlabelled sessions are replaced', async (h) => {
+await test('same-policy sessions are reused while legacy unlabelled IDs are preserved', async (h) => {
   const first = await h.ensureSession('private:123');
   assert.equal(await h.ensureSession('private:123'), first);
   delete h.state.sessionPolicies['private:123'];
-  assert.notEqual(await h.ensureSession('private:123'), first);
+  await assert.rejects(h.ensureSession('private:123'), /信息不完整/);
+  assert.equal(h.state.sessions['private:123'], first);
+  assert.equal(h.calls.created.length, 1);
+  assert.equal(h.calls.archived.length, 0);
 });
 await test('reset during model selection cannot return a detached session', async (h) => {
   h.api.sessions.selectModel = async () => {

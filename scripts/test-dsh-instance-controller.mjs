@@ -390,3 +390,33 @@ test('root entry refuses an uninitialized directory without bootstrap writes', a
   await assert.rejects(apply(f.owner, { root: directory }), /ENOENT/);
   assert.deepEqual(await fs.readdir(directory), []);
 });
+
+test('runtime receives exact map and a generation-bound ownership callback',async t=>{
+ const f=await fixture(t),value=await f.descriptor('record-seam');let received;
+ const {controller}=await f.mount(value,{createRuntime:async options=>{received=options;return {stop:async()=>{}};}});
+ await controller.ready;assert.deepEqual({...received.presetMap},{chat:'record-seam:chat'});assert.equal(typeof received.recordCreatedSession,'function');
+ await controller.dispose();await assert.rejects(received.recordCreatedSession({sessionId:'late',workspaceId:'old'}),/DISPOSED/);
+});
+
+test('real profile settings persist distinct namespaces with volatile refs and stable controller Fibers',async t=>{
+ const f=await fixture(t),a=await f.descriptor('settings-alpha'),b=await f.descriptor('settings-beta');
+ const [{default:ConfigEditor},{default:Settings},boot,module]=await Promise.all([hostImport('@deepseek-ai/dsh-config-editor'),hostImport('@deepseek-ai/dsh-settings'),hostImport('@deepseek-ai/dsh-app-boot'),import('../dsh-entry.mjs')]);
+ const profile=path.join(f.base,'profile');await fs.mkdir(profile);const patchPath=path.join(profile,'cordis.patch.yml'),configPath=path.join(profile,'root.yml');
+ await fs.writeFile(path.join(profile,'package.json'),JSON.stringify({name:'synthetic-profile',version:'1.0.0',dsh:{profile:{bundles:[]}}}));await fs.writeFile(configPath,'[]\n');
+ const profileContext={name:'fixture',dir:profile,patchPath,installAnchor:hostPackage,cwd:profile,home:path.join(f.base,'home'),startedBundles:[],overlays:[]};
+ await f.root.plugin({apply(ctx){ctx.provide('profileContext',profileContext);}});await f.root.plugin(ConfigEditor);await f.root.plugin(Settings);
+ const controls=new Map(),starts=new Map();
+ f.root.loader.builtins['fixture-settings-root']={Config:module.Config,inject:['loader','tools','agentPresets'],apply(ctx,config){starts.set(config.root,(starts.get(config.root)||0)+1);return module.apply(ctx,config,{hostImport,loadDefinitions:async()=>structuredClone(definitions),mountTitles:async()=>{},mountMcp:async()=>{},onController:handle=>controls.set(config.root,handle)});}};
+ const patches=[{insert:[a,b].map(value=>({id:value.entryId,name:'cordis:fixture-settings-root',config:{root:value.root,mode:'reserved2',ownerQQ:''}}))}];
+ await fs.writeFile(patchPath,yaml.dump(patches));await boot.mountRootInclude(f.root,configPath,patches);await f.root.loader.await();await Promise.all([...controls.values()].map(c=>c.ready));
+ const entries=[...f.root.loader.entries()].filter(e=>[a.entryId,b.entryId].includes(e.options.id)),fibers=entries.map(e=>e.fiber),refs=entries.map(e=>e.fiber.config.mode);
+ assert.deepEqual(f.root.settings.describe().map(row=>row.ns).sort(),[a.entryId,b.entryId].sort());
+ await f.root.settings.update(a.entryId,{mode:'chat',ownerQQ:'123'});
+ assert.equal(f.root.settings.describe().find(row=>row.ns===a.entryId).value.mode,'chat');assert.equal(f.root.settings.describe().find(row=>row.ns===b.entryId).value.mode,'reserved2');
+ for(let i=0;i<entries.length;i++){assert.equal(entries[i].fiber,fibers[i]);assert.equal(entries[i].fiber.config.mode,refs[i]);assert.equal(starts.get(entries[i].options.config.root),1);}
+ assert.equal(controls.get(a.root).status.state,'ready');
+ const persisted=yaml.load(await fs.readFile(patchPath,'utf8'));assert.equal(persisted.find(row=>row.id===a.entryId).config.mode,'chat');
+ await boot.reconcileProfilePatches(f.root,boot.readProfilePatches('dsh',profileContext),'dsh');
+ assert.equal(f.root.settings.describe().find(row=>row.ns===a.entryId).value.ownerQQ,'123');
+ await assert.rejects(f.root.settings.update('qq-mode',{mode:'chat'}),/No configurable plugin entry/);
+});

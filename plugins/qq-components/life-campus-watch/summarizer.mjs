@@ -33,15 +33,15 @@ export async function generateWebSummary(payload, { root, timeoutMs = 35000 } = 
   await assertGlobalBudgetAllowsModel(root);
   const cfg = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
   const tier=selectCostPolicy(readCostPolicy(root),{reason:'webSummary'}),provider=String(cfg.dsh?.provider||'deepseek-official');
-  const api = new NodeApiClient(cfg.dsh.baseUrl, 8000, cfg.dsh.authToken ? { token: cfg.dsh.authToken } : {});
+  const api = new NodeApiClient(cfg.dsh.baseUrl, 8000, cfg.dsh.authToken ? { token: cfg.dsh.authToken } : {}, {root,onOwnershipError:(error,record)=>console.warn('会话归属未记录',record.sessionId,error.message)});
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(Error('网页整理超时')), Math.max(1000, Math.min(timeoutMs, 60000)));
   const signal = abort.signal;
   let sessionId, turnCompleted = false;
   try {
     const list = unwrap(await api.agentPresets.list({}, signal), 'agentPresets.list').presets;
-    if (!list.some(preset => preset.id === 'campus-summary' && !preset.broken)) throw Error('网页整理预设未就绪');
-    const cwd = path.join(root, 'state', 'web-summary-workspace');
+    if (!list.some(preset => preset.id === api.sessionPolicy.resolvePreset('campus-summary') && !preset.broken)) throw Error('网页整理预设未就绪');
+    const cwd = api.sessionPolicy.workspace('summary') || path.join(root, 'state', 'web-summary-workspace');
     fs.mkdirSync(cwd, { recursive: true });
     const created = unwrap(await api.sessions.create({ cwd, agentPreset: 'campus-summary' }, signal), 'session.create');
     sessionId = created.sessionId;

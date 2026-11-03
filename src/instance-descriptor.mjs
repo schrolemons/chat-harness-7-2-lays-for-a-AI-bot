@@ -49,7 +49,7 @@ export async function readInstanceDescriptor(root) {
   }
   const registryDir = path.join(value.dshHome, 'bot-instances', 'account-leases');
   if (value.registryDir !== undefined && (!absolute(value.registryDir) || canonical(value.registryDir) !== canonical(registryDir))) throw fail('DESCRIPTOR_INVALID', 'Account leases must be shared under the selected DSH home');
-  const workspaces = Object.fromEntries(['chat', 'learning', 'task'].map(kind => [kind,
+  const workspaces = Object.fromEntries(['chat', 'learning', 'task', 'summary'].map(kind => [kind,
     value.workspaces?.[kind] ?? path.join(physical, 'state', 'workspaces', value.instanceId, kind)]));
   if (Object.values(workspaces).some(directory => !absolute(directory))) throw fail('DESCRIPTOR_INVALID', 'Workspace directories must be absolute');
   return { version: 1, ...Object.fromEntries(['instanceId', 'label', 'bundleName', 'entryId', 'settingsNamespace', 'profile', 'dshHome'].map(field => [field, value[field]])),
