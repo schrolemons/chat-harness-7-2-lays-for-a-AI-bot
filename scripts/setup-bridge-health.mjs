@@ -1,10 +1,12 @@
 import fs from 'node:fs';
+import {assertLegacyControlAllowed} from './legacy-control-guard.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import yaml from 'js-yaml';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+assertLegacyControlAllowed(root);
 const profile=process.argv[2]||path.join(os.homedir(),'.dsh','profiles','desktop');
 const file=path.join(profile,'cordis.patch.yml');const raw=fs.readFileSync(file,'utf8');
 const begin='# === bridge-health MCP BEGIN ===',end='# === bridge-health MCP END ===';

@@ -25,6 +25,7 @@
 // 改 config.json 前一定先备份、结束进程前确认它是 node.exe。
 
 import fs from 'node:fs';
+import {assertLegacyControlAllowed} from './legacy-control-guard.mjs';
 import path from 'node:path';
 import { spawn, execFileSync, execFile } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -40,6 +41,7 @@ import {createBridgeRecovery,normalizeBridgeRecovery,restartBridgeChild} from '.
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
+assertLegacyControlAllowed(ROOT);
 const STATE_DIR = path.join(ROOT, 'state');
 const CONFIG_FILE = path.join(ROOT, 'config.json');
 const LOCK_FILE = path.join(STATE_DIR, 'bridge.lock');

@@ -5,7 +5,12 @@ import { promisify } from 'node:util';
 import { createInstanceRuntime, verifyManagedSnow } from './instance-runtime.mjs';
 import { createLauncher } from '../plugins/qq-launcher/lib/index.js';
 
-const required = () => Object.assign(Error('NODE_RUNTIME_REQUIRED: configure an absolute verified Node executable or an owned managed Snow installation'),{code:'NODE_RUNTIME_REQUIRED'});
+const required = () => Object.assign(Error('NODE_RUNTIME_REQUIRED: configure verified Node >=24 (Windows >=24.20.0) or owned managed Snow'),{code:'NODE_RUNTIME_REQUIRED'});
+export function isSupportedInstanceNode(version,platform=process.platform) {
+  const match=/^(\d+)\.(\d+)\.(\d+)$/.exec(version||'');if(!match)return false;
+  const major=Number(match[1]),minor=Number(match[2]);
+  return major>24 || major===24&&(platform!=='win32'||minor>=20);
+}
 
 /** No PATH fallback and no probing Electron with --eval (which can open another app). */
 export async function resolveInstanceNode({ descriptor, config = {}, host = process }) {
@@ -18,9 +23,9 @@ export async function resolveInstanceNode({ descriptor, config = {}, host = proc
   if (!(await fs.promises.stat(physical)).isFile()) throw required();
   const env={...process.env};delete env.NODE_OPTIONS;delete env.NODE_PATH;delete env.ELECTRON_RUN_AS_NODE;
   try {
-    const {stdout}=await promisify(execFile)(physical,['--eval','process.stdout.write(JSON.stringify({name:process.release.name,electron:!!process.versions.electron,major:Number(process.versions.node.split(".")[0])}))'],{env,windowsHide:true,timeout:5000,maxBuffer:4096});
+    const {stdout}=await promisify(execFile)(physical,['--eval','process.stdout.write(JSON.stringify({name:process.release.name,electron:!!process.versions.electron,version:process.versions.node}))'],{env,windowsHide:true,timeout:5000,maxBuffer:4096});
     const result=JSON.parse(stdout);
-    if(result.name!=='node'||result.electron||result.major<24)throw required();
+    if(result.name!=='node'||result.electron||!isSupportedInstanceNode(result.version))throw required();
   } catch {throw required();}
   return physical;
 }

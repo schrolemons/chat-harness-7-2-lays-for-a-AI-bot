@@ -140,3 +140,47 @@ export async function appendOwnedSession(root, record) {
     return session;
   });
 }
+
+/** Install-time additive evidence. This is not a recursive cleanup capability. */
+export async function appendInstallationEvidence(root, evidence) {
+  if (!evidence || ['profileEntries','links','paths'].some(k=>!Array.isArray(evidence[k]))) throw fail('EVIDENCE_INVALID','Explicit evidence arrays required');
+  return withManifestLock(root, async physicalRoot => {
+    const manifest=await readAt(physicalRoot);
+    if(!manifest) throw fail('MANIFEST_MISSING','Initialize identity before recording installation');
+    let changed=false;
+    for(const kind of ['profileEntries','links','paths']) for(const input of evidence[kind]) {
+      const row=structuredClone(input);
+      if(!row || !absolute(row.path) || !['created','verified-legacy'].includes(row.source)
+        || !['owned','preserve'].includes(row.cleanup)
+        || (kind==='links' ? !absolute(row.target) : !/^[a-f0-9]{64}$/.test(row.sha256||''))) throw fail('EVIDENCE_INVALID','Exact path/hash or link target and provenance required');
+      if(kind==='paths' && !['code','dependency','data'].includes(row.kind)) throw fail('EVIDENCE_INVALID','Unknown path kind');
+      if(kind==='paths'&&row.kind==='code'&&key(row.path)!==key(physicalRoot))throw fail('EVIDENCE_INVALID','Code evidence must describe this root');
+      if(kind==='paths'&&row.kind!=='code') {
+        const relative=path.relative(physicalRoot,row.path);
+        if(!relative||relative==='..'||relative.startsWith('..'+path.sep)||path.isAbsolute(relative))throw fail('EVIDENCE_INVALID','Dependency/data evidence must remain inside this root');
+      }
+      const profileRoot=path.join(manifest.dshHome,'profiles',manifest.profile);
+      if(kind==='profileEntries'&&(key(row.path)!==key(path.join(profileRoot,'cordis.patch.yml'))||!text(row.id)||!text(row.name)))throw fail('EVIDENCE_INVALID','Exact selected profile entry required');
+      if(kind==='links'&&key(path.dirname(row.path))!==key(path.join(profileRoot,'node_modules')))throw fail('EVIDENCE_INVALID','Exact selected profile link required');
+      if(kind==='paths' && row.kind==='code' && row.cleanup==='owned') {
+        // Git directory OR worktree gitfile, including an ancestor checkout, is protected.
+        for(let directory=row.path;;directory=path.dirname(directory)) {
+          try { await fs.lstat(path.join(directory,'.git')); throw fail('CHECKOUT_PRESERVED','Existing developer source is never recursively owned'); }
+          catch(error) { if(error.code!=='ENOENT') throw error; }
+          if(path.dirname(directory)===directory) break;
+        }
+        if(row.source!=='created' || !row.createdByTransaction) throw fail('EVIDENCE_INVALID','Fresh code requires installer creation evidence');
+        const creationFile=path.join(physicalRoot,'.instance-install','creation.json'),stat=await fs.lstat(creationFile);
+        if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)throw fail('EVIDENCE_INVALID','Ordinary creation receipt required');
+        const creation=JSON.parse(await fs.readFile(creationFile,'utf8'));
+        if(creation.transactionId!==row.createdByTransaction || key(creation.root)!==key(physicalRoot)||JSON.stringify(creation.files)!==JSON.stringify(row.files))throw fail('EVIDENCE_INVALID','Exact installer-created files required');
+      }
+      const previous=manifest[kind].find(r=>key(r.path)===key(row.path) && (kind!=='profileEntries'||r.id===row.id));
+      if(previous) {
+        if(JSON.stringify(previous)!==JSON.stringify(row)) throw fail('EVIDENCE_CONFLICT','Existing installation evidence is immutable');
+      } else { manifest[kind].push(row);changed=true; }
+    }
+    if(changed) await atomicWrite(physicalRoot,manifest);
+    return manifest;
+  });
+}

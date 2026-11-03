@@ -32,22 +32,18 @@ test('all DSH bundle patch resources and every MCP entrypoint ship with the repo
  for(const name of ['qq-mode-console','qq-agent-presets']){const dir=path.join(root,'plugins',name),pkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json')));const patches=[pkg.dsh.bundle.patch].flat();for(const rel of patches)assert.ok(fs.existsSync(path.resolve(dir,rel)),name+' missing '+rel);}
  for(const rel of ['plugins/wake-contracts.json','plugins/qq-agent-presets/presets/campus-summary.patch.yml','src/mcp-snowluma-safe.js','src/mcp-host-server.js','src/mcp-web-search-safe.js','src/mcp-bridge-health.mjs','plugins/qq-components/tool-codex-chat/src/mcp-server.mjs','plugins/qq-components/personal-core/mcp.mjs'])assert.ok(fs.existsSync(path.join(root,rel)),rel);
 });
-test('empty local configuration and two installations preserve a separate DSH profile without duplicate integrations',()=>{
+test('legacy implicit installer refuses profile mutation without an explicit independent instance target',()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'chat-harness-install-'));
  try{
   const fakeRoot=path.join(temp,'project'),snow=path.join(temp,'snow'),home=path.join(temp,'dsh'),profile=path.join(home,'profiles','desktop');
   fs.mkdirSync(fakeRoot,{recursive:true});fs.copyFileSync(path.join(root,'config.example.json'),path.join(fakeRoot,'config.example.json'));fs.mkdirSync(snow);fs.writeFileSync(path.join(snow,'index.mjs'),'');fs.writeFileSync(path.join(snow,process.platform==='win32'?'node.exe':'launcher.sh'),'');
   const configured=configure({owner:'10001',snowlumaDir:snow},fakeRoot);assert.equal(configured.configured,true);const cfg=JSON.parse(fs.readFileSync(path.join(fakeRoot,'config.json')));assert.equal(cfg.allowAllWhenEmpty,false);assert.deepEqual(cfg.allow.private,['10001']);assert.equal(cfg.snowluma.accessToken,'');
   fs.mkdirSync(profile,{recursive:true});fs.writeFileSync(path.join(profile,'package.json'),JSON.stringify({name:'test-profile',private:true,dsh:{profile:{bundles:[]}}}));fs.writeFileSync(path.join(profile,'cordis.patch.yml'),'- insert:\n    - id: keep-existing\n      name: example-existing\n');
-  for(let i=0;i<2;i++){const result=spawnSync(process.execPath,['scripts/install.mjs','--profile','desktop'],{cwd:root,encoding:'utf8',windowsHide:true,env:{...process.env,DSH_HOME:home}});assert.equal(result.status,0,result.stderr||result.stdout);}
-  const doc=yaml.load(fs.readFileSync(path.join(profile,'cordis.patch.yml'),'utf8')),bundled=yaml.load(fs.readFileSync(path.join(root,'cordis.patch.yml'),'utf8')),entries=[...doc,...bundled].flatMap(row=>row.insert||[]),ids=entries.map(e=>e.id);
-  const bundlePackage=JSON.parse(fs.readFileSync(path.join(root,'package.json')));
-  assert.ok(ids.includes('keep-existing'));assert.equal(ids.filter(id=>id===bundlePackage.qqBridge.instance.entryId).length,1);
-  assert.deepEqual(bundled,[{insert:[{id:bundlePackage.qqBridge.instance.entryId,name:bundlePackage.name,config:{}}]}]);
-  assert.ok(!ids.some(id=>id.startsWith('mcp-')||id.startsWith('preset-')));
-  for(const e of entries){for(const arg of e.config?.args||[])if(path.isAbsolute(arg)&&/\.(?:mjs|js)$/.test(arg))assert.ok(fs.existsSync(arg),e.id+' missing entry');}
-  for(const name of ['qq-bridge'])assert.ok(fs.realpathSync(path.join(profile,'node_modules',name)).startsWith(root));
-  const pkg=JSON.parse(fs.readFileSync(path.join(profile,'package.json')));assert.equal(new Set(pkg.dsh.profile.bundles).size,pkg.dsh.profile.bundles.length);
+  const before=fs.readFileSync(path.join(profile,'package.json')),patch=fs.readFileSync(path.join(profile,'cordis.patch.yml'));
+  const result=spawnSync(process.execPath,['scripts/install.mjs','--profile','desktop'],{cwd:root,encoding:'utf8',windowsHide:true,env:{...process.env,DSH_HOME:home}});
+  assert.notEqual(result.status,0);assert.match(result.stderr,/EXPLICIT_INSTALL_TARGET_REQUIRED/);
+  assert.deepEqual(fs.readFileSync(path.join(profile,'package.json')),before);assert.deepEqual(fs.readFileSync(path.join(profile,'cordis.patch.yml')),patch);
+  assert.equal(fs.existsSync(path.join(profile,'node_modules','qq-bridge')),false);
  }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });
 test('Codex MCP code can initialize without any copied personal settings',async()=>{

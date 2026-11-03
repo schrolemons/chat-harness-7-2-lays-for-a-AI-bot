@@ -19,3 +19,8 @@ privacy-rules.json
 artifacts/
 workspace.local.json
 source-manifest.local.json
+.qq-bridge-instance.json*
+.qq-bridge-instance-manifest.json*
+.qq-bridge-install*
+.instance-install/
+managed-dependencies/

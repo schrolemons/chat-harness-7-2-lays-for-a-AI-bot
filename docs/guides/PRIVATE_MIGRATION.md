@@ -1,5 +1,7 @@
 # 私人部署与原始会话迁移
 
+> 本页是独立的 legacy 快照恢复流程，需要明确授权且仅用于确实要恢复历史的新目标。现有私人 bot 的 managed 插件迁移不运行 restore、不替换 source/state/roles/旧会话；请使用 [独立实例安装与精确迁移](../INSTANCE_INSTALLATION.md) 的精确候选和停止写入窗口。
+
 私人仓库保存本人的角色卡、资料库及 `private-data/` 快照；公开发行包不含这些资料。两者使用同一套功能代码，只有个人内容与中性默认内容不同。
 
 ## 快照包含什么
@@ -24,10 +26,10 @@ npm run restore:private -- --apply
 
 使用独立 DSH home 时，在两个命令后都增加 `--dsh-home D:/YourDSHHome`。恢复器会校验每个快照文件的SHA-256、路径和原始会话头，调整工程根目录与DSH home路径，再按DSH v4编码恢复会话目录。保留原始会话ID，因此桥接原有会话映射继续有效，不通过创建空会话冒充历史恢复。
 
-4. `npm run setup -- --profile desktop` 注册统一插件；重新打开DSH并应用插件。在启动面板核对bot QQ、管理员和白名单，完成QQ/SnowLuma登录，然后启动桥接。
+4. 插件注册按 [独立实例安装与精确迁移](../INSTANCE_INSTALLATION.md) 单独准备、审查和应用候选。旧命令 `npm run setup -- --profile desktop` 不再用于 managed 统一插件注册。完成显式恢复与安装后，再自行打开原 DSH，核对自己的账号和允许目标。
 5. 运行 `npm run doctor`、`node scripts/bridge-health.mjs --json`，查看原私聊/群聊的历史和日程。旧的待发任务仍遵循有效期、撤销和发送凭据守卫，不会因为恢复而自动重放未知结果。
 
-在没有 `config.json` 的私人新安装中，DSH插件也可识别并恢复随包携带的私人快照；已有配置始终保留。首次迁移建议先使用上述预览，以便确认目标位置。
+安装 bootstrap 不会自动恢复随包携带的私人快照；已有配置始终保留。需要独立恢复时，先使用上述预览并确认目标，不能把插件迁移当作快照恢复授权。
 
 ## 已有数据与本机依赖
 

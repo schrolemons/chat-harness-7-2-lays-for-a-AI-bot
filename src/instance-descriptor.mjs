@@ -38,6 +38,13 @@ export async function readInstanceDescriptor(root) {
   if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > 1024 * 1024) throw fail('DESCRIPTOR_INVALID', 'Descriptor must be an ordinary JSON file');
   let value;
   try { value = JSON.parse(await fs.readFile(file, 'utf8')); } catch { throw fail('DESCRIPTOR_INVALID', 'Malformed JSON'); }
+  return normalizeInstanceDescriptor(value, physical);
+}
+
+/** The same explicit identity validation/defaults for file readers and install planners. */
+export async function normalizeInstanceDescriptor(value, root) {
+  if (!absolute(root)) throw fail('DESCRIPTOR_INVALID', 'Root must be absolute');
+  const physical = await physicalRoot(root, false);
   if (!value || value.version !== 1 || !validId(value.instanceId) || !text(value.label)
     || ['bundleName', 'entryId', 'settingsNamespace', 'profile'].some(field => !text(value[field]))
     || !absolute(value.root) || !absolute(value.dshHome)

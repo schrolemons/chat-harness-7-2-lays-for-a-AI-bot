@@ -178,8 +178,6 @@
     "assets/",
     "examples/",
     "docs/",
-    "private-data/",
-    "private-libraries/",
     "construct.md",
     "config.example.json",
     "browser-sites.example.json",
@@ -188,7 +186,8 @@
     "dsh-entry.mjs",
     "dsh-mcp-entry.mjs",
     "dsh-client.js",
-    "release-edition.json"
+    "release-edition.json",
+    "release-files.json"
   ],
   "qqBridge": {
     "instance": {

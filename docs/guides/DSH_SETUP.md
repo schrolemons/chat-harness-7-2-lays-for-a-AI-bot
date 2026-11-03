@@ -1,5 +1,7 @@
 # DSH 端安装说明（本机或另一台设备）
 
+> 以下为旧 split standalone 安装记录，仅适用于尚未声明 managed instance 的旧版根目录。正常双插件/独立实例安装请使用 [独立实例安装与精确迁移](../INSTANCE_INSTALLATION.md)。存在 instance descriptor 的根目录会拒绝这里的旧 setup/start/stop 操作；本页历史版本说明不代表当前发行状态。
+
 `qq-bridge` 仓库本身包含桥接、控制台和插件，但 **DSH 端的两个聊天模式（`qq-chat` / `qq-chat-v2`）以及 MCP 挂载** 不在仓库根目录，需要通过本说明安装到目标设备的 DSH 环境中。
 
 ## 安装步骤

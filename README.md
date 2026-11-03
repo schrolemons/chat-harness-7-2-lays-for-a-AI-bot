@@ -92,57 +92,26 @@ QQ 身份以真实 QQ 号区分，昵称相同、前缀相同或改名不合并�
 | 软件 | 用途与要求 |
 | --- | --- |
 | DeepSeek Harness 桌面版 | 模型、会话及插件宿主；先启动一次并完成模型服务配置。 |
-| Node.js 24 LTS 或更新版本 | 桥接与工具进程，需要 `node`、`npm` 可用。 |
+| Node.js 24.20.0 或更新版本（Windows） | 桥接与工具进程，需要 `node`、`npm` 可用。 |
 | pnpm | 使用 DSH CLI 安装插件时需要；桌面安装器未提供时须单独安装并加入 PATH。 |
 | QQ 桌面客户端 | 安装并登录作为 bot 的账号。 |
-| SnowLuma 完整发行包 | QQ 与本地 OneBot 通道，按其上游说明安装；本插件不包含 QQ 或 SnowLuma。 |
+| SnowLuma 完整发行包 | 安装器自动获取并校验固定官方版本，在独立实例内安装；不接管外部 Snow 工程。 |
 
 ### 安装组合插件
 
-从 [Releases](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases) 下载 `qq-bridge-0.3.2.tgz`，通过 DSH 桌面版插件管理器安装本地包。普通 CLI 的示例使用独立 profile，不直接管理桌面版保留的 desktop profile：
+使用固定的独立运行目录，DSH profile 通过链接加载它。唯一安装流程见 [独立实例安装与精确迁移](docs/INSTANCE_INSTALLATION.md)：公开产物通过 npm bootstrap 后由 `install.mjs` 准备全新目录、锁定 SDK 依赖及自动下载的官方 SnowLuma，再生成 disabled 的精确 profile 候选。检查后，在目标 Desktop 已退出的窗口应用候选；安装器不会启动或重启任何服务。
 
-```powershell
-dsh plugin --profile qq-bot add C:/Downloads/qq-bridge-0.3.2.tgz
-```
-
-按 DSH 的提示应用插件。根组合包自动注册启动面板、模式设置、七个 MCP 服务入口和六套预设，无需另行复制预设文件。MCP 入口包括 QQ 工具、宿主工具、网页检索、Games、Playwright、健康诊断与 S 层资料接口；实际暴露范围由会话能力控制。
-
-| 预设 | 职责 |
-| --- | --- |
-| `qq-chat-v2` | 二代聊天主路径：读消息、工具发送、等待与收尾。 |
-| `qq-chat` | 一代聊天兼容路径，普通文本自动转发机制与二代不同。 |
-| `qq-admin` | 已授权管理员会话的开发与本机操作能力。 |
-| `qq-task-worker` | 独立任务执行，结果交由聊天协调器转达，不直接发 QQ。 |
-| `qq-learning` | 黑话、词条与绰号的后台学习，不发送 QQ 或执行本机命令。 |
-| `campus-summary` | 网页更新差异整理，无工具、不发送消息、不读取聊天历史。 |
-
-首次接入，在 DSH 桥接启动面板选择 **bot QQ**，设置管理员 QQ 及允许的私聊/群聊，再启动桥接。bot QQ 与管理员 QQ 是两个字段，默认不向所有账号开放。SnowLuma 路径或端点无法自动发现时，在设置中填写，无需改源码。
-
-本包安装脚本只修补 SnowLuma SDK 的模块导入后缀，不执行账号登录或启动 QQ/DSH。管理员预设的注册不意味着普通聊天获得管理员工具权限。
+Windows 需要 Node.js 24.20.0 或更新版本和 npm。实际 bot/七个 MCP 使用验证后的 Snow 内置 Node 24.22.1。公开包和私人实例具有不同的真实 package name、entry/settings namespace、客户端 ID、预设、工作目录及 listener 端口。账号和发送名单默认为空，冒泡/日程示例未绑定。
 
 ### 从源码部署或更新
 
-在仓库根目录执行：
-
-```powershell
-npm ci
-npm run setup -- --profile desktop
-```
-
-安装器向指定 profile 注册 `qq-bridge` 组合包，清理本项目旧的重复声明并保留其他插件；不会自动重启服务、重建会话或覆盖现有配置。应用插件后，通过启动面板完成账号、名单及 SnowLuma 配置。已有部署更新前先备份自己的配置与运行状态。
-
-```powershell
-npm run doctor
-node scripts/bridge-health.mjs --json
-```
-
-`doctor` 检查本地配置、依赖与插件链接；未完成首次配置时可能报告待配置项。`bridge-health` 是只读诊断，不调用模型。`npm run configure` 提供可选命令行配置，`npm start` 可单独启动桥接。代码更新、插件重载与运行进程生效是不同步骤，检查实际加载版本后再判断更新是否生效。
+执行 `npm ci` 后，通过同一 `scripts/release-public.mjs` 生成 allowlist 公开包。不要直接把本源码 checkout 或 `.worktrees` 当作新的运行目录，也不要用 DSH 包管理替换持有 state 的永久目录。升级先准备新 stage，按当前哈希评审、应用代码差异，保留原 descriptor、配置、state、角色和会话。具体命令、精确旧 profile 迁移和中断回滚见上述文档。
 
 ### 可选能力
 
 | 能力 | 额外准备 |
 | --- | --- |
-| Codex Peer | 安装并登录 Codex，使用 `npm run setup -- --with-codex` 配置独立咨询环境。 |
+| Codex Peer | 安装并登录 Codex，使用 Codex Peer 自己的显式安装流程；bot 迁移保留现有 Peer。 |
 | 网页登录与 DOM 操作 | Chrome/Edge 或对应 Playwright 浏览器；自行完成登录，管理员开发能力默认关闭。 |
 | 视频抽帧与音频转换 | FFmpeg；未安装时对应工具报告缺依赖。 |
 | 图片生成 | 自行配置兼容服务、模型与 API 凭据。 |
