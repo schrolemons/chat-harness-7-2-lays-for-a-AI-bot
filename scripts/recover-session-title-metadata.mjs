@@ -15,15 +15,46 @@ import {sessionTitle} from '../src/session-titles.js';
 const TITLE_ERROR='session/title messageSeqs must be empty exactly for a user title';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 function checkHash(value){if(!/^[a-f0-9]{64}$/i.test(value||''))throw Error('expected SHA256 is required');return value.toLowerCase();}
+/** RFC 8878 §§3.1.1.1–3.1.1.2: walk structural lengths, never payload magic.
+ * https://www.rfc-editor.org/rfc/rfc8878.html#section-3.1.1
+ * Native zstd concatenation behavior varies by Node version; it is not framing.
+ */
+export function zstdFrameEnd(bytes,start=0){
+  if(!Number.isSafeInteger(start)||start<0||start>bytes.length)throw Error('invalid Zstandard frame offset');
+  let cursor=start;
+  const take=count=>{if(cursor+count>bytes.length)throw Error('truncated Zstandard frame');const at=cursor;cursor+=count;return at;};
+  if(bytes.readUInt32LE(take(4))!==0xfd2fb528)throw Error('unsupported Zstandard frame magic');
+  const descriptor=bytes[take(1)],singleSegment=(descriptor&0x20)!==0;
+  if(descriptor&0x08)throw Error('reserved Zstandard frame flag');
+  let windowSize;
+  if(!singleSegment){const window=bytes[take(1)],base=2**(10+(window>>>3));windowSize=base+(base/8)*(window&7);}
+  const dictionarySize=[0,1,2,4][descriptor&3],dictionaryAt=take(dictionarySize);
+  if(bytes.subarray(dictionaryAt,dictionaryAt+dictionarySize).some(value=>value!==0))throw Error('unsupported Zstandard dictionary');
+  const sizeFlag=descriptor>>>6,sizeBytes=sizeFlag===0?(singleSegment?1:0):[0,2,4,8][sizeFlag];
+  let contentSize;
+  if(sizeBytes){const at=take(sizeBytes);contentSize=sizeBytes===8?bytes.readBigUInt64LE(at):BigInt(bytes.readUIntLE(at,sizeBytes)+(sizeBytes===2?256:0));}
+  if(contentSize!==undefined&&contentSize>128n*1024n*1024n)throw Error('Zstandard frame content exceeds recovery limit');
+  if(singleSegment)windowSize=Number(contentSize);
+  if(windowSize>128*1024*1024)throw Error('Zstandard window exceeds recovery limit');
+  const blockMaximum=Math.min(windowSize,128*1024);
+  for(;;){
+    const block=bytes.readUIntLE(take(3),3),type=(block>>>1)&3,size=block>>>3;
+    if(type===3)throw Error('reserved Zstandard block type');
+    if(size>blockMaximum)throw Error('invalid Zstandard block size');
+    take(type===1?1:size);
+    if(block&1)break;
+  }
+  if(descriptor&4)take(4);
+  return cursor;
+}
 
 function decodeFrames(bytes){
   const frames=[];let total=0;
   for(let offset=0;offset<bytes.length;){
-    const decoded=zstdDecompressSync(bytes.subarray(offset),{info:true,maxOutputLength:128*1024*1024});
-    const consumed=decoded.engine.bytesWritten;
-    if(!Number.isSafeInteger(consumed)||consumed<=0)throw Error('invalid compressed frame length');
-    total+=decoded.buffer.length;if(total>512*1024*1024)throw Error('decoded log exceeds recovery limit');
-    frames.push({compressed:bytes.subarray(offset,offset+consumed),plain:decoded.buffer,start:total-decoded.buffer.length});offset+=consumed;
+    const end=zstdFrameEnd(bytes,offset),compressed=bytes.subarray(offset,end);
+    const plain=zstdDecompressSync(compressed,{maxOutputLength:128*1024*1024});
+    total+=plain.length;if(total>512*1024*1024)throw Error('decoded log exceeds recovery limit');
+    frames.push({compressed,plain,start:total-plain.length});offset=end;
   }
   if(!frames.length)throw Error('empty log');return frames;
 }

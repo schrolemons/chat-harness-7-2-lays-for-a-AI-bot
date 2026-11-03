@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {zstdCompressSync,zstdDecompressSync} from 'node:zlib';
+import zlib,{zstdCompressSync,zstdDecompressSync,constants} from 'node:zlib';
+import {syncBuiltinESMExports} from 'node:module';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {buildCandidate,prepareRecovery} from './recover-session-title-metadata.mjs';
+import {buildCandidate,prepareRecovery,zstdFrameEnd} from './recover-session-title-metadata.mjs';
 
 const id='session-synthetic-recovery-fixture';
 const sha=b=>createHash('sha256').update(b).digest('hex');
@@ -25,6 +26,52 @@ function validate(rows){
   assert.equal(rows[1].data.source.kind,'user');
 }
 
+const magic=Buffer.from([0x28,0xb5,0x2f,0xfd]);
+function blockHeader(size,type=0,last=true){const bytes=Buffer.alloc(3);bytes.writeUIntLE((size<<3)|(type<<1)|Number(last),0,3);return bytes;}
+function rawFrame(payload){return Buffer.concat([magic,Buffer.from([0x20,payload.length]),blockHeader(payload.length),payload]);}
+
+test('parses exact raw and RLE frame ends without mistaking payload magic for a boundary',()=>{
+  const payload=Buffer.concat([Buffer.from('prefix'),magic,Buffer.from('suffix')]);
+  const raw=rawFrame(payload),rle=Buffer.concat([magic,Buffer.from([0x20,7]),blockHeader(7,1),Buffer.from('R')]);
+  const input=Buffer.concat([raw,rle]);
+  assert.equal(zstdFrameEnd(input,0),raw.length);assert.equal(zstdFrameEnd(input,raw.length),input.length);
+  assert.deepEqual(zstdDecompressSync(raw),payload);assert.equal(zstdDecompressSync(rle).toString(),'RRRRRRR');
+  const multi=Buffer.concat([magic,Buffer.from([0x20,4]),blockHeader(2,0,false),Buffer.from('ab'),blockHeader(2,1),Buffer.from('c')]);
+  assert.equal(zstdFrameEnd(multi),multi.length);assert.equal(zstdDecompressSync(multi).toString(),'abcc');
+});
+
+test('accounts for window descriptor, every dictionary/FCS width, and optional checksum bytes',()=>{
+  // Literal hand-built headers: zero dictionary ID, and 4-byte content size 1.
+  for(const [flag,width] of [[0,0],[1,1],[2,2],[3,4]]){
+    const frame=Buffer.concat([magic,Buffer.from([0xa0|flag]),Buffer.alloc(width),Buffer.from([1,0,0,0]),blockHeader(1),Buffer.from('x')]);
+    assert.equal(zstdFrameEnd(Buffer.concat([frame,rawFrame(Buffer.from('tail'))])),frame.length);
+    assert.equal(zstdDecompressSync(frame).toString(),'x');
+  }
+  const unknownSize=Buffer.concat([magic,Buffer.from([0,0]),blockHeader(1),Buffer.from('u')]);
+  assert.equal(zstdFrameEnd(unknownSize),unknownSize.length);assert.equal(zstdDecompressSync(unknownSize).toString(),'u');
+  const fcs2=Buffer.concat([magic,Buffer.from([0x60,0,0]),blockHeader(256,1),Buffer.from('a')]);
+  const fcs8=Buffer.concat([magic,Buffer.from([0xe0,1,0,0,0,0,0,0,0]),blockHeader(1),Buffer.from('b')]);
+  assert.equal(zstdFrameEnd(fcs2),fcs2.length);assert.equal(zstdDecompressSync(fcs2).length,256);
+  assert.equal(zstdFrameEnd(fcs8),fcs8.length);assert.equal(zstdDecompressSync(fcs8).toString(),'b');
+  const checked=zstdCompressSync(Buffer.from('checksum fixture'),{params:{[constants.ZSTD_c_checksumFlag]:1}});
+  assert.equal(zstdFrameEnd(Buffer.concat([checked,unknownSize])),checked.length);
+  for(let removed=1;removed<=4;removed++)assert.throws(()=>zstdFrameEnd(checked.subarray(0,-removed)),/truncated/);
+  const corrupt=Buffer.from(checked);corrupt[corrupt.length-1]^=1;
+  assert.equal(zstdFrameEnd(corrupt),corrupt.length);assert.throws(()=>zstdDecompressSync(corrupt));
+});
+
+test('fails closed for truncated structure, reserved blocks/flags, skippable frames and unsupported dictionary',()=>{
+  const raw=rawFrame(Buffer.from('abc'));
+  for(let end=0;end<raw.length;end++)assert.throws(()=>zstdFrameEnd(raw.subarray(0,end)),/truncated/);
+  const rle=Buffer.concat([magic,Buffer.from([0x20,5]),blockHeader(5,1)]);
+  assert.throws(()=>zstdFrameEnd(rle),/truncated/);
+  assert.throws(()=>zstdFrameEnd(Buffer.concat([magic,Buffer.from([0x28,0]),blockHeader(0)])),/reserved/);
+  assert.throws(()=>zstdFrameEnd(Buffer.concat([magic,Buffer.from([0x20,0]),blockHeader(0,3)])),/reserved/);
+  assert.throws(()=>zstdFrameEnd(Buffer.from([0x50,0x2a,0x4d,0x18,0,0,0,0])),/unsupported/);
+  assert.throws(()=>zstdFrameEnd(Buffer.concat([magic,Buffer.from([0x21,1,0]),blockHeader(0)])),/dictionary/);
+  assert.throws(()=>zstdFrameEnd(Buffer.concat([magic,Buffer.from([0x20,1]),blockHeader(2),Buffer.from('ab')])),/block size/);
+});
+
 test('only the target title source changes; all other row and frame bytes survive',()=>{
   const f=fixture(),result=buildCandidate(f.bytes,{sessionId:id,validate});
   assert.equal(result.report.changedRecords,1);assert.equal(result.report.nonTargetBytesEqual,true);
@@ -33,6 +80,22 @@ test('only the target title source changes; all other row and frame bytes surviv
   assert.deepEqual(zstdDecompressSync(result.frames[1]),Buffer.concat([Buffer.from(f.title.toString().replace('"kind":"fallback"','"kind":"user"')),f.later]));
   const again=buildCandidate(result.bytes,{sessionId:id,validate});
   assert.equal(again.report.changedRecords,0);assert.deepEqual(again.bytes,result.bytes);
+});
+
+test('preserves frame boundaries when native decompression consumes all concatenated frames',t=>{
+  const f=fixture(),native=zlib.zstdDecompressSync,calls=[];
+  t.mock.method(zlib,'zstdDecompressSync',(input,options)=>{
+    calls.push(Buffer.from(input));
+    if(input.equals(f.bytes)){
+      const buffer=Buffer.concat([f.header,f.title,f.later,f.tail]);
+      return options?.info?{buffer,engine:{bytesWritten:input.length}}:buffer;
+    }
+    return native(input,options);
+  });
+  syncBuiltinESMExports();t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
+  const result=buildCandidate(f.bytes,{sessionId:id,validate});
+  assert.deepEqual(result.frames[0],f.frames[0]);assert.deepEqual(result.frames[2],f.frames[2]);
+  assert.equal(result.frames.length,3);assert.deepEqual(calls[0],f.frames[0]);
 });
 
 test('rejects wrong session, nonzero fallback, malformed and unvalidated candidates',()=>{
