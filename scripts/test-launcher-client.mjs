@@ -1,197 +1,51 @@
-import { test } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
+import {clientFixture} from './instance-launcher-client-fixture.mjs';
 
-async function page(t, options = {}) {
-  const nodes = new Map(), requests = [], opened = [], payloads = [], allRequests = [];
-  const roots = [], timers = new Set(), resizeListeners = new Set();
-  let status = { light: 'red', starting: false, checks: {} }, api;
-  let settings = { configured: !options.unconfigured, botUin: options.unconfigured ? '' : '123456789', ownerQQ: 234567890,
-    allow: { private: [345678901], groups: [456789012] }, revision: 'fixture',
-    ports: { dsh: 3080, console: 3100, snowHttp: 3000, snowWs: 3001, launcher: 3199, snowWebui: 5099 }, ...options.settings };
-  const element = () => ({ style: {}, dataset: {}, handlers: {}, isConnected: true,
-    children: [],
-    focus() {},
-    setAttribute() {}, append(...children) { this.children.push(...children); },
-    remove() { this.isConnected = false; },
-    addEventListener(event, fn) { this.handlers[event] = fn; },
-    set id(v) { nodes.set(v, this); }, getBoundingClientRect: () => ({ width: 140, right: 180, height: 40 })
-  });
-  const body = element();
-  body.append = host => { roots.push(host); };
-  const document = { createElement: element, body, documentElement: element(), querySelector: () => element(),
-    querySelectorAll: () => roots.filter(host => host.isConnected) };
-  const context = vm.createContext({ document, AbortSignal, Date, URL, console, MutationObserver: class { observe() {} disconnect() {} },
-    setInterval: () => { const id = {}; timers.add(id); return id; }, clearInterval(id) { timers.delete(id); },
-    window: { __ModuleLoader__: { load: mod => { api = mod.factory(() => ({})); } },
-      open: (...args) => opened.push(args), addEventListener(event, fn) { resizeListeners.add(fn); },
-      removeEventListener(event, fn) { resizeListeners.delete(fn); } },
-    fetch: async (url, options = {}) => {
-      allRequests.push(url);
-      if (url.endsWith('/config')) {
-        if (options.method === 'POST') {
-          requests.push(url);
-          payloads.push(JSON.parse(options.body));
-          settings = { ...JSON.parse(options.body), configured: true, ok: true,
-            serviceUrl: `http://127.0.0.1:${JSON.parse(options.body).ports?.launcher || 3199}` };
-        }
-        return { ok: true, json: async () => settings };
-      }
-      if (options.method === 'POST') {
-        requests.push(url);
-        if (url.endsWith('/stop')) status = { light: 'red', stopped: true, starting: false, checks: {} };
-        else status = { light: 'amber', starting: true, checks: {} };
-      }
-      return { ok: true, json: async () => options.method === 'POST' ? { ok: true } : status };
-    }
-  });
-  const source = fs.readFileSync(new URL('../plugins/qq-launcher/lib/client.js', import.meta.url), 'utf8');
-  let dispose;
-  const reload = async () => {
-    const previousDispose = dispose;
-    vm.runInContext(source, context);
-    dispose = undefined;
-    api.apply({ on(event, fn) { if (event === 'dispose') dispose = fn; } });
-    await flush();
-    return previousDispose;
-  };
-  const flush = () => new Promise(r => setTimeout(r, 15));
-  await reload();
-  t.after(() => { dispose?.(); });
-  const click = async id => { await nodes.get(id).handlers.click(); await flush(); };
-  return { nodes, requests, opened, payloads, allRequests, click, reload, dispose: () => dispose?.(), roots, timers, resizeListeners,
-    setStatus: async value => { status = value; await reload(); },
-    submit: async () => { await nodes.get('qq-launcher-settings-form').handlers.submit({ preventDefault() {} }); await flush(); } };
+async function page(t, options={}) {
+ const p=await clientFixture(t);p.add('a',4199);if(options.unconfigured){p.configs.a.botUin='';p.configs.a.configured=false;}
+ let current=p.mount('a');await p.flush();
+ return {...p, async reload(){const old=current;current=p.mount('a');await p.flush();return old.dispose;}};
 }
-
-test('第一次点击启动，启动期间第二次点击打开控制台且不重复启动', async t => {
-  const p = await page(t);
-  await p.click('qq-launcher-button');
-  await p.click('qq-launcher-button');
-  assert.equal(p.requests.length, 1);
-  assert.ok(p.requests[0].endsWith('/start'));
-  assert.equal(p.opened.length, 1);
-  assert.equal(p.opened[0][0], 'http://127.0.0.1:3100');
+test('first click starts once; a second click opens this instance console',async t=>{
+ const p=await page(t);await p.click('a','button');await p.click('a','button');
+ assert.deepEqual(p.requests.filter(x=>x.method==='POST').map(x=>x.url),['http://127.0.0.1:4199/start']);assert.equal(p.opened[0][0],'http://127.0.0.1:4200');
 });
-
-test('设置按钮展开真实字段；缺少必填机器人 QQ 时启动先引导，取消不启动', async t => {
-  const p = await page(t, { unconfigured: true });
-  await p.click('qq-launcher-button');
-  assert.equal(p.requests.length, 0);
-  assert.equal(p.nodes.get('qq-launcher-settings-panel').style.display, 'block');
-  assert.equal(p.nodes.get('qq-launcher-bot-qq').required, true);
-  assert.equal(p.nodes.get('qq-launcher-owner-qq').value, '234567890');
-  assert.equal(p.nodes.get('qq-launcher-allow-private').value, '345678901');
-  await p.click('qq-launcher-settings-cancel');
-  assert.equal(p.requests.length, 0);
+test('missing bot QQ opens independently owned required settings; cancel never starts',async t=>{
+ const p=await page(t,{unconfigured:true});await p.click('a','button');
+ assert.equal(p.nodes.get('qq-launcher-a-settings-panel').style.display,'block');assert.equal(p.nodes.get('qq-launcher-a-bot-qq').required,true);
+ await p.click('a','settings-cancel');assert.equal(p.requests.some(x=>x.method==='POST'),false);
 });
-
-test('引导表单空值不能启动；填写后保存真实数据并继续启动', async t => {
-  const p = await page(t, { unconfigured: true });
-  await p.click('qq-launcher-button');
-  await p.submit();
-  assert.equal(p.requests.length, 0);
-  p.nodes.get('qq-launcher-bot-qq').value = '123456789';
-  await p.submit();
-  assert.deepEqual(p.requests.map(url => url.split('/').at(-1)), ['config', 'start']);
+test('empty QQ blocks saving; valid configuration saves and continues the requested start',async t=>{
+ const p=await page(t,{unconfigured:true});await p.click('a','button');await p.submit('a');assert.equal(p.requests.some(x=>x.method==='POST'),false);
+ p.nodes.get('qq-launcher-a-bot-qq').value='123456789';await p.submit('a');
+ assert.deepEqual(p.requests.filter(x=>x.method==='POST').map(x=>x.url.split('/').at(-1)),['config','start']);
 });
-
-test('信号灯右侧提供独立重启和关闭；关闭后主按钮恢复启动', async t => {
-  const p = await page(t);
-  assert.equal(p.nodes.get('qq-launcher-restart').textContent, '重启');
-  assert.equal(p.nodes.get('qq-launcher-stop').textContent, '关闭');
-  await p.click('qq-launcher-restart');
-  await p.click('qq-launcher-stop');
-  await p.click('qq-launcher-button');
-  assert.deepEqual(p.requests.map(url => url.split('/').at(-1)), ['restart', 'stop', 'start']);
-  assert.equal(p.opened.length, 0);
+test('restart, stop and start remain explicit independently routed controls',async t=>{
+ const p=await page(t);await p.click('a','restart');await p.click('a','stop');await p.click('a','button');
+ assert.deepEqual(p.requests.filter(x=>x.method==='POST').map(x=>x.url.split('/').at(-1)),['restart','stop','start']);
+ assert.equal(p.nodes.get('qq-launcher-a-stop').textContent,'停止');
 });
-
-test('标题栏已经存在的快速挂载路径也注册卸载清理', async t => {
-  const p = await page(t);
-  assert.equal(p.roots.filter(x => x.isConnected).length, 1);
-  p.dispose();
-  assert.equal(p.roots.filter(x => x.isConnected).length, 0);
-  assert.equal(p.timers.size, 0);
-  assert.equal(p.resizeListeners.size, 0);
+test('last-instance hot reload replaces only its widget; old disposer cannot remove the replacement',async t=>{
+ const p=await page(t);for(let i=0;i<4;i++){const old=await p.reload();old();}
+ assert.equal(p.body.children.length,1);assert.equal(p.body.children[0].isConnected,true);assert.equal(p.timers.size,1);assert.equal(p.events.get('resize').size,1);
 });
-
-test('连续热重载始终只保留一组按钮、一份状态文字和一个轮询', async t => {
-  const p = await page(t);
-  for (let i = 0; i < 4; i++) await p.reload();
-  assert.equal(p.roots.filter(x => x.isConnected).length, 1);
-  assert.equal(p.timers.size, 1);
-  assert.equal(p.resizeListeners.size, 1);
+test('spawned runtime is labelled pending connection confirmation and never shown as QQ ready',async t=>{
+ const p=await page(t);p.statuses.a='running';await p.tick();assert.match(p.nodes.get('qq-launcher-a-button').title,/连接状态待确认/);
+ p.statuses.a='stopped';await p.tick();assert.match(p.nodes.get('qq-launcher-a-button').title,/已停止/);
 });
-
-test('热重载清理旧版本残留，旧作用域迟到的卸载不能删除新按钮', async t => {
-  const p = await page(t);
-  const legacy = { isConnected: true, remove() { this.isConnected = false; } };
-  p.roots.push(legacy);
-  const previousDispose = await p.reload();
-  previousDispose();
-  assert.equal(legacy.isConnected, false);
-  assert.equal(p.roots.filter(x => x.isConnected).length, 1);
-  assert.equal(p.timers.size, 1);
+test('all six ports roundtrip and port changes survive a full client reload through live discovery',async t=>{
+ const p=await page(t);await p.click('a','settings');
+ for(const key of ['dsh','console','snowHttp','snowWs','launcher','snowWebui'])assert.ok(p.nodes.get('qq-launcher-a-port-'+key).value);
+ p.nodes.get('qq-launcher-a-port-launcher').value='4299';await p.submit('a');await p.reload();await p.click('a','stop');
+ assert.equal(p.requests.at(-1).url,'http://127.0.0.1:4299/stop');
+ const patch=p.requests.find(x=>x.method==='POST'&&x.url.endsWith('/config')).body;assert.equal(patch.revision,'initial');assert.equal(patch.instanceId,'a');assert.equal(patch.generation,'a-1');
 });
-
-test('启动、等待登录、关闭和就绪各状态只显示一份对应文字', async t => {
-  const p = await page(t);
-  for (const [state, expected] of [
-    [{ starting: true, light: 'amber' }, '启动中'],
-    [{ starting: true, light: 'amber', message: '等待 QQ 登录' }, '等待登录'],
-    [{ starting: true, light: 'amber', phase: 'waiting_gateway', message: 'QQ 接口有响应，但机器人账号鉴权尚未通过' }, '连接中'],
-    [{ operation: 'stopping', light: 'red' }, '关闭中'],
-    [{ ready: true, light: 'green' }, 'AI助手']
-  ]) {
-    await p.setStatus(state);
-    const live = p.roots.filter(x => x.isConnected);
-    assert.equal(live.length, 1);
-    assert.equal(live[0].children[0].children[1].textContent, expected);
-  }
+test('invalid or duplicate ports block writes while retaining an editable form',async t=>{
+ const p=await page(t);await p.click('a','settings');for(const value of ['0','65536','3000','12.5','4e3','']){
+ p.nodes.get('qq-launcher-a-port-launcher').value=value;await p.submit('a');assert.equal(p.requests.some(x=>x.method==='POST'),false);assert.match(p.nodes.get('qq-launcher-a-settings-message').textContent,/端口/);assert.equal(p.nodes.get('qq-launcher-a-settings-save').disabled,false);}
 });
-
-test('设置显示六个端口，提交数字端口并在保存响应后使用新的本机服务地址', async t => {
-  const p = await page(t);
-  await p.click('qq-launcher-settings');
-  for (const [key, expected] of Object.entries({ dsh: '3080', console: '3100', snowHttp: '3000',
-    snowWs: '3001', launcher: '3199', snowWebui: '5099' })) {
-    assert.equal(p.nodes.get('qq-launcher-port-' + key)?.value, expected);
-  }
-  p.nodes.get('qq-launcher-port-launcher').value = '4199';
-  await p.submit();
-  assert.equal(p.requests[0], 'http://127.0.0.1:3199/config');
-  assert.equal(p.payloads[0].ports.launcher, 4199);
-  assert.equal(p.payloads[0].botUin, '123456789');
-  await p.click('qq-launcher-stop');
-  assert.equal(p.requests.at(-1), 'http://127.0.0.1:4199/stop');
-  await p.reload();
-  assert.equal(p.allRequests.at(-1), 'http://127.0.0.1:4199/status');
-});
-
-test('非法或重复端口在界面阻止保存，保持表单可修改', async t => {
-  const p = await page(t);
-  await p.click('qq-launcher-settings');
-  const input = p.nodes.get('qq-launcher-port-launcher');
-  assert.ok(input);
-  for (const invalid of ['0', '65536', '3000', '12.5', '4e3', '']) {
-    input.value = invalid;
-    await p.submit();
-    assert.equal(p.requests.length, 0);
-    assert.match(p.nodes.get('qq-launcher-settings-message').textContent, /端口/);
-    assert.equal(p.nodes.get('qq-launcher-settings-save').disabled, false);
-  }
-});
-
-test('启动器端口 80 保存后及热重载后均连接 HTTP 默认端口', async t => {
-  const p = await page(t);
-  await p.click('qq-launcher-settings');
-  p.nodes.get('qq-launcher-port-launcher').value = '80';
-  await p.submit();
-  assert.equal(p.payloads[0].ports.launcher, 80);
-  await p.click('qq-launcher-stop');
-  assert.equal(p.requests.at(-1), 'http://127.0.0.1/stop');
-  await p.reload();
-  assert.equal(p.allRequests.at(-1), 'http://127.0.0.1/status');
+test('HTTP default port 80 remains canonical after save and reload',async t=>{
+ const p=await page(t);await p.click('a','settings');p.nodes.get('qq-launcher-a-port-launcher').value='80';await p.submit('a');await p.reload();await p.click('a','stop');
+ assert.equal(p.requests.at(-1).url,'http://127.0.0.1/stop');
 });

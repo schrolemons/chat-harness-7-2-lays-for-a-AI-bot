@@ -66,3 +66,19 @@ test('bundled MCP entries derive local entrypoints and mount through the DSH loa
  await assert.rejects(apply(ctx,{serverName:'snowluma'}),/explicit absolute instance root/);
  await assert.rejects(apply(ctx,{serverName:'arbitrary-script'}),/Unknown bundled MCP/);
 });
+
+// Break caught: package graph injection is not a Cordis service-name dependency.
+test('native module arrival loads the Connection package before either launcher consumer',async()=>{
+ const vm=await import('node:vm'),hostRequire=createRequire(createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json'));
+ const entry=hostRequire.resolve('@deepseek-ai/dsh-client-modules/client');let exports;
+ vm.runInNewContext(fs.readFileSync(entry,'utf8'),{window:{__ModuleLoader__:{load(mod){exports=mod.factory(()=>({}));}}},console,URL});
+ const connectionId='@deepseek-ai/dsh-client-connection';
+ for(const file of ['package.json','plugins/qq-launcher/package.json']){
+  const pkg=JSON.parse(fs.readFileSync(path.join(root,file),'utf8')),arrived=[];
+  const target={mode:'queue',pendingQueue:[]};
+  const row=(id,inject=[])=>({id,rev:'fixture',url:'/plugins/'+id+'/client.js?rev=fixture',initialUrl:'/plugins/'+id+'/client.js?rev=fixture',external:[],inject});
+  const system=new exports.ClientModuleSystem({manifest:{modules:[row(pkg.name,pkg.dsh.client.inject),row(connectionId)],plugins:[]},staticModules:{},bootstrapModule:{id:'@deepseek-ai/dsh-client-modules',exports},registrationTarget:target,
+   async loadBundle(url){const id=url.includes(connectionId)?connectionId:pkg.name;arrived.push(id);target.load({id,factory:()=>({apply(){}})});}});
+  await system.prefetch(pkg.name);assert.deepEqual(arrived,[connectionId,pkg.name]);
+ }
+});

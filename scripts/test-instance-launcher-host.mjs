@@ -41,6 +41,43 @@ async function fixture(t, extra = {}) {
 }
 async function identityOf(handle) { return (await (await fetch(handle.address() + '/status')).json()); }
 
+test('shared native discovery is owner-only, fresh, projected and retained across first removal', async t => {
+  const channels = new Map(), hooks = new Map(); let disposed = 0;
+  const root = { on(name, fn) { hooks.set(name, fn); return () => hooks.delete(name); },
+    inject(deps, apply) {
+      assert.deepEqual(deps, ['connection', 'webServer']);
+      const removals = [];
+      apply({ connection: { rpc: { handle(channel, handler) {
+        assert.ok(!channels.has(channel), 'one native channel across module copies'); channels.set(channel, handler);
+        const remove = async () => { channels.delete(channel); }; removals.push(remove); return remove;
+      } } } });
+      return { async dispose() { disposed++; await Promise.all(removals.map(fn => fn())); } };
+    } };
+  const a = await fixture(t, { id: 'a', ctx: { root } });
+  const second = await import('../src/instance-launcher-host.mjs?discovery-copy');
+  const b = await fixture(t, { id: 'b', ctx: { root }, factory: second.createInstanceLauncher });
+  const handler = channels.get('/qq-bot-discovery'); assert.equal(typeof handler, 'function');
+  const read = () => handler('list', {}, new AbortController().signal, { principal: { kind: 'owner' } });
+  const first = await read(); assert.deepEqual(Object.keys(first.value).sort(), ['a','b']);
+  assert.deepEqual(Object.keys(first.value.a).sort(), ['clientModuleId','generation','label','serviceUrl']);
+  assert.equal((await handler('list', {}, null, { principal: { kind: 'api' } })).ok, false);
+  assert.equal((await handler('write', {}, null, { principal: { kind: 'owner' } })).ok, false);
+  await a.handle.dispose(); assert.equal(disposed, 0); assert.deepEqual(Object.keys((await read()).value), ['b']);
+  await b.handle.dispose(); assert.equal(disposed, 1); assert.equal(channels.size, 0); assert.equal(hooks.size, 0);
+});
+
+test('last discovery cleanup and immediate re-enable serialize the exact native channel owner',async t=>{
+  const gate=deferred(),entered=deferred(),channels=new Map();let registrations=0,disposals=0;
+  const root={on(){return ()=>{};},inject(deps,apply){
+    let remove;apply({connection:{rpc:{handle(channel,handler){assert.equal(channels.has(channel),false);registrations++;channels.set(channel,handler);remove=()=>channels.delete(channel);return remove;}}}});
+    return {async dispose(){disposals++;if(disposals===1){entered.resolve();await gate.promise;}remove();}};
+  }};
+  const a=await fixture(t,{id:'a',ctx:{root}});const stopping=a.handle.dispose();await entered.promise;
+  const b=await fixture(t,{id:'b',ctx:{root}});assert.equal(registrations,1);gate.resolve();await stopping;await new Promise(r=>setImmediate(r));
+  assert.equal(registrations,2);const result=await channels.get('/qq-bot-discovery')('list',{},null,{principal:{kind:'owner'}});
+  assert.deepEqual(Object.keys(result.value),['b']);await b.handle.dispose();assert.equal(channels.size,0);assert.equal(disposals,2);
+});
+
 test('owned controls never use legacy takeover and start means spawned rather than healthy', async t => {
   const f = await fixture(t);
   assert.deepEqual(f.events, [], 'enable must not start or send');

@@ -11,15 +11,40 @@ const registryKey = Symbol.for('qq-bridge.launcher-discovery.v1');
 function registerDiscovery(ctx, record) {
   const host=ctx.root||ctx; let registry=Object.hasOwn(host,registryKey)?host[registryKey]:undefined;
   if(!registry) {
-    registry={entries:new Map()};
+    registry={entries:new Map(),serial:Promise.resolve(),injector:null};
+    registry.snapshot=()=>Object.fromEntries([...registry.entries.values()].map(get=>get()).filter(Boolean)
+      .map(({instanceId,label,serviceUrl,generation,clientModuleId})=>[instanceId,{label,serviceUrl,generation,clientModuleId}]));
     registry.remove=host.on?.('webserver/index-inject',table=>{
-      const value=Object.fromEntries([...registry.entries.values()].map(get=>get()).filter(Boolean).map(({instanceId,...record})=>[instanceId,record]));
+      const value=registry.snapshot();
       if(Object.keys(value).length)table.push({kind:'global',name:'__qqBotInstances',value});
+    });
+    // The injection belongs to the shared root, never to the first bot Fiber.
+    // Keep the registry until async teardown ends; a concurrent re-enable joins
+    // this same serialized owner rather than racing a duplicate native route.
+    registry.reconcile=()=>registry.serial=registry.serial.then(async()=>{
+      if(!registry.entries.size) {
+        const injector=registry.injector; registry.injector=null;
+        await injector?.dispose();
+        if(!registry.entries.size&&host[registryKey]===registry) { registry.remove?.();delete host[registryKey];return; }
+      }
+      if(registry.entries.size&&!registry.injector&&host.inject) {
+        registry.injector=host.inject(['connection','webServer'],owner=>{
+          // Read the public service through the root: the pinned Cordis getter
+          // otherwise shadows a nested RPC getter back to its providing Fiber.
+          // Explicitly return the exact root registration's disposer below.
+          return (host.get?.('connection')||owner.connection).rpc.handle('/qq-bot-discovery',async(endpoint,payload,signal,peer)=>{
+            if(peer?.principal?.kind!=='owner')return {ok:false,error:{code:'discovery/forbidden',message:'Forbidden',details:{}}};
+            if(endpoint!=='list')return {ok:false,error:{code:'discovery/not-found',message:'Not found',details:{}}};
+            return {ok:true,value:registry.snapshot()};
+          });
+        });
+      }
     });
     Object.defineProperty(host,registryKey,{value:registry,configurable:true});
   }
   const token=Symbol(); registry.entries.set(token,record);
-  return ()=>{registry.entries.delete(token);if(!registry.entries.size&&host[registryKey]===registry){registry.remove?.();delete host[registryKey];}};
+  registry.reconcile().catch(error=>ctx.logger?.error(error));
+  return ()=>{registry.entries.delete(token);return registry.reconcile();};
 }
 const localOrigin = value => {
   if (!value) return true;
@@ -152,7 +177,9 @@ export function createInstanceLauncher(ctx, { descriptor, runtime }, deps = {}) 
   const closeAdmission=()=>{closing=true;};
   function dispose() {
     closeAdmission();
-    return disposal??=(async()=>{ if(typeof remove==='function')remove(); await queue; await Promise.all([...servers].map(closeServer)); })();
+    return disposal??=(async()=>{ const removal=typeof remove==='function'?remove():undefined; await queue;
+      const results=await Promise.allSettled([removal,...[...servers].map(closeServer)]);
+      const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason);if(errors.length)throw new AggregateError(errors,'Launcher cleanup failed'); })();
   }
   return {ready,dispose,address,closeAdmission};
 }

@@ -12,7 +12,7 @@
   "license": "MIT",
   "dsh": {
     "client": {
-      "inject": [],
+      "inject": ["@deepseek-ai/dsh-client-connection"],
       "platform": "web"
     }
   }

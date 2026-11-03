@@ -1,605 +1,271 @@
-// qq-launcher —— 客户端半边：把「AI助手红绿灯 + 一键启动」挂到 Windows 标题栏
-// 「应用 / 编辑」右边的同一行里。
-//
-// 实现约束（都是实测出来的，别改回去）：
-//   1) 标题栏那条 menubar 是 DSH 桌面 preload 注入的 `<div data-windows-menu>`，
-//      shadow DOM 封着「应用 / 编辑」两个按钮；我们**不碰它的 shadow**，
-//      只量它的 getBoundingClientRect()，然后把自绘的一小段挂在它右边。
-//   2) 这一行是窗口拖拽区，元素必须 `-webkit-app-region: no-drag`，否则点不到。
-//   3) 客户端插件跑在浏览器里，起不了进程；真正的启动请求打给 Host 半边的
-//      http://127.0.0.1:3199/start（见 lib/index.js）。
-//   4) 不 require 任何模块（不用 react），手写 DOM，插件加载失败也不会拖垮 shell。
-
+// Source for both the standalone client module and descriptor-rendered root bundles.
+// The HTML registry is an initial snapshot only. Authenticated Connection RPC is authoritative.
 window.__ModuleLoader__.load({
   id: 'qq-launcher',
-  factory: (require) => {
-    var module = { exports: {} };
-    var exports = module.exports;
-    Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
-
-    const DEFAULT_PORTS = { dsh: 3080, console: 3100, snowHttp: 3000, snowWs: 3001, launcher: 3199, snowWebui: 5099 };
-    const PORT_LABELS = { dsh: 'DSH HTTP 端口', console: '桥接控制台端口', snowHttp: 'SnowLuma HTTP 端口',
+  factory: () => {
+    const CLIENT_MODULE_ID = 'qq-launcher';
+    const POLL_MS = 3000;
+    const PORT_LABELS = { dsh: 'DSH API 连接目标端口', console: '桥接控制台端口', snowHttp: 'SnowLuma HTTP 端口',
       snowWs: 'SnowLuma WebSocket 端口', launcher: '启动器服务端口', snowWebui: 'SnowLuma WebUI 端口' };
-    function localServiceUrl(value) {
-      try {
-        const url = new URL(value);
-        const port = url.port === '' ? 80 : Number(url.port);
-        if (url.protocol === 'http:' && url.hostname === '127.0.0.1' && !url.username && !url.password &&
-          url.pathname === '/' && !url.search && !url.hash && port >= 1 && port <= 65535) return url.origin;
-      } catch {}
+    const sharedKey = Symbol.for('qq-bridge.launcher-ui.v2');
+    function localUrl(value) {
+      try { const u = new URL(value), port = u.port ? Number(u.port) : 80; if (port >= 1 && port <= 65535 && u.protocol === 'http:' && u.hostname === '127.0.0.1' && !u.username && !u.password &&
+        u.pathname === '/' && !u.search && !u.hash) return u.origin; } catch {}
       return '';
     }
-    let SERVICE = localServiceUrl(window.__qqLauncherServiceUrl) || 'http://127.0.0.1:3199';
-    function adoptService(data) {
-      const next = localServiceUrl(data.serviceUrl);
-      if (next) { SERVICE = next; window.__qqLauncherServiceUrl = next; }
+    function recordFor(value, id, moduleId) {
+      const row = value?.[id];
+      return row && row.clientModuleId === moduleId && typeof row.generation === 'string' && row.generation && localUrl(row.serviceUrl)
+        ? { instanceId: id, label: String(row.label || id), serviceUrl: localUrl(row.serviceUrl), generation: row.generation, clientModuleId: moduleId } : null;
     }
-    const POLL_MS = 3000;
-    const TITLEBAR_HEIGHT = 40;
-    let consoleUrl = 'http://127.0.0.1:3100';
-
-    const COLORS = {
-      green: '#22c55e',
-      red: '#ef4444',
-      amber: '#f59e0b',
-      grey: '#9ca3af'
-    };
-
-    const TEXT = {
-      green: 'AI助手',
-      red: 'AI助手',
-      amber: '启动中',
-      grey: 'AI助手'
-    };
-
-    let host = null;
-    let button = null;
-    let dot = null;
-    let label = null;
-    let timer = null;
-    let busy = false;
-    let startDeadline = 0;
-    let launchAttempted = false;
-    let startRequestFailed = false;
-    let lastState = 'grey';
-    let controlBusy = false;
-    let stopping = false;
-    let phaseMessage = '';
-    let currentPhase = '';
-    let restartButton = null;
-    let stopButton = null;
-    let disposed = false;
-    let observer = null;
-    let fallback = null;
-    let settingsButton = null;
-    let settingsPanel = null;
-    let settingsFields = null;
-    let settingsMessage = null;
-    let settingsSave = null;
-    let settingsRevision = '';
-    let pendingAction = null;
-    let settingsSaving = false;
-    let settingsRequest = 0;
-
-    function buildHost() {
-      const el = document.createElement('div');
-      el.dataset.qqLauncher = '';
-      el.setAttribute('role', 'presentation');
-      Object.assign(el.style, {
-        position: 'fixed',
-        top: '0px',
-        left: '0px',
-        height: TITLEBAR_HEIGHT + 'px',
-        display: 'flex',
-        alignItems: 'center',
-        zIndex: '1201',
-        pointerEvents: 'none',
-        WebkitAppRegion: 'no-drag',
-        fontFamily: 'var(--dsw-font-family, "Segoe UI", system-ui, sans-serif)'
-      });
-
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.id = 'qq-launcher-button';
-      btn.title = 'AI助手：读取状态中…';
-      btn.setAttribute('aria-label', 'AI助手一键启动');
-      Object.assign(btn.style, {
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '6px',
-        height: '26px',
-        margin: '0px',
-        padding: '0px 10px',
-        border: '0px',
-        borderRadius: '6px',
-        background: 'transparent',
-        color: 'var(--dsw-alias-label-secondary, #3f4753)',
-        font: 'inherit',
-        fontSize: '13px',
-        lineHeight: '1',
-        cursor: 'pointer',
-        pointerEvents: 'auto',
-        WebkitAppRegion: 'no-drag',
-        whiteSpace: 'nowrap'
-      });
-      btn.addEventListener('mouseenter', () => {
-        btn.style.background = 'var(--dsw-alias-interactive-bg-hover, rgba(0,0,0,.06))';
-      });
-      btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'transparent';
-      });
-
-      const d = document.createElement('span');
-      Object.assign(d.style, {
-        width: '8px',
-        height: '8px',
-        flex: '0 0 8px',
-        borderRadius: '50%',
-        background: COLORS.grey,
-        boxShadow: '0 0 0 2px rgba(0,0,0,.045)'
-      });
-
-      const txt = document.createElement('span');
-      txt.textContent = 'AI助手';
-      Object.assign(txt.style, {
-        minWidth: '4em',
-        flexShrink: '0',
-        fontVariantNumeric: 'tabular-nums',
-        letterSpacing: '0.01em'
-      });
-
-      btn.append(d, txt);
-      btn.addEventListener('click', onClick);
-      el.append(btn);
-      const actionButton = (id, text, title, action) => {
-        const control = document.createElement('button');
-        control.type = 'button';
-        control.id = id;
-        control.textContent = text;
-        control.title = title;
-        control.setAttribute('aria-label', title);
-        control.style.cssText = btn.style.cssText;
-        control.style.padding = '0px 7px';
-        control.style.fontSize = '12px';
-        control.addEventListener('mouseenter', () => { control.style.background = 'var(--dsw-alias-interactive-bg-hover, rgba(0,0,0,.06))'; });
-        control.addEventListener('mouseleave', () => { control.style.background = 'transparent'; });
-        control.addEventListener('click', () => action === 'settings'
-          ? settingsPanel?.style.display === 'block' ? closeSettings() : openSettings()
-          : runControl(action));
-        el.append(control);
-        return control;
+    async function inventory(ctx, signal) {
+      const result = await ctx.connection.rpc.call('/qq-bot-discovery', 'list', {}, signal);
+      if (!result.ok || !result.value || typeof result.value !== 'object') throw Error('实例发现不可用');
+      return result.value;
+    }
+    function sharedHost() {
+      if (window[sharedKey]) return window[sharedKey];
+      const el = document.createElement('div'); el.dataset.qqBotLaunchers = 'shared';
+      Object.assign(el.style, { position: 'fixed', zIndex: '1201', display: 'flex', flexWrap: 'nowrap', gap: '4px',
+        maxWidth: 'calc(100vw - 24px)', alignItems: 'center', fontFamily: '"Segoe UI", system-ui, sans-serif', WebkitAppRegion: 'no-drag' });
+      document.body.append(el);
+      const state = { el, mounts: new Map(), layouts: new Set() };
+      state.place = () => {
+        const bar = document.querySelector('[data-windows-menu]'), rect = bar?.getBoundingClientRect();
+        const anchored = rect?.width > 0, left = anchored ? Math.round(rect.right + 6) : 12, right = anchored ? 140 : 12;
+        const available = Math.max(0, window.innerWidth - left - right);
+        const compact = available < state.mounts.size * 390;
+        Object.assign(el.style, { left: left + 'px', right: right + 'px', top: anchored ? '0px' : '8px',
+          height: anchored ? (rect.height || 40) + 'px' : '32px', minWidth: '0' });
+        for (const layout of state.layouts) layout({ compact, available, count: Math.max(1, state.mounts.size) });
       };
-      const restart = actionButton('qq-launcher-restart', '重启', '重启 bot（先停止守护和桥接）', 'restart');
-      const stop = actionButton('qq-launcher-stop', '关闭', '关闭 bot（保留 QQ 和 DSH）', 'stop');
-      const settings = actionButton('qq-launcher-settings', '设置', '机器人 QQ、管理员、白名单和本机端口设置', 'settings');
-      settings.setAttribute('aria-expanded', 'false');
-      settings.setAttribute('aria-controls', 'qq-launcher-settings-panel');
-      return { el, btn, d, txt, restart, stop, settings };
+      window.addEventListener('resize', state.place); state.place(); window[sharedKey] = state; return state;
     }
-
-    function buildSettingsPanel() {
-      const panel = document.createElement('section');
-      panel.id = 'qq-launcher-settings-panel';
-      panel.setAttribute('aria-label', 'AI助手启动设置');
-      Object.assign(panel.style, { position: 'absolute', top: '40px', left: '0', width: '340px',
-        maxWidth: 'calc(100vw - 32px)', boxSizing: 'border-box', padding: '16px', borderRadius: '10px',
-        border: '1px solid var(--dsw-alias-border-default, #d7dce3)',
-        background: 'var(--dsw-alias-background-primary, #fff)', color: 'var(--dsw-alias-label-primary, #20252c)',
-        boxShadow: '0 8px 30px rgba(0,0,0,.16)', pointerEvents: 'auto', WebkitAppRegion: 'no-drag', display: 'none',
-        fontSize: '13px', lineHeight: '1.5', maxHeight: 'calc(100vh - 56px)', overflowY: 'auto' });
-      const title = document.createElement('strong'); title.textContent = 'AI助手设置';
-      const form = document.createElement('form'); form.id = 'qq-launcher-settings-form';
-      const field = (id, title, multiline = false) => {
-        const row = document.createElement('label');
-        Object.assign(row.style, { display: 'block', marginTop: '12px' });
-        const caption = document.createElement('span'); caption.textContent = title;
-        const input = document.createElement(multiline ? 'textarea' : 'input');
-        input.id = id; input.value = ''; input.rows = 2;
-        if (!multiline) { input.type = 'text'; input.inputMode = 'numeric'; input.autocomplete = 'off'; }
-        Object.assign(input.style, { display: 'block', boxSizing: 'border-box', width: '100%', marginTop: '4px',
-          padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd2dc', background: 'transparent', color: 'inherit',
-          font: 'inherit', resize: 'vertical', WebkitAppRegion: 'no-drag' });
+    function mountBotLauncher(ctx, descriptor) {
+      const { instanceId, clientModuleId } = descriptor;
+      if (!instanceId || !clientModuleId) throw Error('Launcher requires instance and client module identity');
+      window[sharedKey]?.mounts.get(instanceId)?.();
+      const shared = sharedHost();
+      const prefix = 'qq-launcher-' + encodeURIComponent(instanceId) + '-';
+      let disposed = false, epoch = 0, discoverySeq = 0, current = null, state = 'unknown', controlBusy = false;
+      let discoveryPending = null;
+      let settingsRevision = '', settingsRequest = 0, settingsSaving = false, pendingAction = null, consoleUrl = '';
+      const abort = new AbortController(), inflight = new Set();
+      const el = document.createElement('div'); el.dataset.qqLauncherInstance = instanceId;
+      Object.assign(el.style, { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '3px', borderRadius: '7px',
+        padding: '2px 4px', background: 'var(--dsw-alias-background-primary, #fff)', color: 'var(--dsw-alias-label-primary, #20252c)' });
+      const button = (name, text, click, parent = el) => {
+        const b = document.createElement('button'); b.id = prefix + name; b.type = 'button'; b.textContent = text;
+        b.dataset.qqLauncherInstance = instanceId;
+        Object.assign(b.style, { padding: '5px 7px', font: 'inherit', fontSize: '12px', background: 'transparent', color: 'inherit',
+          border: '1px solid #d7dce3', borderRadius: '5px', cursor: 'pointer', whiteSpace: 'nowrap', WebkitAppRegion: 'no-drag' });
+        if (click) b.addEventListener('click', click); parent.append(b); return b;
+      };
+      const main = button('button', descriptor.label || instanceId, onClick);
+      const dot = document.createElement('span'); dot.textContent = '●'; dot.style.marginRight = '5px';
+      const label = document.createElement('span'); main.textContent = ''; main.append(dot, label);
+      const restart = button('restart', '重启', () => runControl('restart'));
+      const stop = button('stop', '停止', () => runControl('stop'));
+      const settings = button('settings', '设置', () => panel.style.display === 'block' ? closeSettings() : openSettings());
+      settings.setAttribute('aria-controls', prefix + 'settings-panel'); settings.setAttribute('aria-expanded', 'false');
+      const panel = document.createElement('section'); panel.id = prefix + 'settings-panel'; panel.dataset.qqLauncherInstance = instanceId;
+      panel.setAttribute('aria-label', (descriptor.label || instanceId) + '设置');
+      Object.assign(panel.style, { display: 'none', position: 'fixed', top: '76px', left: '12px', width: '360px', maxWidth: 'calc(100vw - 24px)',
+        maxHeight: 'calc(100vh - 88px)', overflowY: 'auto', boxSizing: 'border-box', padding: '16px', border: '1px solid #d7dce3',
+        borderRadius: '10px', background: 'var(--dsw-alias-background-primary, #fff)', boxShadow: '0 8px 30px #0003', fontSize: '13px', WebkitAppRegion: 'no-drag' });
+      const title = document.createElement('strong'); title.textContent = (descriptor.label || instanceId) + '设置'; panel.append(title);
+      const mobileActions = document.createElement('div'); Object.assign(mobileActions.style, { display: 'none', gap: '6px', marginTop: '8px' }); panel.append(mobileActions);
+      const form = document.createElement('form'); form.id = prefix + 'settings-form'; panel.append(form);
+      function field(name, text, multi = false) {
+        const row = document.createElement('label'), caption = document.createElement('span'), input = document.createElement(multi ? 'textarea' : 'input');
+        caption.textContent = text; input.id = prefix + name; input.value = ''; input.rows = 2; input.autocomplete = 'off';
+        if (!multi) { input.type = 'text'; input.inputMode = 'numeric'; }
+        Object.assign(row.style, { display: 'block', marginTop: '8px' });
+        Object.assign(input.style, { display: 'block', width: '100%', boxSizing: 'border-box', padding: '5px 7px', border: '1px solid #cbd2dc',
+          borderRadius: '5px', background: 'transparent', color: 'inherit', font: 'inherit', WebkitAppRegion: 'no-drag' });
         row.append(caption, input); form.append(row); return input;
-      };
-      const bot = field('qq-launcher-bot-qq', '机器人 QQ *'); bot.required = true; bot.pattern = '[1-9][0-9]{4,19}';
-      const owner = field('qq-launcher-owner-qq', '管理员 QQ');
-      const privates = field('qq-launcher-allow-private', '私聊白名单', true);
-      const groups = field('qq-launcher-allow-groups', '群白名单', true);
-      const ports = {};
-      for (const key of Object.keys(DEFAULT_PORTS)) {
-        const input = field('qq-launcher-port-' + key, PORT_LABELS[key]);
-        input.required = true; input.pattern = '[0-9]{1,5}';
-        ports[key] = input;
       }
-      const hint = document.createElement('div'); hint.textContent = '多个 QQ / 群号可用空格、逗号或换行分隔。机器人 QQ 为必填。端口为 1–65535，实例内不能重复；同时运行的其他实例也需使用不同端口。修改连接端口将切换对应本机服务；未修改的远程地址保持不变。DSH、QQ / SnowLuma 和桥接端口需在相应服务重启后生效。';
-      Object.assign(hint.style, { marginTop: '8px', color: '#667080', fontSize: '12px' });
-      settingsMessage = document.createElement('div'); settingsMessage.id = 'qq-launcher-settings-message';
-      settingsMessage.setAttribute('role', 'status'); settingsMessage.setAttribute('aria-live', 'polite');
-      Object.assign(settingsMessage.style, { marginTop: '8px', minHeight: '20px', whiteSpace: 'normal' });
-      const actions = document.createElement('div'); Object.assign(actions.style, { display: 'flex', gap: '8px', marginTop: '10px' });
-      const smallButton = (id, text, type = 'button') => {
-        const node = document.createElement('button'); node.id = id; node.type = type; node.textContent = text;
-        Object.assign(node.style, { padding: '5px 10px', border: '1px solid #cbd2dc', borderRadius: '6px',
-          cursor: 'pointer', background: 'transparent', color: 'inherit', font: 'inherit', WebkitAppRegion: 'no-drag' });
-        actions.append(node); return node;
-      };
-      settingsSave = smallButton('qq-launcher-settings-save', '保存', 'submit');
-      smallButton('qq-launcher-settings-refresh', '重新读取').addEventListener('click', () => openSettings(pendingAction));
-      smallButton('qq-launcher-settings-cancel', '关闭').addEventListener('click', closeSettings);
-      form.addEventListener('submit', saveSettings);
-      form.append(hint, settingsMessage, actions); panel.append(title, form);
-      settingsFields = { bot, owner, privates, groups, ports };
-      return panel;
-    }
-
-    async function fetchSettings() {
-      const res = await fetch(SERVICE + '/config', { cache: 'no-store', signal: AbortSignal.timeout(6000) });
-      const data = await res.json();
-      if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
-      adoptService(data);
-      return data;
-    }
-
-    function closeSettings() {
-      ++settingsRequest;
-      pendingAction = null;
-      if (settingsPanel) settingsPanel.style.display = 'none';
-      settingsButton?.setAttribute('aria-expanded', 'false');
-    }
-
-    async function openSettings(action = null) {
-      if (disposed || settingsSaving) return;
-      pendingAction = action;
-      settingsPanel.style.display = 'block';
-      settingsButton?.setAttribute('aria-expanded', 'true');
-      settingsSave.textContent = action ? '保存并' + (action === 'restart' ? '重启' : '启动') : '保存';
-      settingsSave.disabled = true;
-      settingsMessage.textContent = '正在读取真实配置…';
-      const request = ++settingsRequest;
-      try {
-        const data = await fetchSettings();
-        if (disposed || request !== settingsRequest) return;
-        settingsFields.bot.value = data.botUin || '';
-        settingsFields.owner.value = String(data.ownerQQ ?? '');
-        settingsFields.privates.value = (data.allow?.private || []).join('\n');
-        settingsFields.groups.value = (data.allow?.groups || []).join('\n');
-        for (const key of Object.keys(DEFAULT_PORTS)) settingsFields.ports[key].value = String(data.ports?.[key] ?? DEFAULT_PORTS[key]);
-        settingsRevision = data.revision || '';
-        settingsMessage.textContent = action && !data.botUin ? '请先填写机器人 QQ；保存后继续。'
-          : data.live ? '已连接当前运行配置。管理员和白名单保存后实时更新。' : '已读取 config.json；保存后供下次启动使用。';
-        settingsSave.disabled = false;
-        settingsFields.bot.focus();
-      } catch (error) {
-        if (!disposed && request === settingsRequest) settingsMessage.textContent = '读取失败：' + error.message;
-      }
-    }
-
-    async function saveSettings(event) {
-      event.preventDefault();
-      if (settingsSaving || settingsSave.disabled) return;
-      const botUin = settingsFields.bot.value.trim();
-      if (!/^[1-9]\d{4,19}$/.test(botUin)) {
-        settingsMessage.textContent = '请填写有效的机器人 QQ 号（必填）'; settingsFields.bot.focus(); return;
-      }
-      const ports = {}, used = new Set();
-      for (const key of Object.keys(DEFAULT_PORTS)) {
-        const input = settingsFields.ports[key];
-        const raw = input.value.trim(), value = Number(raw);
-        if (!/^\d+$/.test(raw) || !Number.isInteger(value) || value < 1 || value > 65535 || used.has(value)) {
-          settingsMessage.textContent = PORT_LABELS[key] + '必须为 1–65535 的整数，且不能与本实例其他端口重复';
-          input.focus(); return;
-        }
-        used.add(value); ports[key] = value;
-      }
-      settingsSaving = true; settingsSave.disabled = true;
-      const split = value => value.split(/[\s,，;；]+/u).filter(Boolean);
-      try {
-        const res = await fetch(SERVICE + '/config', { method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ botUin, ownerQQ: settingsFields.owner.value.trim(), revision: settingsRevision, ports,
-            allow: { private: split(settingsFields.privates.value), groups: split(settingsFields.groups.value) } }),
-          signal: AbortSignal.timeout(12000) });
-        const data = await res.json();
-        if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+      const bot = field('bot-qq', '机器人 QQ *'); bot.required = true; bot.pattern = '[1-9][0-9]{4,19}';
+      const owner = field('owner-qq', '管理员 QQ'), privates = field('allow-private', '私聊白名单', true), groups = field('allow-groups', '群白名单', true);
+      const ports = Object.fromEntries(Object.entries(PORT_LABELS).map(([key, text]) => [key, field('port-' + key, text)]));
+      const hint = document.createElement('p'); hint.textContent = 'QQ / 群号用空格、逗号或换行分隔。端口不能重复。DSH API 端口是连接目标，不修改 DSH 本体监听；运行配置变更可能需要重启。'; form.append(hint);
+      const message = document.createElement('div'); message.id = prefix + 'settings-message'; message.setAttribute('role', 'status'); message.setAttribute('aria-live', 'polite'); form.append(message);
+      const actions = document.createElement('div'); Object.assign(actions.style, { display: 'flex', gap: '6px', marginTop: '10px' }); form.append(actions);
+      const save = button('settings-save', '保存', null, actions); save.type = 'submit'; save.disabled = true;
+      button('settings-refresh', '重新读取', () => openSettings(pendingAction), actions);
+      button('settings-cancel', '关闭', closeSettings, actions); form.addEventListener('submit', saveSettings);
+      el.append(panel); shared.el.append(el);
+      function paint(text, color = '#9ca3af') {
         if (disposed) return;
-        // The host returns this only after arranging an after-response rebind.
-        adoptService(data);
-        settingsRevision = data.revision || '';
-        settingsMessage.textContent = data.message || '已保存到真实配置';
-        const action = pendingAction;
-        if (action) {
-          closeSettings();
-          if (action === 'restart') await runControl('restart', true);
-          else await requestStart();
-        }
-      } catch (error) { if (!disposed) settingsMessage.textContent = '保存失败：' + error.message; }
-      finally { settingsSaving = false; if (settingsSave) settingsSave.disabled = false; }
-    }
-
-    function menubarElement() {
-      return document.querySelector('[data-windows-menu]');
-    }
-
-    function place() {
-      if (disposed || host === null) return;
-      // Also remove DOM left by versions that did not register a disposer.
-      for (const stale of document.querySelectorAll('[data-qq-launcher]')) {
-        if (stale !== host) stale.remove();
+        dot.style.color = color; label.textContent = (current?.label || descriptor.label || instanceId) + ' · ' + text;
+        main.title = (current?.label || descriptor.label || instanceId) + ' · ' + text;
+        main.setAttribute('aria-label', main.title); restart.disabled = stop.disabled = controlBusy || !current;
       }
-      const bar = menubarElement();
-      if (bar !== null) {
-        const rect = bar.getBoundingClientRect();
-        if (rect.width > 0) {
-          host.style.left = Math.round(rect.right + 6) + 'px';
-          host.style.right = 'auto';
-          host.style.top = '0px';
-          host.style.height = (rect.height || TITLEBAR_HEIGHT) + 'px';
-          return;
-        }
+      function invalidate(text) {
+        if (current) ++epoch; current = null; consoleUrl = ''; state = 'unknown'; save.disabled = true;
+        if (panel.style.display === 'block') message.textContent = '实例已更新，请重新读取设置。';
+        ++settingsRequest; paint(text);
       }
-      // 普通浏览器里没有标题栏 menubar：退回页面右上角。
-      host.style.left = 'auto';
-      host.style.right = '16px';
-      host.style.top = document.documentElement.dataset.windowsTitlebar === undefined ? '8px' : '0px';
-    }
-
-    function paint(state) {
-      if (disposed) return;
-      lastState = state;
-      if (dot === null || label === null) return;
-      const color = COLORS[state] || COLORS.grey;
-      dot.style.background = color;
-      dot.style.boxShadow = state === 'green'
-        ? '0 0 0 2px rgba(34,197,94,.18)'
-        : state === 'red'
-          ? '0 0 0 2px rgba(239,68,68,.16)'
-          : '0 0 0 2px rgba(245,158,11,.18)';
-      label.textContent = stopping ? '关闭中' : busy
-        ? currentPhase === 'waiting_gateway' ? '连接中' : phaseMessage.includes('QQ 登录') ? '等待登录' : '启动中'
-        : (TEXT[state] || TEXT.grey);
-      if (restartButton) restartButton.disabled = controlBusy || busy || stopping;
-      if (stopButton) stopButton.disabled = controlBusy || stopping;
-      if (button !== null) {
-        button.style.color = state === 'red'
-          ? 'var(--dsw-alias-label-secondary, #3f4753)'
-          : 'var(--dsw-alias-label-secondary, #3f4753)';
+      function adopt(record, preserveSettings = false) {
+        if (current?.generation !== record.generation || current?.serviceUrl !== record.serviceUrl) {
+          ++epoch;
+          if (!preserveSettings) { state = 'unknown'; consoleUrl = ''; }
+          if (!preserveSettings) { ++settingsRequest; save.disabled = true;
+            if (panel.style.display === 'block') message.textContent = '实例已更新，请重新读取设置。'; }
+        }
+        current = record;
       }
-    }
-
-    function describe(data) {
-      if (data === null || typeof data !== 'object') return '状态未知';
-      const c = data.checks || {};
-      const parts = [
-        'QQ ' + (c.qq ? '✓' : '✗'),
-        'SnowLuma ' + (c.snowluma ? '✓' : '✗'),
-        '桥接 ' + (c.bridge ? '✓' : '✗')
-      ];
-      parts.push('预设 ' + (c.presetsReady ? '✓' : '✗'));
-      if (c.health && c.health !== 'ready') parts.push('诊断：' + c.health);
-      if (data.lastError) parts.push('错误：' + data.lastError);
-      return parts.join(' · ');
-    }
-
-    async function poll() {
-      if (disposed) return;
-      const currentHost = host;
-      try {
-        const res = await fetch(SERVICE + '/status', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        if (disposed || host !== currentHost) return;
-        phaseMessage = data.message || '';
-        currentPhase = data.phase || '';
-        stopping = data.operation === 'stopping';
-        if (data.stopped) {
-          busy = false;
-          launchAttempted = false;
-          startDeadline = 0;
-        }
-        let timedOut = false;
-        const checks = data.checks || {};
-        if (Number.isInteger(checks.ports?.bridgeConsole) && checks.ports.bridgeConsole > 0) {
-          consoleUrl = `http://127.0.0.1:${checks.ports.bridgeConsole}`;
-        }
-        if (data.ready) {
-          busy = false;
-          startDeadline = 0;
-          launchAttempted = true;
-          startRequestFailed = false;
-        } else if (data.starting) {
-          busy = true;
-          launchAttempted = true;
-          startRequestFailed = false;
-        } else if (data.lastError) {
-          busy = false;
-          startDeadline = 0;
-          launchAttempted = false;
-        } else if (busy && startDeadline > 0 && Date.now() >= startDeadline) {
-          busy = false;
-          startDeadline = 0;
-          timedOut = true;
-          launchAttempted = false;
-        } else if (startRequestFailed) {
-          launchAttempted = false;
-          startRequestFailed = false;
-        }
-        paint(busy || stopping ? 'amber' : data.light || 'red');
-        if (button !== null) {
-          const title = data.ready
-            ? 'AI助手运行中（点击打开桥接控制台）'
-            : timedOut
-              ? '启动超时，请检查 DSH、QQ 与 SnowLuma；查看启动日志'
-              : data.lastError
-                ? `启动失败：${data.lastError}`
-                : stopping ? '正在停止守护和桥接…'
-                  : busy ? phaseMessage || '启动中：正在检查 QQ → SnowLuma → 桥接…' : '点一下启动 QQ → SnowLuma → 桥接';
-          button.title = `${title}\n${describe(data)}`;
-        }
-      } catch (error) {
-        if (disposed || host !== currentHost) return;
-        if (startRequestFailed) {
-          launchAttempted = false;
-          startRequestFailed = false;
-        }
-        if (!busy) paint('red');
-        if (button !== null) {
-          button.title = '启动器服务未响应（' + (error && error.message ? error.message : error) + '）\n点一下试试重新拉起';
-        }
+      async function refresh() {
+        if (discoveryPending?.epoch === epoch && discoveryPending.sequence === discoverySeq) return discoveryPending.promise;
+        const sequence = ++discoverySeq, startEpoch = epoch, pending = { epoch, sequence };
+        pending.promise = (async () => { try {
+          const rows = await inventory(ctx, abort.signal);
+          if (disposed || sequence !== discoverySeq || epoch !== startEpoch) return false;
+          const record = recordFor(rows, instanceId, clientModuleId);
+          if (!record) { invalidate('等待实例发现'); return false; }
+          adopt(record); return true;
+        } catch { if (!disposed && sequence === discoverySeq && epoch === startEpoch) invalidate('实例发现不可用'); return false; }
+        finally { if (discoveryPending === pending) discoveryPending = null; } })();
+        discoveryPending = pending; return pending.promise;
       }
-    }
-
-    async function onClick() {
-      if (stopping || controlBusy) return;
-      if (launchAttempted) {
-        window.open(consoleUrl, '_blank', 'noopener');
-        return;
-      }
-      try {
-        const data = await fetchSettings();
-        if (disposed) return;
-        if (!data.configured || !data.botUin) { await openSettings('start'); return; }
-      } catch (error) { await openSettings('start'); return; }
-      return requestStart();
-    }
-
-    async function requestStart() {
-      if (disposed || stopping) return;
-      if (launchAttempted) { window.open(consoleUrl, '_blank', 'noopener'); return; }
-      launchAttempted = true;
-      busy = true;
-      startDeadline = Date.now() + 420_000;
-      paint('amber');
-      if (button !== null) button.title = '正在清理旧桥接并启动：QQ → SnowLuma → 桥接…';
-      try {
-        const res = await fetch(SERVICE + '/start', {
-          method: 'POST',
-          cache: 'no-store',
-          signal: AbortSignal.timeout(15_000)
-        });
-        const body = await res.json().catch(() => ({}));
-        if (body.code === 'BOT_QQ_REQUIRED') {
-          busy = false; launchAttempted = false; startDeadline = 0; paint('red'); await openSettings('start'); return;
-        }
-        if (!res.ok || body.ok === false) throw new Error(body.error || `HTTP ${res.status}`);
-        if (button !== null) button.title = '旧桥接已处理，正在等待 QQ → SnowLuma → 桥接就绪…';
-        void poll();
-      } catch (error) {
-        busy = false;
-        startDeadline = 0;
-        startRequestFailed = true;
-        if (button !== null) button.title = `启动失败：${error && error.message ? error.message : error}`;
-        void poll();
-      }
-    }
-
-    async function runControl(action, configured = false) {
-      if (controlBusy || stopping || (action === 'restart' && busy)) return;
-      if (action === 'restart' && !configured) {
+      async function request(route, body, transition = false, isCurrent = () => true) {
+        if (!current || disposed) throw Error('等待实例发现');
+        const startEpoch = epoch, identity = { ...current }, controller = new AbortController(); inflight.add(controller);
+        const timeout = setTimeout(() => controller.abort(), 15000);
         try {
-          const data = await fetchSettings();
-          if (!data.configured || !data.botUin) { await openSettings('restart'); return; }
-        } catch { await openSettings('restart'); return; }
+          const response = await fetch(identity.serviceUrl + route, { cache: 'no-store', signal: controller.signal,
+            ...(body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, instanceId, generation: identity.generation }) }) });
+          const data = await response.json();
+          if (disposed || startEpoch !== epoch || !isCurrent()) throw Object.assign(Error('实例已更新，忽略旧响应'), { stale: true });
+          if (data.instanceId !== instanceId || !localUrl(data.serviceUrl) || typeof data.generation !== 'string' || !data.generation ||
+            (!transition || !response.ok || data.ok === false) && (data.generation !== identity.generation || localUrl(data.serviceUrl) !== identity.serviceUrl)) {
+            invalidate('实例身份已更新'); void refresh(); throw Error('实例身份不匹配');
+          }
+          if (!response.ok || data.ok === false) throw Error(data.error || '操作失败');
+          if (transition) adopt({ ...identity, serviceUrl: localUrl(data.serviceUrl), generation: data.generation }, true);
+          return data;
+        } finally { clearTimeout(timeout); inflight.delete(controller); }
       }
-      controlBusy = true;
-      stopping = true;
-      paint('amber');
-      try {
-        const res = await fetch(SERVICE + '/' + action, { method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(15000) });
-        const body = await res.json().catch(() => ({}));
-        if (body.code === 'BOT_QQ_REQUIRED') { stopping = false; await openSettings('restart'); return; }
-        if (!res.ok || body.ok === false) throw new Error(body.error || `HTTP ${res.status}`);
-        launchAttempted = action === 'restart';
-        busy = action === 'restart';
-        startDeadline = busy ? Date.now() + 420000 : 0;
-      } catch (error) {
-        stopping = false;
-        if (button) button.title = `操作失败：${error.message || error}`;
-      } finally {
-        controlBusy = false;
-        void poll();
+      function renderStatus(data) {
+        state = data.runtime?.state || 'unknown';
+        const running = ['running', 'starting'].includes(state);
+        paint(state === 'running' ? '已启动，连接状态待确认' : state === 'starting' ? '启动中' : state === 'stopped' ? '已停止' : state === 'stopping' ? '停止中' : '状态未知',
+          running ? '#d97706' : state === 'stopped' ? '#ef4444' : '#9ca3af');
+        if (data.needsRestart) main.title += '；配置需重启后应用';
       }
+      async function poll() {
+        if (disposed || controlBusy || settingsSaving) return;
+        if (!await refresh()) return;
+        try { renderStatus(await request('/status')); }
+        catch (error) { if (!disposed && current && !error.stale) paint('状态不可用'); }
+      }
+      function closeSettings() { ++settingsRequest; pendingAction = null; panel.style.display = 'none'; settings.setAttribute('aria-expanded', 'false'); }
+      function applyConfig(data) {
+        if (typeof data.revision !== 'string' || !data.revision) throw Error('配置版本不可用，请重新读取');
+        bot.value = data.botUin || ''; owner.value = String(data.ownerQQ ?? '');
+        privates.value = (data.allow?.private || []).join('\n'); groups.value = (data.allow?.groups || []).join('\n');
+        for (const key of Object.keys(ports)) ports[key].value = String(data.ports?.[key] ?? '');
+        const port = data.ports?.console; consoleUrl = Number.isInteger(port) && port > 0 && port <= 65535 ? 'http://127.0.0.1:' + port : '';
+        settingsRevision = data.revision || '';
+      }
+      async function openSettings(action = null) {
+        if (disposed || settingsSaving) return;
+        panel.style.display = 'block'; settings.setAttribute('aria-expanded', 'true'); pendingAction = action; save.disabled = true;
+        save.textContent = action ? '保存并' + (action === 'restart' ? '重启' : '启动') : '保存'; message.textContent = '正在读取配置…';
+        if (!await refresh()) { message.textContent = '等待实例发现，请重新读取。'; return; }
+        const sequence = ++settingsRequest;
+        try { const data = await request('/config'); if (disposed || sequence !== settingsRequest) return;
+          applyConfig(data); save.disabled = false; message.textContent = data.needsRestart ? '配置变更需重启运行服务后应用。' : '已读取当前实例配置。';
+        } catch (error) { if (!disposed && sequence === settingsRequest && !error.stale) message.textContent = '读取失败：' + error.message; }
+      }
+      async function saveSettings(event) {
+        event.preventDefault(); if (disposed || settingsSaving || save.disabled) return;
+        const botUin = bot.value.trim(); if (!/^[1-9]\d{4,19}$/.test(botUin)) { message.textContent = '请填写有效的机器人 QQ 号（必填）'; bot.focus(); return; }
+        const values = {}, used = new Set();
+        for (const [key, input] of Object.entries(ports)) {
+          const raw = input.value.trim(), value = Number(raw);
+          if (!/^\d+$/.test(raw) || !Number.isInteger(value) || value < 1 || value > 65535 || used.has(value)) { message.textContent = PORT_LABELS[key] + '必须为 1–65535 的整数，且端口不能重复'; input.focus(); return; }
+          used.add(value); values[key] = value;
+        }
+        const sequence = ++settingsRequest, split = value => value.split(/[\s,，;；]+/u).filter(Boolean);
+        settingsSaving = true; save.disabled = true; ++epoch;
+        try {
+          const data = await request('/config', { revision: settingsRevision, botUin, ownerQQ: owner.value.trim(), ports: values,
+            allow: { private: split(privates.value), groups: split(groups.value) } }, true, () => sequence === settingsRequest);
+          // request already checked the lifecycle epoch before adopting its own successful move.
+          if (disposed || sequence !== settingsRequest) return;
+          applyConfig(data); message.textContent = data.message || '已保存';
+          const action = pendingAction; if (action) { closeSettings(); await runControl(action, true); }
+        } catch (error) { if (!disposed && sequence === settingsRequest && !error.stale) message.textContent = '保存失败：' + error.message; }
+        finally { settingsSaving = false; if (!disposed) save.disabled = !current || sequence !== settingsRequest; }
+      }
+      async function onClick() {
+        if (disposed || controlBusy) return;
+        if (!await refresh()) return;
+        try {
+          const data = await request('/config'); applyConfig(data);
+          if (['running', 'starting'].includes(state)) { if (consoleUrl) window.open(consoleUrl, '_blank', 'noopener'); return; }
+          if (!data.configured || !data.botUin) return openSettings('start');
+          return runControl('start', true);
+        } catch (error) { if (!error.stale) return openSettings('start'); }
+      }
+      async function runControl(action, configured = false) {
+        if (disposed || controlBusy) return;
+        controlBusy = true;
+        try {
+          if (!await refresh()) return;
+          if (action !== 'stop' && !configured) {
+            const data = await request('/config'); if (!data.configured || !data.botUin) return openSettings(action);
+          }
+          ++epoch; paint(action === 'stop' ? '停止中' : '启动中', '#d97706');
+          renderStatus(await request('/' + action, {}));
+        }
+        catch (error) { if (!disposed && !error.stale) paint('操作失败：' + error.message); }
+        finally { controlBusy = false; if (!disposed) { restart.disabled = stop.disabled = !current; } }
+      }
+      const removeReset = ctx.on?.('connection/reset', () => { invalidate('重新发现实例'); ++discoverySeq; void poll(); });
+      function layout({ compact, available, count }) {
+        const width = Math.max(0, Math.floor((available - 4 * (count - 1)) / count));
+        Object.assign(el.style, { flexWrap: 'nowrap', flexShrink: '0', padding: compact ? '0' : '2px 4px',
+          width: compact ? width + 'px' : 'auto', minWidth: '0' });
+        Object.assign(main.style, { display: 'inline-flex', alignItems: 'center', minWidth: '0', overflow: 'hidden',
+          padding: compact ? '4px 2px' : '5px 7px', width: compact ? Math.max(18, width - 28) + 'px' : 'auto' });
+        Object.assign(label.style, { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+        settings.textContent = compact ? '⚙' : '设置'; settings.setAttribute('aria-label', (descriptor.label || instanceId) + '设置');
+        settings.style.padding = compact ? '4px 3px' : '5px 7px'; settings.style.width = compact ? '24px' : 'auto';
+        mobileActions.style.display = compact ? 'flex' : 'none';
+        if (compact) mobileActions.append(restart, stop); else el.append(restart, stop, settings);
+        panel.style.top = '48px';
+      }
+      shared.layouts.add(layout);
+      const timer = setInterval(poll, POLL_MS); paint('等待实例发现'); void poll();
+      function dispose() {
+        if (disposed) return; disposed = true; ++epoch; ++settingsRequest; ++discoverySeq; abort.abort();
+        for (const controller of inflight) controller.abort(); clearInterval(timer); if (typeof removeReset === 'function') removeReset();
+        shared.layouts.delete(layout); el.remove(); if (shared.mounts.get(instanceId) === dispose) shared.mounts.delete(instanceId);
+        shared.place();
+        if (!shared.mounts.size && window[sharedKey] === shared) { window.removeEventListener('resize', shared.place); shared.el.remove(); delete window[sharedKey]; }
+      }
+      shared.mounts.set(instanceId, dispose); shared.place(); return dispose;
     }
-
-    function mount() {
-      if (disposed) return;
-      if (host !== null && host.isConnected) return;
-      const built = buildHost();
-      host = built.el;
-      button = built.btn;
-      dot = built.d;
-      label = built.txt;
-      restartButton = built.restart;
-      stopButton = built.stop;
-      settingsButton = built.settings;
-      settingsPanel = buildSettingsPanel();
-      host.append(settingsPanel);
-      document.body.append(host);
-      place();
-      paint('grey');
-      window.addEventListener('resize', place);
-      timer = setInterval(() => {
-        place();
-        poll();
-      }, POLL_MS);
-      poll();
-    }
-
-    function dispose() {
-      if (disposed) return;
-      disposed = true;
-      ++settingsRequest;
-      observer?.disconnect();
-      if (fallback !== null) clearInterval(fallback);
-      if (timer !== null) clearInterval(timer);
-      window.removeEventListener('resize', place);
-      host?.remove();
-      host = null;
-      timer = fallback = null;
-      if (window.__qqLauncherDispose === dispose) delete window.__qqLauncherDispose;
-    }
-
     function apply(ctx) {
-      // Hot reload may create a new module factory before the old scope disposes.
-      // Own one page-level widget and register cleanup before either mount path.
-      window.__qqLauncherDispose?.();
-      disposed = false;
-      window.__qqLauncherDispose = dispose;
-      if (typeof ctx?.effect === 'function') ctx.effect(() => dispose);
-      else if (typeof ctx?.on === 'function') ctx.on('dispose', dispose);
-      const start = () => {
-        if (disposed || document.body === null) return;
-        mount();
-      };
-      if (document.body !== null && document.querySelector('[data-windows-menu]') !== null) {
-        start();
-        return dispose;
+      let disposed = false, sequence = 0; const mounts = new Map(), abort = new AbortController();
+      async function sync() {
+        const ownSequence = ++sequence;
+        try {
+          const rows = await inventory(ctx, abort.signal); if (disposed || ownSequence !== sequence) return;
+          const wanted = new Set();
+          for (const id of Object.keys(rows)) { const row = recordFor(rows, id, CLIENT_MODULE_ID); if (!row) continue;
+            wanted.add(id); if (!mounts.has(id)) mounts.set(id, mountBotLauncher(ctx, row)); }
+          for (const [id, dispose] of mounts) if (!wanted.has(id)) { dispose(); mounts.delete(id); }
+        } catch { /* Connection or launcher binding may still be pending. Never use old HTML addresses. */ }
       }
-      // menubar 由 preload 在 shell overlay 出现后注入，晚于本插件；等它。
-      observer = new MutationObserver(() => {
-        if (document.querySelector('[data-windows-menu]') !== null) {
-          observer.disconnect();
-          start();
-        }
-      });
-      observer.observe(document.documentElement, { childList: true, subtree: true });
-      // 兜底：菜单始终没出现（普通浏览器）也要挂。
-      let waited = 0;
-      fallback = setInterval(() => {
-        waited += 500;
-        if (host !== null && host.isConnected) {
-          clearInterval(fallback);
-          return;
-        }
-        if (waited >= 4000) {
-          clearInterval(fallback);
-          observer.disconnect();
-          start();
-        }
-      }, 500);
-      return dispose;
+      const timer = setInterval(sync, POLL_MS), removeReset = ctx.on?.('connection/reset', sync);
+      function dispose() { if (disposed) return; disposed = true; ++sequence; abort.abort(); clearInterval(timer);
+        if (typeof removeReset === 'function') removeReset(); for (const remove of mounts.values()) remove(); mounts.clear(); }
+      if (ctx.effect) ctx.effect(() => dispose); else ctx.on?.('dispose', dispose);
+      void sync(); return dispose;
     }
-
-    exports.apply = apply;
-    exports.inject = [];
-    return module.exports;
+    return { apply, mountBotLauncher, inject: ['connection'] };
   }
 });

@@ -163,7 +163,7 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "inject": [],
+      "inject": ["@deepseek-ai/dsh-client-connection"],
       "platform": "web"
     }
   },
@@ -330,6 +330,8 @@
       "scripts/test-memory-initiative-policy.mjs",
       "scripts/test-games-current.mjs",
       "scripts/test-launcher-client.mjs",
+      "scripts/test-instance-launcher-client.mjs",
+      "scripts/test-instance-launcher-browser.mjs",
       "scripts/test-dsh-instance-scope.mjs",
       "scripts/test-instance-ownership.mjs",
       "scripts/test-instance-runtime.mjs",
