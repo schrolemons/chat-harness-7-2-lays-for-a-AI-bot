@@ -1,14 +1,8 @@
-import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createInstancePresetWrapper } from './dsh-instance-preset.mjs';
+import { claimScopeRoot, instanceRootForClaim } from './instance-descriptor.mjs';
 
 const instancesKey = Symbol.for('qq-bridge.dsh-instance-scopes.v1');
-
-function canonicalRoot(root) {
-  if (typeof root !== 'string' || !path.isAbsolute(root)) throw new Error('Instance root must be an absolute directory path');
-  const normalized = path.normalize(root).replace(/[\\/]+$/, '');
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
-}
 
 /** Resolve through the live host loader; the loader.import second argument is NOT a URL. */
 async function importHost(ctx, name, hostImport) {
@@ -31,10 +25,9 @@ async function importHost(ctx, name, hostImport) {
  * Disabling closes retained agents before disposing tools; a later activation of the same
  * instance ID and directory restores their stable scope parent and shared guard state.
  */
-export async function createInstanceScope(ctx, { instanceId, root, label = instanceId, definitions = [], presetIdMap = {}, hostImport } = {}) {
+export async function createInstanceScope(ctx, { instanceId, root, label = instanceId, definitions = [], presetIdMap = {}, hostImport, rootClaim } = {}) {
   if (typeof instanceId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(instanceId)) throw new Error('Invalid instanceId');
   if (!Array.isArray(definitions)) throw new Error('Preset definitions must be an array');
-  const directory = canonicalRoot(root);
   const presetMap = Object.create(null);
   const usedIds = new Set();
   for (const definition of definitions) {
@@ -48,13 +41,19 @@ export async function createInstanceScope(ctx, { instanceId, root, label = insta
   if (!Object.hasOwn(hostRoot, instancesKey)) Object.defineProperty(hostRoot, instancesKey, { value: new Map() });
   const instances = hostRoot[instancesKey];
   let state = instances.get(instanceId);
-  if (state?.root !== undefined && state.root !== directory) throw new Error('Instance root changed; retained conversations require their original root');
-  if (state?.active) throw new Error(`Instance is already active: ${instanceId}`);
+  const ownClaim = !rootClaim;
+  const claim = rootClaim ?? await claimScopeRoot(ctx, { instanceId, root });
+  const directory = instanceRootForClaim(ctx, { instanceId, root }, claim);
+  if (state?.active || (state?.root !== undefined && state.root !== directory)) {
+    if (ownClaim) await claim();
+    if (state?.active) throw new Error(`Instance is already active: ${instanceId}`);
+    throw new Error('Instance root changed; retained conversations require their original root');
+  }
   if (!state) { state = { root: directory, key: {}, enabled: false, active: null }; instances.set(instanceId, state); }
   const token = {};
   state.active = token; state.enabled = false;
   // Retained generations outlive the declaring plugin's service access context.
-  const builtins = ctx.loader.builtins;
+  const builtins = ctx.loader?.builtins;
   let scope, wrapper, wrapperName, retained = 0, closing = false, disposal;
   const unregisters = [];
   const cleanBuiltin = () => {
@@ -70,11 +69,13 @@ export async function createInstanceScope(ctx, { instanceId, root, label = insta
       const errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
       // Failed teardown must not admit a replacement while old services might remain.
       if (errors.length) throw new AggregateError(errors, 'Instance disposal failed');
+      if (ownClaim) await claim();
       if (state.active === token) state.active = null;
     })();
     return disposal;
   };
   try {
+    if (!builtins) throw new Error('The active DSH host loader has no builtins registry');
     const [scopeApi, loaderApi] = await Promise.all([
       importHost(ctx, '@deepseek-ai/dsh-scope', hostImport),
       importHost(ctx, '@deepseek-ai/cordis-plugin-loader', hostImport),
