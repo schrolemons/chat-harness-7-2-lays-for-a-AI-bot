@@ -2,13 +2,15 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import path from 'node:path';
-import os from 'node:os';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { createInstanceScope } from '../src/dsh-instance-scope.mjs';
 
-const hostRoot = process.env.DSH_HOST_ROOT || path.join(os.homedir(), 'AppData/Roaming/npm/node_modules/@deepseek-ai/dsh');
-const anchor = pathToFileURL(path.join(hostRoot, 'package.json')).href;
+// Use the pinned development host by default; an explicit host root can override it.
+const hostPackage = process.env.DSH_HOST_ROOT
+  ? path.resolve(process.env.DSH_HOST_ROOT, 'package.json')
+  : createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json');
+const anchor = pathToFileURL(hostPackage).href;
 const requireHost = createRequire(anchor);
 const imp = name => import(pathToFileURL(requireHost.resolve('@deepseek-ai/' + name)).href);
 const [{ Context }, { default: Prompt }, { default: Tools }, { default: Loader }, { default: Projections }, { default: Registry }, MCP, scopeApi] = await Promise.all([

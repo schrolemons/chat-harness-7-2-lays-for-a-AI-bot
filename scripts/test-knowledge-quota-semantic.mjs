@@ -27,12 +27,52 @@ test('semantic casual verdict overrides a domain word and survives prompt recons
   const reloaded = fixture({ initial: f.state() }); await reloaded.service.preflight(p);
   assert.equal(reloaded.calls(), 0); assert.equal(reloaded.service.usage(p.key).used, 0);
 });
-test('uncertain verdict asks once without consuming quota or scheduling an answer', async () => {
-  const f = fixture({ model: async () => answer('uncertain') });
-  for (let i = 0; i < 2; i++) assert.equal((await f.service.preflight(message())).handled, true);
-  assert.equal(f.service.usage('private:124').used, 0); assert.equal(f.sends.length, 1); assert.equal(f.calls(), 1);
-  assert.match(f.sends[0].text, /详细|解释|专业|随口/);
-  assert.equal(f.service.isMessageBlocked({ key: 'private:124', messageId: 'm1' }), true);
+test('uncertain verdict returns to contextual conversation without a mechanical send, claim or professional admission', async () => {
+  let handled = 0;
+  const f = fixture({ model: async () => answer('uncertain'), config: { dailyLimit: 0 } });
+  const p = { ...message(), onHandled: () => handled++ };
+  const results = await Promise.all([f.service.preflight(p), f.service.preflight(p)]);
+  for (const result of results) {
+    assert.equal(result.handled, false); assert.equal(result.action, 'clarify');
+    assert.equal(result.decision.professional, false);
+  }
+  assert.equal(f.service.usage(p.key).used, 0); assert.equal(f.sends.length, 0); assert.equal(f.calls(), 1);
+  assert.equal(handled, 0); assert.equal(Object.values(f.state().hits)[0].deflection, undefined);
+  assert.equal(f.service.isMessageBlocked({ key: p.key, messageId: p.messageId }), false);
+  const prompt = f.prompt(p);
+  assert.match(prompt, /上下文/); assert.match(prompt, /可确定/);
+  assert.match(prompt, /确实缺.*信息/); assert.match(prompt, /具体.*(?:对象|条件)/);
+  assert.match(prompt, /语气.*当前形态/); assert.match(prompt, /不.*每次.*反问/);
+  assert.match(prompt, /不.*内部分类.*额度/); assert.match(prompt, /不.*直接展开.*专业答案/);
+  const reloaded = fixture({ initial: f.state() });
+  assert.equal((await reloaded.service.preflight(p)).handled, false);
+  assert.equal(reloaded.prompt(p), prompt); assert.equal(reloaded.calls(), 0); assert.equal(reloaded.sends.length, 0);
+  assert.equal(reloaded.service.usage(p.key).used, 0);
+});
+
+for (const status of ['claimed', 'sent', 'uncertain']) test('legacy clarification receipt remains terminal after reload and quota reset: ' + status, async () => {
+  const p = message('legacy-clarify');
+  const signature = fixture().service.classify(p).signature;
+  const initial = { hits: { [signature]: { key: p.key, action: 'clarify', professional: false,
+    category: 'uncertain', bucketKey: p.key, messageId: p.messageId, deflection: { status, at: 1 } } } };
+  const f = fixture({ initial });
+  for (const resetKey of [p.key, '']) {
+    f.service.reset(resetKey);
+    let handled = 0;
+    const result = await f.service.preflight({ ...p, onHandled: () => handled++ });
+    assert.equal(result.handled, true); assert.equal(result.duplicate, true); assert.equal(result.receiptStatus, status);
+    assert.equal(result.delivered, status === 'sent'); assert.equal(handled, 1);
+    assert.equal(f.service.isMessageBlocked({ key: p.key, messageId: p.messageId }), true);
+    assert.equal(f.prompt(p), '', 'an already claimed clarification must not ask again in a normal prompt');
+  }
+  assert.equal(f.sends.length, 0); assert.equal(f.calls(), 0); assert.equal(f.service.usage(p.key).used, 0);
+});
+
+test('low-confidence professional verdict uses contextual clarification without admitting a technical answer', async () => {
+  const f = fixture({ model: async () => JSON.stringify({ category: 'professional', confidence: 0.6, reason: '意图不明' }) });
+  const result = await f.service.preflight(message('low-confidence'));
+  assert.equal(result.handled, false); assert.equal(result.action, 'clarify'); assert.equal(result.decision.professional, false);
+  assert.equal(f.service.usage('private:124').used, 0); assert.equal(f.sends.length, 0);
 });
 test('concurrent duplicates share one classification and one quota admission', async () => {
   const f = fixture(); await Promise.all([f.service.preflight(message()), f.service.preflight(message()), f.service.preflight(message())]);

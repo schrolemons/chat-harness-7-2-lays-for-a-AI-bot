@@ -7,13 +7,53 @@ import { pathToFileURL } from 'node:url';
 import { createPlugin } from '../plugins/qq-components/ctx-chat-style/index.js';
 import { reflectionMode, INNER_WORLD, IDENTITY_TURN } from '../plugins/qq-components/ctx-chat-style/identity-reflection.mjs';
 
-function blocks(incomingText, extra = {}, config = {}) {
+function blocks(incomingText, extra = {}, config = {}, context = {}) {
   const result = [];
-  createPlugin({ config, addPromptBlock: value => result.push(value) }).hooks.beforePrompt({
+  createPlugin({ ...context, config, addPromptBlock: value => result.push(value) }).hooks.beforePrompt({
     roleName: 'AI助手', key: 'private:1', isPrivate: true, incomingText, ...extra,
   });
   return result;
 }
+
+test('current-form expression guidance reaches conversation and task branches', () => {
+  const scenes = [
+    ['ordinary', '你好', {}, {}],
+    ['critical', '今天有点累', { moodState: { mode: 'critical', styleInstruction: '保持平静' } }, {}],
+    ['reflection', '如果你有身体，最想做什么？', {}, {}],
+    ['task', '帮我解释Dijkstra算法', {}, { callService: () => ({ mode: 'discussion' }) }],
+    ['proactive', '', { reason: 'timeBubble', hasUnreadNow: false }, {}],
+  ];
+  for (const [scene, incomingText, extra, context] of scenes) {
+    const guidance = blocks(incomingText, { ...extra, roleName: 'AI助手' }, {}, context)
+      .filter(block => block.includes('【表达与动作】'));
+    assert.equal(guidance.length, 1, scene);
+    assert.match(guidance[0], /表达与动作描写按当前形态配置、用户请求与语境选择/);
+    assert.match(guidance[0], /不强加动物身体设定或具体私人口味/);
+    assert.match(guidance[0], /不改写身份事实、真实工具结果或实际发出的文本/);
+    assert.ok(guidance[0].length <= 1200);
+  }
+});
+
+test('expression guidance preserves maintenance skips and isolates other roles', () => {
+  for (const reason of ['memoryWrite', 'selfReview', 'selfOptimize', 'slangLearn']) {
+    assert.deepEqual(blocks('介绍哺乳动物', { reason, roleName: 'AI助手' }), []);
+  }
+  for (const roleName of ['其他角色', 'AI助手研究员', '']) {
+    assert.doesNotMatch(blocks('你好', { roleName }).join('\n'), /【表达与动作】/);
+  }
+});
+
+test('science and explicit character scenes retain their subject without output rewriting', () => {
+  for (const incomingText of ['介绍哺乳动物的游泳方式', '请写一个海底角色场景']) {
+    const payload = { roleName: 'AI助手', incomingText };
+    const prompt = [];
+    const plugin = createPlugin({ config: {}, addPromptBlock: block => prompt.push(block) });
+    plugin.hooks.beforePrompt(payload);
+    assert.equal(payload.incomingText, incomingText);
+    assert.match(prompt.join('\n'), /科普或用户明确请求角色场景时按主题表达/);
+    assert.deepEqual(Object.keys(plugin.hooks), ['beforePrompt']);
+  }
+});
 
 test('ordinary whale chat keeps an inner life alongside the warm voice without forcing sadness', () => {
   const text = blocks('今天喝API预算了吗').join('\n');

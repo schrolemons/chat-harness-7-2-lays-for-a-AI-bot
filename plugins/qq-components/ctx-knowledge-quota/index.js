@@ -13,7 +13,6 @@ const KNOWLEDGE_QUESTION = /怎么|怎样|为什么|为啥|如何|为何|什么�
 const DIRECT_REQUEST = /^(?:(?:请(?:你|帮我)?|麻烦(?:你)?|帮我|帮忙|能不能|可不可以|能否|可以|给我|求|想请教|我想了解|我想知道|继续|再)\s*)?(?:写|实现|设计|分析|比较|推导|证明|求解|计算|讲解|解释|介绍|总结|综述|翻译|润色|排查|修复|调试|优化|审阅|评估|检查|改写|看一下|看看)|^(?:请|麻烦|帮我|帮忙|给我|能不能|可不可以|能否)\s*|\b(?:explain|implement|debug|fix|derive|prove|calculate|analyze|summarize|compare)\b/i;
 const NOT_A_REQUEST = /(?:不需要|不用|别|不要|不必).{0,8}(?:解释|讲解|分析|写|聊|讨论)|(?:提醒|记得提醒|闹钟|备忘).{0,20}(?:论文|代码|科研|实验)|(?:论文|代码|实验).{0,8}(?:写完|读完|做完|完成|提交|交了).{0,4}(?:吗|没|了没)|(?:你|您|大家).{0,10}(?:今天|最近|还在).{0,8}(?:写代码|读论文|写论文|做实验).{0,4}(?:吗|没)|(?:写代码|写论文|做实验).{0,5}(?:好累|真累|累死|好烦)/;
 const DEFLECT_TEXT = '唔，这个专业问题我现在有点说不清，你先自己查查资料，好不好？';
-const CLARIFY_TEXT = '你是想让我详细解释这个问题，还是只是随口聊聊呀？';
 const MAX_DECISIONS = 2000;
 const pad2 = n => String(n).padStart(2, '0');
 function dayKey(nowMs, resetHour) {
@@ -118,7 +117,12 @@ export function createPlugin(ctx) {
   }
   function promptFor(decision) {
     if (decision.action === 'ignore') return '';
-    if (decision.action === 'clarify') return '【专业求助意图待确认】先澄清是否需要专业解答，暂不扣额，也不直接展开专业答案。';
+    if (decision.action === 'clarify') return decision.deflection ? '' : [
+      '【本轮理解提示】结合已有上下文，先回应可确定的意思；不确定分类本身不代表用户需要专业解释。',
+      '确实缺少必要信息时，围绕具体对象或条件自然反问；语气沿用当前形态，不必每次都反问。',
+      '不要套用“详细解释还是随口聊聊”这类万能问句，也不要向用户解释内部分类或额度。',
+      '本轮尚未获准专业解答，不直接展开专业答案；普通交流中能够确定的部分照常回应。'
+    ].join('\n');
     if (decision.action === 'deflect') return ['【专业问答配额已用完｜C 层上下文管理】',
       `本轮已识别的专业求助，计数对象今天已用掉 ${decision.used}/${decision.limit} 次额度。`,
       '不要给出这道题的技术答案、代码、公式、步骤、链接或半个结论。', '只按这句自然带过：' + deflectText(), '不解释额度、不承诺明天回答。'].join('\n');
@@ -169,6 +173,9 @@ export function createPlugin(ctx) {
     // model fallthrough nor automatic resend is allowed for the same decision.
     const s = stateOf(), stored = s.hits[decision.signature];
     if (stored?.deflection) { markHandled(); return { handled: true, action: decision.action, decision, duplicate: true, receiptStatus: stored.deflection.status, delivered: stored.deflection.status === 'sent' }; }
+    // New uncertain intent belongs to the normal contextual conversation. An
+    // older claimed clarification above stays terminal across component reloads.
+    if (decision.action === 'clarify') return { handled: false, action: decision.action, decision };
     const claim = { status: 'claimed', at: Date.now() };
     try { ctx.state.set({ hits: { ...s.hits, [decision.signature]: { ...stored, deflection: claim } } }); }
     catch (error) { markHandled(); ctx.warn?.('配额拒答凭据持久化失败：' + (error?.message || error)); return { handled: true, action: 'deflect', decision, delivered: false, receiptStatus: 'persist_failed' }; }
@@ -176,7 +183,7 @@ export function createPlugin(ctx) {
     // an already running round must not fetch this refused request meanwhile.
     markHandled();
     let delivered = false;
-    try { delivered = await ctx.capabilities?.sendSessionText?.(decision.key, decision.action === 'clarify' ? CLARIFY_TEXT : deflectText()) === true; }
+    try { delivered = await ctx.capabilities?.sendSessionText?.(decision.key, deflectText()) === true; }
     catch (error) { ctx.warn?.('配额带过消息未确认送达：' + (error?.message || error)); }
     const latest = stateOf();
     try { ctx.state.set({ hits: { ...latest.hits, [decision.signature]: { ...latest.hits[decision.signature], deflection: { ...claim, status: delivered ? 'sent' : 'uncertain' } } } }); }
@@ -186,7 +193,8 @@ export function createPlugin(ctx) {
   function isMessageBlocked({ key, messageId } = {}) {
     if (!key || messageId == null || messageId === '') return false;
     const signature = createHash('sha256').update(JSON.stringify([String(key), ['messageId', String(messageId)]])).digest('hex');
-    return ['deflect', 'clarify'].includes(stateOf().hits[signature]?.action);
+    const hit = stateOf().hits[signature];
+    return hit?.action === 'deflect' || (hit?.action === 'clarify' && !!hit.deflection);
   }
   ctx.registerTool?.('knowledge_quota', {
     description: '管理员查询/清空专业问答用量，或用classify只测试语义识别、不扣额不发QQ；key为会话或群聊#成员。',

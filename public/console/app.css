@@ -2801,6 +2801,39 @@ button:active:not(:disabled) {
 }
 
 /* console/layers/O/styles/06-base.css */
+#section-test-send .test-send-targets {
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 4px;
+}
+#section-test-send .test-send-select-control {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+#section-test-send .test-send-select-control::after {
+  content: "";
+  position: absolute;
+  right: 17px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+#section-test-send .test-send-select-control:has(select:disabled)::after {
+  opacity: .45;
+}
+#section-test-send .test-send-select-control select {
+  appearance: none;
+  width: 100% !important;
+  max-width: 100%;
+  padding-right: 40px;
+  text-overflow: ellipsis;
+}
 #section-usage .usage-h3 {
   font-size: 13px;
   font-weight: 600;

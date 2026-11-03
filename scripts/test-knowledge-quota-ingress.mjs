@@ -61,15 +61,40 @@ test('real ingress semantic casual verdict is not recharged by a keyword-bearing
   } finally { await f.close(); }
 });
 
-test('real ingress uncertain intent sends clarification once and closes admission without quota use', async () => {
-  const f = await open();
+for (const key of [PRIVATE, GROUP]) test('real uncertain ingress stays readable for contextual conversation without charging or mechanically replying: ' + key, async () => {
+  const f = await open({ dailyLimit: 0 }); let calls = 0;
   try {
-    f.h.taskCaps.learningPrompt = async () => JSON.stringify({ category: 'uncertain', confidence: 0.6, reason: '缺少专业求助的明确意图' });
-    await f.incoming(PRIVATE, '这个你怎么看？', { messageId: 'semantic-uncertain' });
-    assert.equal(used(f, PRIVATE), 0); assert.equal(f.h.calls.sent.length, 1);
-    assert.match(f.h.calls.sent[0].text, /详细解释/);
-    assert.ok(!f.h.getSocialV2State(PRIVATE).unread.some(m => m.messageId === 'semantic-uncertain'));
+    f.h.taskCaps.learningPrompt = async () => { calls++; return JSON.stringify({ category: calls === 1 ? 'casual' : 'uncertain', confidence: 0.9, reason: '当前消息的意图' }); };
+    await f.incoming(key, '我刚在看那幅画，颜色像傍晚的海。', { at: key === GROUP, messageId: 'clarify-context' });
+    await f.incoming(key, '这个你怎么看？', { at: key === GROUP, messageId: 'semantic-uncertain' });
+    assert.equal(used(f, key), 0); assert.equal(f.h.calls.sent.length, 0);
+    const message = f.h.getSocialV2State(key).unread.find(m => m.messageId === 'semantic-uncertain');
+    assert.ok(message, 'the original message still awaits a contextual reply');
+    assert.equal(message.quotaAdmission, 'admitted'); assert.ok(!message.repliedAt);
+    for (const route of ['unread', 'recent']) {
+      const response = await f.api('/api/socialV2/' + route + '?key=' + encodeURIComponent(key), { key });
+      assert.equal(response.status, 200); assert.ok(JSON.stringify(response.data).includes('这个你怎么看？'));
+    }
+    const first = f.h.buildWakePromptV2(key, key === GROUP ? 'atMention' : 'private');
+    const second = f.h.buildWakePromptV2(key, key === GROUP ? 'atMention' : 'private');
+    for (const prompt of [first, second]) {
+      assert.match(prompt, /上下文/); assert.match(prompt, /可确定/); assert.match(prompt, /确实缺.*信息/);
+      assert.match(prompt, /具体.*(?:对象|条件)/); assert.match(prompt, /不.*直接展开.*专业答案/);
+      assert.ok(!prompt.includes('你是想让我详细解释这个问题，还是只是随口聊聊呀？'));
+    }
+    await f.h.pluginHost.reload('ctx-knowledge-quota');
+    const rebuilt = f.h.buildWakePromptV2(key, key === GROUP ? 'atMention' : 'private');
+    assert.match(rebuilt, /可确定/);
+    assert.equal(calls, 2); assert.equal(used(f, key), 0); assert.equal(f.h.calls.sent.length, 0);
     assert.equal(f.h.calls.prompts.length, 0);
+    await f.h.deliverPrompt(key, '', { wakeReason: key === GROUP ? 'atMention' : 'private' });
+    assert.equal(f.h.calls.prompts.length, 1);
+    const delivered = f.h.calls.prompts[0].content.filter(part => part.type === 'text').map(part => part.text).join('\n');
+    assert.ok(delivered.includes('这个你怎么看？')); assert.ok(delivered.includes('颜色像傍晚的海'));
+    assert.match(delivered, /可确定/); assert.match(delivered, /确实缺.*信息/);
+    assert.match(delivered, /不.*直接展开.*专业答案/);
+    assert.equal(calls, 2); assert.equal(used(f, key), 0); assert.equal(f.h.calls.sent.length, 0);
+    assert.ok(f.h.getSocialV2State(key).unread.some(m => m.messageId === 'semantic-uncertain' && !m.repliedAt));
   } finally { await f.close(); }
 });
 
@@ -95,12 +120,13 @@ test('first nontrigger group discussion initializes without charging professiona
   } finally { await f.close(); }
 });
 
-test('ingress classifies full original text beyond the stored two-hundred-character preview', async () => {
+test('ingress classifies and retains full original text beyond the stored two-hundred-character tail preview', async () => {
   const f = await open();
   try {
     const text = '这是背景材料。'.repeat(55) + '这个算法为什么正确？';
     await f.incoming(PRIVATE, text, { messageId: 'long-original' });
-    assert.ok(f.h.getSocialV2State(PRIVATE).recentMessages.find(m => m.messageId === 'long-original').plain.length <= 200);
+    const stored = f.h.getSocialV2State(PRIVATE).recentMessages.find(m => m.messageId === 'long-original');
+    assert.equal(stored.plain, text); assert.ok(stored.tail.length <= 200);
     assert.equal(used(f, PRIVATE), 1, 'domain and question live outside the stored preview');
   } finally { await f.close(); }
 });

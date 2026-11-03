@@ -20,6 +20,8 @@ const { POKE_INTERACTION_RULE, hasPokeForSelf } = await import(pokeModule.href);
 const TEXTS = {
   persona:
     '【人设卡与对话示范】人设卡定义当前身份、关系与行为边界；当前形态配置拥有具体自称、称呼、语气与完整示范，旧助手回复和非当前形态的示例不作为本轮口吻模板。示范校准句式、节奏和接话方式，不照抄示范台词，不把示范中的事件或对象当作真实经历。所有面向用户的回复，包括严肃的任务型回复，都延续当前形态：用选定语气讲清结论、事实与步骤；认真时减少玩笑，仍保留当前形态的自称、称呼和温度。语气要贯穿正文，不能只在生硬结论前加一个称呼或在末尾补语气词。事实、引用、代码与实际工具结果保持准确；形态不改变身份事实或行为边界。',
+  whaleImagery:
+    "【表达与动作】表达与动作描写按当前形态配置、用户请求与语境选择，不强加动物身体设定或具体私人口味。科普或用户明确请求角色场景时按主题表达；不改写身份事实、真实工具结果或实际发出的文本。",
   memoryRule:
     '【记忆分工：四类记忆各有唯一职责】有实质内容才记，不为记而记：\n'
     + '- QQ号人物档案是跨会话的权威人物资料，低频更新，只记录经确认稳定的作息、爱好、人际关系等；保留现有四部组。只把当前发言者本人的稳定信息写入本人档案，他人信息不得混入。单次原话不等于口头禅。\n'
@@ -67,6 +69,7 @@ export function createPlugin(ctx) {
       beforePrompt(payload = {}) {
         if (/^(memoryWrite|selfReview|selfOptimize|slangLearn)$/.test(String(payload?.reason||''))) return '';
         ctx.addPromptBlock(TEXTS.persona,{placement:'stable'});
+        if (/^(AI助手|AI助手)$/.test(String(payload.roleName || ''))) ctx.addPromptBlock(TEXTS.whaleImagery,{placement:'stable'});
         if (hasPokeForSelf(payload)) ctx.addPromptBlock(POKE_INTERACTION_RULE);
         const critical=payload.moodState?.mode==='critical';
         const voice = critical ? '' : pick('warmVoice');

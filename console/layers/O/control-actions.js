@@ -24,10 +24,13 @@ document.getElementById('wlSave').addEventListener('click', async () => {
   if (r.ok) { refreshWhitelist(); refresh(); alert('白名单已保存并生效'); }
   else alert(r.error || '保存失败');
 });
-document.getElementById('tsSend').addEventListener('click', async () => {
+const testTarget=document.getElementById('tsId'),testSend=document.getElementById('tsSend');
+testTarget.addEventListener('change',()=>{testSend.disabled=!testTarget.value;});
+testSend.addEventListener('click', async () => {
+  if(!testTarget.value){document.getElementById('tsMsg2').textContent='请先选择目标会话';return;}
   const r = await api('/api/test-send', 'POST', {
     kind: document.getElementById('tsKind').value,
-    id: document.getElementById('tsId').value.trim(),
+    id: testTarget.value,
     message: document.getElementById('tsMsg').value
   });
   document.getElementById('tsMsg2').textContent = r.ok ? ('✅ 已发送 message_id=' + r.message_id) : ('❌ ' + (r.error || '失败'));

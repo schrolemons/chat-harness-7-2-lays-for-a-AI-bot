@@ -314,11 +314,11 @@ export function makeFixtureState() {
     },
     roleInjectMax: 8000,
     dshEffort: 'max',
-    whitelist: { allow: { groups: [123456789, 100003], private: [10001] }, deny: { groups: [], private: [] }, ownerQQ: '10001' },
+    whitelist: { allow: { groups: [40001, 40002], private: [10001] }, deny: { groups: [], private: [] }, ownerQQ: '10001' },
     diaryCatchUpSent: { 'private:10001': false, 'private:10002': false },
     sessions: [
       { key: 'group:40001', sessionId: 'demo-community-20260920', owner: false },
-      { key: 'group:40001', sessionId: 'demo-development-20260920', owner: false },
+      { key: 'group:40002', sessionId: 'demo-development-20260920', owner: false },
       { key: 'private:10001', sessionId: 'demo-owner-20260920', owner: true },
     ],
     social: {
@@ -333,7 +333,7 @@ export function makeFixtureState() {
       proactiveIdleThresholdMs: 1800000, proactiveCheckMinMs: 300000,
       proactiveCheckMaxMs: 900000, proactiveProbability: 0.2,
     },
-    socialStates: { 'group:40001': { phase: 'active' }, 'group:40001': { phase: 'idle' } },
+    socialStates: { 'group:40001': { phase: 'active' }, 'group:40002': { phase: 'idle' } },
     v2: { enabled: true, doubleStamp:{enabled:true,windowCount:12}, tools: {} },
     // 会话初始提示词（离线示例）：整段内容都是虚构的演示文本。
     initPrompt: '离线示例：这是一个演示用的群聊环境说明，不会写进任何真实配置。',

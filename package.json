@@ -144,6 +144,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh": "0.2.1-rc.2",
     "@deepseek-ai/dsh-host-apiproxy": "0.1.1-rc.2",
     "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
@@ -191,6 +192,7 @@
   ],
   "qqBridge": {
     "testFiles": [
+      "scripts/test-knowledge-quota-ingress.mjs",
       "scripts/test-chat-regression-guards.mjs",
       "scripts/test-budget-reply-integration.mjs",
       "scripts/test-learner-subscription-lifecycle.mjs",

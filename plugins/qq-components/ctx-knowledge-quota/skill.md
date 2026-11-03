@@ -2,7 +2,7 @@
 
 `preflight` 对实际符合回复条件的非豁免文字来信，先复用持久分类；尚无判定时通过桥接已有 `learningPrompt` 能力做一次JSON语义分类。类别为professional/casual/uncertain，低置信度按uncertain处理。关键词不再是AI分类的前置门槛，只有关闭语义识别或模型/预算/格式/超时失败时才规则兜底。默认最长等待12秒，包含后台工作队列；取消或迟到的结果不能补扣额。模型本身仍可能误判，图片题目及缺少上下文的代词追问未在此实现视觉/完整会话理解。
 
-AI确定专业求助才进入配额计数；casual不计数，uncertain先发一次机械澄清、不扣额不派发专业回答。按消息身份持久保存判定，并合并在途重复分类；`beforePrompt`复用该决定，不重新按关键词改判。并发不同问题在模型判定结束后同步检查余额，避免越过最后一次额度。管理员免额、维护/日程/主动消息跳过分类；模型调用预算不足时不额外突破预算。
+AI确定专业求助才进入配额计数；casual不计数。uncertain不扣额、不机械发信、不标记已处理，也不视为已批准专业解答；交回带已有上下文的正常对话。`beforePrompt`指导先回应可确定的意思，确实缺少必要信息时才围绕具体对象或条件自然反问，语气沿用当前形态，不要求每次反问、不套用万能问句、不向用户解释内部分类或额度，也不直接展开尚未准入的专业答案。按消息身份持久保存判定，并合并在途重复分类；`beforePrompt`复用该决定，不重新按关键词改判。并发不同问题在模型判定结束后同步检查余额，避免越过最后一次额度。管理员免额、维护/日程/主动消息跳过分类；模型调用预算不足时不额外突破预算。
 
 分类提示词与解析在 `semantic.mjs`。复用中性后台学习工作会话，提示限定本轮JSON、不使用工具、不联网；不修改共享工作会话的既有工具权限与其他学习任务。队列繁忙时可能兜底。分类诊断只保存类别、来源和简短依据，不另存待分类原文。
 
@@ -18,11 +18,11 @@ AI确定专业求助才进入配额计数；casual不计数，uncertain先发一
 
 群聊首次bootstrap可能只是初始化，并不代表用户叫机器人回答；没有此前消息准许/拒答决定时，bootstrap忽略专业配额，不扣额也不注入额度提示。实际触发机器人回应的群消息应先由共用入口预检，随后bootstrap复用该决定，不重复分类或记账。
 
-`await knowledgeQuota.preflight({key,plainContent,messageId,userId,isOwner,reason,allowed,onHandled})` 在模型派发前执行相同决定。普通文字消息只由桥接的群私共用、实际唤醒合格后的唯一入口调用，不注册 `relayIncoming` 兼容入口，避免在未实际唤醒前预扣。额度内和非专业内容返回 `{handled:false}`。超额时先持久化拒答凭据，再用 `capabilities.sendSessionText` 直接发送 `deflectText`，返回 `{handled:true, action:'deflect', delivered, receiptStatus}`；调用方必须立即终止该请求的模型派发，并用 `onHandled` 在发送await之前将对应消息移出待处理。发送失败、未知或持久化失败也保持 handled，不能自动放行模型或盲目重发。
+`await knowledgeQuota.preflight({key,plainContent,messageId,userId,isOwner,reason,allowed,onHandled})` 在模型派发前执行相同决定。普通文字消息只由桥接的群私共用、实际唤醒合格后的唯一入口调用，不注册 `relayIncoming` 兼容入口，避免在未实际唤醒前预扣。额度内、非专业内容和没有外发凭据的clarify决定返回 `{handled:false}`；clarify不调用`onHandled`，原消息继续等待正常对话回应。超额时先持久化拒答凭据，再用 `capabilities.sendSessionText` 直接发送 `deflectText`，返回 `{handled:true, action:'deflect', delivered, receiptStatus}`；调用方必须立即终止该请求的模型派发，并用 `onHandled` 在发送await之前将对应消息移出待处理。发送失败、未知或持久化失败也保持 handled，不能自动放行模型或盲目重发。
 
 `deflectText` 是真正发出的固定短句，合并空白、最多120字符；留空回落默认。旧 `deflectStyle` 不再声明、不展示、不消费，既有override数据无需删除。固定短句不经过模型，不能宣称“模型已经学会遵守额度”。如桥接没有调用预检，`beforePrompt` 只有提示约束，不能保证阻止技术回答。
 
-普通决定有有界历史；任何已生成的发送凭据（claimed/sent/uncertain）不随裁剪、跨日或额度重置删除，避免重放。额度重置清计数及对应普通去重决定，不清发送凭据；本组件的 query/reset 工具只供管理员控制台，聊天agent入口应由桥接拒绝且不向聊天MCP注册。
+普通决定有有界历史；任何已生成的发送凭据（claimed/sent/uncertain）不随裁剪、跨日或额度重置删除，避免重放。旧版clarify已有外发凭据时仍保持handled与消息读取阻断，重载后不重发、不再注入澄清提示；新版无外发凭据的clarify不阻断读取。额度重置清计数及对应普通去重决定，不清发送凭据；本组件的 query/reset 工具只供管理员控制台，聊天agent入口应由桥接拒绝且不向聊天MCP注册。
 
 用量查询始终返回 `countBy` 与 `exemptOwner`。按群成员计数时，查询 `group:群号` 返回该群各成员的独立用量，不把不存在的群级计数显示成0；也可用 `group:群号#QQ号` 精确查询。控制台使用独立下拉选择全部/已有会话/手动key，切换后读取，数字不随时间自动轮询，按“刷新用量”获取最新值。管理员免额状态直接显示在今日用量摘要中。
 

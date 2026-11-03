@@ -60,7 +60,7 @@ try {
   await page.goto(fixture.url);
   testedBuild=await page.locator('script[src^="/console/app.js"]').getAttribute('src');
   assert.match(testedBuild,/\/console\/app\.js\?v=[a-f0-9]+$/,'Fixture must serve the versioned modular build');
-  await page.waitForFunction(() => document.getElementById('v2ContextRecentLimit')?.value === '100' && document.getElementById('wlGroups')?.value.includes('123456789'));
+  await page.waitForFunction(() => document.getElementById('v2ContextRecentLimit')?.value === '100' && document.getElementById('wlGroups')?.value.includes('40001'));
 
   async function navigate(view) {
     if (await page.locator(`[data-page="${view}"]:visible`).count()) return;
@@ -124,6 +124,7 @@ try {
       await navigate(view);
       const dedicated=COMPONENT_OWNERS[id]?.selector;
       const root=dedicated?page.locator(dedicated).first():page.locator(`[data-component-id="${id}"],.comp-card[data-id="${id}"]`).first();
+      await root.waitFor({state:'attached'});
       assert.equal(await root.count(),1,`${id} missing on ${view}`);
       await reveal(dedicated||`[data-component-id="${id}"],.comp-card[data-id="${id}"]`);
       assert.equal(await root.isVisible(),true,`${id} hidden on ${view}`);
@@ -296,8 +297,8 @@ try {
   });
 
   await test('Whitelist numeric parsing and security contracts', async () => {
-    for (const [id, value] of Object.entries({ wlGroups: '123456789，100003', wlPrivate: '10001 100002', dnGroups: '800001,800002', dnPrivate: '900001', ownerQQ: '10001' })) await fill(id, value);
-    assert.deepEqual(await clickWrite('#wlSave', '/api/whitelist'), { allow: { private: [10001, 100002], groups: [123456789, 100003] }, deny: { private: [900001], groups: [800001, 800002] }, ownerQQ: '10001' });
+    for (const [id, value] of Object.entries({ wlGroups: '40001，40002', wlPrivate: '10001 100002', dnGroups: '800001,800002', dnPrivate: '900001', ownerQQ: '10001' })) await fill(id, value);
+    assert.deepEqual(await clickWrite('#wlSave', '/api/whitelist'), { allow: { private: [10001, 100002], groups: [40001, 40002] }, deny: { private: [900001], groups: [800001, 800002] }, ownerQQ: '10001' });
     await check('secInterceptNotify', false);
     assert.deepEqual(await clickWrite('#secInterceptNotifySave', '/api/security'), { interceptNotify: false });
     await fill('secInterceptText', '安全拦截提示测试文案');
@@ -397,9 +398,21 @@ try {
 
   await test('Test message and AI notification reach only the mock endpoints', async () => {
     await (await reveal('#tsKind')).selectOption('group');
-    await fill('tsId', '123456789');
+    await page.waitForFunction(() => document.querySelector('#tsId option[value="40001"]'));
+    assert.equal(await page.locator('#tsId').evaluate(node => node.tagName), 'SELECT');
+    assert.equal(await page.locator('#tsSend').isDisabled(), true, 'an explicit recipient selection is required');
+    assert.deepEqual(await page.locator('#tsId option').evaluateAll(rows => rows.map(row => row.value)), ['', '40001', '40002']);
+    await page.locator('#tsId').selectOption('40001');
+    await page.locator('#tsKind').selectOption('private');
+    assert.equal(await page.locator('#tsId').inputValue(), '');
+    assert.equal(await page.locator('#tsSend').isDisabled(), true);
+    assert.deepEqual(await page.locator('#tsId option').evaluateAll(rows => rows.map(row => row.value)), ['', '10001']);
+    await page.locator('#tsId').selectOption('10001');
+    await page.locator('#tsKind').selectOption('group');
+    assert.equal(await page.locator('#tsId').inputValue(), '40001', 'each kind retains only its own recipient');
+    for (const id of ['tsKind', 'tsId']) assert.equal(await page.locator('#' + id).evaluate(node => getComputedStyle(node).appearance), 'none');
     await fill('tsMsg', '离线测试，不会发往 QQ。');
-    assert.deepEqual(await clickWrite('#tsSend', '/api/test-send'), { kind: 'group', id: '123456789', message: '离线测试，不会发往 QQ。' });
+    assert.deepEqual(await clickWrite('#tsSend', '/api/test-send'), { kind: 'group', id: '40001', message: '离线测试，不会发往 QQ。' });
     await (await reveal('#aiNotifyKind')).selectOption('private');
     await fill('aiNotifyId', '10001');
     await fill('aiNotifyMessage', '离线提醒，不会发往 DSH。');

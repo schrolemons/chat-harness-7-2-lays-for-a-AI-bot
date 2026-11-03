@@ -78,7 +78,8 @@ test('simulated delivery keeps pending users visible through maintenance and mov
    }await route.fulfill({response,json:data});
   });
   // Exercise the real debug UI against its isolated, local mock endpoint.
-  await page.goto(fixture.url+'/#operations');await page.locator('#tsKind').selectOption('group');await page.locator('#tsId').fill('12');await page.locator('#tsMsg').fill('模拟投递，核验左右消息卡片');
+  fixture.state.sessions.push({key:'group:12',sessionId:'fixture-debug-12'});
+  await page.goto(fixture.url+'/#operations');await page.locator('#tsKind').selectOption('group');await page.locator('#tsId').selectOption('12');await page.locator('#tsMsg').fill('模拟投递，核验左右消息卡片');
   const posted=page.waitForRequest(request=>new URL(request.url()).pathname==='/api/test-send');await page.locator('#tsSend').click();assert.equal((await posted).postDataJSON().message,'模拟投递，核验左右消息卡片');
   await page.goto(fixture.url+'/#context-visual');await page.locator('#contextInspector').waitFor();
   for(stage=0;stage<=3;stage++){
