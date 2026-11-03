@@ -62,7 +62,7 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
     const operationId=randomUUID();
     const assertContext=()=>{
       if(!c.agent)return;
-      const checked=call('replyPlan','validateContext',{...contextFacts(c.sourceKey,c.envelope,replyToMessageId),agent:c.agent,reason:c.envelope?.reason||c.reason});
+      const checked=call('replyPlan','validateContext',{...contextFacts(c.sourceKey,c.envelope,replyToMessageId,{contentId:c.contentId||c.plan?.contentId}),agent:c.agent,reason:c.envelope?.reason||c.reason});
       if(checked?.ok===false){const error=Error(checked.reason+'；'+checked.hint);error.knownFailed=true;throw error;}
     };
     assertContext();
@@ -70,6 +70,7 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
       const bound=call('replyPlan','bindContent',{key,sourceKey:c.sourceKey,plan:c.plan,contentId:c.contentId||c.plan?.contentId,replyToMessageId,...contentFacts(c.sourceKey,c.envelope)});
       if(bound?.ok!==true){const error=Error('发送内容范围拒绝：'+(bound?.reason||'content_scope_unavailable'));error.knownFailed=true;error.statusCode=409;throw error;}
       c=Object.freeze({...c,plan:bound.plan,contentId:bound.content?.id||c.contentId});
+      assertContext();
     }
     const scheduled=c.envelope?.scheduledEvent;
     if(scheduled&&(key!==scheduled.key||(Array.isArray(scheduled.allowedKinds)&&!scheduled.allowedKinds.includes(kind)))){const e=Error('定时事件不允许此发送目标或消息类型');e.knownFailed=true;throw e;}

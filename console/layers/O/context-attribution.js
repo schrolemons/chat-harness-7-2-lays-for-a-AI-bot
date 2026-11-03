@@ -1,6 +1,7 @@
 // Read-only annotation: exact captured text only, never reconstruct model input.
 import {inputOrigin} from './context-records.js';
 import {jsonContainerEnd as jsonEnd} from './context-qq-blocks.js';
+import {contextOrigin} from './context-origins.js';
 export function attributeText(text='',modules=[],catalog=[]){
  const numbers=new Map(catalog.map((row,index)=>[row.id,index+1])),names=new Map(catalog.map(row=>[row.id,row.name])),patterns=new Map();
  for(const row of modules){
@@ -9,7 +10,7 @@ export function attributeText(text='',modules=[],catalog=[]){
    const value=String(part.text||'').trim();if(!value)continue;
    const id=row.id==='role-card'&&part.id==='ctx-context-dynamics:expression'?'ctx-context-dynamics':row.id;
    const catalogName=names.get(id);
-   const owner={id,name:catalogName&&catalogName!==id?catalogName:id!==row.id?'心情与表情策略':row.name||id,number:numbers.get(id),part:part.name,...(id!==row.id?{evidence:'来源为心情组件；此段放入系统提示'}:{})};
+   const owner={id,name:catalogName&&catalogName!==id?catalogName:id!==row.id?'心情与表情策略':row.name||id,number:numbers.get(id),part:part.name,source:id!==row.id?catalog.find(slot=>slot.id===id)?.source:row.source||catalog.find(slot=>slot.id===id)?.source,...(id!==row.id?{evidence:'来源为心情组件；此段放入系统提示'}:{})};
    if(!patterns.has(value))patterns.set(value,[]);
    patterns.get(value).push(owner);
   }
@@ -27,6 +28,7 @@ export function attributeText(text='',modules=[],catalog=[]){
 }
 
 export function messageLabel(row){
+ const origin=contextOrigin(row);if(origin)return origin.title;
  if(row.source==='repeat-tool-reminder')return '重复工具调用提醒';
  if(row.source==='qq-context-task')return '本次处理要求';
  if(row.role==='tool'||row.toolResults?.length)return '工具返回数据';
@@ -49,12 +51,13 @@ export function partLabel(part){
 }
 
 export function unmatchedLabel(message={}){
+ const origin=contextOrigin(message);if(origin)return origin;
  if(message.source==='repeat-tool-reminder')return {tag:'运行提醒',title:'重复工具调用提醒',description:'DSH 检测到相同工具与参数被重复调用，提醒先检查上次结果。'};
  if(message.source==='qq-context-task')return {tag:'处理任务',title:'本次处理要求 · C39',description:'固定槽位，随当前任务更新。'};
  if(message.source==='qq-context-stable')return {tag:'稳定资料',title:'稳定会话资料与状态解释规则',description:'保存会话背景、会话协议及稳定规则；若此消息还包含早期聊天，聊天原文保留在资料之后。'};
  if(message.source==='qq-context-latest')return {tag:'当前资料',title:'当前补充资料（本次请求有效）',description:'这是本次请求末尾唯一一份完整当前资料；旧状态只保存在运行日志，不再随模型请求重复携带。'};
  if(message.source==='qq-context-update')return {tag:'动态更新',title:'组件状态更新与撤回说明',description:'组件有变化时才追加；同组件最后一条更新生效，早先状态仍保留在历史中。'};
- if(message.role==='system')return {tag:'系统记录',title:'DSH 系统提示与框架规则',description:'提供运行身份、权限边界和系统约定；此段没有与组件采集原文完整匹配。'};
+ if(message.role==='system')return {tag:'系统记录',title:'DSH 系统提示（来源未记录）',description:''};
  if(message.role==='tool'||message.toolResults?.length)return {tag:'工具记录',title:'工具返回数据',description:'记录工具执行结果、查询数据或错误，供模型继续处理。'};
  if(message.toolCalls?.length)return {tag:'工具记录',title:'bot 的工具调用与附带文字',description:'记录模型选择的工具、参数及同次生成的说明；调用 ID 用于配对返回结果。'};
  if(message.role==='assistant')return {tag:'生成记录',title:'bot 生成文字',description:'保留模型的回复或内部处理文字；是否发送到 QQ 需要结合发送工具结果判断。'};
@@ -75,6 +78,17 @@ const qqTime=value=>Number.isFinite(value)||typeof value==='string'&&/^(?:(?:0[1
 const qqRows=value=>Array.isArray(value)&&value.every(row=>record(row)&&(Number.isSafeInteger(row.seq)||((row.messageId!==undefined||row.id!==undefined)&&(row.userId!==undefined||row.senderId!==undefined))||(typeof row.sender==='string'&&typeof row.text==='string'&&qqTime(row.at))));
 export function attributeMessage(message={},modules=[],catalog=[]){
  const text=String(message.text||'');
+ const origin=contextOrigin(message);
+ if(origin)return text?[{text,owners:[{id:origin.id,name:origin.title,source:origin.source,evidence:origin.description,sourceKind:'producer'}]}]:[];
+ if(message.sourceAttribution?.ranges?.length){
+  const out=[];let cursor=0;
+  for(const range of [...message.sourceAttribution.ranges].sort((a,b)=>a.start-b.start)){
+   if(!Number.isSafeInteger(range.start)||!Number.isSafeInteger(range.end)||range.start<cursor||range.end<=range.start||range.end>text.length)continue;
+   out.push(...attributeText(text.slice(cursor,range.start),modules,catalog));
+   out.push({text:text.slice(range.start,range.end),owners:[{id:range.id,name:range.name,part:range.part,source:range.source,evidence:range.evidence,sourceKind:'definition'}]});cursor=range.end;
+  }
+  out.push(...attributeText(text.slice(cursor),modules,catalog));return out;
+ }
  if(message.role==='user'&&['qq-context-update','qq-context-latest'].includes(message.source)&&message.contextSegments?.length){
   const out=[];let cursor=0;
   for(const segment of message.contextSegments){

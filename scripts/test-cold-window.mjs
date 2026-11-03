@@ -58,13 +58,13 @@ function add(h, key, count, mentions = false) {
   }
 }
 
-test('weak private snapshot keeps latest configured five, disposes old unread without fake receipt stamps', async t => {
+test('weak private snapshot selects five without deleting stored history or forging receipt stamps', async t => {
   const { h } = await open(t), key = 'private:123'; add(h, key, 10);
   const st = h.getSocialV2State(key); st.doubleStampCheck = { windowSeqs: [1, 2, 3], triggerSeq: 3 };
   const packet = h.buildWakeSnapshotV2(key, true);
   assert.deepEqual(Array.from(packet.messages, m => m.seq), [6, 7, 8, 9, 10]);
-  assert.deepEqual(Array.from(st.unread, m => m.seq), [6, 7, 8, 9, 10]);
-  for (const old of st.recentMessages.slice(0, 5)) { assert.equal(old.budgetDisposition, 'outside-cold-window'); assert.equal(old.seenAt, undefined); assert.equal(old.repliedAt, undefined); }
+  assert.deepEqual(Array.from(st.unread, m => m.seq), [1,2,3,4,5,6,7,8,9,10]);
+  for (const old of st.recentMessages.slice(0, 5)) { assert.equal(old.budgetDisposition, undefined); assert.equal(old.seenAt, undefined); assert.equal(old.repliedAt, undefined); }
   assert.equal(packet.receiptWindow.length, 0); assert.equal(packet.pendingFromSeq, 6);
 });
 

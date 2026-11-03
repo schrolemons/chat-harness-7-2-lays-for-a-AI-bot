@@ -1,0 +1,13 @@
+{
+  "id": "life-incoming-filter",
+  "name": "自动回复消息过滤",
+  "version": "1.0.0",
+  "description": "直接过滤正文以 [自动回复] 开头的入站消息，避免自动回复循环；在已读回应、唤醒、媒体处理和待答队列之前执行。",
+  "category": "生命周期与编排",
+  "layer": "L",
+  "order": 1,
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [],
+  "config": {}
+}

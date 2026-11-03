@@ -2,7 +2,7 @@
 
 一个面向 QQ 私聊与群聊的有状态 Agent harness，以 DeepSeek Harness（DSH）为模型、会话与工具宿主，通过 SnowLuma 接入 QQ。它在消息收发之外，管理上下文装填、记忆、人物身份、发送计划、等待、主动行为和运行观测。
 
-项目基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前版本为 **v0.3.2**，以单个 DSH 组合插件安装；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
+项目基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.3.2**（已对齐公开版安装修复），以单个 DSH 组合插件安装；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
 
 ## 当前架构
 
@@ -99,7 +99,7 @@ QQ 身份以真实 QQ 号区分，昵称相同、前缀相同或改名不合并�
 
 ### 安装组合插件
 
-从 [Releases](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases) 下载 `qq-bridge-0.3.2.tgz`，通过 DSH 桌面版的插件管理器安装本地包。普通 `dsh` CLI 不管理桌面版保留的 `desktop` profile；若使用独立命令行 profile，可执行：
+从 [Releases](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases) 下载 `qq-bridge-0.3.2.tgz`，通过 DSH 桌面版插件管理器安装本地包。普通 CLI 的示例使用独立 profile，不直接管理桌面版保留的 desktop profile：
 
 ```powershell
 dsh plugin --profile qq-bot add C:/Downloads/qq-bridge-0.3.2.tgz
@@ -118,7 +118,7 @@ dsh plugin --profile qq-bot add C:/Downloads/qq-bridge-0.3.2.tgz
 
 首次接入，在 DSH 桥接启动面板选择 **bot QQ**，设置管理员 QQ 及允许的私聊/群聊，再启动桥接。bot QQ 与管理员 QQ 是两个字段，默认不向所有账号开放。SnowLuma 路径或端点无法自动发现时，在设置中填写，无需改源码。
 
-本包安装脚本只修补 SnowLuma SDK 的模块导入后缀，不执行账号登录或启动 QQ/DSH。安装器未运行该脚本时，桥接仍可在内存中兼容 SDK 的导入后缀，不改写共享依赖。MCP 入口兼容 pnpm 提升依赖后的目录布局。旧版 DSH 传输客户端以独立产物随包提供，不把旧宿主核心库安装进 profile。管理员预设的注册不意味着普通聊天获得管理员工具权限。
+本包安装脚本只修补 SnowLuma SDK 的模块导入后缀，不执行账号登录或启动 QQ/DSH。管理员预设的注册不意味着普通聊天获得管理员工具权限。
 
 ### 从源码部署或更新
 
@@ -165,12 +165,11 @@ npm test
 npm run build:console
 npm run lint:console
 npm run build:bundle -- --check
-npm run build:client -- --check
 node scripts/build-agent-preset-patches.mjs --check
 npm run privacy:check
 ```
 
-v0.3.2 在独立 Windows DSH profile 中完成空缓存原生包安装、六套预设注册、七个 MCP 进程握手、真实 QQ 身份与心跳验证，以及独立模型回合。测试配置、会话和进程与原有部署隔离，验证后停止测试服务；未向普通 QQ 会话发送测试消息。发行附件提供 SHA-256 校验值。
+v0.3.1 的发行验证包含干净环境 `npm ci`、524 项隔离测试、DSH 原生 CLI 安装及六套预设自动注册，GitHub Actions 的测试、lint、生成产物与隐私检查通过。发行附件提供 SHA-256 校验值和源码文件清单。
 
 测试使用临时副本、测试状态与桩 QQ/DSH；模拟通过不代表实际账号已登录、模型已完成任务或 QQ 已成功投递。真实运行核验应分别检查连接、当前加载版本与投递回执；维护操作不应以删除会话、清空历史或反复重启代替排查。
 

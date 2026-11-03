@@ -1,15 +1,16 @@
 // Uses the local DSH runtime libraries with a scripted adapter: no API/QQ/network call.
 import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';
-import {apply} from '../plugins/qq-agent-presets/context-composer.mjs';
+import {apply} from '../plugins/qq-agent-presets/context-composer-v3.mjs';
 import {encodePacket} from '../plugins/qq-components/obs-context-assembly/packet.mjs';
 import {secretFor,readEvidence} from '../plugins/qq-components/obs-context-assembly/store.mjs';
+import {qqDialogueBlocks} from '../console/layers/O/context-qq-blocks.js';
 const workspace=JSON.parse(fs.readFileSync(new URL('../workspace.local.json',import.meta.url)));
 const require=createRequire(path.join(workspace.dshSourceRepository,'packages/core/agent-loop/package.json'));
 const load=specifier=>import(pathToFileURL(require.resolve(specifier)).href);
 const [{Context},{default:AgentRegistry},{default:AgentLoop},{default:LlmRuntime,LlmAdapter,createUserMessage},{default:SessionStore,SessionId,Session},{default:SystemPrompt},{default:ToolRuntime,defineContentToolFixture},{default:Projection}]=await Promise.all(['@deepseek-ai/cordis','@deepseek-ai/dsh-agent','@deepseek-ai/dsh-agent-loop','@deepseek-ai/dsh-llm','@deepseek-ai/dsh-session','@deepseek-ai/dsh-system-prompt','@deepseek-ai/dsh-tools','@deepseek-ai/dsh-session-projection'].map(load));
 const {assertReleasedV4Relationships}=await import(pathToFileURL(path.join(workspace.dshSourceRepository,'packages/session/session-format-v3-to-v4/lib/index.js')).href);
 const {KNOWN_SESSION_EVENT_TYPES}=await load('@deepseek-ai/dsh-session');
-class Adapter extends LlmAdapter{requests=[];toolOnce=false;async resolveModel(provider,id){return {provider,id,name:id,systemPromptUpdate:'in-history'};}async *stream(options){this.requests.push(options);if(this.toolOnce){this.toolOnce=false;yield {type:'block-start',index:0,blockType:'tool-call'};yield {type:'block-end',index:0,block:{type:'tool-call',id:'fixture-call-'+this.requests.length,name:'fixture_update_context',arguments:'{}'}};yield {type:'finish',reason:{kind:'tool-calls'}};return;}yield {type:'block-start',index:0,blockType:'text'};yield {type:'text-delta',index:0,text:'ok'};yield {type:'block-end',index:0,block:{type:'text',text:'ok'}};yield {type:'finish',reason:{kind:'stop'}};}}
+class Adapter extends LlmAdapter{requests=[];toolOnce=false;async resolveModel(provider,id){return {provider,id,name:id,systemPromptUpdate:'in-history'};}async *stream(options){this.requests.push(options);if(this.toolOnce){this.toolOnce=false;yield {type:'block-start',index:0,blockType:'tool-call'};yield {type:'block-end',index:0,block:{type:'tool-call',id:'fixture-call-'+this.requests.length,name:this.toolName||'fixture_update_context',arguments:'{}'}};yield {type:'finish',reason:{kind:'tool-calls'}};return;}yield {type:'block-start',index:0,blockType:'text'};yield {type:'text-delta',index:0,text:'ok'};yield {type:'block-end',index:0,block:{type:'text',text:'ok'}};yield {type:'finish',reason:{kind:'stop'}};}}
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'qq-real-dsh-context-')),ctx=new Context(),persistenceCtx=new Context();let persistedEvents=0;
 const {default:NativePersistence}=await import(pathToFileURL(path.join(workspace.dshSourceRepository,'packages/session/session-persistence-jsonl/lib/index.js')).href);
 try{
@@ -39,13 +40,14 @@ try{
  assert.equal(readEvidence(root,agent.id,'request').nonce,'n3');
  assert.equal(reconstructed,3);
  ctx.tools.register(defineContentToolFixture({name:'fixture_update_context',description:'隔离测试：更新心情并撤回日程',parameters:{},async execute(){dynamicModules=dynamicModules.map(row=>row.id==='ctx-context-dynamics'?{...row,text:'当前心情=80，完整形态示范'}:row.id==='life-schedule-reminder'?{...row,text:''}:row.id==='ctx-context-session'?{...row,text:'【你的身份】QQ助手\n\n【会话令牌】rotated-test-token'}:row);return [{type:'text',text:'已更新心情并取消日程'}];}}));
+ let cacheKey='';ctx.tools.register(defineContentToolFixture({name:'mcp__snowluma__qq_get_message_detail',description:'隔离本地历史补读',parameters:{},async execute(){return [{type:'text',text:JSON.stringify({ok:true,key:cacheKey,info:{seq:5,dialogueSeq:50,messageId:'historical-5',text:'仅在缓存里的旧消息',bodyComplete:true,needsReply:false}})}];}}));
  for(const kind of ['private','group']){
   const subject=await ctx.agentLoop.create(SessionId('refill-'+kind),{provider:'fixture-context',model:'fixture'});
   dynamicModules=[{id:'role-card',text:'不可改写的原始角色'},{id:'session-background',text:'稳定用户资料'},
    {id:'ctx-context-dynamics',text:'当前心情=60，完整形态示范'},{id:'life-schedule-reminder',text:'明天写报告'},
    {id:'ctx-context-session',text:'【你的身份】QQ助手\n\n【会话令牌】initial-test-token'},
-   {id:'wake-action',text:'处理模拟来信'},{id:'message-snapshot',text:JSON.stringify({messages:[{seq:7,text:'请更改心情与日程'}],recent:[]})}];
-  const input=nonce=>createUserMessage({content:[{type:'text',text:encodePacket({version:1,key:kind+':100001',sessionId:subject.id,nonce,scene:'message',modules:dynamicModules,issuedAt:Date.now()},secretFor(root))}],source:{kind:'user'}});
+   {id:'wake-action',text:'处理模拟来信'},{id:'message-snapshot',text:JSON.stringify({messages:[{seq:7,dialogueSeq:70,text:'请更改心情与日程'}],recent:[]})}];
+  const input=nonce=>createUserMessage({content:[{type:'text',text:encodePacket({version:1,key:kind+':100001',sessionId:subject.id,nonce,scene:nonce.startsWith('cache')?'budgetWeak':'message',modules:dynamicModules,issuedAt:Date.now()},secretFor(root))}],source:{kind:'user'}});
   const start=adapter.requests.length;adapter.toolOnce=true;subject.followup(input('first'));await subject.whenIdle();
   assert.equal(adapter.requests.length,start+2,'tool chain performs two model requests');
   const last=adapter.requests.at(-1),toolIndex=last.messages.findIndex(m=>m.role==='tool'),updateIndex=last.messages.findLastIndex(m=>m.source?.kind==='qq-context-latest');
@@ -58,10 +60,21 @@ try{
   const next=adapter.requests.at(-1),updates=next.messages.filter(m=>m.source?.kind==='qq-context-latest');
   assert.equal(updates.length,1,'one complete latest snapshot replaces previous snapshots');
   assert.equal(JSON.stringify(next.messages).split('请更改心情与日程').length-1,1,'same QQ seq is never admitted twice');
-  dynamicModules=dynamicModules.map(row=>row.id==='message-snapshot'?{...row,text:JSON.stringify({messages:[{seq:8,text:'工具之后的第二条来信'}],recent:[]})}:row);subject.followup(input('third'));await subject.whenIdle();
+  dynamicModules=dynamicModules.map(row=>row.id==='message-snapshot'?{...row,text:JSON.stringify({messages:[{seq:8,dialogueSeq:80,text:'工具之后的第二条来信'}],recent:[]})}:row);subject.followup(input('third'));await subject.whenIdle();
   const timeline=adapter.requests.at(-1).messages,oldChat=timeline.findIndex(row=>row.source?.kind==='qq-context-dialogue'&&JSON.stringify(row).includes('请更改心情与日程')),call=timeline.findIndex(row=>(row.content||[]).some(block=>block.type==='tool-call')),returned=timeline.findIndex(row=>row.role==='tool'),newChat=timeline.findIndex(row=>row.source?.kind==='qq-context-dialogue'&&JSON.stringify(row).includes('工具之后的第二条来信'));
   assert(oldChat>=0&&oldChat<call&&call<returned&&returned<newChat,'actual messages keep QQ → memory/state tool call → result → next QQ; never group all tools separately');
+  dynamicModules=dynamicModules.map(row=>row.id==='message-snapshot'?{...row,text:JSON.stringify({messages:[],recent:[{seq:6,dialogueSeq:60,text:'较晚补入的更早历史'}]})}:row);subject.followup(input('late-history'));await subject.whenIdle();
+  const sorted=adapter.requests.at(-1).messages;
+  const qqRows=sorted.filter(row=>row.source?.kind==='qq-context-dialogue'||row.source?.baseSource?.kind==='qq-context-dialogue').flatMap(row=>row.content.flatMap(block=>block.type==='text'?qqDialogueBlocks(block.text).flatMap(part=>part.rows):[]));
+  assert.deepEqual(qqRows.map(row=>row.dialogueSeq),[60,70,80],'late historical QQ data is sorted in the actual provider request');
+  const protocol=rows=>rows.filter(row=>row.role==='tool'||row.content?.some(block=>block.type==='tool-call')).map(row=>JSON.stringify(row));
+  assert.deepEqual(protocol(sorted),protocol(timeline),'sorting dialogue leaves native tool calls/results intact');
+  cacheKey=kind+':100001';adapter.toolName='mcp__snowluma__qq_get_message_detail';adapter.toolOnce=true;subject.followup(input('cache-read'));await subject.whenIdle();
+  const cachedRequest=adapter.requests.at(-1).messages,cachedRows=cachedRequest.filter(row=>row.source?.kind==='qq-context-dialogue'||row.source?.baseSource?.kind==='qq-context-dialogue').flatMap(row=>row.content.flatMap(block=>block.type==='text'?qqDialogueBlocks(block.text).flatMap(part=>part.rows):[]));assert.deepEqual(cachedRows.map(row=>row.dialogueSeq),[50,60,70,80],'reading a cached old message inserts it into the QQ history before newer dialogue');
+  adapter.toolOnce=true;subject.followup(input('cache-reread'));await subject.whenIdle();const repeated=adapter.requests.at(-1).messages.filter(row=>row.source?.kind==='qq-context-dialogue'||row.source?.baseSource?.kind==='qq-context-dialogue').flatMap(row=>row.content.flatMap(block=>block.type==='text'?qqDialogueBlocks(block.text).flatMap(part=>part.rows):[]));assert.equal(repeated.filter(row=>row.dialogueSeq===50).length,1,'repeated detail reads do not duplicate canonical QQ history');adapter.toolName=undefined;
+  const originalEvents=subject.session.snapshotEvents(),replayed=Session.create(subject.id,originalEvents).deriveMessages();
+  assert.deepEqual(replayed,subject.session.deriveMessages(),'sorted QQ projection survives durable replay');
   assertReleasedV4Relationships({header:subject.session.header,events:subject.session.snapshotEvents(),inheritedEventCount:0},KNOWN_SESSION_EVENT_TYPES);
  }
- console.log('PASS real DSH admission: 11 requests across private/group, interleaved QQ/tool history, tool-result-before-state-update, latest-only tail, stable prefix, no duplicate QQ text; durable replay and native compressed log reopen identical; zero network calls');
+ console.log('PASS real DSH admission: 21 requests across private/group, late historical dialogue sorted ascending, native tool pairs intact, latest-only tail, no duplicate QQ text; durable replay and native compressed log reopen identical; zero network calls');
 }finally{await ctx.fiber.dispose();await persistenceCtx.fiber.dispose();fs.rmSync(root,{recursive:true,force:true});}

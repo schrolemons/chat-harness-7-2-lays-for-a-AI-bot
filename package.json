@@ -9,6 +9,8 @@
     "node": ">=24"
   },
   "scripts": {
+    "test:incoming-filter": "node --test scripts/test-incoming-auto-reply.mjs",
+    "test:history-context": "node --test scripts/test-history-context.mjs scripts/test-local-history.mjs",
     "test:chat-regression-guards": "node --test scripts/test-chat-regression-guards.mjs",
     "test:desktop-notes": "node --test scripts/test-desktop-bug-notes.mjs scripts/test-session-recovery.mjs scripts/test-session-recovery-console.mjs",
     "test:session-recovery": "node --test scripts/test-session-recovery.mjs scripts/test-session-recovery-capability.mjs scripts/test-session-recovery-bridge.mjs scripts/test-session-recovery-console.mjs",
@@ -105,7 +107,7 @@
     "test:monitor": "node --test scripts/test-campus-notification-client.mjs scripts/test-campus-browser-session.mjs scripts/test-campus-browser-handoff.mjs scripts/test-campus-monitor-scheduling.mjs scripts/test-campus-monitor-config.mjs scripts/test-ustc-session.mjs scripts/test-ustc-report-login.mjs scripts/test-web-page-extraction.mjs scripts/test-web-change-summary.mjs scripts/test-ustc-notifications.mjs scripts/test-plugin-repairs.mjs",
     "test:console-forms": "node scripts/test-console-component-forms-ui.mjs",
     "test:message-ack": "node --test scripts/test-message-ack-round-failure.mjs scripts/test-message-ack-active-turn.mjs scripts/test-read-receipts.mjs",
-    "test:context-assembly": "node --test scripts/test-context-knowledge.mjs scripts/test-context-assembly.mjs scripts/test-context-composer.mjs scripts/test-context-routes.mjs scripts/test-context-refill.mjs scripts/test-context-refresh-http.mjs scripts/test-context-inspector.mjs scripts/test-context-attribution.mjs scripts/test-context-request-stages.mjs scripts/test-context-settings.mjs scripts/test-context-records.mjs scripts/test-context-limits.mjs scripts/test-context-processing.mjs scripts/test-context-timeline.mjs scripts/test-dialogue-sequence.mjs scripts/test-chat-entry-guidance.mjs scripts/test-context-snapshot-contract.mjs",
+    "test:context-assembly": "node --test scripts/test-context-knowledge.mjs scripts/test-context-assembly.mjs scripts/test-context-composer.mjs scripts/test-context-routes.mjs scripts/test-context-refill.mjs scripts/test-context-refresh-http.mjs scripts/test-context-inspector.mjs scripts/test-context-attribution.mjs scripts/test-context-sources.mjs scripts/test-context-request-stages.mjs scripts/test-context-settings.mjs scripts/test-context-records.mjs scripts/test-context-limits.mjs scripts/test-context-processing.mjs scripts/test-context-timeline.mjs scripts/test-dialogue-sequence.mjs scripts/test-chat-entry-guidance.mjs scripts/test-context-snapshot-contract.mjs",
     "test:mood": "node --test scripts/test-mood-lifecycle.mjs scripts/test-mood-daily-recovery.mjs scripts/test-mood-identity-style.mjs",
     "test:learning-scopes": "node --test scripts/test-learning-mcp.mjs scripts/test-learning-scopes.mjs scripts/test-learning-routes.mjs scripts/test-interest-learning.mjs scripts/test-alias-learning.mjs",
     "test:games:current": "node --test scripts/test-games-current.mjs",
@@ -113,7 +115,7 @@
     "test:personal-core": "node --test scripts/test-personal-core-library.mjs scripts/test-personal-core-runtime.mjs scripts/test-personal-core-migration.mjs scripts/test-personal-core-index.mjs scripts/test-personal-core-host.mjs",
     "test:personal-core:ui": "node scripts/test-personal-core-console.mjs",
     "test:context-native": "node scripts/test-context-dsh-admission.mjs",
-    "test:context-display": "node --test scripts/test-context-deliveries.mjs scripts/test-context-navigation.mjs scripts/test-context-processing.mjs scripts/test-context-timeline.mjs scripts/test-context-message-windows.mjs scripts/test-context-output-flow.mjs && node scripts/test-context-card-families-ui.mjs && node scripts/test-context-message-windows-ui.mjs && node scripts/test-context-console.mjs",
+    "test:context-display": "node --test scripts/test-context-deliveries.mjs scripts/test-context-navigation.mjs scripts/test-context-processing.mjs scripts/test-context-timeline.mjs scripts/test-context-display-role.mjs scripts/test-context-message-windows.mjs scripts/test-context-output-flow.mjs && node scripts/test-context-card-families-ui.mjs && node scripts/test-context-message-windows-ui.mjs && node scripts/test-context-console.mjs",
     "test:context-limits-ui": "node scripts/test-context-limits-console.mjs",
     "build:bundle": "node scripts/build-dsh-bundle.mjs",
     "build:client": "node scripts/build-dsh-client.mjs",
@@ -134,13 +136,14 @@
     "@playwright/mcp": "^0.0.83",
     "@snowluma/mcp": "^1.14.20",
     "@snowluma/sdk": "^1.14.20",
+    "acorn": "^8.19.0",
     "js-yaml": "^4.3.2",
     "puppeteer-core": "^25.16.0",
     "undici": "^7.30.1",
-    "zod": "^4.4.3",
-    "acorn": "^8.19.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
     "@deepseek-ai/dsh-host-apiproxy": "0.1.1-rc.2",
     "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
@@ -188,9 +191,9 @@
   ],
   "qqBridge": {
     "testFiles": [
-      "scripts/test-learner-subscription-lifecycle.mjs",
       "scripts/test-chat-regression-guards.mjs",
       "scripts/test-budget-reply-integration.mjs",
+      "scripts/test-learner-subscription-lifecycle.mjs",
       "scripts/test-token-budget-mechanical.mjs",
       "scripts/test-global-budget-check.mjs",
       "scripts/test-release.mjs",
@@ -253,6 +256,8 @@
       "scripts/test-context-refresh-http.mjs",
       "scripts/test-context-composer.mjs",
       "scripts/test-context-inspector.mjs",
+      "scripts/test-context-sources.mjs",
+      "scripts/test-context-display-role.mjs",
       "scripts/test-context-processing.mjs",
       "scripts/test-context-timeline.mjs",
       "scripts/test-context-records.mjs",
@@ -284,6 +289,8 @@
       "scripts/test-preset-interface.mjs",
       "scripts/test-preset-overview.mjs",
       "scripts/test-session-titles.mjs",
+      "scripts/test-session-stream-isolation.mjs",
+      "scripts/test-session-title-recovery.mjs",
       "scripts/test-milk-scheduled-conversation.mjs",
       "scripts/test-codex-repairs.mjs",
       "scripts/test-admin-environment-permissions.mjs",
@@ -316,8 +323,22 @@
       "scripts/test-diary-truth.mjs",
       "scripts/test-memory-initiative-policy.mjs",
       "scripts/test-games-current.mjs",
-      "scripts/test-session-stream-isolation.mjs",
-      "scripts/test-session-title-recovery.mjs"
+      "scripts/test-launcher-client.mjs",
+      "scripts/test-dsh-instance-scope.mjs",
+      "scripts/test-instance-ownership.mjs",
+      "scripts/test-instance-runtime.mjs",
+      "scripts/test-launcher-host-ports.mjs",
+      "scripts/test-launcher-port-settings.mjs",
+      "scripts/test-proactive-examples-ui.mjs",
+      "scripts/test-proactive-examples.mjs",
+      "scripts/test-schedule-example-append.mjs",
+      "scripts/test-time-bubble-append-api.mjs",
+      "scripts/test-context-history-backfill.mjs",
+      "scripts/test-context-scope.mjs",
+      "scripts/test-history-context.mjs",
+      "scripts/test-incoming-auto-reply.mjs",
+      "scripts/test-local-history.mjs",
+      "scripts/test-milk-dedup.mjs"
     ]
   }
 }

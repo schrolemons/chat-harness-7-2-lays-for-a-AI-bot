@@ -18,6 +18,7 @@ async function open({ key = PRIVATE, dailyLimit = 1, countBy = 'session', cold =
       'state/plugins/config/ctx-knowledge-quota.json': { dailyLimit, countBy, deflectText: 'fixture professional refusal' }
     }
   });
+  h.pluginHost.setEnabled('tool-deepseek-balance',false); // This suite isolates recovery from independently scheduled milk alerts.
   h.setMode('reserved2'); h.setSelfIdentity('fixture-bot', '9');
   const st = h.getSocialV2State(key); st.bootstrapSent = true;
   st.wakeConfig.triggers = { anyMessage: false, atMention: true, nameMention: false, question: false, keywords: [], speakerIds: [], probability: 0 };

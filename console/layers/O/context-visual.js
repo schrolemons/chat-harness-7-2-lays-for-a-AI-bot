@@ -1,4 +1,3 @@
-import {compareRequests} from './context-request-diff.js';
 import {knowledgePanel,visualGroups,componentGuide,contextLayerGuide} from './context-knowledge.js';
 import {attributeMessage,partLabel,unmatchedLabel} from './context-attribution.js';
 import {inspectorHtml} from './context-inspector.js';
@@ -22,9 +21,9 @@ function framedText(text,modules,catalog,message={}){
  return attributeMessage({...message,text},modules,catalog).map(segment=>{
   if(!segment.text.trim())return '<pre class="context-text-gap" aria-hidden="true">'+esc(segment.text)+'</pre>';
   const owner=segment.owners[0],tone=owner?.number?((owner.number-1)%5):0;
-  const labels=owner?segment.owners.map(o=>'<span class="context-pill">'+esc(o.number?'组件 C'+String(o.number).padStart(2,'0'):'附加规则')+'</span><strong class="'+(o.superseded?'context-superseded-title':'')+'">'+esc(o.name)+(o.part?' · '+esc(partLabel({name:o.part})):'')+'</strong>'+(o.evidence?'<span class="context-frame-evidence">'+esc(o.evidence)+'</span>':'')).join('<span> / </span>'):'<span class="context-pill">'+esc(fallback.tag)+'</span><strong>'+esc(fallback.title)+'</strong>';
+  const labels=owner?segment.owners.map(o=>'<span class="context-pill">'+esc(o.number?'组件 C'+String(o.number).padStart(2,'0'):o.sourceKind?'来源':'附加规则')+'</span><strong class="'+(o.superseded?'context-superseded-title':'')+'">'+esc(o.name)+(o.part?' · '+esc(partLabel({name:o.part})):'')+'</strong>'+(o.source?'<code>'+esc(o.source)+'</code>':'')+(o.evidence&&!o.sourceKind?'<span class="context-frame-evidence">'+esc(o.evidence)+'</span>':'')).join('<span> / </span>'):'<span class="context-pill">'+esc(fallback.tag)+'</span><strong>'+esc(fallback.title)+'</strong>';
   const descriptions=owner?[...new Set(segment.owners.map(o=>catalog.find(slot=>slot.id===o.id)?.description).filter(Boolean))]:[];
-  return '<div class="context-text-frame'+(owner?' context-tone-'+tone:' is-unattributed')+'"'+(owner?' data-context-owner="'+esc(owner.id)+'"':'')+'><div class="context-frame-label">'+labels+'</div>'+(!owner?'<p class="context-knowledge-note">'+esc(fallback.description)+'</p>':descriptions.length?'<p class="context-knowledge-note">组件职责（当前定义）：'+esc(descriptions.join('；'))+'</p>':'')+(owner?.id==='message-snapshot'&&receiptIndexHtml(segment.text)||'<pre>'+esc(segment.text)+'</pre>')+'</div>';
+  return '<div class="context-text-frame'+(owner?' context-tone-'+tone:' is-unattributed')+'"'+(owner?' data-context-owner="'+esc(owner.id)+'"':'')+'><div class="context-frame-label">'+labels+'</div>'+(!owner?(fallback.description?'<p class="context-knowledge-note">'+esc(fallback.description)+'</p>':''):descriptions.length?'<p class="context-knowledge-note">组件职责（当前定义）：'+esc(descriptions.join('；'))+'</p>':'')+(owner?.id==='message-snapshot'&&receiptIndexHtml(segment.text)||'<pre>'+esc(segment.text)+'</pre>')+'</div>';
  }).join('');
 }
 function render(){
@@ -37,20 +36,15 @@ function render(){
  const options=requestStageOptions(stages),selected=options.find(option=>option.aliases.includes(selectedRequestId))||options.find(option=>option.kind==='current')||options.at(-1);
  selectedRequestId=selected?.kind||'';
  const request=selected?.request,preview=data.preview;
- $('contextRequestPicker').hidden=!actual;$('contextRequestDiff').hidden=!actual;
+ $('contextRequestPicker').hidden=!actual;
  $('contextRequestSelect').replaceChildren(...(options.length?options.map(option=>new Option(option.label,option.kind)):[new Option('尚无模型调用记录','')]));$('contextRequestSelect').value=selectedRequestId;$('contextRequestSelect').disabled=!options.length;
  $('contextRequestSummary').textContent=requestStageSummary(request);
- const olderKind=selectedRequestId==='current'?'previous':'initial',older=selected?.aliases.includes(olderKind)?undefined:stages.find(stage=>stage.kind===olderKind)?.request;
- const delta=selected?.aliases.includes('initial')?null:compareRequests(older,request),join=items=>items.length?items.map(item=>esc(item.name||item)).join('、'):'无';
- $('contextRequestDiff').innerHTML=delta?'<strong>'+(selectedRequestId==='current'?'最新调用与上一次调用比较':'上一次调用与首次调用比较')+'</strong><p>工具新增：'+join(delta.toolsAdded)+'；移除：'+join(delta.toolsRemoved)+'；用途或参数说明变化：'+join(delta.toolsChanged)+'</p><p>模块变化：'+join(delta.modulesChanged)+'；消息字符变化 '+(delta.messageCharsDelta>=0?'+':'')+delta.messageCharsDelta+'；工具说明字符变化 '+(delta.toolCharsDelta>=0?'+':'')+delta.toolCharsDelta+'</p>':selected?.aliases.includes('initial')?'这是本次处理的首次模型调用，保留作比较基线；相同请求已合并展示。':'上一次调用尚未采集，无法比较；缺失记录不补造。';
- if(request&&Number.isSafeInteger(request.turn))$('contextRequestDiff').innerHTML+='<p class="meta">日志定位：DSH 内部回合 '+esc(request.turn)+(Number.isSafeInteger(request.step)?' / 步骤 '+esc(request.step):'')+'。这是内部处理编号，与消息条数、工具调用次数分别计数。</p>';
- $('contextRequestDiff').innerHTML='<summary>查看本次请求的变化</summary><div>'+$('contextRequestDiff').innerHTML+'</div>';
  if(actual&&data.capture?.nonce&&request?.nonce&&data.capture.nonce!==request.nonce)notice('这份请求使用的是另一批背景快照。下方按该次实际请求自己的组件记录展示。');
  if(actual){
   if(!request){$('contextMetrics').textContent='还没有记录到这个会话实际发给 AI 的内容。等下一次正常聊天或定时冒泡后再刷新；查看这里不会调用 AI。';$('contextModules').replaceChildren();return;}
   $('contextMetrics').innerHTML=metric('实际请求记录时间',new Date(request.at).toLocaleString())+metric('消息数据 · 含历史',request.messageChars+' 字符')+metric('工具清单',request.toolCount+' 个 / '+request.toolChars+' 字符');
   inspectedRequest=request;
-  $('contextModules').innerHTML='<p class="context-section-note">按模型请求的实际顺序展示，包含历史。system / user / assistant / tool 是协议角色；user 不一定是人类发言。任务说明、QQ 原文、组件快照和工具定义变化分别标注；结构化内容只展示已采集或可核验的字段。</p><div id="contextInspector" class="context-inspector"></div>';
+  $('contextModules').innerHTML='<p class="context-section-note">按 role 分类查看消息与上下文；工具调用和返回保留配对，QQ 消息使用对话序号。</p><div id="contextInspector" class="context-inspector"></div>';
   renderInspector();return;
  }
  if(!preview){$('contextMetrics').textContent='这个会话还没有可预览的记录。下一次正常聊天或定时冒泡后会自动记录，再点“刷新已有记录”查看。';$('contextModules').replaceChildren();return;}
@@ -61,13 +55,17 @@ function render(){
 function renderInspector({keepPosition=false,keepSearch=false}={}){
  const host=$('contextInspector');if(!host||!inspectedRequest)return;
  const scroll=keepPosition?[...host.querySelectorAll('.context-sequence')].map(panel=>panel.scrollTop):null;
- const cursor=keepSearch?$('contextInspectorSearch')?.selectionStart:null;
+ const ancestors=[];if(keepPosition)for(let parent=host.parentElement;parent;parent=parent.parentElement)ancestors.push({element:parent,top:parent.scrollTop,left:parent.scrollLeft});
+ const search=keepSearch?$('contextInspectorSearch'):null;
+ const selection=search?{start:search.selectionStart,end:search.selectionEnd,direction:search.selectionDirection}:null;
  host.innerHTML=inspectorHtml(inspectedRequest,data.catalog||[],inspectorState,{renderText:framedText,renderComponent:row=>card({...row,index:undefined,protected:true},false)});
  for(const [index,list]of [...host.querySelectorAll('.context-sequence')].entries()){
   const active=list.querySelector('[aria-pressed="true"]')||list.querySelector('.is-related');
-  if(active)list.scrollTop=Math.max(0,active.offsetTop-list.offsetTop-list.clientHeight/3);else if(scroll?.[index]!==undefined)list.scrollTop=scroll[index];
+  if(scroll?.[index]!==undefined)list.scrollTop=scroll[index];
+  else if(active)list.scrollTop=Math.max(0,active.getBoundingClientRect().top-list.getBoundingClientRect().top+list.scrollTop-list.clientHeight/3);
  }
- if(keepSearch){const input=$('contextInspectorSearch');input.focus();if(input.type!=='search'&&cursor!==null)input.setSelectionRange(cursor,cursor);}
+ for(const {element,top,left}of ancestors){element.scrollTop=top;element.scrollLeft=left;}
+ if(keepSearch){const input=$('contextInspectorSearch');input.focus({preventScroll:true});if(selection?.start!=null)input.setSelectionRange(selection.start,selection.end,selection.direction);}
 }
 function section(id,title,body,folded=false){return folded?'<details class="context-section" data-context-group="'+id+'"><summary>'+esc(title)+'</summary>'+body+'</details>':'<section class="context-section" data-context-group="'+id+'"><h3 class="context-section-title">'+esc(title)+'</h3>'+body+'</section>';}
 function card(m,editable){
@@ -107,7 +105,9 @@ export function initialize(){
  $('contextRequestSelect').addEventListener('change',event=>{selectedRequestId=event.target.value;inspectorState.selected='';render();});
  $('contextReset').addEventListener('click',()=>{draft=copy(saved);void project();});
  $('contextModules').addEventListener('change',event=>{const id=event.target.dataset.contextToggle;if(!id||!draft)return;draft.disabled=draft.disabled.filter(x=>x!==id);if(!event.target.checked)draft.disabled.push(id);void project();});
- $('contextModules').addEventListener('input',event=>{if(event.target.id!=='contextInspectorSearch')return;inspectorState.query=event.target.value;renderInspector({keepSearch:true});});
+ const updateSearch=event=>{if(event.target.id!=='contextInspectorSearch'||event.isComposing)return;inspectorState.query=event.target.value;renderInspector({keepSearch:true});};
+ $('contextModules').addEventListener('input',updateSearch);
+ $('contextModules').addEventListener('compositionend',updateSearch);
  $('contextModules').addEventListener('change',event=>{if(event.target.id!=='contextInspectorKind')return;inspectorState.kind=event.target.value;renderInspector();});
  const locateComponent=id=>{inspectorState.view='components';inspectorState.selected='component:'+id;inspectorState.query='';renderInspector();};
  $('contextModules').addEventListener('change',event=>{if(event.target.id==='contextComponentLookup'&&event.target.value)locateComponent(event.target.value);});

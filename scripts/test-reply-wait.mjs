@@ -121,8 +121,9 @@ test('reply timeout is a hard budget and cannot grant sleep observation, even wi
   } finally { clearTimeout(timer); }
 }));
 
-test('messages purpose waits for future messages after a confirmed reply', () => fixture(async ({ st, request, append }) => {
+test('messages purpose waits for future messages after a confirmed reply', () => fixture(async ({ h, key, st, request, append }) => {
   append('already known');
+  await fixtureReplyTurn(h,key);
   await request('unread');
   st.lastIncomingAt = Date.now() - 10000;
   await request('mark-read', { throughSeq: 1 });

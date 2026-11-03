@@ -4,6 +4,9 @@ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),root=
 const names=['test-wake-reasons.mjs','test-slang-component.mjs','test-relay-component.mjs','test-relay-intent.mjs','test-chat-style.mjs','test-memory-context.mjs','test-context-session.mjs','test-context-dynamics.mjs','test-context-lifecycle.mjs','test-context-runtime.mjs','test-role-card-component.mjs','test-admin-dev-component.mjs','test-memory-store.mjs','test-schedule-reminder.mjs','test-daily-worklog.mjs','test-inject-lab.mjs','test-token-usage.mjs','test-reply-wait.mjs','test-qq-model-view.mjs','test-qq-preset-contract.mjs','test-qq-mode-plugin.mjs','test-mux-reconnect.mjs','test-bridge-health.mjs','test-bridge-startup.mjs','test-plugin-contract.mjs','test-cost-policy.mjs','test-plugin-repairs.mjs','test-plugin-delivery.mjs','test-plugin-matrix.mjs','test-scheduler.mjs','test-restart-persistence.mjs','test-availability.mjs','test-notification-delivery.mjs','test-ustc-notifications.mjs','test-campus-grab.mjs','test-token-economy.mjs','test-issue-regressions.mjs','test-personal-core-library.mjs','test-personal-core-runtime.mjs','test-personal-core-migration.mjs','test-personal-core-index.mjs','test-personal-core-host.mjs'];
 names.push('test-context-snapshot-contract.mjs','test-context-timeline.mjs','test-dialogue-sequence.mjs','test-chat-entry-guidance.mjs','test-context-processing.mjs','test-context-limits.mjs','test-context-settings.mjs','test-context-records.mjs','test-context-refill.mjs','test-context-refresh-http.mjs','test-context-assembly.mjs','test-context-composer.mjs','test-context-inspector.mjs','test-context-attribution.mjs','test-context-request-stages.mjs');
 const results=[];
+names.push('test-context-sources.mjs');
+names.push('test-incoming-auto-reply.mjs','test-context-scope.mjs');
+names.push('test-history-context.mjs','test-local-history.mjs','test-group-context-admission.mjs','test-context-message-windows.mjs');
 names.push('test-session-recovery.mjs','test-session-recovery-capability.mjs','test-session-recovery-bridge.mjs','test-session-recovery-console.mjs');
 names.push('test-desktop-bug-notes.mjs');
 names.push('test-chat-regression-guards.mjs');
@@ -20,6 +23,9 @@ names.push('test-context-knowledge.mjs','test-context-assembly.mjs','test-contex
 names.splice(0,names.length,...new Set(names));
 names.push('test-sleep-recovery.mjs');
 names.push('test-ustc-report-login.mjs','test-ustc-session.mjs','test-campus-login-flow.mjs','test-campus-login-recovery.mjs');
+names.push('test-context-history-backfill.mjs','test-cold-window.mjs','test-global-budget-check.mjs','test-budget-reply-stages.mjs','test-budget-reply-integration.mjs','test-token-budget.mjs','test-token-budget-owner.mjs','test-task-budget-exemption.mjs','test-task-admission-queue.mjs','test-quota-budget-recovery.mjs');
+ names.splice(0,names.length,...new Set(names));
+names.push('test-milk-dedup.mjs');
 const onlyArgument=process.argv.slice(2).find(argument=>argument.startsWith('--only='));
 if(onlyArgument){const selected=new Set(onlyArgument.slice('--only='.length).split(','));if([...selected].some(name=>!names.includes(name)))throw Error('Unknown isolated audit test');names.splice(0,names.length,...names.filter(name=>selected.has(name)));}
 try{

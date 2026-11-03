@@ -1,0 +1,14 @@
+{
+  "id": "life-history-context",
+  "name": "历史上下文与恢复回复",
+  "version": "1.0.0",
+  "description": "恢复时仅只读当前机器人账号的本地 SnowLuma 消息缓存；群聊旧消息只作历史，私聊只保留最近指定条数待答，不调用 QQ 历史 API。",
+  "layer": "L", "category": "生命周期与编排", "order": 3,
+  "main": "index.js", "enabled": true, "hooks": ["beforePrompt"],
+  "config": { "privateReplyLimit": 5, "historyLimit": 40, "localHistoryEnabled": true },
+  "configSchema": {
+    "privateReplyLimit": { "min": 0, "max": 100, "label": "恢复后私聊最多待答消息（条）", "example": "设为5：只保留恢复前最近5条未处理私聊可答，更早的消息只作历史；新来信不占这个恢复窗口。0表示旧私聊全部只作历史。" },
+    "historyLimit": { "min": 0, "max": 100, "label": "本地历史补取上限（条）", "example": "设为40：每个会话启动恢复时最多从本地补取40条缓存。实际自动带入仍受 C 层历史条数与快照字符预算限制；不改变原始日志或双戳。" },
+    "localHistoryEnabled": { "type": "boolean", "label": "只读本地 SnowLuma 消息缓存", "example": "仅查询当前机器人账号和白名单会话，最多读取历史窗口条数；不调用 QQ API、不读取其他账号，也不解密 QQ 原生数据库。本地未保存的消息无法补齐。" }
+  }
+}

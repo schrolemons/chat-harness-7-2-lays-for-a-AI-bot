@@ -94,7 +94,7 @@ test('first private inbound during bootstrap also arms both timers', async () =>
     assert.ok(h.messageAckArmed.get(key));
   } finally { h.cancelMessageReadAck(key); await h.close(); }
 });
-test('active group turn follows the latest user message even without another wake trigger', async () => {
+test('active group discussion does not promise a reply; a direct bot mention still arms acknowledgements', async () => {
   const h = await open();
   const group = 'group:456';
   try {
@@ -107,6 +107,9 @@ test('active group turn follows the latest user message even without another wak
       anyMessage: false, probability: 0, poke: false };
     await h.handleIncoming('group', 456, { user_id: 789, self_id: 999, group_id: 456,
       message_id: 78, message: [{ type: 'text', data: { text: '普通消息' } }] }, h.cfg);
+    assert.equal(h.messageAckArmed.has(group),false);
+    await h.handleIncoming('group',456,{user_id:789,self_id:999,group_id:456,message_id:79,
+      message:[{type:'at',data:{qq:999}},{type:'text',data:{text:'请回应我'}}]},h.cfg);
     assert.ok(h.messageAckArmed.get(group));
   } finally { h.cancelMessageReadAck(group); await h.close(); }
 });

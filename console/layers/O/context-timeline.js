@@ -1,15 +1,19 @@
 import {capturedToolResults} from './context-records.js';
+import {orderDialogueRows} from '../../../src/bridge-core/dialogue-order.mjs';
 const short=name=>String(name||'').split('__').at(-1);
 export function timelineEntries(entries){
  const groups=['system','stable','history','arrivals','unknown','dynamic'];
- return [...entries].sort((a,b)=>{
+ const ordered=[...entries].sort((a,b)=>{
   const group=groups.indexOf(a.region)-groups.indexOf(b.region);if(group)return group;
   if(a.region==='arrivals'){
    if((a.kind==='task'||b.kind==='task')&&a.kind!==b.kind)return a.kind==='task'?-1:1;
-   if(a.kind==='qq'&&b.kind==='qq')return Number.isSafeInteger(a.seq)&&Number.isSafeInteger(b.seq)?a.seq-b.seq:a.displaySeq-b.displaySeq;
+   if(a.kind==='qq'&&b.kind==='qq')return dialogueSequence(a)&&dialogueSequence(b)?dialogueSequence(a)-dialogueSequence(b):a.displaySeq-b.displaySeq;
   }
   return a.position-b.position||(a.kind==='qq'&&b.kind==='qq'?a.displaySeq-b.displaySeq:0);
  });
+ // Receipt status is a badge, not a second chronology. Keep protocol slots
+ // stable while ordering the QQ subsequence across both send directions.
+ return orderDialogueRows(ordered,row=>['qq','delivery'].includes(row.kind)&&!row.crossSession?dialogueSequence(row):null);
 }
 const purposes={qq_memory_append:'更新会话记忆',qq_memory_update:'整理会话记忆',qq_mood:'调整心情',qq_slang_learn:'学习黑话',qq_report_message_receipts:'更新收件回执',qq_mark_read:'标记已读',qq_get_unread_messages:'读取待处理消息',qq_get_recent_messages:'回查聊天记录',qq_wait_for_messages:'等待新消息',qq_wait_for_quiet:'等待对方说完',qq_send_message:'发送 QQ 消息',qq_reply:'引用回复',qq_send_sticker:'发送表情'};
 export function timelinePreview(row){
@@ -25,5 +29,6 @@ export function timelinePreview(row){
 }
 export function timelineFamily(row){return ['qq','quote','delivery','forwarded'].includes(row.kind)?'message':['call','result','registry','definition'].includes(row.kind)?'tool':'context';}
 export function receiptSequence(row){return Number.isSafeInteger(row.seq)&&row.seq>0?row.seq:null;}
+export function dialogueSequence(row){const value=row.dialogueSeq??row.record?.dialogueSeq;return Number.isSafeInteger(value)&&value>0?value:null;}
 export function messageIsOutgoing(row){return row.kind==='delivery'&&row.verified===true||row.record?.isSelf===true;}
 export function messageActor(row){if(messageIsOutgoing(row))return 'AI助手';const value=row.record?.sender||row.sender||row.record?.userId;if(value&&typeof value==='object')return value.card||value.nickname||value.name||value.user_id||'用户';return value||'用户';}

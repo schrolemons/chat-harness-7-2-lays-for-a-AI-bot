@@ -1,6 +1,22 @@
 import test from'node:test';import assert from'node:assert/strict';import{extractToolDeliveries,extractForwardMessages}from'../console/layers/O/context-deliveries.js';
+import {processingEntries,traceRelations} from '../console/layers/O/context-processing.js';
+import {requestEntries} from '../console/layers/O/context-inspector.js';
 const call=(id,name,args)=>({key:'c:'+id,position:1,toolCalls:[{id,name}],text:JSON.stringify({type:'tool-call',id,name,arguments:args})});
 const result=(id,data,isError=false)=>({key:'r:'+id,position:2,role:'tool',toolResults:[{toolCallId:id}],isError,text:JSON.stringify(data)});
+
+test('a successful send uses its verified dialogue identity and merges with the captured bot history',()=>{
+ const messages=[call('a','qq_reply',{key:'group:12',text:'回复'}),{...result('a',{ok:true,sent:1}),deliveryRecords:[{callId:'a',index:0,dialogueSeq:648}]},{role:'user',source:'qq-context-dialogue',text:'【历史 QQ 消息数据】\n[{"dialogueSeq":648,"isSelf":true,"text":"回复"}]'}];
+ const request={key:'group:12',messages},rows=requestEntries(request),delivery=extractToolDeliveries(request,rows)[0];assert.equal(delivery.dialogueSeq,648);assert.equal(delivery.seq,undefined);
+ const visible=processingEntries(request,rows).entries.filter(row=>row.kind==='delivery'||row.kind==='qq');assert.equal(visible.length,1);assert.equal(visible[0].record.dialogueSeq,648);
+});
+test('an archived confirmed bot message is shown once with its original dialogue number',()=>{
+ const request={key:'group:12',messages:[{id:'summary',role:'user',source:'compact-checkpoint',text:'归档摘要'}],archivedDeliveries:[{key:'archived:a',kind:'delivery',region:'history',text:'归档原话',dialogueSeq:648,summaryId:'summary',targetKey:'group:12',verified:true,archived:true}]};
+ const view=processingEntries(request,requestEntries(request));assert.equal(view.entries.filter(row=>row.dialogueSeq===648).length,1);assert.equal(view.entries.find(row=>row.dialogueSeq===648).archived,true);
+});
+test('archived event numbers cannot be mistaken for current request positions',()=>{
+ const request={key:'group:12',messages:[{role:'user',source:'user',text:'无关输入'},{id:'summary',role:'user',source:'compact-checkpoint',text:'归档摘要'}],archivedDeliveries:[{key:'archived:a',kind:'delivery',region:'history',text:'原话',dialogueSeq:648,summaryId:'summary',targetKey:'group:12',verified:true,archived:true,resultPosition:1}]};
+ const rows=requestEntries(request),view=processingEntries(request,rows),links=traceRelations(request,rows,view);assert.deepEqual([...links.byEntry.get('archived:a')],['message:1']);
+});
 test('confirmed reply exposes bot text, quotation and actual destination without inventing seq',()=>{
  const rows=[call('a','qq_reply',{key:'group:12',messageId:'m1',text:'给你的回复'}),result('a',{ok:true,key:'group:12',sent:1,failed:0,quoted:{sender:'成员',text:'原话'}})],items=extractToolDeliveries({key:'group:12'},rows);assert.equal(items.length,1);assert.equal(items[0].text,'给你的回复');assert.equal(items[0].targetKey,'group:12');assert.equal(items[0].quoted.text,'原话');assert.equal(items[0].seq,undefined);assert.equal(items[0].verified,true);
 });

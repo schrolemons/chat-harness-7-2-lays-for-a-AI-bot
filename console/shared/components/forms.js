@@ -70,3 +70,6 @@ COMPONENT_FORMS['ctx-user-mood'] = moodForm;
 
 import waitCycleForm from '../../layers/L/components/life-conversation-wait.js';
 COMPONENT_FORMS['life-conversation-wait'] = waitCycleForm;
+
+import historyContextForm from '../../layers/L/components/life-history-context.js';
+COMPONENT_FORMS['life-history-context'] = historyContextForm;

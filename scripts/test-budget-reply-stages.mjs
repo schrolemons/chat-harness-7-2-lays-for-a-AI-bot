@@ -79,3 +79,21 @@ test('changing the rule during an accepted batch preserves its original consumpt
 });
 
 test('owner fee exemption requires the verified administrator environment as well as the configured owner identity',()=>{const f=fixture({ownerBudgetEnabled:false});assert.equal(f.api.assess({key:'private:99',globalCost:100}).exempt,true);f.ctx.capabilities.hasAdminEnvironment=()=>false;assert.equal(f.api.assess({key:'private:99',globalCost:100}).exempt,false);assert.equal(f.api.canDispatch({key:'private:99',stage:'silent'}),false);});
+
+
+test('weak group timer checks a nonempty optional window even when there are no required replies',async()=>{
+ const f=fixture(),jobs=new Map();let wakes=0;
+ f.ctx.scheduler={schedule:job=>jobs.set(job.id,job),cancel:id=>jobs.delete(id)};
+ f.ctx.capabilities.budgetWeakStatus=()=>({stage:'weak',allowed:true,busy:false,pendingCount:0,candidateCount:2});f.ctx.capabilities.requestBudgetWake=()=>{wakes++;return {ok:true};};
+ const api=createPlugin(f.ctx).services.tokenBudget;api.observeIncoming({key:'group:2',messageId:'a',stage:'weak',at:1000});const job=jobs.get('budget-weak:group:2');await job.run({now:job.at});assert.equal(wakes,1);
+});
+
+test('cold group selection stays recent while private selection preserves pending reply order',()=>{
+ const f=fixture({recoveryWindows:{privateMessages:2,groupMessages:2,groupAtMessages:2}});
+ const rows=Array.from({length:12},(_,i)=>({seq:i+1,atSelf:i%2===0,replyRequirement:i<4?'required':'optional',...(i>=4?{replyDisposition:'history'}:{})}));
+ assert.deepEqual(f.api.selectWindow({key:'group:1',messages:rows}).map(m=>m.seq),[9,10,11,12]);assert.deepEqual(f.api.selectWindow({key:'private:1',messages:rows}).map(m=>m.seq),[1,2]);
+});
+
+test('cold group guidance separates optional context from required replies and permits a silent batch',()=>{
+ const p=createPlugin(fixture().ctx),text=p.hooks.beforePrompt({key:'group:1',budgetStage:'weak'});assert.match(text,/自主选择|自行选择/);assert.match(text,/不回复|不发言/);assert.match(text,/必答|必须回应/);assert.doesNotMatch(text,/结清本批/);
+});

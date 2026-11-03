@@ -7,6 +7,7 @@ export function resolveInspectorTarget(request,target,preferred=''){
  const messages=requestEntries(request),view=processingEntries(request,messages);
  if(preferred&&view.entries.some(row=>row.key===preferred))return preferred;
  if(view.entries.some(row=>row.key===target))return target;
+ if(view.toolAliases.has(target))return view.toolAliases.get(target);
  const native=messages.find(row=>row.key===target);if(!native)return null;
  const qq=view.records.filter(row=>row.sourcePositions.includes(native.position));
  if(qq.length)return qq[0].key;

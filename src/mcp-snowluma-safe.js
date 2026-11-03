@@ -574,7 +574,7 @@ server.tool(
 
 server.tool(
   'qq_get_recent_messages',
-  '查看指定会话的最近消息（只读），支持 offset 扩大范围。',
+  '只读 bridge 已保存的最近消息，支持 offset 扩大缓存范围；缓存缺失不调用QQ历史或漫游API。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -625,13 +625,13 @@ server.tool(
 
 server.tool(
   'qq_report_message_receipts',
-  '向 Harness 回报逐条消息处理结果的 JSON。每条使用已读到的 seq：seen=已看但未回复，replied=这条消息已有成功发送，complete=本来就有双戳，anomaly=戳状态异常并需上报。replied 必须对应发送成功时已读的同一 seq；成功凭据会在桥接重启后保留。若回执失败，先按错误说明检查已读戳或发送凭据；不要因回执失败再次发送，以免重复回复。',
+  '向 Harness 回报逐条消息处理结果的 JSON。每条使用已读到的 seq：seen=已看但未回复，replied=这条消息已有成功发送，complete=本来就有双戳，context=普通群消息只作上文（须说明原因；不能跳过窗口内必答消息，不写回复戳），anomaly=戳状态异常并需上报。replied 必须对应发送成功时已读的同一 seq；成功凭据会在桥接重启后保留。若回执失败，先按错误说明检查已读戳或发送凭据；不要因回执失败再次发送，以免重复回复。',
   {
     conversationId: z.string().describe('会话 ID，格式 group:群号 或 private:QQ号，与唤醒快照的 key 相同'),
     token: z.string().describe('当前会话令牌'),
     receipts: z.array(z.object({
       seq: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-      status: z.enum(['seen', 'replied', 'complete', 'anomaly']),
+      status: z.enum(['seen', 'replied', 'complete', 'context', 'anomaly']),
       note: z.string().max(300).optional().describe('anomaly 的简要原因')
     })).min(1).max(100).describe('按消息 seq 逐条报告；相似消息可合并回复，但每条都要有自己的状态')
   },

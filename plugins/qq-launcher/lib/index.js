@@ -17,7 +17,7 @@ import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readBridgeHealth, resolveConsoleToken } from '../../qq-components/obs-bridge-health/health.mjs';
-import { readLauncherSettings, saveLauncherSettings, validateBotUin } from '../../../scripts/launcher-settings.mjs';
+import { readLauncherSettings, saveLauncherSettings, validateBotUin, validateLauncherPorts } from '../../../scripts/launcher-settings.mjs';
 import { NodeApiClient, unwrap } from '../../../src/dsh-client.js';
 import { createGatewayRecovery } from '../../../scripts/gateway-recovery.mjs';
 import { processRunsFile } from '../../../scripts/launcher-process-identity.mjs';
@@ -188,11 +188,22 @@ function urlPort(value, fallback) {
 }
 
 export function createLauncher(ctx, config, deps = {}) {
-  const port = Number.isInteger(config?.servicePort) && config.servicePort >= 0 ? config.servicePort : DEFAULT_PORT;
   const qqExe = typeof config?.qqExe === 'string' ? config.qqExe.trim() : '';
   const bridgeDir = resolveBridgeDir(config);
   const settingsRoot = deps.settingsRoot || bridgeDir;
   const getSettings = () => readLauncherSettings(settingsRoot);
+  const configuredPort = readBridgeConfig(settingsRoot).launcher?.ports?.launcher;
+  const port = config?.servicePort === 0 ? 0 : configuredPort !== undefined ? getSettings().ports.launcher
+    : Number.isInteger(config?.servicePort) && config.servicePort > 0 && config.servicePort <= 65535 ? config.servicePort : DEFAULT_PORT;
+  let activeServer;
+  const ownedServers = new Set();
+  const pendingBinds = new Map();
+  const closingServers = new WeakMap();
+  let disposePromise;
+  const serviceUrl = () => {
+    const address = activeServer?.address();
+    return address && typeof address !== 'string' ? `http://127.0.0.1:${address.port}` : undefined;
+  };
   const requireBot = () => {
     try { if (getSettings().botUin) return null; }
     catch (error) { return { ok: false, code: 'BOT_QQ_REQUIRED', error: error.message }; }
@@ -526,17 +537,40 @@ export function createLauncher(ctx, config, deps = {}) {
     let runtime = null;
     try { runtime = await liveWhitelist(); } catch {}
     return { ...settings, ...(runtime ? { ownerQQ: runtime.ownerQQ, allow: runtime.allow } : {}),
-      ok: true, configured: !!settings.botUin, live: !!runtime, source: runtime ? 'config.json + bridge /api/whitelist' : 'config.json' };
+      ok: true, configured: !!settings.botUin, serviceUrl: serviceUrl(), live: !!runtime,
+      source: runtime ? 'config.json + bridge /api/whitelist' : 'config.json' };
   }
 
-  async function saveSettings(body) {
-    if (starting() || operation === 'stopping' || savingSettings) {
+  async function saveSettings(body, res) {
+    if (disposed || starting() || operation === 'stopping' || savingSettings) {
       const error = new Error('启动或关闭正在进行，请完成后再修改设置'); error.status = 409; throw error;
     }
-    validateBotUin(body.botUin);
     savingSettings = true;
+    let candidate;
     try {
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('设置必须为 JSON 对象');
+      const current = getSettings();
+      if (body.revision && body.revision !== current.revision) {
+        const error = new Error('配置已被其他页面更新，请重新读取后保存'); error.status = 409; throw error;
+      }
+      if (body.botUin !== undefined) validateBotUin(body.botUin);
+      const ports = body.ports === undefined ? current.ports : validateLauncherPorts(body.ports, current.ports);
+      if (body.ports && Object.hasOwn(body.ports, 'launcher') && ports.launcher !== activeServer.address()?.port) {
+        candidate = createOwnedServer();
+        try { await bindOwnedServer(candidate, ports.launcher); }
+        catch (error) { throw new Error(`启动器端口 ${ports.launcher} 监听失败：${error.message}`); }
+      }
+      if (disposed) { const error = new Error('启动器已卸载，未保存配置'); error.status = 409; throw error; }
       const saved = saveLauncherSettings(settingsRoot, body);
+      if (candidate) {
+        const previous = activeServer;
+        activeServer = candidate;
+        candidate = null;
+        const retire = () => { void closeOwnedServer(previous); };
+        res.once('finish', retire);
+        res.once('close', retire);
+        if (res.destroyed) retire();
+      }
       let applied = false, ownerSynced = false;
       try { applied = !!(await liveWhitelist('POST', { ownerQQ: saved.ownerQQ, allow: saved.allow })); } catch {}
       const cfg = readBridgeConfig(bridgeDir);
@@ -547,10 +581,13 @@ export function createLauncher(ctx, config, deps = {}) {
           ownerSynced = true;
         } catch {}
       }
-      return { ...saved, ok: true, configured: true, live: applied,
+      return { ...saved, ok: true, configured: !!saved.botUin, serviceUrl: serviceUrl(), live: applied,
         message: applied ? (ownerSynced ? '管理员和白名单已实时生效；机器人 QQ 在下次启动时使用' : '白名单已实时更新；管理员同步状态待确认，机器人 QQ 在下次启动时使用')
           : '已保存到真实配置；bot 下次启动时生效' };
-    } finally { savingSettings = false; }
+    } finally {
+      if (candidate) await closeOwnedServer(candidate);
+      savingSettings = false;
+    }
   }
 
   async function readBody(req) {
@@ -572,7 +609,7 @@ export function createLauncher(ctx, config, deps = {}) {
     res.end(text);
   }
 
-  const server = http.createServer((req, res) => {
+  function handleRequest(req, res) {
     if (req.headers.origin) {
       let local = false;
       try {
@@ -599,7 +636,7 @@ export function createLauncher(ctx, config, deps = {}) {
       return;
     }
     if (req.method === 'POST' && route === '/config') {
-      readBody(req).then(saveSettings).then(body => send(res, 200, body))
+      readBody(req).then(body => saveSettings(body, res)).then(body => send(res, 200, body))
         .catch(error => send(res, error.status || 400, { ok: false, error: error.message }));
       return;
     }
@@ -621,27 +658,67 @@ export function createLauncher(ctx, config, deps = {}) {
       return;
     }
     send(res, 404, { ok: false, error: 'not found' });
-  });
+  }
 
-  server.on('error', (error) => {
-    lastError = `本地端口 ${port} 监听失败：${error?.message ?? error}`;
-    log(lastError);
-  });
+  function createOwnedServer() {
+    const server = (deps.createHttpServer || http.createServer)(handleRequest);
+    ownedServers.add(server);
+    server.once('close', () => ownedServers.delete(server));
+    server.on('error', error => {
+      if (server !== activeServer || disposed) return;
+      lastError = `本地端口监听失败：${error?.message ?? error}`;
+      log(lastError);
+    });
+    return server;
+  }
 
-  server.listen(port, '127.0.0.1', () => {
-    log(`监听 http://127.0.0.1:${port} ; bridgeDir=${bridgeDir ?? '(未找到)'} ; qqExe=${qqExe}`);
-  });
+  function bindOwnedServer(server, targetPort) {
+    const binding = new Promise((resolve, reject) => {
+      const fail = error => { server.off('listening', ready); reject(error); };
+      const ready = () => { server.off('error', fail); resolve(); };
+      server.once('error', fail);
+      server.once('listening', ready);
+      try { server.listen(targetPort, '127.0.0.1'); }
+      catch (error) { server.off('error', fail); fail(error); }
+    });
+    pendingBinds.set(server, binding);
+    binding.then(() => pendingBinds.delete(server), () => pendingBinds.delete(server));
+    return binding;
+  }
+
+  function closeOwnedServer(server) {
+    if (closingServers.has(server)) return closingServers.get(server);
+    const closing = new Promise(resolve => {
+      server.close(() => { ownedServers.delete(server); resolve(); });
+      server.closeIdleConnections?.();
+    });
+    closingServers.set(server, closing);
+    return closing;
+  }
+
+  activeServer = createOwnedServer();
+  void bindOwnedServer(activeServer, port).then(() => {
+    log(`监听 ${serviceUrl()} ; bridgeDir=${bridgeDir ?? '(未找到)'} ; qqExe=${qqExe}`);
+  }, () => {});
+  const removeBootstrap = typeof ctx?.on === 'function' ? ctx.on('webserver/index-inject', table => {
+    const value = serviceUrl();
+    if (!disposed && value) table.push({ kind: 'global', name: '__qqLauncherServiceUrl', value });
+  }) : null;
 
   const dispose = () => {
+    if (disposePromise) return disposePromise;
     disposed = true;
     clearInterval(gatewayTimer);
     gatewayRecovery.dispose();
     ++generation; // Cancel pending QQ checks without terminating a running bridge.
-    try {
-      server.close();
-    } catch {}
+    if (typeof removeBootstrap === 'function') removeBootstrap();
+    disposePromise = Promise.all([...ownedServers].map(async server => {
+      try { await pendingBinds.get(server); } catch {}
+      await closeOwnedServer(server);
+    })).then(() => {});
+    return disposePromise;
   };
-  dispose.server = server;
+  Object.defineProperty(dispose, 'server', { get: () => activeServer });
   return dispose;
 }
 

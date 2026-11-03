@@ -2,6 +2,8 @@
 import {esc} from '../../shared/api.js';
 import {messageBodyParts,quoteBodyHtml} from './context-message-body.js';
 import {qqDialogueBlocks} from './context-qq-blocks.js';
+import {contextOrigin} from './context-origins.js';
+import {orderDialogueRows} from '../../../src/bridge-core/dialogue-order.mjs';
 const waitTools=new Set(['qq_wait_for_messages','qq_wait_for_quiet']);
 const messageReaders=new Set(['qq_get_recent_messages','qq_get_unread_messages','qq_get_my_recent_messages']);
 const json=value=>{try{return typeof value==='string'?JSON.parse(value):value;}catch{return null;}};
@@ -11,6 +13,7 @@ export function classifyReceipt(row){
  const positive=value=>Number.isFinite(Number(value))&&Number(value)>0;
  const seen=positive(row.seenAt)||positive(row.readAt),replied=positive(row.repliedAt);
  if(state==='anomaly'||replied&&!seen)return 'anomaly';
+ if(row.replyDisposition==='history'||row.needsReply===false&&!['complete','replied'].includes(state)&&!replied)return 'historical';
  if(['complete','replied'].includes(state)||seen&&replied)return 'complete';
  if(state==='resolved'||seen&&positive(row.resolvedAt)&&row.resolutionReason)return 'resolved';
  if(state==='seen'||row.awaitingReply===true||seen||row.read===true)return 'seen';
@@ -38,7 +41,7 @@ export function waitResultParts(message){
  return capturedToolResults(message).filter(result=>waitTools.has(String(result.name||'').split('__').at(-1))&&!result.isError&&result.data?.ok!==false&&result.data&&!result.data.error&&['arrived','endRound','quiet','waitedMs','newMessages'].some(key=>Object.hasOwn(result.data,key)));
 }
 function qqMessagesHtml(rows,{businessBySeq}={}){
- return '<div class="context-qq-messages">'+rows.map(row=>{
+ return '<div class="context-qq-messages">'+orderDialogueRows(rows).map(row=>{
   const state=classifyReceipt(row);
   const resolved=businessBySeq?.get(row.seq);
   const label=resolved?resolved.windowLabel+' · '+resolved.stateLabel:state==='self'?'QQ 历史消息 · bot':state==='complete'?'QQ 历史消息 · 处理完成':state==='resolved'?'QQ 历史消息 · 管理归档':['seen','unseen'].includes(state)?'QQ 未处理消息 · '+(state==='seen'?'已读待处理':'未读'):'QQ 消息（状态未知）';
@@ -69,7 +72,7 @@ export function dialogueParts(message){
  const groups={history:[],unread:[],pending:[],unknown:[]};
  for(const row of records){
   const state=classifyReceipt(row);
-  if(['self','complete'].includes(state))groups.history.push(row);
+  if(['self','complete','historical'].includes(state))groups.history.push(row);
   else if(state==='seen'||state==='pending')groups.pending.push(row);
   else if(state==='unseen')groups.unread.push(row);
   else groups.unknown.push(row);
@@ -90,6 +93,18 @@ export function inputOrigin(message){
 export function recordDetails(message){
  const origin=inputOrigin(message),evidence=message.provenance,parts=dialogueParts(message),changes=(message.contentBlocks||evidence?.toolChanges||[]).filter(block=>['tool-addition','tool-removal'].includes(block.type));
  let html=waitDetails(message)+(origin?'<div class="context-record-origin"><strong>'+esc(origin.title)+'</strong><p>'+esc(origin.description)+'</p><small>识别依据：'+esc(origin.evidence)+'</small></div>':'');
+ const producer=contextOrigin(message);
+ if(producer)html+='<p class="context-detail-note">生成来源：<code>'+esc(producer.source)+'</code></p>';
+ const preset=message.sourceAttribution?.presetId||evidence?.agentPreset;
+ if(message.role==='system'&&preset)html+='<p class="context-detail-note">会话预设：<code>'+esc(preset)+'</code></p>';
+ if(message.source==='skill-invocation'&&evidence?.source?.name)html+='<p class="context-detail-note">加载技能：<code>'+esc(evidence.source.name)+'</code></p>';
+ const files=evidence?.source?.changes?.filter(row=>typeof row.path==='string')||[];
+ if(files.length)html+='<section class="context-record-part"><h4>原日志记录的指令文件</h4><ul>'+files.map(row=>'<li><code>'+esc(row.path)+'</code> · '+esc(row.action||'变更')+'</li>').join('')+'</ul></section>';
+ const sections=evidence?.source?.sections||[];
+ if(sections.length)html+='<p class="context-detail-note">原日志贡献段落：'+sections.map(row=>'<code>'+esc(row.name)+'</code>').join('、')+'</p>';
+ const compact=evidence?.compaction,compactId=compact?.id||evidence?.source?.compactionId;
+ if(message.source==='compact-checkpoint'&&(compact||compactId))html+='<dl class="context-detail-fields">'+(compactId?'<div><dt>压缩事务</dt><dd>'+esc(compactId)+'</dd></div>':'')+(compact?.summarySeq!==undefined?'<div><dt>摘要生成事件</dt><dd>compaction/summary · seq '+esc(compact.summarySeq)+'</dd></div>':'')+(compact?.shadowedRange?'<div><dt>被摘要替换的原始范围</dt><dd>会话事件 seq '+esc(compact.shadowedRange.start)+'–'+esc(compact.shadowedRange.end)+'</dd></div>':'')+(compact?.model?'<div><dt>摘要模型</dt><dd>'+esc([compact.provider,compact.model].filter(Boolean).join(' / '))+'</dd></div>':'')+(evidence?.source?.sourceCommandId||compact?.sourceCommandId?'<div><dt>触发命令</dt><dd>'+esc(evidence?.source?.sourceCommandId||compact.sourceCommandId)+'</dd></div>':'')+'</dl>';
+ if(message.source==='qq-context-tool-history'&&evidence?.source?.toolName)html+='<p class="context-detail-note">错误来源：<code>'+esc(evidence.source.toolName)+'</code> · 错误码 '+esc(evidence.source.code||'未记录')+' · 折叠次数 '+esc(evidence.source.count??'未记录')+'</p>';
  for(const result of messageReadParts(message)){const rows=result.data.messages.filter(row=>row&&typeof row==='object'&&!Array.isArray(row));html+='<section class="context-record-part"><h4>聊天记录 · '+rows.length+' 条</h4>'+qqMessagesHtml(rows,{businessBySeq:message.qqBySeq})+'</section>';}
  if(message.triggerInfo){const trigger=message.triggerInfo;html+='<section class="context-record-part context-trigger"><h4>触发机制 · '+esc(trigger.title)+'</h4><p>'+esc(trigger.description)+'</p><small>'+esc(trigger.note)+'</small></section>';}
  else if(message.source==='qq-context-dialogue'){
@@ -104,8 +119,9 @@ export function recordDetails(message){
  if(parts){
   if(parts.task)html+='<section class="context-record-part"><h4>桥接处理任务 · C39</h4><pre>'+esc(parts.task)+'</pre></section>';
   const groups={history:[],arrivals:[],unknown:[]};
-  for(const row of [...parts.history,...parts.unread,...parts.pending,...parts.unknown]){const resolved=message.qqBySeq?.get(row.seq),state=classifyReceipt(row),region=resolved?.region||(['self','complete','resolved'].includes(state)?'history':['seen','unseen'].includes(state)?'arrivals':'unknown');groups[region].push(row);}
-  for(const [key,label]of [['history','QQ 历史消息'],['arrivals','QQ 未处理消息'],['unknown','QQ 消息（状态未知）']])if(groups[key].length)html+='<section class="context-record-part"><h4>'+label+' · '+groups[key].length+' 条</h4>'+qqMessagesHtml(groups[key].sort((a,b)=>a.seq-b.seq),{businessBySeq:message.qqBySeq})+'</section>';
+  for(const row of [...parts.history,...parts.unread,...parts.pending,...parts.unknown]){const resolved=message.qqBySeq?.get(row.seq),state=classifyReceipt(row),region=resolved?.region||(['self','complete','resolved','historical'].includes(state)?'history':['seen','unseen'].includes(state)?'arrivals':'unknown');groups[region].push(row);}
+  const ordered=orderDialogueRows([...groups.history,...groups.arrivals,...groups.unknown]);
+  if(ordered.length)html+='<section class="context-record-part"><h4>QQ 消息（按对话序号升序） · '+ordered.length+' 条</h4>'+qqMessagesHtml(ordered,{businessBySeq:message.qqBySeq})+'</section>';
  }
  return html;
 }

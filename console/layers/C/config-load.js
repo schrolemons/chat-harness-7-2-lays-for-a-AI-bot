@@ -21,7 +21,7 @@ document.getElementById('v2PmMaxChars').value = pmCfg.maxChars ?? 4000;
 const ctx = normalizeContextLimits(c.context || {});
 for(const [key,rule] of Object.entries(CONTEXT_LIMIT_FIELDS)){const el=document.getElementById('context-'+key);if(el){el.value=ctx[key];el.min=rule.min;el.max=rule.max;}}
 for(const [id,key] of [['v2ContextRecentLimit','recentLimit'],['v2ContextUnreadLimit','unreadLimit'],['v2ContextWindow','contextWindow']]){const el=document.getElementById(id);el.min=CONTEXT_LIMIT_FIELDS[key].min;el.max=CONTEXT_LIMIT_FIELDS[key].max;}
-document.getElementById('contextReceiptRange').textContent='收件回查：触发来信之前最近'+(c.doubleStamp?.windowCount??8)+'条非bot入站消息，再加触发这条；含已处理消息供核对，不含bot回复。独立于补带历史条数，共享快照字符预算。';
+document.getElementById('contextReceiptRange').textContent='此额度限制收件状态索引+QQ 消息正文（正文、发送者、时间）的容量。';
 document.getElementById('v2ContextRecentLimit').value = ctx.recentLimit ?? 100;
 document.getElementById('v2ContextUnreadLimit').value = ctx.unreadLimit ?? 30;
 document.getElementById('v2ContextWindow').value = ctx.contextWindow ?? 20;

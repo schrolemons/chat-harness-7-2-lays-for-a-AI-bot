@@ -1,5 +1,5 @@
 <section class="card span-all context-console" id="contextConsole" data-page="context-visual">
-  <header class="context-intro"><div><span class="context-eyebrow">CONTEXT INSPECTOR</span><h2>上下文检查器</h2><p class="meta">按处理状态查看上下文与工具轨迹，或切换原始请求核对。</p></div><span class="context-scope-badge">真实请求 · 只读查看</span></header>
+  <header class="context-intro"><div><span class="context-eyebrow">CONTEXT INSPECTOR</span><h2>上下文检查器</h2><p class="meta">按对话序号查看上下文与工具轨迹，或切换原始请求核对。</p></div><span class="context-scope-badge">真实请求 · 只读查看</span></header>
   <div class="context-toolbar">
     <label>选择会话（只影响预览）<select id="contextSession"><option value="">选择要查看的私聊或群聊…</option></select></label>
     <button type="button" id="contextRefresh">刷新已有记录</button>
@@ -17,7 +17,7 @@
     <button type="button" id="contextDraftTab" aria-pressed="false">组件设置</button>
   </div>
 
-<div id="contextRequestPicker" class="context-request-picker" hidden><label>选择模型调用记录<select id="contextRequestSelect"></select></label><div><p id="contextRequestSummary" class="meta"></p><p class="meta">初始请求保留到这次持续处理结束；每次调用更新上一次与最新记录。同一条记录只列一次。</p></div></div><details id="contextRequestDiff" class="context-request-diff" hidden></details>
+<div id="contextRequestPicker" class="context-request-picker" hidden><label>选择模型调用记录<select id="contextRequestSelect"></select></label><div><p id="contextRequestSummary" class="meta"></p><p class="meta">初始请求保留到这次持续处理结束；每次调用更新上一次与最新记录。同一条记录只列一次。</p></div></div>
   <p class="context-section-note"><a href="#setting-c-1">调整QQ缓存、自动附带条数/字数、预算受限窗口和行为印象范围</a></p>
   <div id="contextMetrics" class="context-metrics"></div>
   <div id="contextModules" class="context-modules"></div>

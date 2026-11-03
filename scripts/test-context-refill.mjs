@@ -8,6 +8,19 @@ import {createPlugin} from '../plugins/qq-components/obs-context-assembly/index.
 import {encodePacket,decodePacket} from '../plugins/qq-components/obs-context-assembly/packet.mjs';
 import {secretFor,readEvidence} from '../plugins/qq-components/obs-context-assembly/store.mjs';
 import {contextParts,retireDialogueTasks} from '../plugins/qq-components/obs-context-assembly/refill.mjs';
+import {orderProjectedDialogue} from '../plugins/qq-components/obs-context-assembly/dialogue-order.mjs';
+import {qqDialogueBlocks} from '../console/layers/O/context-qq-blocks.js';
+
+test('actual QQ projection orders old and incoming rows by dialogueSeq without moving native tools or rewriting raw events',()=>{
+ const message=(id,rows)=>({id,role:'user',source:{kind:'qq-context-dialogue',seqs:rows.map(r=>r.seq)},content:[{type:'text',text:'【新增 QQ 消息数据】\n'+JSON.stringify(rows)}]});
+ const old=message('old',[{seq:9,dialogueSeq:9,text:'later'}]),events=[{seq:1,type:'user/message',data:old},{seq:2,type:'assistant/message',data:{id:'call'}},{seq:3,type:'tool/result',data:{id:'result'}}],nodes=[1,2,3],before=JSON.stringify(events),replaced=[];
+ const session={surface:{nodes},eventAt:seq=>events.find(e=>e.seq===seq)};
+ const incoming=[message('new',[{seq:2,dialogueSeq:2,text:'earlier'}])];
+ orderProjectedDialogue({session,messages:incoming,position:{turn:1,step:1},replace:(_s,seq,m)=>replaced.push({seq,m})});
+ assert.equal(qqDialogueBlocks(replaced[0].m.content[0].text)[0].rows[0].dialogueSeq,2);
+ assert.equal(qqDialogueBlocks(incoming[0].content[0].text)[0].rows[0].dialogueSeq,9);
+ assert.deepEqual(replaced.map(r=>r.seq),[1]);assert.deepEqual(nodes,[1,2,3]);assert.equal(JSON.stringify(events),before);
+});
 test('owned historical bridge task is removed from the projection, never from raw log or arbitrary user text',()=>{
  const text='【QQ 回合 private】\n历史桥接指令\n【新增 QQ 消息数据】\n[{"seq":1,"text":"用户原文"}]';
  const entries=[{seq:1,type:'user/message',data:{id:'owned',source:{kind:'qq-context-dialogue',seqs:[1]},content:[{type:'text',text}]}},{seq:2,type:'user/message',data:{id:'ordinary',source:{kind:'user'},content:[{type:'text',text}]}}],before=JSON.stringify(entries),changes=[];

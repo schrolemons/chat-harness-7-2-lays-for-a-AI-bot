@@ -314,7 +314,7 @@ export function makeFixtureState() {
     },
     roleInjectMax: 8000,
     dshEffort: 'max',
-    whitelist: { allow: { groups: [123456789, 100003], private: [100001] }, deny: { groups: [], private: [] }, ownerQQ: '100001' },
+    whitelist: { allow: { groups: [123456789, 100003], private: [10001] }, deny: { groups: [], private: [] }, ownerQQ: '10001' },
     diaryCatchUpSent: { 'private:10001': false, 'private:10002': false },
     sessions: [
       { key: 'group:40001', sessionId: 'demo-community-20260920', owner: false },
@@ -367,7 +367,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
   const learningContexts={},learningTools=new Map();
   for(const [kind,id,factory] of [['alias','ctx-member-alias',createAliasLearning],['terms','ctx-interest-terms',createTermLearning]]){
     const manifest=JSON.parse(await readFile(resolve(projectRoot,'plugins/qq-components',id,'plugin.json'),'utf8'));
-    const context={id,config:structuredClone(manifest.config),runtime:{},signal:new AbortController().signal,isActive:()=>true,log:()=>{},warn:()=>{},state:{get:()=>structuredClone(learningStates[kind]),set:patch=>Object.assign(learningStates[kind],structuredClone(patch))},registerTool:(name,tool)=>learningTools.set(name,{id,tool}),capabilities:{getOwnerQQ:()=>100001,getLearningHistory:async()=>[],getLearningMembers:async()=>[],learningPrompt:async()=>JSON.stringify({summary:'公开聚会以创作、交流与活动为内容，具体规则依主办方。不同成员观点并不完全相同。',sources:['https://www.anthrocon.org/']})}};
+    const context={id,config:structuredClone(manifest.config),runtime:{},signal:new AbortController().signal,isActive:()=>true,log:()=>{},warn:()=>{},state:{get:()=>structuredClone(learningStates[kind]),set:patch=>Object.assign(learningStates[kind],structuredClone(patch))},registerTool:(name,tool)=>learningTools.set(name,{id,tool}),capabilities:{getOwnerQQ:()=>10001,getLearningHistory:async()=>[],getLearningMembers:async()=>[],learningPrompt:async()=>JSON.stringify({summary:'公开聚会以创作、交流与活动为内容，具体规则依主办方。不同成员观点并不完全相同。',sources:['https://www.anthrocon.org/']})}};
     learningContexts[kind]=context;factory(context);
   }
 
@@ -674,7 +674,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
         switch (path) {
           case '/api/plugins/call': {
             if(body.tool==='knowledge_quota')return json({ok:true,plugin:'ctx-knowledge-quota',result:body.input?.action==='reset'?quotaService.reset(body.input?.key||''):quotaService.report(body.input?.key||'')});
-            if(body.tool==='profile_snapshot')return json({ok:true,plugin:'ctx-memory-profile-store',result:{ok:true,version:1,updatedAt:Date.now(),profiles:{'100001':{hobbies:'离线档案兴趣'}},people:{'100001':{name:'演示用户',keys:['private:10001']}}}});
+            if(body.tool==='profile_snapshot')return json({ok:true,plugin:'ctx-memory-profile-store',result:{ok:true,version:1,updatedAt:Date.now(),profiles:{'10001':{hobbies:'离线档案兴趣'}},people:{'10001':{name:'演示用户',keys:['private:10001']}}}});
             if(body.tool==='image_generation_secret'&&body.input?.op==='status')return json({ok:true,plugin:'exec-image-generation',result:{ok:true,configured:false}});
             if(body.tool==='image_generation_status')return json({ok:true,plugin:'exec-image-generation',result:{ok:true,day:'2026-10-29',globalUsed:0,globalLimit:10,sessionLimit:3,quotaMode:'requests'}});
             if(body.tool==='campus_watch_status')return json({ok:true,plugin:'life-campus-watch',result:{ok:true,enabled:true,watchUrls:[],sites:[{name:'课程公告',url:'https://example.invalid/course?course_id=100&content_id=200&context='+('long-address-'.repeat(18)),health:{checkedAt:Date.now(),fetch:'green',auth:'green',diff:'stable',delivery:'none',hint:'页面可读取'}}],scripts:(scriptsFixture.config.scriptPaths||[]).map(item=>({path:typeof item==='string'?item:item.value,health:item.enabled===false?'paused':'green',description:scriptsFixture.config.scriptDescriptions?.[typeof item==='string'?item:item.value]||''})),running:[],lastRun:null}});

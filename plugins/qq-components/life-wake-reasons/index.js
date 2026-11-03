@@ -47,7 +47,7 @@ export function createPlugin(ctx) {
       case 'timeout':
         return `【唤醒】${key}\n原因：你明确约定的到时唤醒时间已到。\n核对本次约定，查看需要处理的消息；群聊来信仍服从全局概率策略，不另设触发条件。`;
       case 'replyCheck':
-        return `【回复检查】${key}\n原因：你刚刚发送过消息，现在回来检查是否有人回复。\n已有回复时先看消息，需要短静默就用 qq_wait_for_messages(purpose="reply") 判断对方是否说完；如果没人回你，不用硬补一句，但也不要立刻潜水——完成回复和回执后调用 qq_wait_for_messages 等新互动，超时按返回的 endRound 决定结束或继续等待；收到新消息则继续处理，确认是否说完用 qq_wait_for_quiet。`;
+        return `【回复检查】${key}\n原因：你刚刚发送过消息，现在回来检查是否有人回复。\n已有回复时先读消息，对方分条输入或连续补充时调用 qq_wait_for_quiet 合并后再回应。完成实际回复和回执后，用 qq_wait_for_messages 等待人类的下一步响应；等待超时按返回的 endRound、action 和 guidance 执行继续等待、结束本轮、延续旧话题或开启新话题。没人回应时不自行追加发言，不重抽后台判定。`;
       case 'careCheck':
         return '【主动关心】\n（主动开口，不是回复谁）已经有一阵子没聊了。用 1 条短句关心一下对方（在干嘛/吃饭没/今天怎么样），语气自然、别像客服；对方不回复也没关系，不要连发。可以配 1 张表情。';
       case 'newsShare': {
@@ -137,7 +137,7 @@ export function createPlugin(ctx) {
           const regular = tail(input);
           if (input.doubleStampEnabled === false) return regular;
           const count = Math.max(1, Math.min(100, Math.round(Number(input.doubleStampWindowCount) || 8)));
-          const receipt = `【双戳窗口回查｜按消息条数】新消息到达时，先检查快照 receiptWindow 中它之前最近 ${count} 条消息，再处理当前新消息。status=complete 的跳过；seen 或 unseen 的历史消息要先按模型判断逐条回复（相似内容可合并回复），再接当前新消息。若 receiptWindowPartial=true，先用 qq_get_recent_messages / qq_get_unread_messages 补齐该窗口。完成后必须调用 qq_report_message_receipts，用 JSON 参数 {conversationId: 快照中的 conversationId, receipts: [{seq, status}]} 逐条报告窗口内每条及本轮处理的待回复消息；status 只能是 seen（已读未回复）、replied（本轮成功发送后）、complete（已有双戳）或 anomaly（并附 note）。Harness 会即时校验并写回双戳；绝不把未成功发送的消息报为 replied。只有 repliedAt、格式异常等其余状态必须报 anomaly，不要擅自修补。`;
+          const receipt = `【双戳窗口回查｜按消息条数】新消息到达时，检查快照 receiptWindow 中它之前最近 ${count} 条消息的真实状态，先区分必答消息与可选上下文。status=complete 的跳过；replyDisposition=history 或 needsReply=false 的旧消息只作上文，不要求补答，不得为消除旧未读而补写 replied。只有 replyRequirement=required 且 needsReply=true 的窗口内消息必须按收件seq升序回复，相似的连续片段可合并；窗口内普通消息和未压缩历史可自由选择是否回复。若 receiptWindowPartial=true 且当前理解或回复确需缺失正文，用 qq_get_recent_messages / qq_get_unread_messages 补齐相关内容，不因审计窗口不全阻塞新消息。完成后调用 qq_report_message_receipts，用 JSON 参数 {conversationId: 快照中的 conversationId, receipts: [{seq, status}]} 报告实际看过和处理的消息；status 只能是 seen（已读未回复）、replied（本轮成功发送后）、complete（已有双戳）、context（普通消息仅作上文，须说明原因）或 anomaly（并附 note）。Harness 会即时校验并写回双戳；绝不把未成功发送的消息报为 replied。只有 repliedAt、格式异常等其余状态必须报 anomaly，不要擅自修补。`;
           return [receipt, regular].filter(Boolean).join('\n\n');
         } catch (error) { ctx.warn('wakeTail 生成失败：' + (error?.message ?? error)); return ''; }
       }

@@ -11,7 +11,25 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
  const social=createMilkSocial({read,write,clock,currentStock:()=>selectedStock(read().lastSuccess,milkPolicy(ctx.config))});
  // The bridge rechecks this same expiry object at the physical send boundary.
  ctx.signal?.addEventListener('abort',()=>{for(const meta of deliveryMetas.values())meta.expiresAt=0;},{once:true});
+ function reconcileSpoken(){
+  if(!alive())return;
+  const s=read(),event=s.socialEvent,owner=String(ctx.capabilities?.getOwnerQQ?.()||''),key='private:'+owner;
+  if(!/^[1-9]\d*$/.test(owner)||!event?.id||s.spokenMilk?.[key]!==event.id)return;
+  // Old persisted notices predate eventId. Only exact source facts may join them.
+  const same=n=>n&&(n.eventId?n.eventId===event.id:n.sourceAt===event.at&&n.kind===event.kind&&n.stage===event.stage);
+  const pending=same(s.pendingAlert),notice=same(s.scheduledNotice)&&!['sent','covered'].includes(s.scheduledNotice.status);
+  if(!pending&&!notice)return;
+  const patch={};if(pending)patch.pendingAlert=null;
+  const covered=notice?s.scheduledNotice:pending&&!s.scheduledNotice?s.pendingAlert:null;
+  if(covered)patch.scheduledNotice={...covered,key,eventId:event.id,status:'covered',coveredAt:clock(),coveredByEventId:event.id};
+  // Keep a distinct covered receipt; never invent a scheduled physical sentAt.
+  for(const id of [pending&&s.pendingAlert.id,notice&&s.scheduledNotice.id]){
+   const meta=deliveryMetas.get(id);if(meta){meta.expiresAt=0;deliveryMetas.delete(id);}
+  }
+  write(patch);
+ }
  async function deliver(now){
+  reconcileSpoken();
   const pending=read().pendingAlert;if(!pending||!alive())return;
   if(now>pending.expiresAt){write({pendingAlert:null});return;}
   if(now<(pending.notBefore||0))return;
@@ -52,7 +70,7 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
    out.milk.responseGuidance+='\n'+milkChangeGuidance;
    let pending=current.pendingAlert;
    if(pending&&pending.stage!==stock.stage)pending=null;
-   if(c.monitorEnabled&&event)pending={id:'milk-stock:'+randomUUID(),kind:event.kind,stage:stock.stage,text:stockNotice(event),sourceAt:now,expiresAt:now+2*3600000,notBefore:event.urgent?now:Math.max(now,(current.lastNoticeAt||0)+c.notificationCooldownMin*60000)};
+   if(c.monitorEnabled&&event)pending={id:'milk-stock:'+randomUUID(),eventId:event.id,kind:event.kind,stage:stock.stage,text:stockNotice(event),sourceAt:now,expiresAt:now+2*3600000,notBefore:event.urgent?now:Math.max(now,(current.lastNoticeAt||0)+c.notificationCooldownMin*60000)};
    const scheduledNotice=current.scheduledNotice?.stage===stock.stage&&!event?current.scheduledNotice:null;
    write({lastResult:out,lastSuccess:sample,lastError:null,failures:0,nextCheckAt:now+c.checkIntervalMin*60000,pendingAlert:pending,scheduledNotice});
    social.observe(event,now);
@@ -68,10 +86,10 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
    void deliver(clock()).catch(()=>ctx.warn?.('API预算变化投递暂未完成，保留待处理事件'));
   }
   const stock=selectedStock(result,milkPolicy(ctx.config));return stock.stage===result.milk?.stock?.stage?result:{...result,milk:{...result.milk,stock,change:null}};}
- return {query:queryResult,async queryFor({key}={}){if(!validMilkKey(key))return {ok:false,error:'无效会话'};const result=await queryResult();return key==='private:'+String(ctx.capabilities?.getOwnerQQ?.()||'')?result:social.publicResult(result,key);},sent:payload=>social.sent(payload),noteStatus:payload=>social.noteStatus(payload),noteWritten:payload=>social.noteWritten(payload),async tick({now=clock()}={}){const c=milkPolicy(ctx.config);if(!c.monitorEnabled||!alive())return;if(!read().nextCheckAt||now>=read().nextCheckAt)await refresh({notify:true,now});else await deliver(now);},
+ return {query:queryResult,async queryFor({key}={}){if(!validMilkKey(key))return {ok:false,error:'无效会话'};const result=await queryResult();return key==='private:'+String(ctx.capabilities?.getOwnerQQ?.()||'')?result:social.publicResult(result,key);},sent:payload=>{social.sent(payload);reconcileSpoken();},noteStatus:payload=>social.noteStatus(payload),noteWritten:payload=>social.noteWritten(payload),async tick({now=clock()}={}){const c=milkPolicy(ctx.config);if(!c.monitorEnabled||!alive())return;reconcileSpoken();if(!read().nextCheckAt||now>=read().nextCheckAt)await refresh({notify:true,now});else await deliver(now);},
   wakeTail({key,reason,scheduledEvent}={}){
    const n=read().scheduledNotice;
-   if(reason!=='milkStock'||!alive()||key!=='private:'+String(ctx.capabilities?.getOwnerQQ?.()||'')||n?.id!==scheduledEvent?.id||scheduledEvent.expiresAt<clock())return '';
+   if(reason!=='milkStock'||!alive()||n?.status==='covered'||key!=='private:'+String(ctx.capabilities?.getOwnerQQ?.()||'')||n?.id!==scheduledEvent?.id||scheduledEvent.expiresAt<clock())return '';
    return '【定时主动会话：API预算告警】这次由API预算定时核对事件触发，不是用户来信，也不抽主动概率。已核实的事件事实：'+n.text+'\n'+milkVoice+'\n'+milkChangeGuidance+'\n沿用当前人设卡、对话示范和心情，用发送工具只发一条短句，像自己惦记API预算那样说，不照读技术通知。查询失败只说未核实，不说归零。无需再查余额，不额外发图片、表情或追问，不处理或标记无关的待处理消息；核实本条实际发送结果后直接结束。成功发送才算一次主动会话并刷新主动概率模型；接收请求不等于已送达。';
   },
   status(){const st=read(),maxAge=Math.max(15,milkPolicy(ctx.config).checkIntervalMin*3)*60000;return {...st,lastSuccess:st.lastSuccess?{...st.lastSuccess,stock:selectedStock(st.lastSuccess,milkPolicy(ctx.config))}:undefined,fresh:!!st.lastSuccess&&!st.lastError&&clock()-st.lastSuccess.at<=maxAge};},

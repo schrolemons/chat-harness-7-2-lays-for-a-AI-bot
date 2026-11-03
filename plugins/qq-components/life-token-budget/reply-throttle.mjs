@@ -13,7 +13,7 @@ export function createReplyThrottle(ctx,{policy,isExempt}){
     const status=await ctx.capabilities?.budgetWeakStatus?.(key);
     if(!status||status.stage!=='weak'){ctx.scheduler.cancel('budget-weak:'+key);return;}
     if(status.allowed!==true||status.busy){scheduleGroup(key,now+60000);return;}
-    if(status.pendingCount>0)await ctx.capabilities?.requestBudgetWake?.(key);
+    if((status.candidateCount??status.pendingCount)>0)await ctx.capabilities?.requestBudgetWake?.(key);
     const next=now+policy(key).weakMinIntervalMin*60000;put('weakGroupDue',key,next);scheduleGroup(key,next);
    }});
  };

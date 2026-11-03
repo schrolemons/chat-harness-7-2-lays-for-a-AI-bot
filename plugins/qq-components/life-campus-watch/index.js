@@ -83,7 +83,7 @@ export function createPlugin(ctx) {
 
   return { validateConfig,hooks: { onTick({ now = Date.now() } = {}) {
     if(recovery.pendingNotices().length&&typeof ctx.capabilities?.sendNotificationDetailed==='function'){
-      void (async()=>{for(const item of recovery.pendingNotices()){try{const key='private:'+String(ctx.capabilities.getOwnerQQ?.()||'');const result=await ctx.capabilities.sendNotificationDetailed(key,item.text,{items:[item],operationId:item.id,sourceAt:item.sourceAt,expiresAt:item.expiresAt});recovery.noticeResult(item.id,result?.ok===true,result?.reason||'');}catch(error){recovery.noticeResult(item.id,false,error.message);break;}}})().catch(error=>ctx.warn?.('登录提示处理失败：'+error.message));
+      void (async()=>{for(const item of recovery.pendingNotices()){if(!recovery.pendingNotices().some(current=>current.id===item.id))continue;try{const key='private:'+String(ctx.capabilities.getOwnerQQ?.()||'');const result=await ctx.capabilities.sendNotificationDetailed(key,item.text,{id:item.id,sourceAt:item.sourceAt,expiresAt:item.expiresAt});recovery.noticeResult(item.id,result?.ok===true,result?.reason||'');}catch(error){recovery.noticeResult(item.id,false,error.message);break;}}})().catch(error=>ctx.warn?.('登录提示处理失败：'+error.message));
     }
     const hasWebWork = cfg.webWatchEnabled !== false && watchUrls.some(site=>recovery.canCheck(site.url,now));
     const hasScriptWork = cfg.scriptCollabEnabled !== false && scriptPaths.length > 0;

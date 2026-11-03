@@ -23,6 +23,21 @@ try {
   await results.getByRole('button').filter({hasText:'bili_analyze_video'}).click();
   assert.equal(await page.locator('#section-reference').isVisible(),true);
   await page.locator('#toolReferenceRoot .tool-reference-item').first().waitFor();
+  // The dropdown must remain clickable where it overlaps the page card,
+  // including after page-entry animations have created stacking contexts.
+  for(const viewport of [{width:1440,height:1000},{width:390,height:844}]) {
+    await page.setViewportSize(viewport);
+    await search.fill('wait');
+    await results.getByRole('button').first().waitFor();
+    await page.evaluate(()=>Promise.all(document.getAnimations().filter(animation=>animation.effect?.getTiming().iterations!==Infinity).map(animation=>animation.finished.catch(()=>{}))));
+    const exposed=await results.evaluate(el=>{
+      const box=el.getBoundingClientRect(),card=document.querySelector('#section-reference').getBoundingClientRect();
+      const x=Math.min(box.right-15,innerWidth-15),y=Math.max(box.top+20,card.top+20);
+      return {overlaps:y<box.bottom&&y<innerHeight,unobstructed:el.contains(document.elementFromPoint(x,y))};
+    });
+    assert.equal(exposed.overlaps,true,'fixture dropdown overlaps the content card');
+    assert.equal(exposed.unobstructed,true,'search suggestions must appear above the content card');
+  }
   for(const query of ['BILI_ANALYZE_VIDEO','mcp__snowluma__bili_analyze_video','视频拼接图']) {
     await search.fill(query);
     assert.equal(await results.getByRole('button').filter({hasText:'bili_analyze_video'}).count(),1,query);

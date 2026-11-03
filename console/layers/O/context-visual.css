@@ -35,9 +35,8 @@
 .context-console .context-knowledge-selection li{margin:7px 0;line-height:1.5;overflow-wrap:anywhere}
 .context-console .context-knowledge-selection li span{display:block;font-size:12px;color:var(--muted,#64708a)}
 .context-console .context-request-picker{margin:12px 0;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:end}
-.context-console .context-request-picker[hidden],.context-console .context-request-diff[hidden]{display:none}
+.context-console .context-request-picker[hidden]{display:none}
 .context-console .context-request-picker label{display:grid;gap:6px;width:min(100%,520px)}
-.context-console .context-request-diff{padding:12px 16px;margin:12px 0;border:1px solid var(--border,#e1e6f1);border-radius:10px;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
 
 .context-console .context-help{margin:12px 0;color:var(--muted,#64708a);font-size:13px}
 .context-console .context-help>summary{cursor:pointer;font-weight:600}
@@ -105,10 +104,6 @@
 .context-console .context-knowledge-note{line-height:1.85;margin:10px 0}
 .context-console .context-request-picker{margin:16px 0;gap:12px 20px}
 .context-console .context-request-picker p{flex:1;min-width:220px;font-size:12px;line-height:1.8}
-.context-console .context-request-diff{padding:16px 20px;margin:16px 0;border-radius:12px;background:var(--surface,#f8f9fd);line-height:1.85}
-.context-console .context-request-diff p{margin:10px 0 0}
-.context-console .context-request-diff>summary{cursor:pointer;font-size:12px;font-weight:600}
-.context-console .context-request-diff[open]>summary{margin-bottom:14px}
 @media(max-width:1000px){.context-console .context-intro{flex-direction:column;gap:12px}.context-console .context-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.context-console .context-stat:first-child{grid-column:1/-1}}
 @media(max-width:640px){.context-console .context-intro h2{font-size:20px}.context-console .context-toolbar{padding:14px}.context-console .context-toolbar button{flex:1;min-width:120px}.context-console .context-module,.context-console details.context-section{padding:14px}.context-console .context-module-head{gap:10px}.context-console .context-module-head h3{min-width:calc(100% - 55px)}.context-console .context-module-head label{white-space:normal}.context-console .context-stat{padding:14px}.context-console .context-stat>strong{font-size:15px}.context-console .context-frame-label,.context-console .context-text-frame pre{padding:12px}.context-console .context-tabs{width:100%}.context-console .context-tabs button{flex:1}.context-console .context-knowledge-stats>span{min-width:70px;padding:8px}}
 
@@ -147,6 +142,11 @@
 .context-console .context-kind-call,.context-console .context-kind-definition{background:var(--pill-blue-bg);color:var(--pill-blue-fg)}
 .context-console .context-kind-result{background:var(--warn-bg);color:var(--warn-fg)}
 .context-console .context-kind-system{background:var(--accent-soft-bg);color:var(--accent-soft-fg)}
+.context-console .context-display-role{font-family:ui-monospace,Consolas,monospace}
+.context-console .context-role-assistant,.context-console .context-role-system{background:var(--accent-soft-bg);color:var(--accent-soft-fg)}
+.context-console .context-role-user{background:var(--pill-blue-bg);color:var(--pill-blue-fg)}
+.context-console .context-role-tool{background:var(--warn-bg);color:var(--warn-fg)}
+.context-console .context-role-developer{background:var(--pill-green-bg);color:var(--pill-green-fg)}
 .context-console .context-detail{overflow:auto;min-width:0;padding:22px;scrollbar-width:thin;background:var(--surface)}
 .context-console .context-detail-heading{padding-bottom:16px;border-bottom:1px solid var(--border)}
 .context-console .context-detail-heading h3{font-size:17px;line-height:1.7;margin:10px 0 8px;overflow-wrap:anywhere}
@@ -201,13 +201,29 @@
 .context-console .context-component-guide small{color:var(--muted)}
 .context-console .context-detail-fields>div{grid-template-columns:minmax(110px,130px) minmax(0,1fr)}
 @media(max-width:640px){.context-console .context-detail-fields>div{grid-template-columns:100px minmax(0,1fr)}}
+.context-console .context-detail-fields>.context-role-pair{grid-template-columns:max-content minmax(0,1fr);column-gap:8px;align-items:baseline}
 .context-console .context-history-state-note{padding:14px;border-left:3px solid var(--accent);background:var(--accent-soft-bg);border-radius:8px;font-size:12px;line-height:1.85}
 .context-console .context-layout-switch{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 0;font-size:12px;color:var(--muted)}
 .context-console .context-layout-switch button{padding:8px 12px;min-height:36px;background:var(--surface);color:var(--text-secondary);border:1px solid var(--border)}
 .context-console .context-layout-switch button[aria-pressed=true]{background:var(--accent-soft-bg);color:var(--accent-soft-fg);border-color:var(--accent)}
 .context-console .context-layout-switch>span{flex:1;min-width:200px;line-height:1.8}
 .context-console .context-window-badge{font-size:10px;line-height:1.7;color:var(--muted);padding:2px 6px;background:var(--surface-subtle);border-radius:5px;overflow-wrap:anywhere}
-.context-console .context-output-trace article+article{padding-top:12px;margin-top:12px;border-top:1px solid var(--border)}
+.context-console .context-output-trace{display:grid;padding:0;overflow:hidden;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-size:13px;font-weight:400;line-height:1.75}
+.context-console .context-trace-section{padding:16px 18px;min-width:0}
+.context-console .context-trace-section+.context-trace-section{border-top:1px solid var(--border)}
+.context-console .context-output-trace h4{margin:0 0 10px;font-size:13px;font-weight:600;color:var(--text-strong)}
+.context-console .context-output-trace p{margin:8px 0 0;font-weight:400;color:var(--text-secondary);overflow-wrap:anywhere}
+.context-console .context-output-trace .context-trace-value{margin-top:0;font-weight:400;color:var(--text)}
+.context-console .context-output-trace .context-trace-tool{margin-top:6px;font-weight:400}
+.context-console .context-output-trace .context-trace-note{margin-top:10px;font-size:11px;font-weight:400;color:var(--muted)}
+.context-console .context-output-trace .context-flow-links{margin:12px 0 0}
+.context-console .context-output-trace button{min-height:32px;padding:6px 10px;font-size:12px;font-weight:400}
+.context-console .context-output-trace code{font-size:12px;font-weight:400}
+.context-console .context-output-trace article+article{padding-top:14px;margin-top:14px;border-top:1px solid var(--border)}
+.context-console .context-trace-fields{display:grid;gap:6px;margin:10px 0 0;font-size:12px;font-weight:400}
+.context-console .context-trace-fields>div{display:grid;grid-template-columns:40px minmax(0,1fr);gap:10px}
+.context-console .context-trace-fields dt{color:var(--muted);font-weight:400}
+.context-console .context-trace-fields dd{margin:0;overflow-wrap:anywhere;font-weight:400}
 .context-console .context-output-badges{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%;margin:5px 0}
 .context-console .context-output-badges>span{font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);color:var(--muted);background:var(--surface)}
 .context-console .context-flow-links{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
@@ -250,7 +266,7 @@
 .context-console .context-card-legend .context{background:var(--surface-subtle)}
 .context-console .context-card-legend .tool{background:var(--pill-green-bg)}
 .context-console .context-detail[class*=context-family-] .context-record-part,.context-console .context-detail[class*=context-family-] .context-text-frame{background:var(--context-family-bg);border:1px solid var(--context-family-border);border-radius:12px}
-.context-console .context-family-message .context-sequence-number[data-qq-seq]{font-size:17px;font-weight:700;color:var(--text);line-height:1.5;overflow-wrap:anywhere}
+.context-console .context-family-message .context-sequence-number[data-dialogue-seq]{font-size:17px;font-weight:700;color:var(--text);line-height:1.5;overflow-wrap:anywhere}
 .context-console button.context-family-message{grid-template-columns:54px minmax(0,1fr) 40px}
 @media(max-width:1000px){.context-console button.context-family-message{grid-template-columns:48px minmax(0,1fr)}}
 .context-console .context-window-summary{padding:12px 16px;font-size:12px;line-height:1.85;color:var(--muted);border-bottom:1px solid var(--border)}

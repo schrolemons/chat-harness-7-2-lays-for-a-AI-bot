@@ -26,9 +26,10 @@ test('three visual families cover real reply, direct private delivery, quotes an
   assert.equal(await page.locator('[data-entry-kind="delivery"]').count(),2);assert.equal(await page.locator('[data-entry-kind="quote"]').count(),1);assert.equal(await page.locator('[data-entry-kind="forwarded"]').count(),1);
   const reply=page.locator('[data-inspector-select="delivery:r:0"]');assert.match(await reply.innerText(),/引用 群友乙[\s\S]*你是谁[\s\S]*引用后的回答/);
   const relay=page.locator('[data-inspector-select="delivery:p:0"]');assert.match(await relay.innerText(),/group:12 → private:34/);
-  const internal=page.locator('[data-entry-kind="assistant"]');assert.match(await internal.innerText(),/工具续接[\s\S]*印象回执后[\s\S]*生成原文[\s\S]*这次观察/);
-  await internal.click();assert.match(await page.locator('.context-output-trace').innerText(),/前一步工具处理[\s\S]*不是这段内部文字的保存位置[\s\S]*state\/social-v2\.json[\s\S]*memberImpressions[\s\S]*本条数据去向[\s\S]*session\.v4\.jsonl\.zstd/);
-  await reply.click();assert.match(await page.locator('.context-detail').innerText(),/发送成功[\s\S]*没有消息 seq/);
+  const internal=page.locator('[data-entry-kind="assistant"]');assert.match(await internal.innerText(),/生成原因未记录[\s\S]*生成原文[\s\S]*这次观察/);assert(!(await internal.innerText()).includes('印象回执后'));
+  await internal.click();const traceText=await page.locator('.context-output-trace').innerText();assert.match(traceText,/生成来源[\s\S]*本条数据去向[\s\S]*会话历史/);assert(!/前一步工具处理|memberImpressions/.test(traceText));
+  const storage=page.locator('.context-output-trace details').filter({hasText:'查看存储详情'});assert.equal(await storage.getAttribute('open'),null);await storage.locator('summary').click();assert.match(await storage.innerText(),/session\.v4\.jsonl\.zstd/);
+  await reply.click();assert.match(await page.locator('.context-detail').innerText(),/发送成功[\s\S]*对话序号未记录/);
   await page.getByRole('button',{name:'查看来源工具返回',exact:true}).click();
   assert.equal(await page.locator('[data-inspector-layout="business"]').getAttribute('aria-pressed'),'true','source links must keep the message-aware timeline');
   assert.equal(await page.locator('[data-entry-kind="qq"]').count(),2,'user and bot QQ cards survive source navigation');
@@ -88,11 +89,11 @@ test('simulated delivery keeps pending users visible through maintenance and mov
    await page.locator('[data-inspector-region="history"]').click();
    assert.equal(await page.locator('[data-inspector-select="qq:650"]').count(),stage===3?1:0,'only confirmed double receipts move the user into history');
    assert.equal(await page.locator('[data-inspector-select="delivery:fail:0"]').count(),0,'a failed send is never a bot chat');
-   if(stage===1){await page.locator('[data-entry-kind="assistant"]').click();assert.match(await page.locator('.context-output-trace').innerText(),/state\/memory\/affairs\/group_12\.json/);}
+   if(stage===1){await page.locator('[data-entry-kind="assistant"]').click();const traceText=await page.locator('.context-output-trace').innerText();assert.match(traceText,/会话历史/);assert(!/前一步工具处理|state\/memory\/affairs\/group_12\.json/.test(traceText));}
    if(stage===3){
     const human=page.locator('[data-inspector-select="qq:650"]'),bot=page.locator('[data-inspector-select="delivery:reply:0"]');
-    assert.match(await human.innerText(),/650[\s\S]*管理员[\s\S]*刚忙完/);assert.match(await bot.innerText(),/引用 管理员[\s\S]*忙完就好/);
-    assert((await bot.boundingBox()).x>(await human.boundingBox()).x);assert.equal(await human.locator('[data-qq-seq="650"]').count(),1);
+    assert.match(await human.innerText(),/50[\s\S]*管理员[\s\S]*刚忙完/);assert.match(await bot.innerText(),/引用 管理员[\s\S]*忙完就好/);
+    assert((await bot.boundingBox()).x>(await human.boundingBox()).x);assert.equal(await human.locator('[data-dialogue-seq="50"]').count(),1);
     const arg=process.argv.find(x=>x.startsWith('--artifacts='));if(arg){const dir=path.resolve(arg.slice(12));fs.mkdirSync(dir,{recursive:true});await human.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(dir,'simulated-chat-left-right.png')});}
    }
   }

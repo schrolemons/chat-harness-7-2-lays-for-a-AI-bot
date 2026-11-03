@@ -1,8 +1,24 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import * as view from '../plugins/qq-components/obs-context-assembly/request-view.mjs';
 import {dialogueParts,inputOrigin,recordDetails} from '../console/layers/O/context-records.js';
+import {inspectorHtml} from '../console/layers/O/context-inspector.js';
+import {requestEntries} from '../console/layers/O/context-inspector.js';
+import {projectToolFailures} from '../console/layers/O/context-tool-failures.js';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {zstdCompressSync} from 'node:zlib';
 import {readMessageProvenance,enrichRequestProvenance} from '../plugins/qq-components/obs-context-assembly/provenance.mjs';
+
+test('tool cards fold only consecutive failures, retain the final payload and keep subsequent success',()=>{
+ const pair=(n,ok=false,name='qq_reply')=>[{role:'assistant',toolCalls:[{id:'c'+n,name}],text:JSON.stringify({type:'tool-call',id:'c'+n,name,arguments:{message:'尝试'+n}})},{role:'tool',isError:!ok,toolResults:[{toolCallId:'c'+n}],text:ok?'{"ok":true,"sent":1}':'Error: 失败'+n}];
+ const request={messages:[...pair(1),...pair(2),...pair(3),...pair(4,true)]},before=JSON.stringify(request),view=projectToolFailures(requestEntries(request));
+ assert.deepEqual(view.messages.map(row=>row.key),['message:4','message:5','message:6','message:7']);assert.deepEqual(view.messages.map(row=>row.attemptCount||1),[3,3,1,1]);assert.match(view.messages[0].text,/尝试3/);assert.equal(view.messages[1].text,'Error: 失败3');assert.equal(JSON.stringify(request),before);
+ const split={messages:[...pair(1),...pair(2),...pair(3,true,'other_tool'),...pair(4),...pair(5)]};assert.equal(projectToolFailures(requestEntries(split)).messages.length,10);
+ const html=inspectorHtml(request,[],{view:'messages',selected:'message:4'},{renderText:text=>text,renderComponent:()=>''});assert.match(html,/尝试次数：3/);assert(!html.includes('重复工具错误折叠归档'));
+});
+test('legacy archives restore real pairs in event order and do not merge across missing intervening operations',()=>{
+ const archivedToolPairs=[1,2,3].map(n=>({name:'qq_reply',callId:'old'+n,callEventSeq:n*10,resultEventSeq:n*10+1,operationIndex:n===3?4:n,argumentsText:JSON.stringify({message:'旧尝试'+n,token:'SECRET_TOKEN'}),errorText:'Error: 旧失败'+n}));
+ const request={messages:[{id:'archive',role:'user',source:'qq-context-tool-history',text:'旧归档',archivedToolPairs}]},before=JSON.stringify(request),view=projectToolFailures(requestEntries(request));
+ assert.equal(view.messages.length,6);assert(!view.messages.some(row=>row.source==='qq-context-tool-history'));assert(!view.messages.some(row=>row.attemptCount));assert(!JSON.stringify(view.messages).includes('SECRET_TOKEN'));assert.deepEqual(view.messages.map(row=>row.restoredEventSeq),[10,11,20,21,30,31]);assert.equal(JSON.stringify(request),before);
+});
 test('mixed QQ batches render bot messages without seq as readable cards',()=>{
  const message={role:'user',source:'qq-context-dialogue',text:'【新增 QQ 消息数据】\n'+JSON.stringify([{sender:'我',text:'bot回复',isSelf:true,at:'23:49'},{sender:'用户',text:'用户来信',seq:2,receiptState:'seen'}])};
  assert(dialogueParts(message));const html=recordDetails(message);assert.equal((html.match(/class="context-qq-message(?: is-self)?"/g)||[]).length,2);assert.match(html,/23:49/);assert.match(html,/bot回复/);

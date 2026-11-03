@@ -119,3 +119,27 @@ test('known model refusal is retryable and failed physical delivery never resets
  h.pluginHost.setEnabled('tool-deepseek-balance',false);
  assert.equal(await h.sendToQQ(key,'停用后不得发',{wakeOrigin:envelope}),false);
 });
+
+test('ordinary successful chat cancels an already admitted milk turn at the real physical-send guard',async t=>{
+ const {h,sid}=await open(t);let state={};
+ const monitor=createMilkMonitor({config:{},state:{get:()=>state,set:p=>state={...state,...p}},capabilities:{...h.taskCaps,getOwnerQQ:()=>123}},{query:async()=>({ok:true,is_available:false,balance_infos:[{currency:'CNY',total_balance:'0'}]})});
+ // Feed the real route's afterSend dispatch to the isolated monitor instance.
+ const emit=h.pluginHost.emitSent.bind(h.pluginHost);
+ h.pluginHost.emitSent=payload=>{emit(payload);monitor.sent(payload);};
+ await monitor.tick();const envelope=h.pendingTurnEnvelopes.get(sid)[0];
+ const ordinary=await h.sendAgentReplyV2(key,'预算池空了，这会儿舍不得喝。');
+ assert.equal(ordinary.sent,1);assert.equal(state.milk.scheduledNotice.status,'covered');
+ assert.equal(await h.sendToQQ(key,'重复的预算池提醒',{wakeOrigin:envelope,conversationReply:true}),false);
+ assert.equal(h.calls.sent.length,1);
+});
+
+test('milk coverage arriving during transport delay is rechecked before the physical send',async()=>{
+ let state={},meta,entered,release,sends=0;
+ const ready=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
+ const monitor=createMilkMonitor({config:{},state:{get:()=>state,set:p=>state={...state,...p}},capabilities:{getOwnerQQ:()=>123,requestScheduledConversation:async(_key,e)=>{meta=e;return {ok:true};}}},{query:async()=>({ok:true,is_available:false,balance_infos:[{currency:'CNY',total_balance:'0'}]})});
+ await monitor.tick();
+ const transport=createOutboundTransport({sleep:async()=>{entered();await gate;},guard:()=>()=>{if(meta.expiresAt<Date.now())throw Error('定时事件已失效');},callService:(s,m)=>s==='replyPlan'&&m==='reserve'?{ok:true,waitMs:1}:s==='replyPlan'&&m==='authorize'?{ok:true}:undefined});
+ const waiting=transport.perform({key,context:transport.capture({key,envelope:{reason:'milkStock',scheduledEvent:meta,replyPlan:{maxMessageChars:500}}}),text:'重复预算池提醒',send:async()=>{sends++;}});
+ await ready;monitor.sent({key,success:true,messages:['预算池空了']});release();
+ await assert.rejects(waiting,/定时事件已失效/);assert.equal(sends,0);
+});

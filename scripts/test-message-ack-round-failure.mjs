@@ -62,6 +62,19 @@ test('回合抛错后取消补话定时器，到点也不发话术', async () =>
   } finally { h.cancelMessageReadAck(key); await h.close(); }
 });
 
+for (const newer of [false,true]) test(`模型正常结束时${newer?'保留更新来信的':'撤销本批次的'}补话定时器`, async () => {
+  const h=await open();
+  try {
+    const at=arm(h),sid=h.state.sessions[key];
+    await h.deliverPrompt(key,'fixture complete turn');
+    await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:1}}}});
+    if(newer){const next=h.noteMessageAckInbound(key,at+1);h.scheduleMessageReadAck(key,next);}
+    await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/end',data:{turn:1,reason:{kind:'stop'}}}}});
+    assert.equal(h.messageAckArmed.has(key),newer);
+    if(!newer){await settle(h,250);assert.deepEqual(sends(h),[]);}
+  } finally {h.cancelMessageReadAck(key);await h.close();}
+});
+
 for (const kind of ['rejected', 'throws']) {
   test(`DSH投递${kind}时取消当前批次的补话`, async () => {
     const h = await open();

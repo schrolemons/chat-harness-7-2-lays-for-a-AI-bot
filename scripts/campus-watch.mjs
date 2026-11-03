@@ -69,7 +69,12 @@ function skipLoginSite(url,health){
   if(loginRecovery.canCheck(url))return false;
   const recovery=loginRecovery.get(url);Object.assign(health,{auth:'red',hint:recovery.phase==='paused'?'已暂停此网站监管，点击重新监管恢复':'等待登录，下次尝试前不重复访问'});return true;
 }
-async function loginReady(url){const entry=loginRecovery.get(url);if(['waiting','needed','error'].includes(entry.phase)){loginRecovery.recovered(url,entry.generation);await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});}}
+async function loginReady(url){
+  const checked=loginRecovery.checkRecovered(url),entry=loginRecovery.get(url);
+  const loginReady=['waiting','needed'].includes(entry.phase)||entry.phase==='error'&&new URL(entry.url).href===new URL(url).href;
+  if(loginReady)loginRecovery.recovered(url,entry.generation);
+  if(checked.ok||loginReady)await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Navigation has a per-page timeout; stages are awaited to completion. Racing a

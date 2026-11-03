@@ -45,3 +45,12 @@ test('SSO cookie changes trigger validation even if the original login tab stays
  let cookies=[{name:'session',value:'before'}],calls=0,now=10000000;
  const probe=await createLoginProbe({browser:{pages:async()=>[]},context:{cookies:async()=>cookies},target,snapshot:async()=>{},verify:async()=>{calls++;return true;},retryMs:()=>300000,clock:()=>now});assert.equal(await probe(),false);assert.equal(calls,0);cookies=[{name:'session',value:'after'}];assert.equal(await probe(),true);assert.equal(calls,1);assert.equal(await probe(),false);assert.equal(calls,1);
 });
+
+test('transient access failures send nothing; persistent page failures notify once and recover only on the same page',async t=>{
+ const f=fixture(t),sent=[],other={url:target.url+'/other',name:'另一课程'};
+ const notify=()=>flushLoginNotices({...f,send:async request=>{sent.push(request.items[0]);return true;}});
+ f.recovery.checkFailed(target,'读取暂时失败');await notify();await f.sleep(3000);f.recovery.checkRecovered(target.url);await notify();assert.equal(sent.length,0);
+ f.recovery.checkFailed(target,'读取失败');await f.sleep(300000);f.recovery.checkRecovered(other.url);f.recovery.checkFailed(target,'复查仍失败');await notify();assert.equal(sent.length,1);assert(sent[0].text.includes(target.url));
+ f.recovery.checkRecovered(other.url);await notify();assert.equal(sent.length,1);
+ f.recovery.checkRecovered(target.url);await notify();assert.equal(sent.length,2);assert.match(sent[1].text,/原先失败的页面/);
+});

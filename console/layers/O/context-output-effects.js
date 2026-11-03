@@ -28,10 +28,10 @@ export function storedToolEffect(name,args,payload,request={}){
  }else if(name==='qq_report_message_receipts'||name==='qq_mark_read'){
   const reporting=name==='qq_report_message_receipts';unchanged=reporting?data?.updated===0:data?.markedCount===0;
   confirmed=data?.ok===true&&(reporting?Array.isArray(data.receipts):Number.isSafeInteger(data.markedCount)&&data.markedCount>0);
-  effect={title:reporting?'QQ 收件双戳':'QQ 已读水位',badge:'收件状态',storage:'state/social-v2.json',field:(key?key+' · ':'')+(reporting?'逐消息收件状态 / seenAt / repliedAt':'已读水位 / seenAt'),action:'更新'};
+  effect={title:reporting?'QQ 收件双戳':'QQ 已读水位',badge:'收件状态',storage:'state/social-v2.json',field:(key?key+' · ':'')+(reporting?'逐条来信的已读／已回复状态':'已读水位 / seenAt'),action:'更新'};
  }
  if(!effect)return null;
  const status=!payload?'pending':failed?'failed':unchanged?'unchanged':data?.ok===false?'failed':confirmed?(read?'read':'confirmed'):'unverified';
- const outcome=status==='pending'?'已请求'+effect.action+'，尚无对应返回':status==='failed'?'工具未确认'+effect.action+(data?.error||outer?.error?'：'+String(data?.error||outer?.error):'成功'):status==='unchanged'?'返回确认没有新增变更':status==='read'?'只读返回，未写入此资料':status==='confirmed'?'工具回执确认'+effect.action+'成功':'未采集足以确认此项'+effect.action+'的返回字段；可能转入其他处理路径';
+ const outcome=status==='pending'?'已请求'+effect.action+'，尚无对应返回':status==='failed'?'工具未确认'+effect.action+(data?.error||outer?.error?'：'+String(data?.error||outer?.error):'成功'):status==='unchanged'?'返回确认没有新增变更':status==='read'?'只读返回，未写入此资料':status==='confirmed'?'已成功调用':'未采集足以确认此项'+effect.action+'的返回字段；可能转入其他处理路径';
  return {kind:'storage',...effect,status,outcome,verified:status==='confirmed'};
 }

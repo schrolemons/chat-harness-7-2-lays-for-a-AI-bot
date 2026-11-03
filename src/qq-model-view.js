@@ -115,11 +115,12 @@ export function compactModelMessage(message, opts = {}) {
   const rawRepliedAt = Number(message.repliedAt);
   delete result.seenAt;
   delete result.repliedAt;
-  if (Number.isFinite(rawSeenAt) && rawSeenAt > 0 && !(Number.isFinite(rawRepliedAt) && rawRepliedAt > 0)) {
+  if (message.replyDisposition !== 'history' && Number.isFinite(rawSeenAt) && rawSeenAt > 0 && !(Number.isFinite(rawRepliedAt) && rawRepliedAt > 0)) {
     result.awaitingReply = true;
   } else {
     delete result.awaitingReply;
   }
+  if (message.replyDisposition === 'history') result.needsReply = false;
   if (Array.isArray(result.media)) {
     const canResolveByMessage = Number.isSafeInteger(message.seq) && message.seq > 0;
     result.media = compactMedia(result.media, canResolveByMessage);

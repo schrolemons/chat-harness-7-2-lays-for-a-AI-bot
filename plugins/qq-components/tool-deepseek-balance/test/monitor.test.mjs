@@ -173,3 +173,63 @@ test('accepted admission persists across reload; no physical notification fallba
  const seed=f.state();seed.milk.pendingAlert={...seed.milk.scheduledNotice};seed.milk.scheduledNotice.status='dispatching';
  const crashed=fixture({},seed);await crashed.monitor.tick({now:f.now()+60000});assert.equal(crashed.notices.length,0);assert.equal(crashed.state().milk.pendingAlert,null);
 });
+
+test('ordinary owner delivery covers the same accepted milk event and revokes its queued physical send',async()=>{
+ const f=fixture();await f.monitor.tick();f.next(account('0',false));await f.monitor.tick();
+ const meta=f.notices[0].meta,eventId=f.state().milk.socialEvent.id;
+ assert.equal(meta.eventId,eventId);
+ f.monitor.sent({key:'private:123',success:true,messages:['预算池空了，有点减少不必要调用。']});
+ assert.equal(meta.expiresAt,0);assert.equal(f.state().milk.scheduledNotice.status,'covered');
+ assert.equal(f.state().milk.scheduledNotice.coveredByEventId,eventId);
+ assert.equal(f.monitor.wakeTail({key:'private:123',reason:'milkStock',scheduledEvent:meta}),'');
+ meta.onDelivered({key:'private:123',success:true,text:'迟到回执',sentAt:f.now()});
+ assert.equal(f.state().milk.scheduledNotice.status,'covered');
+ await f.monitor.tick();assert.equal(f.notices.length,1);
+ f.next(account('20'));await f.monitor.tick();assert.equal(f.notices.length,2);
+ assert.notEqual(f.notices[1].meta.eventId,eventId);assert(f.notices[1].meta.expiresAt>0);
+});
+
+test('successful owner chat clears a busy pending notice; failures, unrelated text and other chats do not',async()=>{
+ const f=fixture();await f.monitor.tick();f.ctx.capabilities.requestScheduledConversation=async()=>({ok:false,reason:'busy'});
+ f.next(account('0',false));await f.monitor.tick();const id=f.state().milk.pendingAlert.id;
+ for(const payload of [{key:'private:123',success:false,messages:['预算池空了']},{key:'private:123',success:true,messages:['你好呀']},{key:'group:456',success:true,messages:['预算池空了']}]){
+  f.monitor.sent(payload);assert.equal(f.state().milk.pendingAlert.id,id);
+ }
+ f.monitor.sent({key:'private:123',success:true,messages:['预算池空了']});
+ assert.equal(f.state().milk.pendingAlert,null);
+ f.ctx.capabilities.requestScheduledConversation=async()=>assert.fail('covered event cannot be admitted');
+ f.next(account('0',false));await f.monitor.tick();
+});
+
+test('ordinary delivery during model admission cannot be resurrected by the late accepted result',async()=>{
+ const f=fixture();await f.monitor.tick();let entered,release,meta;
+ const ready=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
+ f.ctx.capabilities.requestScheduledConversation=async(_key,value)=>{meta=value;entered();await gate;return {ok:true};};
+ f.next(account('0',false));const waiting=f.monitor.tick();await ready;
+ f.monitor.sent({key:'private:123',success:true,messages:['API预算空了']});
+ assert.equal(meta.expiresAt,0);release();await waiting;
+ assert.equal(f.state().milk.pendingAlert,null);assert.equal(f.state().milk.scheduledNotice.status,'covered');
+});
+
+test('persisted spoken receipts reconcile legacy notices by exact event facts without suppressing diagnostics',async()=>{
+ const f=fixture();await f.monitor.tick();f.next(account('0',false));await f.monitor.tick();
+ const seed=structuredClone(f.state());delete seed.milk.scheduledNotice.eventId;
+ seed.milk.spokenMilk={'private:123':seed.milk.socialEvent.id};
+ seed.milk.pendingAlert={...seed.milk.scheduledNotice};seed.milk.scheduledNotice=null;
+ const g=fixture({},seed);await g.monitor.tick({now:f.now()});
+ assert.equal(g.notices.length,0);assert.equal(g.state().milk.pendingAlert,null);
+ for(const patch of [{sourceAt:seed.milk.socialEvent.at-1},{kind:'query_failed'},{stage:'normal'},{eventId:'milk:another-event'}]){
+  const distinct=structuredClone(seed);distinct.milk.pendingAlert={...distinct.milk.pendingAlert,...patch};
+  const h=fixture({},distinct);await h.monitor.tick({now:f.now()});assert.equal(h.notices.length,1);
+ }
+ const accepted=structuredClone(seed);accepted.milk.scheduledNotice={...accepted.milk.pendingAlert};accepted.milk.pendingAlert=null;
+ const restored=fixture({},accepted);await restored.monitor.tick({now:f.now()});
+ assert.equal(restored.state().milk.scheduledNotice.status,'covered');
+});
+
+test('a physically delivered scheduled notice keeps its real sent receipt when ordinary hooks follow',async()=>{
+ const f=fixture();await f.monitor.tick();f.next(account('0',false));await f.monitor.tick();
+ f.notices[0].meta.onDelivered({key:'private:123',success:true,text:'API预算空了',sentAt:f.now()});
+ f.monitor.sent({key:'private:123',success:true,messages:['API预算空了']});
+ assert.equal(f.state().milk.scheduledNotice.status,'sent');assert.equal(f.state().milk.scheduledNotice.sentAt,f.now());
+});

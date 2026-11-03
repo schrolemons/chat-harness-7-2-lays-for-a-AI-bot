@@ -37,3 +37,26 @@ test('login notifications identify the website, link and latest detected failure
  assert(failure.includes(site.name));assert(failure.includes(site.url));assert.match(failure,/最近检测到掉线/);assert.match(failure,/北京时间/);
  f.next(1);f.recovery.recovered(site.url,lost.generation);const recovered=f.recovery.pendingNotices()[0].text;assert(recovered.includes(site.url));assert.match(recovered,/恢复验证时间/);assert.match(recovered,/最近检测到掉线/);
 });
+
+test('a transient page-read failure and its recovery are silent',t=>{
+ const f=fixture(t);f.recovery.checkFailed(site,'页面为空');assert.equal(f.recovery.pendingNotices().length,0);
+ f.next(.05);f.recovery.checkRecovered(site.url);assert.equal(f.recovery.pendingNotices().length,0);
+ f.next(10);assert.equal(createLoginRecovery(f.root).pendingNotices().length,0);
+});
+
+test('page access failures need a later failed check before notifying, and only delivered failures get a recovery notice',t=>{
+ const f=fixture(t);f.recovery.checkFailed(site,'读取失败');f.next(4);f.recovery.checkFailed(site,'仍失败');assert.equal(f.recovery.pendingNotices().length,0);
+ f.next(1);f.recovery.checkFailed(site,'仍失败');let notices=f.recovery.pendingNotices();assert.equal(notices.length,1);assert.match(notices[0].text,/访问失败/);
+ f.recovery.checkRecovered(site.url);assert.equal(f.recovery.pendingNotices().length,0,'undelivered failure and recovery cancel each other');
+ f.recovery.checkFailed(site,'再次失败');f.next();f.recovery.checkFailed(site,'再次确认');notices=f.recovery.pendingNotices();f.recovery.noticeResult(notices[0].id,true);
+ f.recovery.checkRecovered(site.url);assert.equal(f.recovery.pendingNotices().length,1);assert.match(f.recovery.pendingNotices()[0].text,/恢复/);
+ f.recovery.noticeResult(f.recovery.pendingNotices()[0].id,true);f.recovery.checkRecovered(site.url);assert.equal(f.recovery.pendingNotices().length,0);
+});
+
+test('another page on the same origin cannot clear a failed page, and independent failures survive worker replacement',t=>{
+ const f=fixture(t),other={url:'https://course.example/private/b',name:'课程B'};
+ f.recovery.checkFailed(site,'A失败');f.recovery.checkFailed(other,'B失败');f.recovery.checkRecovered(other.url);
+ f.next();const next=createLoginRecovery(f.root,{clock:f.now});next.checkFailed(site,'A仍失败');assert.equal(next.pendingNotices().length,1);assert(next.pendingNotices()[0].text.includes(site.url));
+ next.checkRecovered(other.url);assert.equal(next.pendingNotices().length,1);
+ assert.equal(next.get(site.url).phase,'ready','page-read errors do not mark the whole login session failed');
+});

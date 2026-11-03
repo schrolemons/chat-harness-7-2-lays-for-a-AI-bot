@@ -771,6 +771,8 @@ main {
   margin: auto;
 }
 .page-heading {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -5462,23 +5464,13 @@ button.comp-save {
   gap: 8px 18px;
   align-items: end;
 }
-.context-console .context-request-picker[hidden],
-.context-console .context-request-diff[hidden] {
+.context-console .context-request-picker[hidden] {
   display: none;
 }
 .context-console .context-request-picker label {
   display: grid;
   gap: 6px;
   width: min(100%, 520px);
-}
-.context-console .context-request-diff {
-  padding: 12px 16px;
-  margin: 12px 0;
-  border: 1px solid var(--border,#e1e6f1);
-  border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
 }
 .context-console .context-help {
   margin: 12px 0;
@@ -5830,24 +5822,6 @@ button.comp-save {
   font-size: 12px;
   line-height: 1.8;
 }
-.context-console .context-request-diff {
-  padding: 16px 20px;
-  margin: 16px 0;
-  border-radius: 12px;
-  background: var(--surface,#f8f9fd);
-  line-height: 1.85;
-}
-.context-console .context-request-diff p {
-  margin: 10px 0 0;
-}
-.context-console .context-request-diff > summary {
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-}
-.context-console .context-request-diff[open] > summary {
-  margin-bottom: 14px;
-}
 @media (max-width: 1000px) {
   .context-console .context-intro {
     flex-direction: column;
@@ -6149,6 +6123,29 @@ button.comp-save {
 .context-console .context-kind-system {
   background: var(--accent-soft-bg);
   color: var(--accent-soft-fg);
+}
+.context-console .context-display-role {
+  font-family:
+    ui-monospace,
+    Consolas,
+    monospace;
+}
+.context-console .context-role-assistant,
+.context-console .context-role-system {
+  background: var(--accent-soft-bg);
+  color: var(--accent-soft-fg);
+}
+.context-console .context-role-user {
+  background: var(--pill-blue-bg);
+  color: var(--pill-blue-fg);
+}
+.context-console .context-role-tool {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+}
+.context-console .context-role-developer {
+  background: var(--pill-green-bg);
+  color: var(--pill-green-fg);
 }
 .context-console .context-detail {
   overflow: auto;
@@ -6521,6 +6518,11 @@ button.comp-save {
     grid-template-columns: 100px minmax(0, 1fr);
   }
 }
+.context-console .context-detail-fields > .context-role-pair {
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: baseline;
+}
 .context-console .context-history-state-note {
   padding: 14px;
   border-left: 3px solid var(--accent);
@@ -6564,10 +6566,89 @@ button.comp-save {
   border-radius: 5px;
   overflow-wrap: anywhere;
 }
-.context-console .context-output-trace article + article {
-  padding-top: 12px;
-  margin-top: 12px;
+.context-console .context-output-trace {
+  display: grid;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.75;
+}
+.context-console .context-trace-section {
+  padding: 16px 18px;
+  min-width: 0;
+}
+.context-console .context-trace-section + .context-trace-section {
   border-top: 1px solid var(--border);
+}
+.context-console .context-output-trace h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.context-console .context-output-trace p {
+  margin: 8px 0 0;
+  font-weight: 400;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.context-console .context-output-trace .context-trace-value {
+  margin-top: 0;
+  font-weight: 400;
+  color: var(--text);
+}
+.context-console .context-output-trace .context-trace-tool {
+  margin-top: 6px;
+  font-weight: 400;
+}
+.context-console .context-output-trace .context-trace-note {
+  margin-top: 10px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.context-console .context-output-trace .context-flow-links {
+  margin: 12px 0 0;
+}
+.context-console .context-output-trace button {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 400;
+}
+.context-console .context-output-trace code {
+  font-size: 12px;
+  font-weight: 400;
+}
+.context-console .context-output-trace article + article {
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.context-console .context-trace-fields {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 12px;
+  font-weight: 400;
+}
+.context-console .context-trace-fields > div {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px;
+}
+.context-console .context-trace-fields dt {
+  color: var(--muted);
+  font-weight: 400;
+}
+.context-console .context-trace-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 400;
 }
 .context-console .context-output-badges {
   display: flex;
@@ -6822,7 +6903,7 @@ button.comp-save {
   border: 1px solid var(--context-family-border);
   border-radius: 12px;
 }
-.context-console .context-family-message .context-sequence-number[data-qq-seq] {
+.context-console .context-family-message .context-sequence-number[data-dialogue-seq] {
   font-size: 17px;
   font-weight: 700;
   color: var(--text);

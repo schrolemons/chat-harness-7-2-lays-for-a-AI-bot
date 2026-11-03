@@ -51,7 +51,7 @@ test('historical QQ JSON is annotated as C36 without absorbing task wrappers or 
  const owned=rows.filter(row=>row.owners.length);assert.equal(owned.length,1);assert.equal(owned[0].text,raw);
  assert.equal(owned[0].owners[0].number,36);assert.equal(owned[0].owners[0].id,'message-snapshot');
  assert.match(owned[0].owners[0].evidence,/来源标记/);assert.equal(JSON.stringify(message),before);
- for(const source of ['user','compact-checkpoint','runtime-context'])assert.equal(attributeMessage({...message,source},[],catalog).filter(row=>row.owners.length).length,0);
+ for(const source of ['user','compact-checkpoint','runtime-context'])assert.equal(attributeMessage({...message,source},[],catalog).filter(row=>row.owners.some(owner=>owner.id==='message-snapshot')).length,0);
  assert.equal(attributeMessage({...message,role:'tool'},[],catalog).filter(row=>row.owners.length).length,0);
  assert.equal(attributeMessage({...message,text:'【新增 QQ 消息数据】\n[{"text":"无消息身份"}]'},[],catalog).filter(row=>row.owners.length).length,0);
  assert.equal(attributeMessage({...message,text:'【新增 QQ 消息数据】\n[broken'},[],catalog).filter(row=>row.owners.length).length,0);

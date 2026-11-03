@@ -21,7 +21,10 @@ export function extractToolDeliveries(request,messages){
   bodies=Array.isArray(bodies)?bodies:[bodies];bodies=bodies.filter(value=>typeof value==='string'&&value.trim());if(!bodies.length)continue;
   const sent=Number(data.sent),success=data.sent!==undefined?Number.isSafeInteger(sent)&&sent===bodies.length&&!Number(data.failed):bodies.length===1&&(data.success===true||data.status==='ok'&&data.retcode===0);if(!success)continue;
   const targetKey=deliveryTarget(request,args,data,name),sourceKey=data.fromKey||args.fromKey||args.groupKey||request.key;
-  for(const[index,text]of bodies.entries())items.push({key:'delivery:'+call.id+':'+index,kind:'delivery',region:'history',position:returned.position+.01+index/10000,name:'bot QQ 消息（发送回执）',text,targetKey,sourceKey,crossSession:!!sourceKey&&!!targetKey&&sourceKey!==targetKey,quoted:data.quoted||null,quoteMessageId:args.replyToMessageId||args.messageId,verified:true,callId:call.id,callPosition:origin.position,resultPosition:returned.position,messageId:bodies.length===1?data.message_id||data.messageId:undefined,source:'已确认的发送工具回执',effectiveComponents:[],withdrawnComponents:[]});
+  for(const[index,text]of bodies.entries()){
+   const identity=returned.deliveryRecords?.find(row=>row.callId===call.id&&row.index===index),dialogueSeq=identity?.dialogueSeq??(bodies.length===1?data.dialogueSeq:null);
+   items.push({key:'delivery:'+call.id+':'+index,kind:'delivery',region:'history',position:returned.position+.01+index/10000,name:'bot QQ 消息（发送回执）',text,...(Number.isSafeInteger(dialogueSeq)&&dialogueSeq>0?{dialogueSeq}:{}),targetKey,sourceKey,crossSession:!!sourceKey&&!!targetKey&&sourceKey!==targetKey,quoted:data.quoted||null,quoteMessageId:args.replyToMessageId||args.messageId,verified:true,callId:call.id,callPosition:origin.position,resultPosition:returned.position,messageId:bodies.length===1?data.message_id||data.messageId:undefined,source:'已确认的发送工具回执',effectiveComponents:[],withdrawnComponents:[]});
+  }
  }
  return items;
 }

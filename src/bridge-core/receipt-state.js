@@ -13,7 +13,7 @@ export function isModelVisibleMessageV2(msg) {
     && msg.budgetDisposition !== 'outside-cold-window';
 }
 
-export function modelStateViewV2(st, { allowedSeqs } = {}) {
+export function modelStateViewV2(st, { allowedSeqs, unreadSeqs, maxIncomingSeq } = {}) {
   // Message reads are constrained, but business hooks must still clear pending
   // bubble/task flags on the real state rather than on a disposable copy.
   return new Proxy(st, {
@@ -21,6 +21,8 @@ export function modelStateViewV2(st, { allowedSeqs } = {}) {
       const value = Reflect.get(target, field);
       if (field === 'unread' || field === 'recentMessages') return (value || []).filter(message =>
         isModelVisibleMessageV2(message) && (!allowedSeqs || allowedSeqs.has(message.seq))
+        && (field!=='unread'||!unreadSeqs||unreadSeqs.has(message.seq))
+        && (maxIncomingSeq===undefined||message.isSelf||message.seq<=maxIncomingSeq)
         && (field==='unread'||!stampMsV2(target.modelContextSince)||Number(message.time)>=target.modelContextSince||(target.unread||[]).some(m=>Number.isSafeInteger(m.seq)&&m.seq===message.seq&&!messageFullyProcessedV2(m))));
       return value;
     },
@@ -31,7 +33,7 @@ export function modelStateViewV2(st, { allowedSeqs } = {}) {
 /** 窗口内还没双戳齐全的消息（按 seq 升序；unread 本身就是入站顺序）。 */
 export function pendingMessagesV2(st) {
   return (Array.isArray(st?.unread) ? st.unread : [])
-    .filter((m) => isModelVisibleMessageV2(m) && Number.isSafeInteger(m.seq) && m.seq > 0 && !messageFullyProcessedV2(m));
+    .filter((m) => isModelVisibleMessageV2(m) && Number.isSafeInteger(m.seq) && m.seq > 0 && m.replyDisposition !== 'history' && !messageFullyProcessedV2(m));
 }
 
 /** 重启后/新回合从哪一条开始：窗口内第一个无双戳的消息；没有就 null。 */
@@ -42,12 +44,16 @@ export function firstPendingMessageV2(st) {
 
 // Confirmed delivery only: a resolved quote can bind a message received during
 // a running turn before its separate seen callback. Never writes receipt stamps.
-export function registerSuccessfulReplyV2(st, {replyToMessageId, at = Date.now()} = {}) {
+export function registerSuccessfulReplyV2(st, {replyToMessageId, sourceSeqs, at = Date.now()} = {}) {
   const pending = new Set(Array.isArray(st.receiptSendPendingSeqs) ? st.receiptSendPendingSeqs : []);
   const quoted = replyToMessageId == null ? '' : String(replyToMessageId).trim();
-  for (const msg of Array.isArray(st.unread) ? st.unread : []) {
+  for (const msg of new Map([...(st.recentMessages||[]),...(st.unread||[])].map(m=>[m.seq,m])).values()) {
     if (!isModelVisibleMessageV2(msg) || msg.isSelf || !Number.isSafeInteger(msg.seq) || msg.seq <= 0 || stampMsV2(msg.repliedAt)) continue;
-    if (stampMsV2(msg.seenAt) || (quoted && msg.messageId != null && String(msg.messageId) === quoted)) pending.add(msg.seq);
+    const isQuoted = quoted && msg.messageId != null && String(msg.messageId) === quoted;
+    const selected=Array.isArray(sourceSeqs)&&sourceSeqs.includes(msg.seq);
+    if ((quoted||Array.isArray(sourceSeqs))&&!isQuoted&&!selected)continue;
+    if (msg.replyDisposition === 'history' && !isQuoted&&!selected) continue;
+    if (stampMsV2(msg.seenAt) || isQuoted) pending.add(msg.seq);
   }
   st.receiptSendPendingSeqs = [...pending].sort((a,b) => a-b).slice(-200);
   st.receiptSendPendingAt = st.receiptSendPendingSeqs.length ? at : 0;
@@ -56,7 +62,7 @@ export function registerSuccessfulReplyV2(st, {replyToMessageId, at = Date.now()
 /** 已接收未回复（seenAt 有、repliedAt 没有）的条数——提示词/状态接口共用。 */
 export function awaitingReplyCountV2(st) {
   return (Array.isArray(st?.unread) ? st.unread : [])
-    .filter((m) => m && stampMsV2(m.seenAt) > 0 && !messageFullyProcessedV2(m)).length;
+    .filter((m) => m && m.replyDisposition !== 'history' && stampMsV2(m.seenAt) > 0 && !messageFullyProcessedV2(m)).length;
 }
 
 /**
@@ -71,7 +77,8 @@ export function serializeUnreadMessageV2(msg) {
     ...msg,
     ...(seenAt ? { seenAt } : {}),
     ...(repliedAt ? { repliedAt } : {}),
-    awaitingReply: seenAt > 0 && !messageFullyProcessedV2(msg)
+    needsReply: msg.replyDisposition !== 'history' && !messageFullyProcessedV2(msg),
+    awaitingReply: msg.replyDisposition !== 'history' && seenAt > 0 && !messageFullyProcessedV2(msg)
   };
 }
 
@@ -79,7 +86,7 @@ export function serializeUnreadMessageV2(msg) {
 // 持久化天然跟着消息缓冲一起裁剪，不需要额外账本文件。
 export function stampSeenAtV2(st, seq, at = Date.now()) {
   if (!st || !Number.isSafeInteger(seq) || seq <= 0) return 0;
-  if (!(Array.isArray(st.unread) && st.unread.some((m) => m && m.seq === seq))) return 0;
+  if (![...(st.unread||[]),...(st.recentMessages||[])].some(m=>m&&m.isSelf!==true&&m.seq===seq)) return 0;
   let changed = 0;
   for (const list of [st.unread, st.recentMessages]) {
     for (const msg of Array.isArray(list) ? list : []) {
@@ -101,7 +108,7 @@ export function stampRepliedThroughV2(st, throughSeq, at = Date.now()) {
   let stamped = 0;
   let blocked = 0;
   for (const msg of Array.isArray(st.unread) ? st.unread : []) {
-    if (!msg || !Number.isSafeInteger(msg.seq) || msg.seq <= 0 || msg.seq > throughSeq) continue;
+    if (!msg || msg.replyDisposition === 'history' || !Number.isSafeInteger(msg.seq) || msg.seq <= 0 || msg.seq > throughSeq) continue;
     if (stampMsV2(msg.repliedAt)) continue;
     if (!stampMsV2(msg.seenAt)) { blocked += 1; continue; }
     msg.repliedAt = at;

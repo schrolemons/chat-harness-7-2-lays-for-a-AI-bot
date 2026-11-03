@@ -1,5 +1,18 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {requestEntries,filterEntries,componentAvailability,inspectorHtml} from '../console/layers/O/context-inspector.js';
+import {processingEntries} from '../console/layers/O/context-processing.js';
+
+test('wrapped compaction separates stable context from summary without changing the request',()=>{
+ const request={messages:[{id:'checkpoint',role:'user',source:'qq-context-stable',wrappedSource:'compact-checkpoint',text:'【稳定会话资料】\n固定资料\n\nThis is an automatically generated checkpoint condensing an earlier span of the conversation to free up context. Treat the captured context as established background.\n\n<compacted-summary>\n## Primary Request and Intent\n历史聊天摘要正文\n</compacted-summary>',provenance:{compaction:{mode:'automatic'}}}]};
+ const before=JSON.stringify(request),messages=requestEntries(request),view=processingEntries(request,messages);
+ const stable=view.entries.find(row=>row.key==='message:0'),summary=view.entries.find(row=>row.key==='summary:message:0');
+ assert(summary,'wrapped checkpoint has a distinct summary card');assert.equal(summary.kind,'summary');assert.equal(summary.region,'history');assert.match(summary.name,/历史压缩摘要/);
+ assert.equal(stable.text,'【稳定会话资料】\n固定资料');assert.equal(summary.text,'## Primary Request and Intent\n历史聊天摘要正文');assert.equal(JSON.stringify(request),before);
+ const html=inspectorHtml(request,[],{view:'messages',selected:summary.key},{renderText:text=>text,renderComponent:()=>''});
+ assert.match(html,/历史聊天摘要正文/);assert(!html.includes('context-detail-text">【稳定会话资料】'));
+ const ordinary={messages:[{role:'user',source:'user',text:request.messages[0].text}]};
+ assert.equal(processingEntries(ordinary,requestEntries(ordinary)).entries.length,1,'user text cannot impersonate a checkpoint');
+});
 test('latest dynamic and waiting-result descriptions follow current layout and paired tool evidence',()=>{
  const request={layoutVersion:3,messages:[{role:'assistant',toolCalls:[{id:'w',name:'qq_wait_for_messages'}]},{role:'tool',toolResults:[{toolCallId:'w'}],text:JSON.stringify({endRound:false,action:'followup',hint:'追问细节'})},{role:'user',source:'qq-context-latest',text:'心情80',contextUpdates:[{id:'ctx-context-dynamics',hash:'80'}]}]};
  const before=JSON.stringify(request),rows=requestEntries(request);assert.equal(rows[1].toolResults[0].name,'qq_wait_for_messages');assert.equal(JSON.stringify(request),before);

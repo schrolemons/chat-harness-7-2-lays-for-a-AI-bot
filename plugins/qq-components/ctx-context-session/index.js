@@ -27,7 +27,7 @@ function buildIdentity(selfName, selfId) {
 function buildStatus(st, now = Date.now()) {
   if (!st) return '';
   const recent = Array.isArray(st.recentMessages) ? st.recentMessages : [];
-  const unread = Array.isArray(st.unread) ? st.unread : [];
+  const unread = Array.isArray(st.unread) ? st.unread.filter(m => m?.replyDisposition !== 'history') : [];
   const bits = [`未读 ${unread.length} 条`];
   const lastMsg = [...recent].reverse().find((m) => m && !m.isSelf);
   const lastAiMin = st.lastAiReplyAt ? Math.max(0, Math.round((now - Number(st.lastAiReplyAt)) / 60000)) : null;

@@ -39,7 +39,7 @@ export function createPlugin(ctx) {
         if (!canGreet(key)) return '';
         const st = payload?.st || {};
         const where = key.startsWith('group:') ? '群里' : '私聊里';
-        const unread = Array.isArray(st.unread) ? st.unread.length : 0;
+        const unread = Array.isArray(st.unread) ? st.unread.filter(m => m?.replyDisposition !== 'history').length : 0;
         const hint = String(cfg.hint || '按当前时间简短问候，不声称有人发来消息').slice(0, 60);
         return [
           `【本轮启动问候｜${where}】桥接刚启动，本次为已授权的启动问候。`,

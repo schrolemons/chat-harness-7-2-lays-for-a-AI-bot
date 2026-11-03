@@ -355,6 +355,9 @@ main {
   margin:auto
 }
 .page-heading {
+  /* Keep search suggestions above the animated page content. */
+  position:relative;
+  z-index:2;
   display:flex;
   align-items:center;
   justify-content:space-between;

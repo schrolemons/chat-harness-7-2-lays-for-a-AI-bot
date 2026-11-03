@@ -14,6 +14,7 @@ export function createLoginRecovery(root,{config={},clock=Date.now}={}){
  const keyFor=url=>loginOrigin(url);
  const get=url=>{const entry=read().sites?.[keyFor(url)];return entry?structuredClone(entry):{phase:'ready',attempts:0,nextAttemptAt:0,targets:[]};};
  function notice(entry,text,kind,now){entry.notices||=[];entry.notices.push({id:'campus-login:'+entry.generation+':'+kind+':'+entry.attempts,text,sourceAt:now,expiresAt:now+currentPolicy().loginRetryMinutes*60000,accepted:false});entry.notices=entry.notices.slice(-22);}
+ const noticeEntries=state=>[...Object.values(state.sites||{}),...Object.values(state.checks||{})];
  return {
   get policy(){return currentPolicy();},get,
   claimWindow(){return update(state=>{const now=clock();if(state.lastWindowSpawnAt&&now-state.lastWindowSpawnAt<30000)return false;state.lastWindowSpawnAt=now;return true;});},
@@ -31,9 +32,30 @@ export function createLoginRecovery(root,{config={},clock=Date.now}={}){
   });},
   recovered(url,generation){const key=keyFor(url),now=clock();return update(state=>{const entry=state.sites[key];if(!entry||entry.generation!==generation||entry.phase==='paused')return {ok:false};entry.phase='ready';entry.attempts=0;entry.nextAttemptAt=0;entry.recoveredAt=now;entry.checkError='';entry.notices=[];entry.noticeError='';notice(entry,`【网页监管已恢复】${entry.name||'监控网页'}\n网址：${entry.url||url}\n最近检测到掉线：${beijingTime(entry.lastFailureAt)}\n恢复验证时间：${beijingTime(now)}\n该网站访问已验证，已恢复其独立会话的无头后台监管。`,'recovered',now);return {ok:true};});},
   retry(url,name){const key=keyFor(url);return update(state=>{const old=state.sites[key]||{};const entry=state.sites[key]={...fresh(),targets:old.targets||[],url,name:name||old.name||'监控网页',requestedUrl:url,requestedAt:clock(),lastFailureAt:['waiting','paused'].includes(old.phase)?old.lastFailureAt||0:0};return entry;});},
-  checkFailed(target,error){const now=clock(),key=keyFor(target.url);return update(state=>{const entry=state.sites[key]||=fresh();if(['waiting','paused'].includes(entry.phase))return entry;const notify=entry.phase!=='error';entry.phase='error';entry.url=target.url;entry.name=target.name||entry.name||'监控网页';entry.checkError=String(error).slice(0,240);entry.checkedAt=now;if(notify)notice(entry,`【网页监管访问失败】${entry.name}\n网址：${target.url}\n发现时间：${beijingTime(now)}\n恢复验证时间：尚未恢复\n${entry.checkError}\n未确认登录失效，不自动弹出登录窗口。`,'check-error',now);return entry;});},
+  checkFailed(target,error){
+   const now=clock(),key=keyFor(target.url),url=new URL(target.url).href;
+   return update(state=>{
+    const login=state.sites[key];if(['waiting','paused'].includes(login?.phase))return login;
+    state.checks||={};let entry=state.checks[url];
+    if(!entry||entry.phase==='ready')entry=state.checks[url]={phase:'error',generation:crypto.randomUUID(),attempts:0,firstFailureAt:now,notices:[],url};
+    entry.attempts++;entry.name=target.name||entry.name||'监控网页';entry.checkError=String(error).slice(0,240);entry.checkedAt=now;
+    const confirmed=entry.attempts>1&&now-entry.firstFailureAt>=currentPolicy().loginRetryMinutes*60000;
+    if(confirmed&&!entry.notices.some(item=>item.accepted||now<item.expiresAt))notice(entry,`【网页监管访问失败】${entry.name}\n网址：${url}\n首次检测失败：${beijingTime(entry.firstFailureAt)}\n再次验证时间：${beijingTime(now)}\n${entry.checkError}\n同一页面再次检查仍失败，未确认登录失效，不自动弹出登录窗口。`,'check-error',now);
+    return entry;
+   });
+  },
+  checkRecovered(url){
+   const key=new URL(url).href;if(read().checks?.[key]?.phase!=='error')return {ok:false};
+   return update(state=>{
+    const entry=state.checks?.[key];if(entry?.phase!=='error')return {ok:false};
+    const notified=entry.notices.some(item=>item.accepted),now=clock();
+    if(!notified){delete state.checks[key];return {ok:true,silent:true};}
+    entry.phase='ready';entry.recoveredAt=now;entry.checkError='';entry.notices=[];
+    notice(entry,`【网页监管已恢复】${entry.name}\n网址：${key}\n首次检测失败：${beijingTime(entry.firstFailureAt)}\n恢复验证时间：${beijingTime(now)}\n原先失败的页面已验证可正常读取。`,'check-recovered',now);return {ok:true};
+   });
+  },
   beginBoot(bootId){return update(state=>{if(state.bootId===bootId)return false;state.bootId=bootId;state.lastWindowSpawnAt=0;for(const [key,old]of Object.entries(state.sites)){state.sites[key]={...fresh(),phase:old.phase==='ready'?'ready':'needed',targets:old.targets||[],name:old.name||'监控网页',url:old.url,lastFailureAt:old.lastFailureAt||0,recoveredAt:old.recoveredAt||0};}return true;});},
-  pendingNotices(){return Object.values(read().sites||{}).flatMap(entry=>(entry.notices||[]).filter(item=>!item.accepted&&clock()<item.expiresAt)).sort((a,b)=>a.sourceAt-b.sourceAt);},
-  noticeResult(id,accepted,error=''){return update(state=>{for(const entry of Object.values(state.sites)){const item=entry.notices?.find(n=>n.id===id);if(item){item.accepted=accepted===true;entry.noticeError=accepted?'':String(error).slice(0,240);entry.lastNoticeAt=clock();return true;}}return false;});}
+  pendingNotices(){return noticeEntries(read()).flatMap(entry=>(entry.notices||[]).filter(item=>!item.accepted&&clock()<item.expiresAt)).sort((a,b)=>a.sourceAt-b.sourceAt);},
+  noticeResult(id,accepted,error=''){return update(state=>{for(const entry of noticeEntries(state)){const item=entry.notices?.find(n=>n.id===id);if(item){item.accepted=accepted===true;entry.noticeError=accepted?'':String(error).slice(0,240);entry.lastNoticeAt=clock();return true;}}return false;});}
  };
 }

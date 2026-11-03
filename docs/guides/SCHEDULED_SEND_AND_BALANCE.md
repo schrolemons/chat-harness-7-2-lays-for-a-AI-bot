@@ -12,4 +12,6 @@
 
 “立即尝试”不是送达保证：会话繁忙、暂停、免打扰、未通过任务准入或适用的预算检查、底层连接异常都可能阻止处理。只有实际QQ成功回执才记为已发送。测试使用临时状态、模拟模型及QQ，不向真实联系人发送测试消息。
 
-回归：`scripts/test-scheduled-send-burst.mjs`、`scripts/test-milk-scheduled-conversation.mjs` 与 `plugins/qq-components/tool-deepseek-balance/test/monitor.test.mjs`。
+预算池防重复发送约束：同一变化的普通聊天告知与独立提醒共用eventId和管理员会话的成功凭据。普通聊天先成功告知后，待发独立提醒记为covered并撤销发送有效期，已排队或生成中也在物理发送前被拦住；迟到的受理回执不能复活提醒。covered与实际sent分开保存，失败、无关文字、其他会话和其他变化不会误消耗此事件。旧格式只以时间、类型、档位完全一致关联。明确余额询问仍可正常回答。
+
+回归：`scripts/test-scheduled-send-burst.mjs`、`scripts/test-milk-scheduled-conversation.mjs` 与 `plugins/qq-components/tool-deepseek-balance/test/monitor.test.mjs`；预算池全套隔离验证：`npm run test:plugin-audit -- --only=test-milk-dedup.mjs`。

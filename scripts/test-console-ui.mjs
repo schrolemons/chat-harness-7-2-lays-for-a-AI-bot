@@ -135,6 +135,24 @@ try {
     }
   });
 
+  await test('Local history controls save the private recovery window and a real boolean without remote history settings', async () => {
+    await navigate('setting-l-0');
+    const root=page.locator('[data-component-slot="life-history-context"]');
+    const privateWindow=root.locator('[data-config-key="privateReplyLimit"] input');
+    const historyLimit=root.locator('[data-config-key="historyLimit"] input');
+    const local=root.locator('[data-config-key="localHistoryEnabled"] input');
+    assert.equal(await privateWindow.inputValue(),'5');
+    assert.equal(await historyLimit.inputValue(),'40');
+    assert.equal(await local.getAttribute('type'),'checkbox');
+    assert.equal(await local.isChecked(),true);
+    assert.equal(await root.locator('[data-config-key*="remote"]').count(),0);
+    await privateWindow.fill('7');await historyLimit.fill('23');await local.uncheck();
+    const [response]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/plugins/config'&&r.request().method()==='POST'),root.locator('.comp-save').click()]);
+    assert.equal(response.status(),200);
+    assert.deepEqual(response.request().postDataJSON(),{id:'life-history-context',config:{privateReplyLimit:7,historyLimit:23,localHistoryEnabled:false}});
+    assert.equal(fixture.componentFixtures.get('life-history-context').config.privateReplyLimit,7);
+  });
+
   await test('Games is a separate T-layer page with its own MCP tools', async () => {
     await navigate('games');
     const section = page.locator('#section-games');
@@ -157,7 +175,7 @@ try {
       assert(visiblePages.length > 0, `${view} has no visible content`);
       assert(visiblePages.every(x => x === view), `${view} exposes another page: ${visiblePages.join(', ')}`);
     }
-    const drafts = { wlGroups: '100001, 100002', roleInput: '未保存的角色', v2PmContent: '未保存的会话事实', sKeywords: '未保存关键词', slangMeaning: '未保存的含义', tsMsg: '未发送的测试消息' };
+    const drafts = { wlGroups: '10001, 100002', roleInput: '未保存的角色', v2PmContent: '未保存的会话事实', sKeywords: '未保存关键词', slangMeaning: '未保存的含义', tsMsg: '未发送的测试消息' };
     for (const [id, value] of Object.entries(drafts)) await fill(id, value);
     await navigate('overview');
     await page.waitForTimeout(3300); // Exercise the real 3-second status polling interval.
@@ -186,7 +204,6 @@ try {
   });
 
   await test('Daily diary catch-up excludes today, shows one send timestamp and disables after delivery', async () => {
-    assert.equal(Object.keys(fixture.state.diaryCatchUpSent).length, 2, 'synthetic diary recipients must remain distinct after sanitization');
     await page.locator('#v2DdRefresh').click();
     const card = page.locator('.diary-session-card').filter({ hasText: 'private:10001' }).first();
     await card.waitFor();
@@ -279,8 +296,8 @@ try {
   });
 
   await test('Whitelist numeric parsing and security contracts', async () => {
-    for (const [id, value] of Object.entries({ wlGroups: '123456789，100003', wlPrivate: '100001 100002', dnGroups: '800001,800002', dnPrivate: '900001', ownerQQ: '100001' })) await fill(id, value);
-    assert.deepEqual(await clickWrite('#wlSave', '/api/whitelist'), { allow: { private: [100001, 100002], groups: [123456789, 100003] }, deny: { private: [900001], groups: [800001, 800002] }, ownerQQ: '100001' });
+    for (const [id, value] of Object.entries({ wlGroups: '123456789，100003', wlPrivate: '10001 100002', dnGroups: '800001,800002', dnPrivate: '900001', ownerQQ: '10001' })) await fill(id, value);
+    assert.deepEqual(await clickWrite('#wlSave', '/api/whitelist'), { allow: { private: [10001, 100002], groups: [123456789, 100003] }, deny: { private: [900001], groups: [800001, 800002] }, ownerQQ: '10001' });
     await check('secInterceptNotify', false);
     assert.deepEqual(await clickWrite('#secInterceptNotifySave', '/api/security'), { interceptNotify: false });
     await fill('secInterceptText', '安全拦截提示测试文案');

@@ -3,21 +3,77 @@ import assert from 'node:assert/strict';
 import {requestEntries,inspectorHtml} from '../console/layers/O/context-inspector.js';
 import {outputTrace} from '../console/layers/O/context-processing.js';
 import {messageIsOutgoing,messageActor,timelineEntries} from '../console/layers/O/context-timeline.js';
-import {processingEntries} from '../console/layers/O/context-processing.js';
+import {processingEntries,traceHtml} from '../console/layers/O/context-processing.js';
 import {messageBodyParts} from '../console/layers/O/context-message-body.js';
 const call=(id,name,args={})=>({role:'assistant',toolCalls:[{id,name}],text:JSON.stringify({type:'tool-call',id,name,arguments:args})});
 const result=(id,data)=>({role:'tool',toolResults:[{toolCallId:id}],text:JSON.stringify(data)});
 const trace=(messages,index=messages.length-1)=>{const request={key:'private:123',sessionId:'session-test',scene:'memoryWrite',messages},rows=requestEntries(request);return outputTrace(rows[index],rows,request);};
 
+test('generation source names the recorded trigger and preserves unknown trigger codes',()=>{
+ for(const [reason,title] of [['question','收到提问'],['replyCheck','回复后检查'],['memoryWrite','后台记忆整理'],['probability','群聊来信通过唤醒判定'],['custom-trigger','触发类型：custom-trigger']]){
+  const t=trace([{role:'assistant',text:'模型原文',provenance:{generation:{reason,inputs:[]}}}]);assert.equal(t.origin.title,title);
+ }
+ const t=trace([call('m','qq_memory_append',{category:'memberImpression'}),result('m',{ok:true,category:'memberImpression'}),{role:'assistant',text:'后续原文'}]);
+ assert(!traceHtml(t).includes('前一步工具处理'));assert(!traceHtml(t).includes('轻量记忆'));assert(!t.badges.includes('印象回执后'));
+});
+
+test('archived errors and adjacent inputs never become a tool-call cause',()=>{
+ const t=trace([{role:'user',source:'qq-context-tool-history',text:'重复工具错误折叠归档'},call('u','qq_get_unread_messages')]);
+ assert.equal(t.origin.kind,'unknown');assert.equal(t.origin.title,'调用原因未记录');assert.deepEqual(t.origin.positions,[]);
+});
+test('native generation inputs survive later task retirement and identify the original incoming batch',()=>{
+ const input={id:'inbound',role:'user',source:'qq-context-dialogue',text:'【新增 QQ 消息数据】\n[{"seq":12,"text":"你好"}]'};
+ const c={...call('u','qq_get_unread_messages'),provenance:{generation:{turn:98,step:3,reason:'message',inputs:[{id:'inbound',eventSeq:3405,kind:'qq-context-dialogue'}]}}};
+ const t=trace([input,{role:'user',source:'qq-context-tool-history',text:'错误归档'},c]);
+ assert.equal(t.origin.kind,'incoming');assert.equal(t.origin.title,'收到新消息');assert.deepEqual(t.origin.positions,[1]);assert(!t.origin.title.includes('归档'));
+});
+test('periodic causes use the original turn trigger, never the newest request scene',()=>{
+ const c={...call('u','qq_get_unread_messages'),provenance:{generation:{reason:'proactiveCheck',inputs:[{id:'retired-task',eventSeq:70,kind:'qq-context-task'}]}}};
+ const t=trace([{role:'user',source:'qq-context-task',triggerReason:'message',text:'原因：message'},c]);
+ assert.equal(t.origin.title,'静默后主动检查');assert.equal(t.origin.kind,'periodic');assert.deepEqual(t.origin.positions,[]);assert.deepEqual(t.origin.eventSeqs,[70]);
+});
+test('a typed tool error explains the corrective read only through native result identity',()=>{
+ const failure={id:'failed',...result('send',{ok:false,code:'message_context_pending'})};
+ const c={...call('u','qq_get_unread_messages'),provenance:{generation:{reason:'message',inputs:[],toolInputs:[{id:'failed',eventSeq:50,code:'message_context_pending'}]}}};
+ const t=trace([failure,{role:'user',source:'qq-context-tool-history',text:'无关归档'},c]);
+ assert.equal(t.origin.kind,'tool-requirement');assert.match(t.origin.title,/补齐.*来信/);assert.deepEqual(t.origin.positions,[1]);
+ const unrelated=trace([{...c,provenance:{generation:{reason:'message',inputs:[],toolInputs:[]}}},failure],0);
+ assert.equal(unrelated.origin.title,'收到新消息');
+});
+test('a quoted reply links the precise referenced message instead of a nearby batch',()=>{
+ const input={role:'user',source:'qq-context-dialogue',text:'【新增 QQ 消息数据】\n[{"seq":12,"messageId":"qq-12","text":"请看这一句"}]'};
+ const t=trace([input,{role:'user',source:'qq-context-tool-history',text:'错误归档'},call('s','qq_reply',{messageId:'qq-12'})]);
+ assert.equal(t.origin.kind,'message-reference');assert.match(t.origin.title,/回应.*来信/);assert.deepEqual(t.origin.positions,[1]);
+});
+test('a known native generation with no trigger cannot borrow a neighboring task or current scene',()=>{
+ const c={...call('u','qq_get_unread_messages'),provenance:{generation:{turn:9,step:2,inputs:[]}}};
+ const t=trace([{role:'user',source:'qq-context-task',triggerReason:'timeBubble',text:'原因：timeBubble'},c]);
+ assert.equal(t.origin.kind,'unknown');assert.equal(t.origin.title,'调用原因未记录');
+});
+test('an explicit schedule question attributes the query to the matching dialogueSeq in its native batch',()=>{
+ const input={id:'input',role:'user',source:'qq-context-dialogue',text:'【新增 QQ 消息数据】\n'+JSON.stringify([{seq:81,dialogueSeq:901,text:'今天的天气不错'},{seq:82,dialogueSeq:902,text:'帮我查询日程'},{seq:83,dialogueSeq:903,isSelf:true,text:'今天要做什么'}])};
+ const c={...call('schedule','qq_schedule',{action:'list'}),provenance:{generation:{reason:'message',inputs:[{id:'input',eventSeq:1}]}}};
+ const t=trace([input,c]);assert.equal(t.origin.kind,'user-request');assert.equal(t.origin.title,'对话序号 902');assert.deepEqual(t.origin.dialogueSeqs,[902]);
+ const html=inspectorHtml({messages:[input,c]},[],{view:'messages',layout:'business',selected:'message:1'},{renderText:()=>'',renderComponent:()=>''});assert.match(html,/data-inspector-message="qq:82"/);
+});
+test('today-task questions are recognized but old requests and negated schedule requests are not',()=>{
+ const input=(id,text,dialogueSeq)=>({id,role:'user',source:'qq-context-dialogue',text:'【新增 QQ 消息数据】\n'+JSON.stringify([{seq:dialogueSeq,dialogueSeq,text}])});
+ const c={...call('schedule','qq_schedule',{action:'list'}),provenance:{generation:{reason:'message',inputs:[{id:'current'}]}}};
+ assert.equal(trace([input('old','帮我查询日程',2),input('current','今天要做什么',3),c]).origin.title,'对话序号 3');
+ assert.equal(trace([input('old','帮我查询日程',2),input('current','不要查询日程',3),c]).origin.title,'收到新消息');
+ const periodic={...c,provenance:{generation:{reason:'proactiveCheck',inputs:[{id:'current'}]}}};
+ assert.equal(trace([input('current','帮我查询日程',3),periodic]).origin.title,'静默后主动检查');
+});
+
 test('internal prose has a concrete event-log destination without claiming profile or MD writes',()=>{
  const t=trace([{role:'assistant',text:'我已经把你记入画像和日记了'}]);
- assert.equal(t.destinations[0].kind,'session');assert.match(t.destinations[0].title,/模型输出事件/);
+ assert.equal(t.destinations[0].kind,'session');assert.equal(t.destinations[0].title,'会话历史');
  assert.match(t.destinations[0].storage,/session\.v4\.jsonl\.zstd/);assert(!t.destinations.some(x=>x.kind==='memory'));
  assert(t.badges.includes('生成原文'));assert.equal(t.qqVerified,false);
 });
 test('impression write receipt is a prior effect, not the destination of following prose',()=>{
  const t=trace([call('m','qq_memory_append',{category:'memberImpression',key:'private:123'}),result('m',{ok:true,key:'private:123',category:'memberImpression',content:'观察',memory:{}}),{role:'assistant',text:'记下了'}]);
- assert.equal(t.origin.kind,'tool-continuation');assert(t.badges.includes('印象回执后'));
+ assert.equal(t.origin.kind,'unknown');assert(!t.badges.includes('印象回执后'));
  assert.equal(t.priorEffects[0].status,'confirmed');assert.match(t.priorEffects[0].storage,/state\/social-v2\.json/);
  assert.match(t.priorEffects[0].field,/memberImpressions/);assert.equal(t.destinations.length,1);assert.equal(t.destinations[0].kind,'session');
 });
@@ -56,7 +112,7 @@ test('automatic memory route needs the historical task and wrapper; newest scene
 });
 test('card abbreviations explain observed cause and retention without exposing a raw tool block',()=>{
  const request={messages:[call('m','qq_memory_append',{category:'memberImpression'}),result('m',{ok:true,category:'memberImpression'}),{role:'assistant',text:'这一轮先停在这里。'}]},html=inspectorHtml(request,[],{view:'messages',layout:'business',selected:'message:2'},{renderText:()=>'',renderComponent:()=>''});
- assert.match(html,/context-output-badges/);assert.match(html,/印象回执后/);assert.match(html,/生成原文/);assert.match(html,/这一轮先停在这里/);
+ assert.match(html,/context-output-badges/);assert(!html.includes('印象回执后'));assert(!html.includes('前一步工具处理'));assert.match(html,/生成原文/);assert.match(html,/这一轮先停在这里/);
 });
 test('QQ actors and direction follow explicit self or verified delivery, never administrator or nickname',()=>{
  for(const row of [{kind:'qq',record:{sender:'管理员',isOwner:true}},{kind:'forwarded',record:{sender:'AI助手'}},{kind:'qq',record:{isSelf:'false'}}])assert.equal(messageIsOutgoing(row),false);

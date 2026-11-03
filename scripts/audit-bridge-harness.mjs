@@ -3,6 +3,7 @@ import {buildDshBundle} from './build-dsh-bundle.mjs';
 import * as presetPolicy from '../src/preset-policy.js';
 import * as adminToolPolicy from '../src/tools/admin-policy.js';
 import * as dialogueSequence from '../src/bridge-core/dialogue-sequence.mjs';
+import * as localHistory from '../src/bridge-core/local-history.mjs';
 import * as receiptIndex from '../src/bridge-core/receipt-index.mjs';
 // Execute the real bridge initialization/functions against temporary files and fake peers.
 // No production config, QQ connection, DSH process, or persistent home is accessed.
@@ -220,7 +221,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     disconnectMux: async () => { ${muxCleanup}
     },
     sendToQQ, sendAgentReplyV2: typeof sendAgentReplyV2 === 'function' ? sendAgentReplyV2 : undefined,
-    onebotHttpAction, outboundContext, sendStickerV2, handleIncoming, handlePokeNotice, startConsoleServer, cfg, state, api, promptQueues,
+    onebotHttpAction, resolveReplyInfo, outboundContext, sendStickerV2, handleIncoming, handlePokeNotice, startConsoleServer, cfg, state, api, promptQueues,
     getSocialV2State, appendSocialV2Message, recordSentMessagesV2,
     buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2,
     // 唤醒排队去重 / 补话武装的内部入口：给 scripts/test-wake-dedupe.mjs 断言用。
@@ -274,7 +275,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, ...replyContentsRoute, migrateOutboundMood, migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS,
-    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...contextLimits, ...dialogueSequence, ...receiptIndex, ...costPolicy, ...consoleDocument, ...toolCatalog,
+    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...contextLimits, ...dialogueSequence, ...localHistory, ...receiptIndex, ...costPolicy, ...consoleDocument, ...toolCatalog,
     ...sessionRecovery, ...presetPolicy, ...adminToolPolicy, ...presetOverview,buildDshBundle,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
     routePluginManagement,

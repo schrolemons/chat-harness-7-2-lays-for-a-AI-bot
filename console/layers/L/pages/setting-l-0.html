@@ -1,5 +1,6 @@
 <section id="section-setting-l-0" data-page="setting-l-0" class="card span-all commercial-component" hidden>
 <h2>生命周期组件</h2>
+<div data-component-slot="life-history-context"></div>
 <div class="row"><span id="v2ActivityStatus" class="meta">读取中…</span><button id="v2PauseBtn" type="button">暂停二代 bot</button><button id="v2ResumeBtn" type="button">恢复二代 bot</button><button id="v2ResetBtn" type="button">重置会话状态</button><span id="lifecycleActionMessage" class="meta" role="status"></span></div>
 <div class="meta">全局暂停二代 bot 的自动唤醒与发送，普通回复、日程提醒和自动通知也会暂停；不会清空会话资料。</div>
 <p class="meta">来信唤醒偏好只约束群聊，私聊直接来信正常进入处理；本轮等待与收尾在“发送与等待”设置；无人来信时的阶段概率主动统一在“发送与等待”设置。</p>
@@ -39,9 +40,9 @@
       </div>
       <div class="row" style="margin-top:8px">
         <div class="setting-field"><label for="v2DoubleStampEnabled">启用新消息前双戳回查</label><input type="checkbox" id="v2DoubleStampEnabled" style="width:auto"><small class="parameter-example" data-example-for="v2DoubleStampEnabled">例：开启后，新消息会回查此前窗口内的已读与已回复状态，避免漏答或误标。</small></div>
-        <div class="setting-field"><label for="v2DoubleStampWindowCount">向前回查条数</label><input type="number" id="v2DoubleStampWindowCount" min="1" max="100" step="1" style="width:90px"><small class="parameter-example" data-example-for="v2DoubleStampWindowCount">例：设为8：检查当前来信之前最近8条，再加上当前消息；单位是条，不是秒。</small></div>
+        <div class="setting-field"><label for="v2DoubleStampWindowCount">向前回查条数</label><input type="number" id="v2DoubleStampWindowCount" min="1" max="100" step="1" style="width:90px"><small class="parameter-example" data-example-for="v2DoubleStampWindowCount">例：设为8：核对当前来信之前最近8条 user 消息的处理状态，再加上当前消息，防止漏处理；单位是条，不是秒。</small></div>
       </div>
-      <div class="meta">每条新消息到达时，检查它之前最近 A 条入站消息，并把当前新消息一并放入处理窗口。seenAt 只在消息交给模型后写入；回复成功后模型必须用 qq_report_message_receipts 逐条提交 JSON，Harness 验证并立即更新 repliedAt。相似消息可合并回复，但状态仍逐条回报；异常状态须提交 anomaly，由 Harness 记录并上报。</div>
+      <div class="meta">收件回查用于防止 bot 漏处理 user 消息。每条新消息到达时，核对它之前最近 A 条 user 消息及当前消息的处理状态；已处理消息只供核对，不要求再次回复。历史上下文由聊天历史提供。seenAt 只在消息交给模型后写入；回复成功后模型必须用 qq_report_message_receipts 逐条提交 JSON，Harness 验证并立即更新 repliedAt。相似消息可合并回复，但状态仍逐条回报；异常状态须提交 anomaly，由 Harness 记录并上报。</div>
       <div class="meta">窗口配置按消息条数计（1–100，默认 8），不按秒数计。两戳齐全＝已处理；只有 seenAt＝先前看过但尚未完成；两戳都无＝本轮首次看到，交给模型后再进入未回复处理；只有 repliedAt 或时间戳格式异常＝异常，不自动修补。</div>
       <pre id="v2ReceiptOutput">（空）</pre>
     </div></details>

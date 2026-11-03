@@ -1,5 +1,8 @@
 import {compactFailedToolHistory} from '../qq-components/obs-context-assembly/failure-history.mjs';
-import {splitMessageSnapshot} from '../qq-components/obs-context-assembly/message-snapshot.mjs';
+const snapshotURL=new URL('../qq-components/obs-context-assembly/message-snapshot.mjs',import.meta.url);snapshotURL.search=new URL(import.meta.url).search;
+const {splitMessageSnapshot}=await import(snapshotURL.href);
+import {orderProjectedDialogue} from '../qq-components/obs-context-assembly/dialogue-order.mjs';
+import {historyBackfillRows} from '../qq-components/obs-context-assembly/history-backfill.mjs';
 import {previewRequestMessage,previewRequestBlocks,previewRequestToolResults} from '../qq-components/obs-context-assembly/request-view.mjs';
 import {observeModuleDelivery} from '../qq-components/obs-context-assembly/knowledge.mjs';
 import path from 'node:path';
@@ -18,8 +21,8 @@ export const name='qq-context-composer';
 const OWN='qq-context-current';
 function texts(message){return (message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n');}
 function messageText(text,source,id=randomUUID()){return {id,role:'user',content:[{type:'text',text}],source};}
-function knownSeqs(session){const seen=new Set();for(const e of session.snapshotEvents()){const source=e?.data?.source?.kind==='qq-context-stable'?e.data.source.baseSource:e?.data?.source;if(e?.type==='user/message'&&source?.kind==='qq-context-dialogue')for(const n of source.seqs||[])seen.add(n);}return seen;}
-function knownDialogueSeqs(session){const seen=new Set();for(const event of session.snapshotEvents()){const source=event?.data?.source?.kind==='qq-context-stable'?event.data.source.baseSource:event?.data?.source;if(event?.type==='user/message'&&source?.kind==='qq-context-dialogue')for(const seq of source.dialogueSeqs||[])seen.add(seq);}return seen;}
+function knownSeqs(session){const seen=new Set();for(const id of session.surface.nodes){const e=session.eventAt(id),source=e?.data?.source?.kind==='qq-context-stable'?e.data.source.baseSource:e?.data?.source;if(e?.type==='user/message'&&source?.kind==='qq-context-dialogue')for(const n of source.seqs||[])seen.add(n);}return seen;}
+function knownDialogueSeqs(session){const seen=new Set();for(const id of session.surface.nodes){const event=session.eventAt(id),source=event?.data?.source?.kind==='qq-context-stable'?event.data.source.baseSource:event?.data?.source;if(event?.type==='user/message'&&source?.kind==='qq-context-dialogue')for(const seq of source.dialogueSeqs||[])seen.add(seq);}return seen;}
 function retireCurrent(session,position,replace=replaceSurface){for(const seq of [...session.surface.nodes]){const e=session.eventAt(seq);if(e?.type==='user/message'&&[OWN,'qq-context-update','qq-context-latest','qq-context-task'].includes(e.data.source?.kind))replace(session,seq,{...e.data,content:[],source:{...e.data.source,kind:'qq-context-retired'}},position);}}
 export function apply(ctx,config={}) {
  installSendFailureGuard(ctx);
@@ -51,7 +54,7 @@ export function apply(ctx,config={}) {
  };
  ctx.on('agent/request',async({agent,turn,step},next)=>{
   const session=agent?.session;if(session){const queued=tombstones.get(session.id);tombstones.delete(session.id);for(const [seq,message] of queued||[]){if(session.surface.nodes.includes(seq))replaceSurface(session,seq,message,{turn,step});}}
-  if(session)compactFailedToolHistory(session,{turn,step},replaceSurface,{keep:2});
+  if(session)compactFailedToolHistory(session,{turn,step},replaceSurface);
   return next();
  });
  const ready=agent=>{if(!agent?.session?.id)return;agents.set(agent.session.id,agent);try{recordEvidence(root,agent.session.id,'consumer',{sessionId:agent.session.id,pid:process.pid,at:Date.now(),version:3});}catch{/* No readiness acknowledgement: bridge keeps its working fallback. */}};
@@ -115,9 +118,12 @@ export function apply(ctx,config={}) {
    const nonText=(message.content||[]).filter(block=>block.type!=='text');
    if(fresh.length||nonText.length){state.currentInputMessageIds.push(message.id);messages.push({...message,content:[...(messageData?[{type:'text',text:messageData}]:[]),...nonText],source:{kind:'qq-context-dialogue',key:packet.key,nonce:packet.nonce,reason:packet.scene,taskSeparated:true,seqs:fresh.map(x=>x.seq).filter(Number.isSafeInteger),dialogueSeqs:fresh.map(x=>x.dialogueSeq).filter(Number.isSafeInteger)}});}
   }
+  const backfill=historyBackfillRows({session:agent.session,messages,key:state.key,seen,seenDialogue});
+  if(backfill.length)messages.push(messageText('【历史 QQ 消息数据】\n'+JSON.stringify(backfill),{kind:'qq-context-dialogue',key:state.key,nonce:state.nonce,reason:'local-history-backfill',seqs:backfill.map(row=>row.seq).filter(Number.isSafeInteger),dialogueSeqs:backfill.map(row=>row.dialogueSeq).filter(Number.isSafeInteger)}));
   retireCurrent(agent.session,position,replaceBeforeStep);
   retireDialogueTasks(agent.session,position,replaceBeforeStep);
   const refill=refillContext({session:agent.session,compiled:state.compiled,key:state.key,nonce:state.nonce,scene:state.scene,position,messages});
+  orderProjectedDialogue({session:agent.session,messages:refill.messages,position,replace:replaceBeforeStep});
   state.contextUpdates=refill.updates;
   state.appliedModules=(state.appliedModules||state.compiled.modules).map(old=>{
    const row=state.compiled.modules.find(x=>x.id===old.id)||old;
@@ -134,7 +140,7 @@ export function apply(ctx,config={}) {
   const state=states.get(options.sessionId);
   const observedNonce=(options.messages||[]).findLast(m=>[OWN,'qq-context-update','qq-context-latest','qq-context-dialogue'].includes(m.source?.kind))?.source?.nonce;
   const aligned=!observedNonce||observedNonce===state?.nonce;
-  const messages=(options.messages||[]).map((m,index)=>({id:m.id||'request:'+index,name:(m.role||'消息')+' '+(index+1),role:m.role,isError:m.isError,triggerReason:m.source?.reason,taskSeparated:m.source?.taskSeparated,source:m.source?.kind||'DSH 会话历史',contentBlocks:previewRequestBlocks(m),currentInput:state?.currentInputMessageIds?.includes(m.id)||false,text:previewRequestMessage(m),contextUpdates:m.source?.updates,contextSegments:['qq-context-update','qq-context-latest'].includes(m.source?.kind)?(m.source.ranges||[]).map(r=>({id:r.id,text:previewRequestMessage(m).slice(r.start,r.end)})):undefined,wrappedSource:m.source?.baseSource?.kind,toolCalls:(m.content||[]).filter(b=>b.type==='tool-call').map(b=>({id:b.id,name:b.name})),toolResults:previewRequestToolResults(m),contextNonce:m.source?.nonce,chars:JSON.stringify(m).length}));
+  const messages=(options.messages||[]).map((m,index)=>({id:m.id||'request:'+index,name:(m.role||'消息')+' '+(index+1),role:m.role,isError:m.isError,failureRun:m.source?.failureRun,triggerReason:m.source?.reason,taskSeparated:m.source?.taskSeparated,source:m.source?.kind||'DSH 会话历史',contentBlocks:previewRequestBlocks(m),currentInput:state?.currentInputMessageIds?.includes(m.id)||false,text:previewRequestMessage(m),contextUpdates:m.source?.updates,contextSegments:['qq-context-update','qq-context-latest'].includes(m.source?.kind)?(m.source.ranges||[]).map(r=>({id:r.id,text:previewRequestMessage(m).slice(r.start,r.end)})):undefined,wrappedSource:m.source?.baseSource?.kind,toolCalls:(m.content||[]).filter(b=>b.type==='tool-call').map(b=>({id:b.id,name:b.name})),toolResults:previewRequestToolResults(m),contextNonce:m.source?.nonce,chars:JSON.stringify(m).length}));
   const activity=activityFor(agent);let processingCount;
   if(activity?.active){
    const previous=readEvidence(root,options.sessionId,'request');

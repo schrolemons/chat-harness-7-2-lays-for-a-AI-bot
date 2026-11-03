@@ -195,7 +195,7 @@ for(const targetKind of ['mention','quote','poke'])test('group actual '+targetKi
  const actionId='target-'+targetKind,replyPlan=h.pluginHost.callService('replyPlan','resolve',{key,turnId:actionId,incomingText:'hi',autonomousSource:{id:actionId,kind:'proactiveCheck'},mood:{replyCeiling:3,welcomeBurstActive:true}});
  h.activeTurnEnvelopes.set(sid,{key,sessionId:sid,actionId,reason:'proactiveCheck',replyPlan});
  h.bot.getGroupMemberList=async()=>[{user_id:123},{user_id:222}];
- h.bot.getMessage=async id=>({message_id:id,group_id:456,user_id:123,sender:{user_id:123,nickname:'person'},message:[{type:'text',data:{text:'hello'}}]});
+ h.taskCaps.readLocalConversationHistory=async()=>({ok:true,messages:[{message_id:'987',group_id:456,user_id:123,sender:{user_id:123,nickname:'person'},message:[{type:'text',data:{text:'hello'}}]}]});
  const body=targetKind==='poke'?{key,targetUserId:'123'}:{key,messages:'how are you?',...(targetKind==='mention'?{atUserId:'123'}:{replyToMessageId:'987'})};
  const sent=await post(targetKind==='poke'?'/api/socialV2/send-poke':'/api/socialV2/send-message',body,st.agentToken);assert.equal(sent.body.ok,true,JSON.stringify(sent));
  const readWait=()=>Object.values(h.pluginHost.get('ctx-user-mood').state.mood.waits).find(x=>x.key===key);
@@ -251,7 +251,7 @@ for(const addressedBy of ['name','at','quote'])test('review1: group wait ignores
  for(const [text,user] of [['你有空吗',222],['你是人类还是AI',222],['ChatGPT比Claude强吗',222],['回我',222],['普通群聊',123]]){
    await incoming([{type:'text',data:{text}}],user);assert.equal(read().answeredAt,null,text);
  }
- h.bot.getMessage=async id=>({message_id:id,group_id:456,user_id:9,sender:{user_id:9,nickname:'AI助手'},message:[{type:'text',data:{text:'my previous message'}}]});
+ h.taskCaps.readLocalConversationHistory=async()=>({ok:true,messages:[{message_id:'900',group_id:456,user_id:9,sender:{user_id:9,nickname:'bot'},message:[{type:'text',data:{text:'my previous message'}}]}]});
  const message=addressedBy==='name'?[{type:'text',data:{text:'AI助手，下午好'}}]:addressedBy==='at'?[{type:'at',data:{qq:'9'}},{type:'text',data:{text:'下午好'}}]:[{type:'reply',data:{id:'900'}},{type:'text',data:{text:'下午好'}}];
  await incoming(message);assert.ok(read().answeredAt>0);assert.equal(h.calls.prompts.length,0);
 });

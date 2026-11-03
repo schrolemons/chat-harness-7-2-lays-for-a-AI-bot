@@ -3,6 +3,7 @@ import {buildDshBundle} from '../scripts/build-dsh-bundle.mjs';
 import { isAdminPluginTool, isAdminEnvironmentAuthorized } from './tools/admin-policy.js';
 import { FIXED_PRESETS, adminPresetConfig, requestedPreset, simulationPreset } from './preset-policy.js';
 import {ensureDialogueSequences} from './bridge-core/dialogue-sequence.mjs';
+import {readLocalConversationHistory} from './bridge-core/local-history.mjs';
 import {receiptStateView} from './bridge-core/receipt-index.mjs';
 import {routeLearningManagement} from './console/learning-management.js';
 import {routeFeedbackRepairs} from './console/feedback-repairs.js';
@@ -2267,7 +2268,7 @@ async function main() {
     allowRemote: cfg.dsh.allowRemote === true
   });
   // DSH 的模型目录 RPC：0.1.5 是 `session/modelCatalog`。**不能走基类门面**
-  // `api.sessions.modelCatalog` —— 桥接打包的 `@deepseek-ai/dsh-host-apiproxy@0.1.1-rc.2` 纯客户端
+  // `api.sessions.modelCatalog` —— 桥接钉住的 `@deepseek-ai/dsh-host-apiproxy@0.1.1-rc.2`
   // 的 sessions 门面里根本没有这个方法（只有 `models` → 已下线的 `session/models`），
   // 调用会抛 “api.sessions.modelCatalog is not a function”，让思考强度档位静默退回内置清单。
   // 这里直接用桥接自己覆写的 callUnary（它本来就是为「不依赖旧版客户端域方法」而存在的），
@@ -2800,6 +2801,7 @@ async function main() {
     saveSocialV2State();
     envelope.waitCloseStarted = true;
     envelope.waitRoundClosed = true;
+    st.replyWindowOpen=false;
     envelope.waitCloseSeq = incomingSeq;
     envelope.cancelled = true;
     envelope.preemptPromise = (async () => {
@@ -3016,6 +3018,7 @@ async function main() {
           // 首次确定模式为 reserved2 后再恢复持久化的有限睡眠定时器，
           // 避免在 initial chat 模式下设置定时器导致 timeout 唤醒被模式守卫吞掉。
           for (const key of socialV2.conversations.keys()) {
+            await pluginHost.callService('historyContext', 'sync', { key });
             setupSleepTimerV2(key);
             scheduleProactiveCheckV2(key);
             scheduleStartupGreetingV2(key);
@@ -5565,6 +5568,32 @@ async function main() {
           const body = await readBody();
           const key = String(body.key ?? '').trim();
           if (!/^(group|private):\d+$/.test(key)) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
+          if (Object.hasOwn(body, 'appendSlots')) {
+            // Append-only console operation: no await between reading the latest state and saving.
+            // Existing IDs/times always win; this operation cannot edit or unlock old slots.
+            const proposed = body.appendSlots;
+            if (!Array.isArray(proposed) || proposed.length > 20 || body.reset === true || Object.hasOwn(body, 'slots')
+              || proposed.some(slot => !slot || typeof slot !== 'object' || !Number.isInteger(slot.hour) || slot.hour < 0 || slot.hour > 23 || !Number.isInteger(slot.minute) || slot.minute < 0 || slot.minute > 59)) {
+              sendJson({ ok: false, error: 'appendSlots 必须是最多 20 个有效时段的数组，且不能与 slots/reset 同时使用' }, 400); return;
+            }
+            const current = allTimeBubbleSlotsV2(key);
+            if (timeBubbleLocksByKey.get(key) === true) { sendJson({ ok: false, error: 'LOCKED_SCHEDULE', allLocked: true, all: current }, 409); return; }
+            const merged = [...current], addedSlots = [];
+            for (const slot of sanitizeTimeBubbleSlotsV2(proposed)) {
+              if (merged.some(existing => existing.id === slot.id || (existing.hour === slot.hour && existing.minute === slot.minute))) continue;
+              merged.push(slot);
+              addedSlots.push(slot);
+            }
+            const configured = Number(pluginHost.get('life-proactive-time-bubble')?.config?.maxBubblesPerDay);
+            const cap = Math.min(20, Number.isFinite(configured) ? Math.max(0, Math.round(configured)) : 3);
+            if (addedSlots.length && merged.length > cap) {
+              sendJson({ ok: false, error: 'TIME_BUBBLE_CAPACITY', limit: cap, count: current.length, all: current }, 409); return;
+            }
+            const updated = addedSlots.length ? setTimeBubbleSlotsV2(key, merged, { actor: 'console' }) : { slots: current, allLocked: false };
+            if (updated.rejected) { sendJson({ ok: false, error: 'LOCKED_SCHEDULE', allLocked: true, all: updated.slots }, 409); return; }
+            sendJson({ ok: true, key, added: addedSlots.length, addedSlots, all: updated.slots, slots: updated.slots.filter(slot => slot.enabled !== false), allLocked: updated.allLocked });
+            return;
+          }
           if (body.reset === true) {
             const current = allTimeBubbleSlotsV2(key);
             if (timeBubbleLocksByKey.get(key) === true || current.some((slot) => slot.locked)) { sendJson({ ok: false, error: 'LOCKED_SCHEDULE', allLocked: timeBubbleLocksByKey.get(key) === true, slots: current }, 409); return; }
@@ -7384,6 +7413,7 @@ async function main() {
             if (info && found) Object.assign(info, forwardFields);
             if (info) info.textTruncated = !messageContentComplete(info);
             if(info&&found&&req.headers['x-agent-token'])noteModelMessagesV2(st,[found],key);
+            if(info&&found)for(const field of ['seq','dialogueSeq','messageId','isSelf','time','seenAt','repliedAt','replyRequirement','replyDisposition'])if(found[field]!==undefined)info[field]=found[field];
             sendJson({ ok: true, key, messageId, info });
           } catch (error) {
             sendJson({ ok: false, error: `获取消息详情失败：${error?.message ?? error}` }, 500);
@@ -7672,17 +7702,19 @@ async function main() {
             sendJson({ ok: true, conversations });
             return;
           }
-          // 日程动作：add / list / update / complete / cancel。
-          const method = action === 'add' ? 'add' : action === 'cancel' ? 'cancel' : action === 'list' ? 'list' : action === 'update' ? 'update' : action === 'complete' ? 'complete' : '';
+          // appendIfAbsent is console-only and never evicts existing schedule records.
+          if (action === 'appendIfAbsent' && agentCall) { sendJson({ ok: false, error: '示例追加仅控制台可用' }, 403); return; }
+          const method = action === 'appendIfAbsent' ? 'appendIfAbsent' : action === 'add' ? 'add' : action === 'cancel' ? 'cancel' : action === 'list' ? 'list' : action === 'update' ? 'update' : action === 'complete' ? 'complete' : '';
           if (!validKey) { sendJson({ ok: false, error: 'key 必须是 private:QQ号 或 group:群号' }, 400); return; }
           if (!method || !pluginHost.hasService('schedules', method)) {
-            sendJson({ ok: false, error: method ? '日程组件未启用（life-schedule-reminder）' : 'action 必须是 add / list / update / complete / cancel' }, method ? 503 : 400);
+            sendJson({ ok: false, error: method ? '日程组件未启用（life-schedule-reminder）' : 'action 必须是 add / appendIfAbsent / list / update / complete / cancel' }, method ? 503 : 400);
             return;
           }
           let out = null;
-          if (method === 'add') {
-            out = await pluginHost.callService('schedules', 'add', {
+          if (method === 'add' || method === 'appendIfAbsent') {
+            out = await pluginHost.callService('schedules', method, {
               key, title: body.title, when: body.when, dueAt: body.dueAt,
+              ...(method === 'appendIfAbsent' ? { exampleId: body.exampleId } : {}),
               place: body.place, detail: body.detail, repeat: body.repeat,
               leadMinutes: body.leadMinutes ?? body.remindBeforeMinutes,
               intervalMinutes: body.intervalMinutes
@@ -7703,7 +7735,7 @@ async function main() {
             });
           }
           const ok = !!(out && typeof out === 'object' && out.ok !== false);
-          sendJson(out && typeof out === 'object' ? out : { ok: false, error: '日程组件没有返回结果' }, ok ? 200 : 400);
+          sendJson(out && typeof out === 'object' ? out : { ok: false, error: '日程组件没有返回结果' }, ok ? 200 : (out?.error === 'SCHEDULE_CAPACITY' ? 409 : 400));
           return;
         }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/memory-update') {
@@ -8190,14 +8222,20 @@ async function main() {
           if (!key || !state.sessions[key]) { sendJson({ ok: false, error: '会话不存在' }, 404); return; }
           if(body.preserveState===true){
             const st=getSocialV2State(key),oldSessionId=state.sessions[key],resolution={seqs:body.resolveSeqs||[],reason:body.reason||''};
+            if(body.expectedSessionId&&body.expectedSessionId!==oldSessionId){sendJson({ok:false,error:'会话映射已变化，未重复切换'},409);return;}
+            const recoveryThroughSeq=st.lastUnreadSeq;
             const checked=resolveReceiptsV2(st,{...resolution,dryRun:true});if(!checked.ok){sendJson(checked,checked.status);return;}
             try{await withTimeout(api.stopSessionWork(oldSessionId),DSH_CONTROL_TIMEOUT_MS,'stopSessionWork');}catch{sendJson({ok:false,error:'旧模型任务未确认停止，未切换会话'},503);return;}
             if(state.sessions[key]!==oldSessionId){sendJson({ok:false,error:'会话映射已变化，未重复切换'},409);return;}
             const resolved=resolveReceiptsV2(st,resolution);if(!resolved.ok){sendJson(resolved,resolved.status);return;}
+            if(body.reclassifyHistory===true)pluginHost.callService('historyContext','recover',{key,state:st,throughSeq:recoveryThroughSeq,resetBoundary:true});
             if(body.freshContext===true)st.modelContextSince=Date.now();
             sessionEpoch++;retireSession(key,{stopWork:false,preserveSchedules:true,reason:'管理员保留业务数据重开模型会话'});
             let archived=false;try{await withTimeout(api.workspace.archiveSession({sessionId:oldSessionId}),DSH_CONTROL_TIMEOUT_MS,'archiveSession');archived=true;}catch{}
-            sendJson({ok:true,key,previousSessionId:oldSessionId,archived,preserved:true,resolved:resolved.resolved});return;
+            saveSocialV2State();
+            let sessionId;
+            if(body.recreate===true){try{sessionId=await ensureSession(key);}catch{sendJson({ok:false,key,previousSessionId:oldSessionId,archived,preserved:true,reset:true,error:'旧模型会话已停止，新会话未能确认创建；业务记录保留'},503);return;}}
+            sendJson({ok:true,key,previousSessionId:oldSessionId,archived,preserved:true,resolved:resolved.resolved,...(sessionId?{sessionId}:{})});return;
           }
           sessionEpoch++;
           const oldSessionId = state.sessions[key];
@@ -8475,12 +8513,14 @@ async function main() {
   }
   const actualOutbound = createOutboundTransport({
     contentFacts:(key,envelope)=>({messages:admittedContentMessages(key,envelope)}),
-    contextFacts:(sourceKey,envelope,replyToMessageId)=>{
+    contextFacts:(sourceKey,envelope,replyToMessageId,options={})=>{
       if(!sourceKey||!envelope)return {};
       const view=modelFacingStateV2(sourceKey);
       const pending=pendingMessagesV2(view).map(m=>({seq:m.seq,required:true,complete:messageAdmitted(envelope,m)}));
       const target=replyToMessageId==null?null:[...view.unread,...view.recentMessages].find(m=>String(m.messageId)===String(replyToMessageId));
-      return {pending,targetIncomplete:!!target&&!target.isSelf&&!messageFullyProcessedV2(target)&&!messageAdmitted(envelope,target)};
+      const content=options.contentId?pluginHost.callService('replyPlan','getContent',{key:sourceKey,contentId:options.contentId}):null;
+      const requiredSeqs=pendingMessagesV2(view).filter(m=>m.replyRequirement==='required'&&!view.receiptSendPendingSeqs?.includes(m.seq)).map(m=>m.seq);
+      return {pending,requiredSeqs,selectedSeqs:[...new Set([...(target?[target.seq]:[]),...(content?.seqs||[])])],targetIncomplete:!!target&&!target.isSelf&&!messageFullyProcessedV2(target)&&!messageAdmitted(envelope,target)};
     },
     callService: (service, method, payload) => {
       if(service==='proactive'&&method==='observe'&&payload.kind==='sent'&&!['thinkingAck','messageAck','ack'].includes(payload.reason)){
@@ -10276,6 +10316,46 @@ async function main() {
   // 业务收据由 memory-store 的独立 receipts 源保存，不混入模型事务记忆。
   taskCaps.readAffairsContext = (key, maxChars) => pluginHost.callService('affairs', 'context', { key, maxChars });
   // Facts and the existing component hooks only; no wake, scheduling or send.
+  const historyRecoveryStartedAt = Date.now();
+  taskCaps.readLocalConversationHistory = ({key,limit,forLookup=false}={}) => {
+    if (!isSessionAllowedInCurrentMode(key) || !cfg.snowluma?.botUin) return {ok:false,reason:'not_allowed',messages:[]};
+    if(pluginHost.callService('historyContext','policy')?.localHistoryEnabled!==true)return {ok:false,reason:'local_cache_disabled',messages:[]};
+    const runtimeRoot = cfg.snowluma.runtimeRoot || (cfg.snowluma.launcherPath ? path.dirname(cfg.snowluma.launcherPath) : '');
+    const st = getSocialV2State(key), since = forLookup?0:Math.max(0,...st.recentMessages.map(m=>Number(m.time)||0));
+    return readLocalConversationHistory({runtimeRoot,botUin:String(cfg.snowluma.botUin),key,allowedKeys:[key],limit,since,until:forLookup?Date.now():historyRecoveryStartedAt});
+  };
+  taskCaps.importLocalConversationHistory = async ({key,messages=[],excludeMessageId}={}) => {
+    if (!isSessionAllowedInCurrentMode(key)) return {ok:false,reason:'not_allowed'};
+    const st=getSocialV2State(key), known=new Set([...st.recentMessages,...st.unread].map(m=>m.messageId).filter(x=>x!=null).map(String));
+    const imported=[];
+    for(const event of (Array.isArray(messages)?messages:[]).slice(-100)){
+      const [kind,peerId]=key.split(':');
+      if(event?.message_type!==kind||event.self_id!=null&&String(event.self_id)!==String(cfg.snowluma?.botUin))continue;
+      if(kind==='group'?String(event.group_id)!==peerId:![event.user_id,event.target_id,event.peer_id].some(value=>String(value)===peerId))continue;
+      const messageId=event?.message_id;if(messageId==null||String(messageId)===String(excludeMessageId)||known.has(String(messageId)))continue;
+      const segments=Array.isArray(event.message)?event.message:typeof event.message==='string'?[{type:'text',data:{text:event.message}}]:[],plain=await segmentsToText(segments,{includeReply:false});
+      if(!plain.trim()||pluginHost.callService('incomingFilter','evaluate',{message:segments,rawMessage:event.raw_message})?.blocked)continue;
+      const isSelf=event.localDirection===1||String(event.user_id)===String(cfg.snowluma?.botUin),time=Number(event.time)>1e12?Number(event.time):Number(event.time)*1000;
+      if(!Number.isFinite(time)||time<=0||time>historyRecoveryStartedAt)continue;
+      const row={messageId:String(messageId),sender:event.sender?.card||event.sender?.nickname||String(event.user_id||''),userId:String(event.user_id||''),text:plain,plain,time,isSelf,
+        historySource:'snowluma-local',bodyComplete:true,omittedReplyIds:segments.filter(s=>s?.type==='reply').map(s=>String(s.data?.id||'')),unresolvedReplyIds:[],quotaAdmission:'admitted'};
+      if(!isSelf){row.seq=++st.lastUnreadSeq;st.unread.push(row);}st.recentMessages.push(row);known.add(String(messageId));imported.push(row);
+    }
+    if(!imported.length)return {ok:true,imported:0};
+    ensureDialogueSequences(st);
+    pluginHost.callService('historyContext','recover',{key,state:st,throughSeq:0});
+    for(const row of imported.filter(m=>!m.isSelf&&m.replyDisposition!=='history')){
+      row.quotaAdmission='pending';
+      // Cached history must not trigger a classifier model call or a mechanical
+      // QQ refusal. Apply the existing local quota decision without sending.
+      const result=pluginHost.callService('knowledgeQuota','evaluate',{key,plainContent:row.plain,messageId:row.messageId,seq:row.seq,userId:row.userId,isOwner:row.userId===String(cfg.ownerQQ),allowed:true,reason:'message'});
+      const held=['deflect','clarify'].includes(result?.action);
+      row.quotaAdmission=held?'rejected':'admitted';
+      if(held){row.replyDisposition='history';row.replyDispositionReason='historical_quota_not_admitted';}
+    }
+    const limits=normalizeContextLimits(cfg.socialV2?.context);st.recentMessages=st.recentMessages.slice(-limits.recentLimit);st.unread=st.unread.slice(-limits.unreadLimit);
+    saveSocialV2State();return {ok:true,imported:imported.length,source:'snowluma-local'};
+  };
   taskCaps.refreshContextModules = ({key,sessionId,scene,seed={},moduleIds=[]}) => {
     if(state.sessions[key]!==sessionId||!isSessionAllowedInCurrentMode(key))return null;
     const live=modelFacingStateV2(key),envelope=activeTurnEnvelopes.get(sessionId),mood=pluginHost.callService('mood','read',{key});
@@ -11689,6 +11769,12 @@ async function main() {
 
   loadSocialV2State();
   await pluginReady;
+  let recoveredHistoryChanged = false;
+  for (const [key, st] of socialV2.conversations) {
+    const recovered = pluginHost.callService('historyContext', 'recover', { key, state: st });
+    if (recovered?.changed) recoveredHistoryChanged = true;
+  }
+  if (recoveredHistoryChanged) saveSocialV2State();
   const outboundSeedsPath=path.join(STATE_DIR,'migrations','outbound-mood-seeds.json');
   let outboundSeeds=null;try{outboundSeeds=JSON.parse(fs.readFileSync(outboundSeedsPath,'utf8'));}catch{}
   pluginHost.callService('mood','initialize',outboundSeeds?.mood||{conversations:[...socialV2.conversations].filter(([,st])=>Number.isFinite(st.moodScore)).map(([key,st])=>({key,score:st.moodScore}))});
@@ -11951,9 +12037,15 @@ async function main() {
       st.unread.sort((a,b)=>a.seq-b.seq);st.recentMessages.sort((a,b)=>a.seq-b.seq);saveSocialV2State();
     }
     const inheritedTask=budgetAllows().task,inheritedSources=validTaskBudgetAdmission(inheritedTask.budgetAdmission,key)?new Set(inheritedTask.budgetAdmission.sourceSeqs || []):null;
-    const sourceMessages=resume?.messages || pendingMessagesV2(modelFacingStateV2(key)).filter(message=>!message.isSelf && messageContentComplete(message) && (!inheritedSources || inheritedSources.has(message.seq)));
+    const activeChat=activeTurnEnvelopes.get(sessionId),awake=activeChat&&!activeChat.cancelled&&!activeChat.waitRoundClosed;
+    const wakeHead=!resume&&!awake&&/^(private|message|probability|atMention|nameMention|question|poke|keyword|bootstrap)$/.test(String(opts.wakeReason||''))?pluginHost.callService('historyContext','beginWake',{key,state:getSocialV2State(key)}):null;
+    if(opts.wakeReason==='budgetWeak')pluginHost.callService('tokenBudget','beginBatch',{key,state:getSocialV2State(key)});
+    const sourceView=modelFacingStateV2(key);
+    const budgetBatch=opts.wakeReason==='budgetWeak'?pluginHost.callService('tokenBudget','batchWindow',{key,messages:[...sourceView.recentMessages,...sourceView.unread]}):null;
+    const sourceMessages=resume?.messages || [...new Map([...(wakeHead?.triggerMessage?[wakeHead.triggerMessage]:[]),...(budgetBatch?.messages||pendingMessagesV2(sourceView))].filter(message=>!message.isSelf && isModelVisibleMessageV2(message) && messageContentComplete(message) && (!inheritedSources || inheritedSources.has(message.seq))).map(m=>[m.seq,m])).values()];
     const envelope = { key, sessionId, actionId:crypto.randomUUID(), reason:String(opts.wakeReason || opts.modelReason || 'message'),
       reminders:opts.wakeReason==='reminder'?(getSocialV2State(key).pendingReminderItems||[]).map(item=>({...item})):[],cancelled:false,scheduledEvent:opts.scheduledEvent,taskAdmission:resume };
+    if(budgetBatch){envelope.budgetWindowSeqs=budgetBatch.messages.map(m=>m.seq);envelope.budgetWindowThroughSeq=getSocialV2State(key).lastUnreadSeq;}
     envelope.wakeInboundAt = Number(messageAckInboundAt.get(key)) || 0;
     envelope.originAdmission=resume?.originAdmission || {mode:currentMode,policy:sessionPolicy(key),admittedAt:Date.now(),budgetStage:tokenBudgetOf(key).stage,weakBatchConsumed:false};
     capturedTask = budgetAllows().task;
@@ -12010,13 +12102,7 @@ async function main() {
       if (roleHintNow) promptText = `${roleHintNow.trim()}\n\n${promptText}`;
       wakeSnapshot = opts.wakeReason === 'budgetRecovery' || opts.scheduledEvent ? null : buildWakeSnapshotV2(key, budgetStage === 'weak',envelope);
       if (wakeSnapshot) {
-        promptText += `\n\n【本次消息快照】\n${JSON.stringify(wakeSnapshot)}\n【逐条看完，别只回最后一条】以上消息已提供，无需重复查询；snapshot.pendingFromSeq 是窗口内第一个还没双戳（seenAt+repliedAt）齐全的消息，重启后从它开始处理、不会重刷已回复过的旧消息；awaitingReply=true 或出现在 awaitingReplySeqs 里的消息是「已接收未回复」的旧账，必须逐条处理（回复，或在确认不接时用 qq_mark_read(throughSeq=…) 收尾）。snapshot.partial=true 或 includedUnreadCount < unreadCount 时，必须先用 qq_get_unread_messages(afterSeq=readThroughSeq) 把剩余未读读完再回复。先判断本批消息是否能由同一个回答完整回应，再按以下规则选择发送方式。\n${MULTI_MESSAGE_REPLY_POLICY}\n${PRIVATE_FOLLOWUP_POLICY}\n回复前如需确认对方是否说完，用 qq_wait_for_messages(purpose="reply") 补足短静默，已安静够久会立即返回。收尾只确认你真正处理过的 readThroughSeq（本地 seq，非 QQ messageId），传给 qq_mark_read 或 qq_set_wake_config 的 throughSeq；没回过的消息不要跟着一起标记已读。`;
-      }
-      if (budgetStage === 'weak') {
-        const detailAt = promptText.indexOf('\n【逐条看完，别只回最后一条】');
-        if (detailAt >= 0) promptText = promptText.slice(0, detailAt)
-          + '\n【本周期低频模式】只处理本次快照列出的待回复消息，简短回应；未列出的消息保留未读，不要为它们调用工具或标记已回复。\n'
-          + MULTI_MESSAGE_REPLY_POLICY + '\n' + PRIVATE_FOLLOWUP_POLICY;
+        promptText += `\n\n【本次消息快照】\n${JSON.stringify(wakeSnapshot)}\n${pluginHost.callService('historyContext','snapshotGuidance') || ''}\n${MULTI_MESSAGE_REPLY_POLICY}\n${PRIVATE_FOLLOWUP_POLICY}`;
       }
       if (opts.wakeReason === 'budgetRecovery' && opts.recoveryText) promptText += '\n\n' + String(opts.recoveryText).slice(0, 80000);
     }
@@ -12098,7 +12184,7 @@ async function main() {
     if(initialJournal?.ok)pluginHost.callService('taskAdmission','finishDispatch',{groupId:initialJournal.groupId,outcome:'accepted'});
     envelope.originAdmission.weakBatchConsumed=envelope.originAdmission.weakBatchConsumed || dispatchBudget.budget.stage==='weak';
     if (opts.wakeReason === 'startupGreeting') pluginHost.callService('startupGreeting', 'markDispatched', { key, dispatchedAt: Date.now() });
-    pluginHost.callService('tokenBudget', 'noteDispatch', { key, stage: resume?.originAdmission?.weakBatchConsumed?'normal':dispatchBudget.budget.stage,throughSeq:wakeSnapshot?Math.max(0,...[...wakeSnapshot.messages,...wakeSnapshot.receiptWindow,...wakeSnapshot.recent].map(m=>Number(m.seq)||0)):getSocialV2State(key).lastUnreadSeq });
+    pluginHost.callService('tokenBudget', 'noteDispatch', { key, stage: resume?.originAdmission?.weakBatchConsumed?'normal':dispatchBudget.budget.stage,throughSeq:envelope.budgetWindowThroughSeq??(wakeSnapshot?Math.max(0,...[...wakeSnapshot.messages,...wakeSnapshot.receiptWindow,...wakeSnapshot.recent].map(m=>Number(m.seq)||0)):getSocialV2State(key).lastUnreadSeq) });
     // 补话布点必须在「唤醒提示词真的被 DSH 接受」（模型开始生成）之后才落地：
     // 额度/静音/宵禁/模式闸门跳过的唤醒因此一条补话都不会留下，不会「先说了等我一下然后消失」。
     if(String(opts.wakeReason||'').startsWith('scheduledContact:'))pluginHost.callService('availability','markDispatched',{key,id:String(opts.wakeReason).split(':')[1]});
@@ -12180,14 +12266,19 @@ async function main() {
   };
 
   const pluginPromptCooldowns=new Map();
-  taskCaps.budgetWeakStatus=(key)=>({stage:tokenBudgetOf(key).stage,allowed:dshReady&&isSessionAllowedInCurrentMode(key)&&!socialV2.paused&&cfg.socialV2?.enabled!==false&&pluginHost.callService('availability','canWake',{key,reason:'budgetWeak'})!==false&&pluginHost.callService('tokenBudget','canDispatch',{key,stage:tokenBudgetOf(key).stage})!==false,busy:isConversationBusyV2(key,getSocialV2State(key)),pendingCount:pendingMessagesV2(getSocialV2State(key)).length});
+  taskCaps.budgetWeakStatus=(key)=>{
+    const view=modelFacingStateV2(key,{weak:true}),batch=pluginHost.callService('tokenBudget','batchWindow',{key,messages:[...view.recentMessages,...view.unread]});
+    return {stage:tokenBudgetOf(key).stage,allowed:dshReady&&isSessionAllowedInCurrentMode(key)&&!socialV2.paused&&cfg.socialV2?.enabled!==false&&pluginHost.callService('availability','canWake',{key,reason:'budgetWeak'})!==false&&pluginHost.callService('tokenBudget','canDispatch',{key,stage:tokenBudgetOf(key).stage})!==false,busy:isConversationBusyV2(key,getSocialV2State(key)),pendingCount:pendingMessagesV2(getSocialV2State(key)).length,candidateCount:batch?.candidateCount||0,windowCount:batch?.messages?.length||0};
+  };
   taskCaps.requestBudgetWake=async(key)=>{
-    const status=taskCaps.budgetWeakStatus(key);if(status.stage!=='weak'||!status.allowed||status.busy||!status.pendingCount)return {ok:false};
+    const status=taskCaps.budgetWeakStatus(key);if(status.stage!=='weak'||!status.allowed||status.busy||!status.candidateCount)return {ok:false};
     const lease=pluginHost.callService('tokenBudget','claimWeakBatch',{key});if(lease?.ok!==true)return {ok:false};
     try{
-    const st=getSocialV2State(key),messages=modelFacingStateV2(key,{weak:true}).unread;
+    const st=getSocialV2State(key);
+    pluginHost.callService('tokenBudget','beginBatch',{key,state:st});
+    const messages=pendingMessagesV2(modelFacingStateV2(key,{weak:true}));
     for(const message of messages){const admission=await pluginHost.callService('knowledgeQuota','preflight',{key,plainContent:message.quotaText||message.plain||message.text,messageId:message.messageId,seq:message.seq,userId:message.userId,isOwner:String(message.userId)===String(cfg.ownerQQ),allowed:true,reason:'message',onHandled:()=>{message.quotaAdmission='rejected';if(message.messageId)markIncomingHandledV2(key,message.messageId);}});if(admission?.handled)message.quotaAdmission='rejected';}
-    if(!modelFacingStateV2(key,{weak:true}).unread.length)return {ok:false};
+    if(!taskCaps.budgetWeakStatus(key).candidateCount)return {ok:false};
     st.bootstrapSent=true;saveSocialV2State();await sendWakePromptV2(key,'budgetWeak');return {ok:pluginHost.callService('tokenBudget','canDispatch',{key,stage:'weak'})===false};
     }finally{pluginHost.callService('tokenBudget','releaseWeakBatch',{key,id:lease.id});}
   };
@@ -12743,7 +12834,8 @@ async function main() {
         replyInfoCache.set(cacheKey, { info: null, ts: Date.now() });
         return null;
       }
-      const raw = await bot.getMessage(numericId);
+      const cached=await taskCaps.readLocalConversationHistory({key:convKey(kind,convId),limit:100,forLookup:true,messageId:String(messageId)});
+      const raw=cached?.messages?.find(row=>String(row.message_id)===String(messageId));
       // 诊断：引用识别错误的定位日志。raw 的 id 若与请求不一致，说明网关按 id 取错了消息。
       if (raw) {
         const rawId = raw.message_id ?? raw.msg_id ?? '';
@@ -12792,7 +12884,7 @@ async function main() {
       const omitUnknownReplies=bodyComplete;
       const unresolvedReplyIds=[],omittedReplyIds=[];
       const text = await segmentsToText(raw.message ?? [], {
-        resolveAtName: kind === 'group' ? (qq) => resolveGroupMemberName(convId, qq) : null,
+        resolveAtName: null,
         includeReply: options.includeReply===true,
         omitUnknownReplies,
         resolveReply:async ref=>{const info=await resolveReplyInfo(kind,convId,ref,selfId,{force:options.force});if(info&&messageContentComplete(info))return info;(omitUnknownReplies?omittedReplyIds:unresolvedReplyIds).push(String(ref));return null;}
@@ -12871,7 +12963,8 @@ async function main() {
           const replyId = String(seg.data.id), numericId = Number(replyId);
           if (!Number.isSafeInteger(numericId)) continue;
           try {
-            const raw = await bot.getMessage(numericId);
+            const cached=await taskCaps.readLocalConversationHistory({key:convKey(kind,id),limit:100,forLookup:true,messageId:replyId});
+            const raw=cached?.messages?.find(row=>String(row.message_id)===replyId);
             const rawId = raw?.message_id ?? raw?.msg_id;
             if (rawId == null || String(rawId) !== replyId || String(raw?.group_id ?? raw?.groupId ?? '') !== String(id)) continue;
             if (String(raw?.sender?.user_id ?? raw?.user_id ?? '') === String(selfId)) return true;
@@ -12887,13 +12980,9 @@ async function main() {
 
   // ── 二代仿真模式（reserved2）唤醒调度 ──────────────────────────────────
   function retainPendingWindowV2(key, st, normalLimit) {
-    if(tokenBudgetOf(key).stage==='normal'){if(st.unread.length>normalLimit)st.unread.splice(0,st.unread.length-normalLimit);return;}
-    const selected=pluginHost.callService('tokenBudget','selectWindow',{key,messages:st.unread});
-    if(!Array.isArray(selected))return;
-    const kept=new Set(selected.map(message=>message.seq));let outside=0;
-    for(const message of st.unread)if(!kept.has(message.seq)){message.budgetDisposition='outside-cold-window';if(Number.isSafeInteger(message.seq))outside=Math.max(outside,message.seq);}
-    st.unread=selected;
-    if(outside>0)advanceReadWatermarkV2(st,outside);
+    const retained=pluginHost.callService('historyContext','retain',{key,state:st,limit:normalLimit});
+    if(Array.isArray(retained))st.unread=retained;
+    else if(st.unread.length>normalLimit)st.unread.splice(0,st.unread.length-normalLimit);
   }
 
   function appendSocialV2Message(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, messageId, media = [], userId = null, forwardIds = [], quotaAdmission, atSelf = false, contentState = {}) {
@@ -13034,6 +13123,8 @@ async function main() {
    * 两边都按发送时已读且尚未回复的 seq 绑定，不能借一条发送回执覆盖后到消息。
    */
   function noteReplyDeliveredV2(targetKey, token, {replyToMessageId} = {}) {
+    const outbound=outboundScope.getStore(),contentId=outbound?.contentId||outbound?.plan?.contentId;
+    const declared=contentId?pluginHost.callService('replyPlan','getContent',{key:outbound?.sourceKey||targetKey,contentId}):null;
     const keys = new Set();
     const tk = String(token || '');
     let originKey = '';
@@ -13051,7 +13142,7 @@ async function main() {
       if (st) {
         if (cfg.socialV2?.doubleStamp?.enabled === false || !v2ToolEnabled('reportReceipts')) stamped += markReplyBatchV2(st);
         else {
-          registerSuccessfulReplyV2(st, {replyToMessageId:k===target?replyToMessageId:undefined});
+          registerSuccessfulReplyV2(st, {replyToMessageId:k===target?replyToMessageId:undefined,sourceSeqs:declared?.seqs});
         }
       }
     }
@@ -13269,10 +13360,13 @@ async function main() {
     const cfgCheck = cfg.socialV2?.doubleStamp ?? {};
     if (cfgCheck.enabled === false || !st || !Number.isSafeInteger(triggerSeq)) return null;
     const count = receiptWindowCountV2();
+    const scoped=pluginHost.callService('historyContext','refreshWindow',{key,state:st,triggerSeq,windowCount:count,now});
+    if(scoped)return scoped;
     const previous = (Array.isArray(st.recentMessages) ? st.recentMessages : [])
       .filter((m) => m && m.isSelf !== true && Number.isSafeInteger(m.seq) && m.seq > 0 && m.seq < triggerSeq)
+      .filter(m=>st.replyWindowOpen!==false&&(!Number.isSafeInteger(st.replyWindowStartSeq)||m.seq>st.replyWindowStartSeq))
       .slice(-count);
-    const messages = [...previous, ...(Array.isArray(st.recentMessages) ? st.recentMessages : []).filter((m) => m?.seq === triggerSeq).slice(-1)];
+    const messages = st.replyWindowOpen===false?[]:[...previous, ...(Array.isArray(st.recentMessages) ? st.recentMessages : []).filter((m) => m?.seq === triggerSeq).slice(-1)];
     const receipts = messages.map((msg) => ({ seq: msg.seq, state: receiptStateV2(msg) }));
     const anomalies = receipts.filter((r) => r.state === 'anomaly');
     st.doubleStampCheck = {
@@ -13304,7 +13398,7 @@ async function main() {
       const seq = Number(entry?.seq);
       const status = String(entry?.status || '');
       if (!Number.isSafeInteger(seq) || seq <= 0 || seenSeqs.has(seq)
-          || !['seen', 'replied', 'complete', 'anomaly'].includes(status)) {
+          || !['seen', 'replied', 'complete', 'context', 'anomaly'].includes(status)) {
         return { ok: false, status: 400, error: '每条回执必须包含唯一的正整数 seq 和合法 status' };
       }
       seenSeqs.add(seq);
@@ -13313,7 +13407,8 @@ async function main() {
       const current = receiptStateV2(msg);
       if (current === 'anomaly' && status !== 'anomaly') return { ok: false, status: 409, error: `seq ${seq} 双戳状态异常，必须以 anomaly 上报` };
       if (status === 'complete' && current !== 'complete') return { ok: false, status: 409, error: `seq ${seq} 尚未双戳齐全，不能报告 complete` };
-      if ((status === 'seen' || status === 'replied') && current === 'unseen'
+      if (status === 'context' && (!String(entry.note||'').trim() || msg.replyRequirement==='required'&&msg.replyDisposition!=='history' || !key.startsWith('group:') && msg.replyDisposition!=='history')) return {ok:false,status:409,error:'仅作上下文须说明原因；窗口内明确需要回应的消息不能由此跳过'};
+      if ((status === 'seen' || status === 'replied' || status === 'context') && current === 'unseen'
           && !st.modelSeenSeqs?.has(seq)) return { ok: false, status: 409, error: `seq ${seq} 尚未由 Harness 交给模型，不能报告已读` };
       if (status === 'replied' && !stampMsV2(msg.seenAt)) {
         return { ok: false, status: 409, error: `seq ${seq} 还没有已读戳；先确认该消息已返回给模型并提交 seen` };
@@ -13330,7 +13425,11 @@ async function main() {
         log(`[receipt] 模型报告双戳异常 ${key} seq${item.seq}: ${item.note || '未提供原因'}`);
         continue;
       }
-      if (item.status === 'seen' || item.status === 'replied') {
+      if (item.status === 'context') {
+        for(const list of [st.unread,st.recentMessages])for(const twin of list||[])if(twin?.seq===item.seq){twin.replyDisposition='history';twin.replyDispositionReason='model_context_only';twin.replyDispositionAt=now;twin.replyDispositionNote=item.note;}
+        changed++;
+      }
+      if (item.status === 'seen' || item.status === 'replied' || item.status === 'context') {
         if (!stampMsV2(item.msg.seenAt)) changed += stampSeenAtV2(st, item.seq, now);
         if (item.status === 'replied' && !stampMsV2(item.msg.repliedAt)) {
           for (const list of [st.unread, st.recentMessages]) for (const twin of Array.isArray(list) ? list : []) {
@@ -13420,12 +13519,12 @@ async function main() {
     if(tokenBudgetOf(key).stage==='silent'){const allowed=paidTaskSourceSeqs(taskEnvelope);messages=messages.filter(message=>allowed.has(message.seq));}
     recordAdmittedMessages(taskEnvelope,messages);
     if(taskEnvelope && !taskEnvelope.cancelled){const task=taskProvenanceFor(key,taskEnvelope.reason,messages);taskEnvelope.taskSources={...taskEnvelope.taskSources,...task.taskSources};if(task.taskEligible)taskEnvelope.taskEligible=true;}
-    // Bound receipts by the actual unread buffer; historical/self messages need no receipt.
-    const unread = new Set(st.unread.map((m) => m.seq));
-    st.modelSeenSeqs = new Set([...st.modelSeenSeqs || []].filter((seq) => unread.has(seq)));
+    // Seeing retained history is a fact; it does not create a reply obligation.
+    const retained = new Set([...st.unread,...st.recentMessages].filter(m=>!m.isSelf&&Number.isSafeInteger(m.seq)).map(m=>m.seq));
+    st.modelSeenSeqs = new Set([...st.modelSeenSeqs || []].filter((seq) => retained.has(seq)));
     const now = Date.now();
     for (const msg of messages) {
-      if (!Number.isSafeInteger(msg?.seq) || msg.seq <= 0 || !unread.has(msg.seq)) continue;
+      if (msg?.isSelf || !Number.isSafeInteger(msg?.seq) || msg.seq <= 0 || !retained.has(msg.seq)) continue;
       st.modelSeenSeqs.add(msg.seq);
       stampSeenAtV2(st, msg.seq, now);
     }
@@ -13573,6 +13672,7 @@ async function main() {
 
   function modelFacingStateV2(key, { weak = false,dispatchEnvelope=null } = {}) {
     const st = getSocialV2State(key), stage = tokenBudgetOf(key).stage;
+    if(pluginHost.callService('tokenBudget','restoreWindow',{state:st}))saveSocialV2State();
     if (dispatchEnvelope && validTaskBudgetAdmission(dispatchEnvelope.budgetAdmission,key) || (stage === 'silent' || stage === 'weak') && trustedTaskEnvelope(key)) {
       const envelope = dispatchEnvelope || activeTurnEnvelopes.get(state.sessions[key]);
       const allowedSeqs = paidTaskSourceSeqs(envelope);
@@ -13581,6 +13681,8 @@ async function main() {
     if (stage === 'silent') return modelStateViewV2(st, { allowedSeqs: new Set() });
     if (stage !== 'weak' && !weak) return modelStateViewV2(st);
     const active=activeTurnEnvelopes.get(state.sessions[key]);
+    const batchEnvelope=dispatchEnvelope||active;
+    if(batchEnvelope?.reason==='budgetWeak'&&!batchEnvelope.cancelled&&Array.isArray(batchEnvelope.budgetWindowSeqs))return modelStateViewV2(st,weak?{allowedSeqs:new Set(batchEnvelope.budgetWindowSeqs)}:{unreadSeqs:new Set(batchEnvelope.budgetWindowSeqs),maxIncomingSeq:batchEnvelope.budgetWindowThroughSeq});
     const through=stage==='weak'&&active?pluginHost.callService('tokenBudget','visibleThrough',{key}):null;
     const candidates = [...new Map([...(st.recentMessages || []), ...(st.unread || [])]
       .filter(message => isModelVisibleMessageV2(message) && message.isSelf !== true && (through===null||message.seq<=through))
@@ -13588,18 +13690,6 @@ async function main() {
     const selected = pluginHost.callService('tokenBudget', 'selectWindow', { key, messages: candidates });
     // No plugin policy means no weak model visibility, rather than a new limit.
     const allowedSeqs = new Set((Array.isArray(selected) ? selected : []).map(message => message.seq));
-    let changed = false, lastOutside = 0;
-    for (const list of [st.unread, st.recentMessages]) for (const message of list || []) {
-      if (!isModelVisibleMessageV2(message) || message.isSelf === true || allowedSeqs.has(message.seq) || (through!==null&&message.seq>through)) continue;
-      message.budgetDisposition = 'outside-cold-window'; changed = true;
-      if (Number.isSafeInteger(message.seq)) lastOutside = Math.max(lastOutside, message.seq);
-    }
-    if (changed) {
-      st.unread = st.unread.filter(message => message.budgetDisposition !== 'outside-cold-window');
-      st.modelSeenSeqs = new Set([...st.modelSeenSeqs || []].filter(seq => allowedSeqs.has(seq)));
-      if (lastOutside > 0) advanceReadWatermarkV2(st, lastOutside);
-      saveSocialV2State();
-    }
     return modelStateViewV2(st, { allowedSeqs });
   }
 
@@ -13610,7 +13700,7 @@ async function main() {
     const limits = normalizeContextLimits(context);
     const maxChars = weakBudget ? limits.weakWakeMaxChars : limits.wakeMaxChars;
     const maxUnread = limits.wakeMessageLimit;
-    const maxRecent = weakBudget ? 0 : limits.wakeRecentLimit;
+    const maxRecent = weakBudget ? st.recentMessages.length+st.unread.length : limits.wakeRecentLimit;
     // 一次快照只取一次 now：同一批消息的 ago 必须彼此可比。
     const now = Date.now();
     // 只展示还没双戳齐全的消息；双戳齐全的在回复/收尾时就已经从 unread 摘除。
@@ -13627,7 +13717,7 @@ async function main() {
     const newestIncoming = [...pending].reverse().find((m) => m && !m.isSelf) || null;
     const newestAgo = newestIncoming ? describeAge(newestIncoming.time, now) : '';
     const receiptAudit = st.doubleStampCheck && typeof st.doubleStampCheck === 'object' ? st.doubleStampCheck : null;
-    const receiptSeqs = Array.isArray(receiptAudit?.windowSeqs) ? receiptAudit.windowSeqs.filter(Number.isSafeInteger) : [];
+    const receiptSeqs = Array.isArray(receiptAudit?.windowSeqs) ? receiptAudit.windowSeqs.filter(Number.isSafeInteger).filter(seq=>!weakBudget||findV2MessageBySeq(st,seq)?.replyRequirement==='required'&&findV2MessageBySeq(st,seq)?.replyDisposition!=='history') : [];
     const receiptPriorSeqs = receiptSeqs.filter((seq) => seq !== Number(receiptAudit?.triggerSeq));
     const packet = {
       conversationId: key,
@@ -13641,12 +13731,17 @@ async function main() {
       now: localClockText(now),
       ...(newestAgo ? { newestAgo } : {}),
       unreadCount: pending.length,
+      pendingSeqs: pending.map(m=>m.seq),
+      queueObservedThroughSeq: st.lastUnreadSeq,
+      wakeTriggerSeq: st.wakeTriggerSeq??null,
+      replyWindowStartSeq: st.replyWindowStartSeq??null,
       ...(pendingFromSeq !== null ? { pendingFromSeq } : {}),
       ...(awaitingReplySeqs.length ? { awaitingReplySeqs } : {}),
       includedUnreadCount: 0,
       readThroughSeq: readThroughSeqV2(st),
       partial: pending.length > 0
     };
+    if(weakBudget){packet.inputSeqs=[...new Set([...st.recentMessages,...st.unread].filter(m=>!m.isSelf&&Number.isSafeInteger(m.seq)).map(m=>m.seq))].sort((a,b)=>a-b);packet.contextSeqs=[...new Set([...st.recentMessages,...st.unread].filter(m=>!m.isSelf&&m.replyDisposition==='history').map(m=>m.seq))].sort((a,b)=>a-b);packet.contextPartial=packet.contextSeqs.length>0;}
     const tryAdd = (field, msg) => {
       const previousThrough = packet.readThroughSeq;
       const compact = contextMessageExcerpt(compactModelMessage(msg, { now }),field==='recent'?limits.wakeHistoryMessageMaxChars:limits.wakePendingMessageMaxChars);
@@ -13662,6 +13757,12 @@ async function main() {
       packet.partial = packet.messages.length < pending.length;
       return false;
     };
+    if (v2ToolEnabled('getUnread')) {
+      // Reserve space for the current conversation before historical audit rows.
+      // Selection is newest-first; delivery below is still ascending by receipt seq.
+      for (const msg of pending.slice(-maxUnread).reverse()) if (!tryAdd('messages', msg)) break;
+      packet.messages.sort((a,b) => a.seq-b.seq);
+    }
     for (const seq of receiptPriorSeqs) {
       const msg = findV2MessageBySeq(st, seq);
       if (!isModelVisibleMessageV2(msg) || msg.isSelf === true) { packet.receiptWindowPartial = true; continue; }
@@ -13673,16 +13774,14 @@ async function main() {
         break;
       }
     }
-    if (v2ToolEnabled('getUnread')) {
-      // Oldest unread first: a budget cutoff must not silently acknowledge unseen messages.
-      for (const msg of pending.slice(0, maxUnread)) if (!tryAdd('messages', msg)) break;
-    }
     if (v2ToolEnabled('getRecent') && maxRecent > 0) {
-      const unread = new Set(st.unread.map((m) => m.seq));
-      const recent = st.recentMessages.filter((m) => isModelVisibleMessageV2(m) && (!Number.isSafeInteger(m.seq) || !unread.has(m.seq))).slice(-maxRecent);
+      const unread = new Set(pending.map((m) => m.seq));
+      const history=weakBudget?[...new Map([...st.unread,...st.recentMessages].map(m=>[m.seq,m])).values()].sort((a,b)=>a.seq-b.seq):st.recentMessages;
+      const recent = history.filter((m) => isModelVisibleMessageV2(m) && (!Number.isSafeInteger(m.seq) || !unread.has(m.seq))).slice(-maxRecent);
       for (const msg of recent.reverse()) if (!tryAdd('recent', msg)) break;
       packet.recent.reverse();
     }
+    if(weakBudget)packet.contextPartial=packet.recent.length<packet.contextSeqs.length||packet.recent.some(m=>m.truncated);
     return packet;
   }
 
@@ -14266,6 +14365,7 @@ async function main() {
       return;
     }
     const st = getSocialV2State(key);
+    if(/^(private|message|probability|atMention|nameMention|question|poke|keyword|bootstrap)$/.test(String(reason)))pluginHost.callService('historyContext','beginWake',{key,state:st,triggerSeq:st.lastUnreadSeq});
     if (ackInboundAt != null) armMessageReadAckV2(key, reason, ackInboundAt);
     if (st.pendingWakeTimer) {
       // 合并窗口内已有待发送唤醒：按优先级升级最终原因，避免先概率后 @ 却仍按概率唤醒。
@@ -14688,9 +14788,18 @@ async function main() {
       log(`忽略未授权会话 ${key}（当前模式 ${currentMode}，来自 ${event.user_id}）`);
       return;
     }
+    const incomingPolicy = await pluginHost.callService('incomingFilter', 'evaluate', {
+      key, message: event.message, rawMessage: event.raw_message,
+    });
+    if (incomingPolicy?.blocked === true) {
+      log(`[incoming] 已过滤 ${key}：${incomingPolicy.reason}`);
+      return;
+    }
+    await pluginHost.callService('historyContext', 'sync', { key, excludeMessageId: event.message_id });
     const ackInboundAt = noteMessageAckInbound(key, incomingAt);
     // 私聊及已有回合正在接收的群消息，收到就计时，不能等文本/媒体解析或新一轮唤醒。
-    if (kind === 'private' || hasActiveMessageAckTurn(key)) {
+    const incomingAtSelf = Array.isArray(event.message) && event.message.some(seg => seg?.type === 'at' && String(seg.data?.qq) === String(event.self_id ?? ''));
+    if (kind === 'private' || hasActiveMessageAckTurn(key) && incomingAtSelf) {
       armMessageReadAckV2(key, kind === 'private' ? 'private' : 'reply', ackInboundAt);
     }
     const resolveAtName = async (qq) => {
@@ -14752,6 +14861,7 @@ async function main() {
     // 引用对象是机器人自己时，视为直接对 AI 说（即使当前文字没有 @/关键词）。
     // 因此必须先解析 quoteTargetIsSelf 再做空文本过滤，避免“只引用不附文”被漏掉。
     const quoteTargetIsSelf = await isQuoteTargetSelf(event.message ?? [], kind, id, event.self_id);
+    if (kind === 'group' && quoteTargetIsSelf && hasActiveMessageAckTurn(key)) armMessageReadAckV2(key, 'reply', ackInboundAt);
     if (!isSessionAllowedInCurrentMode(key)) return;
     const incomingBudget = tokenBudgetOf(key);
     const incomingEventId=messageRef || (event.__outboundIncomingId ||= crypto.randomUUID());
@@ -14909,6 +15019,7 @@ async function main() {
       const incomingAtSelf = kind === 'group' && Array.isArray(event.message)
         && event.message.some(seg => seg?.type === 'at' && String(seg.data?.qq) === String(event.self_id ?? ''));
       const incomingMessage = appendSocialV2Message(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, messageRef || null, mediaList, event.user_id ?? null, extractForwardIds(event.message ?? []), 'pending', incomingAtSelf,{bodyComplete,unresolvedReplyIds,omittedReplyIds});
+      pluginHost.callService('historyContext','classifyIncoming',{key,state:getSocialV2State(key),message:incomingMessage,wakeAccepted:!socialV2.paused&&!!evaluateWakeTriggerV2(kind,incomingWakeDecision),requiresResponse:kind==='private'||incomingAtSelf||quoteTargetIsSelf||incomingWakeDecision?.matched?.some(name=>['nameMention','question'].includes(name)),windowSeqs:getSocialV2State(key).doubleStampCheck?.windowSeqs});
       if(incomingBudget.stage==='weak')incomingMessage.quotaText=String(quotaText).slice(0,20000);
       try {
       // 二代同样收集群聊黑话学习素材（AI 自主提交之外，桥接仍自动提取高频陌生词）
@@ -15065,6 +15176,7 @@ async function main() {
         try { scheduleTimeBubbleV2(key); } catch {}
       }
       const candidateReason = evaluateWakeTriggerV2(kind, incomingWakeDecision);
+      pluginHost.callService('historyContext','classifyIncoming',{key,state:st,message:incomingMessage,wakeAccepted:!!candidateReason,requiresResponse:kind==='private'||atSelfNow||quoteTargetIsSelf||incomingWakeDecision?.matched?.some(name=>['nameMention','question'].includes(name)),windowSeqs:st.doubleStampCheck?.windowSeqs});
       if(candidateReason==='budgetWeak'){incomingMessage.quotaAdmission='admitted';await taskCaps.requestBudgetWake(key);return;}
       if (candidateReason) {
         const admission = await pluginHost.callService('knowledgeQuota', 'preflight', {
@@ -15468,6 +15580,7 @@ async function main() {
     if (socialV2.paused) return;
     const st = getSocialV2State(key);
     const reason=evaluateWakeTriggerV2(kind,pokeDecision);
+    pluginHost.callService('historyContext','classifyIncoming',{key,state:st,message:msg,wakeAccepted:!!reason,requiresResponse:targetIsSelf,windowSeqs:st.doubleStampCheck?.windowSeqs});
     if(reason && tokenBudgetOf(key).stage!=='silent') {
       if(!st.bootstrapSent){st.bootstrapSent=true;saveSocialV2State();}
       scheduleWakeV2(key,reason,ackInboundAt);
@@ -15720,6 +15833,9 @@ async function main() {
           const completedWake = turnEnvelopes.get(frame.sessionId)?.get(ended.turn);
           try {
           const activeEnvelope = activeTurnEnvelopes.get(frame.sessionId);
+          // A completed turn cannot keep promising another answer. An inbound
+          // received after this wake belongs to the following turn and keeps its timers.
+          if (completedWake && Number(messageAckInboundAt.get(key) || 0) <= Number(completedWake.wakeInboundAt || 0)) cancelMessageReadAck(key);
           if (completedWake?.preemptPromise) await completedWake.preemptPromise;
           const receipt = pluginHost.callService('scheduler', 'deliveryStatus', { id: wakePreemptReceiptId(frame.sessionId, ended.turn) });
           const preempted = completedWake?.cancelled || receipt?.ok === true && receipt.status !== 'absent';

@@ -3,6 +3,34 @@ import {createRequire} from 'node:module';import fs from 'node:fs';import path f
 import {startConsoleFixture} from './console-ui-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const exe=[path.join(process.env.PROGRAMFILES||'','Google/Chrome/Application/chrome.exe'),path.join(process.env['PROGRAMFILES(X86)']||'','Microsoft/Edge/Application/msedge.exe')].find(x=>fs.existsSync(x));
+
+test('request search preserves typing, middle edits and selection through filtering',async()=>{
+ const fixture=await startConsoleFixture(),browser=await chromium.launch({headless:true,executablePath:exe});try{
+  for(const viewport of [{width:1440,height:1050},{width:390,height:844}]){
+   const page=await browser.newPage({viewport}),errors=[];page.on('pageerror',error=>errors.push(error.message));
+   await page.goto(fixture.url+'/#context-visual');const search=page.locator('#contextInspectorSearch');await search.waitFor();await search.focus();
+   await page.keyboard.type('hello world');assert.equal(await search.inputValue(),'hello world');
+   assert.deepEqual(await search.evaluate(el=>[el.selectionStart,el.selectionEnd]),[11,11]);
+   await search.evaluate(el=>el.setSelectionRange(6,11));await page.keyboard.type('QQ');
+   assert.equal(await search.inputValue(),'hello QQ');assert.deepEqual(await search.evaluate(el=>[el.selectionStart,el.selectionEnd]),[8,8]);
+   await search.evaluate(el=>el.setSelectionRange(6,6));await page.keyboard.insertText('中文');
+   assert.equal(await search.inputValue(),'hello 中文QQ');assert.deepEqual(await search.evaluate(el=>[el.selectionStart,el.selectionEnd]),[8,8]);
+   await search.evaluate(el=>{el.setSelectionRange(6,8,'backward');el.dispatchEvent(new InputEvent('input',{bubbles:true}));});
+   assert.deepEqual(await search.evaluate(el=>[el.selectionStart,el.selectionEnd,el.selectionDirection]),[6,8,'backward']);
+   assert.deepEqual(errors,[]);await page.close();
+  }
+ }finally{await browser.close();await fixture.close();}
+});
+
+test('request search lets IME composition finish before replacing the input',async()=>{
+ const fixture=await startConsoleFixture(),browser=await chromium.launch({headless:true,executablePath:exe});try{
+  const page=await browser.newPage();await page.goto(fixture.url+'/#context-visual');const search=page.locator('#contextInspectorSearch');await search.waitFor();await search.focus();
+  const connected=await search.evaluate(el=>{el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value='测试';el.setSelectionRange(2,2);el.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true,data:'测试'}));return el.isConnected;});
+  assert.equal(connected,true,'composing input must stay mounted');
+  await search.evaluate(el=>el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'测试'})));
+  assert.equal(await search.inputValue(),'测试');assert.equal(await search.evaluate(el=>el.selectionStart),2);
+ }finally{await browser.close();await fixture.close();}
+});
 test('business windows sort unique QQ seqs, resolve receipts and retain the complete native tool timeline',async()=>{
  const fixture=await startConsoleFixture(),browser=await chromium.launch({headless:true,executablePath:exe});try{
   const page=await browser.newPage({viewport:{width:1440,height:1050}}),errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -23,7 +51,7 @@ test('business windows sort unique QQ seqs, resolve receipts and retain the comp
   assert.equal(await page.locator('.context-tracks,.context-relation-tree,.context-link-path').count(),0);assert.equal(await page.locator('.has-timeline>.context-sequence').count(),1);assert.equal(await page.locator('[data-inspector-select="message:2"].is-related').count(),1);const feed=await page.locator('.context-sequence-row').evaluateAll(nodes=>nodes.map(node=>node.dataset.inspectorSelect));assert(feed.indexOf('message:2')<feed.indexOf('message:3'));if(dir)await page.locator('#contextInspector').screenshot({path:path.join(dir,'single-timeline.png')});
   await page.locator('.context-related-links [data-inspector-related="message:2"]').click();assert.equal(await page.locator('[data-inspector-select="qq:1"].is-related').count(),1);
   await page.locator('[data-inspector-select="task:2"]').click();assert.match(await page.locator('.context-trigger').innerText(),/群聊普通来信通过概率判定/);
-  await page.locator('[data-inspector-select="message:4"]').click();assert.match(await page.locator('.context-output-trace').innerText(),/模型输出事件/);
+  await page.locator('[data-inspector-select="message:4"]').click();assert.match(await page.locator('.context-output-trace').innerText(),/会话历史/);
   await page.locator('[data-inspector-select="message:5"]').click();assert.match(await page.locator('.context-output-trace').innerText(),/QQ 投递成功[\s\S]*private:10001/);if(dir)await page.locator('#contextInspector').screenshot({path:path.join(dir,'business-output.png')});
   await page.locator('[data-inspector-region="unknown"]').click();assert.equal(await page.locator('[data-inspector-select="qq:6"]').count(),1);assert.match(await page.locator('.context-detail').innerText(),/状态未知/);
   await page.locator('[data-inspector-region="dynamic"]').click();await page.locator('[data-inspector-select="message:7"]').click();assert.equal(await page.locator('[data-inspector-select="receipt-index"]').count(),0);const receipts=page.locator('.context-detail [data-context-owner="message-snapshot"] .context-receipts');assert.match(await receipts.locator(':scope>summary').innerText(),/2 条/);await receipts.locator(':scope>summary').click();assert.match(await receipts.innerText(),/503[\s\S]*504/);assert(!(await page.locator('#contextInspector').innerText()).includes('未采集正文'));
@@ -138,14 +166,14 @@ test('DSH-style context inspector preserves sequence, tool pairs, definitions, s
   assert.match(await page.locator('.context-detail .is-unattributed').innerText(),/<literal-data>/);
   assert.match(await page.locator('.context-detail .is-unattributed').innerText(),/桥接补充背景资料/);
   assert.equal(await page.getByText('未归属',{exact:true}).count(),0);
-  await choose('message:1');assert.match(await page.locator('.context-detail').innerText(),/DSH 会话压缩摘要[\s\S]*压缩较早对话/);
-  await choose('message:2');assert.match(await page.locator('.context-detail').innerText(),/DSH 运行环境更新[\s\S]*按需补充/);
-  await choose('message:5');assert.match(await page.locator('.context-detail').innerText(),/工具调用[\s\S]*qq_schedule[\s\S]*call-demo/);
-  await choose('message:6');assert.match(await page.locator('.context-detail').innerText(),/工具返回[\s\S]*call-demo/);
-  await choose('message:4');assert.match(await page.locator('.context-detail').innerText(),/bot 内部[\s\S]*模型输出事件/);
+  await choose('message:1');assert.match(await page.locator('.context-detail').innerText(),/DSH 会话压缩摘要[\s\S]*dsh-compaction/);
+  await choose('message:2');assert.match(await page.locator('.context-detail').innerText(),/DSH 运行环境更新[\s\S]*dsh-agent-loop/);
+  await choose('message:5');assert.equal(await page.locator('.context-role-field dt:text-is("role") + dd').innerText(),'assistant');assert.match(await page.locator('.context-detail').innerText(),/qq_schedule[\s\S]*call-demo/);
+  await choose('message:6');assert.equal(await page.locator('.context-role-field dt:text-is("role") + dd').innerText(),'tool');assert.match(await page.locator('.context-detail').innerText(),/call-demo/);
+  await choose('message:4');assert.equal(await page.locator('.context-role-field dt:text-is("role") + dd').innerText(),'assistant');assert.match(await page.locator('.context-detail').innerText(),/会话历史/);
   await choose('message:3');assert.equal(await page.locator('.context-detail [data-context-owner="wake-action"]').count(),1);
   await choose('message:8');assert.equal(await page.locator('.context-detail [data-context-owner="wake-action"]').count(),1,'repeated task stays visible in both original positions');
-  await page.locator('#contextInspectorKind').selectOption('result');assert.equal(await sequence.count(),1);await continuous();
+  await page.locator('#contextInspectorKind').selectOption('tool');assert.equal(await sequence.count(),1);await continuous();
   assert.equal(await sequence.first().getAttribute('data-request-position'),'7');
   await page.locator('#contextInspectorKind').selectOption('');
   await page.locator('#contextInspectorSearch').fill('no-match-here');assert.equal(await sequence.count(),0);assert.match(await page.locator('.context-sequence').innerText(),/没有匹配项/);
@@ -162,9 +190,9 @@ test('DSH-style context inspector preserves sequence, tool pairs, definitions, s
   await page.locator('[data-inspector-view="messages"]').click();
   assert.equal(await page.getByText('AI 的历史消息',{exact:true}).count(),0);
   assert.equal(await page.locator('#contextRequestSelect option').count(),3);
-  await page.locator('#contextRequestSelect').selectOption('initial');assert.match(await page.locator('#contextRequestDiff').textContent(),/首次模型调用/);
+  await page.locator('#contextRequestSelect').selectOption('initial');assert.equal(await page.locator('#contextRequestDiff').count(),0);
   assert.match(await page.locator('#contextRequestSummary').innerText(),/9 条消息记录/);
-  await page.locator('#contextRequestSelect').selectOption('current');assert.match(await page.locator('#contextRequestDiff').textContent(),/qq_schedule/);
+  await page.locator('#contextRequestSelect').selectOption('current');assert.equal(await page.locator('#contextRequestSelect').inputValue(),'current');
   for(const width of [390,768,1440]){await page.setViewportSize({width,height:1000});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no overflow at '+width);}
   const artifactArg=process.argv.find(x=>x.startsWith('--artifacts='));
   if(artifactArg){
