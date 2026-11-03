@@ -1,6 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {createRequire} from 'node:module';
+import {zstdDecompressSync} from 'node:zlib';
+// Reuse only the reviewed, bounded structural frame primitive; no recovery/scan API.
+import {zstdFrameEnd} from '../scripts/recover-session-title-metadata.mjs';
 import {fingerprintSessionHeader} from './instance-session-ownership.mjs';
 import {readInstanceDescriptor} from './instance-descriptor.mjs';
 import {state,rowHash,sha256,assertPlainDirectory,within,samePath,cleanupError} from './instance-cleanup-files.mjs';
@@ -8,6 +11,30 @@ const unsupported=message=>cleanupError('UNSUPPORTED_SESSION_DELETE',message);
 const plain=async file=>{if((await state(file)).kind!=='file')throw unsupported('Missing ordinary evidence file');return JSON.parse(await fs.readFile(file,'utf8'));};
 const fingerprints=header=>{const {type,...logical}=header;const values=[fingerprintSessionHeader(logical)];if(logical.delegationDepth===0){delete logical.delegationDepth;values.push(fingerprintSessionHeader(logical));}return values;};
 const executing=new WeakMap();
+const RAW_LIMIT=128*1024*1024,HEADER_LIMIT=64*1024,DECODED_LIMIT=512*1024*1024;
+
+/** Validate the pinned layout and every exact frame/checksum without parsing history bodies.
+ * The native backend requires its independently decodable first frame to be one header line.
+ * Keep raw SHA/CAS authoritative; decoded bytes are never written or used as delete targets. */
+function artifactHeader(bytes,filename){
+ try{
+  const format=/^session\.v([34])\.jsonl(\.zstd)?$/.exec(filename);if(!format||!bytes.length||bytes.length>RAW_LIMIT)throw Error('unsupported artifact');
+  let first;
+  if(format[2]){
+   let frames=0,total=0;
+   for(let offset=0;offset<bytes.length;){
+    if(++frames>65536||bytes.length-offset<5||(bytes[offset+4]&0x18))throw Error('unsupported frame');
+    const end=zstdFrameEnd(bytes,offset),decoded=zstdDecompressSync(bytes.subarray(offset,end),{maxOutputLength:offset===0?HEADER_LIMIT:RAW_LIMIT});
+    total+=decoded.length;if(total>DECODED_LIMIT||!decoded.length||decoded.at(-1)!==10)throw Error('unsupported frame payload');
+    if(offset===0){if(decoded.indexOf(10)!==decoded.length-1)throw Error('header frame contains more than one row');first=decoded;}
+    offset=end;
+   }
+  }else{const end=bytes.indexOf(10);if(end<0||end>=HEADER_LIMIT)throw Error('unbounded header');first=bytes.subarray(0,end+1);}
+  const header=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(first));
+  if(header.version!==Number(format[1]))throw Error('generation/header mismatch');
+  return header;
+ }catch{throw unsupported('Unknown, malformed or over-limit session artifact encoding');}
+}
 
 /** Offline exact-path adapter. The injected owner is a trusted coordination capability,
  * not a serialized acknowledgement. It must create/control the entire home, freeze ALL
@@ -23,12 +50,15 @@ export function createOfflineSessionStoreAdapter(owner) {
  async function inspect(id,{absent=[]}={}) {
   await assertExclusive();const row=evidence.sessions.find(r=>r.sessionId===id);if(!row)throw cleanupError('SESSION_NOT_OWNED');
   const allowMissing=new Set(absent);
-  for(const file of row.artifacts){const current=await state(file.path);
+  for(const file of row.artifacts){
+   if(file.kind==='log'){try{if((await fs.lstat(file.path)).size>RAW_LIMIT)throw unsupported('Session artifact exceeds raw byte limit');}catch(e){if(e.code!=='ENOENT')throw e;}}
+   const current=await state(file.path);
    if(current.kind==='missing'&&allowMissing.has(file.path))continue;
    if(current.kind!=='file'||current.sha256!==file.sha256)throw cleanupError('SESSION_ARTIFACT_CHANGED',file.path);
    if(file.kind==='log'){
-    const header=JSON.parse((await fs.readFile(file.path,'utf8')).split('\n')[0]);
-    if(header.type!=='session'||header.id!==id||!fingerprints({...header,version:4}).includes(row.headerFingerprint)||![3,4].includes(header.version)||path.basename(file.path)!==`session.v${header.version}.jsonl`)throw cleanupError('SESSION_HEADER_MISMATCH');
+    const bytes=await fs.readFile(file.path);if(sha256(bytes)!==file.sha256)throw cleanupError('SESSION_ARTIFACT_CHANGED');
+    const header=artifactHeader(bytes,path.basename(file.path));
+    if(header.type!=='session'||header.id!==id||!fingerprints({...header,version:4}).includes(row.headerFingerprint))throw cleanupError('SESSION_HEADER_MISMATCH');
    }else if(file.kind==='cache'){
     const cache=await plain(file.path),identity=cache.record?.identity;
     if(cache.version!==7||identity?.formatVersion!==4||identity.createdAt!==row.header.createdAt||identity.cwd!==row.header.cwd||identity.isSeeded!==row.header.isSeeded)throw unsupported('Unknown projection cache format/identity');

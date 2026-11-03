@@ -63,7 +63,7 @@ fresh 安装还记录 `node_modules` 的实际创建文件哈希、目录和链�
 
 程序接口 `planInstanceCleanup(manifest, {sessionStoreAdapter})` / `executeInstanceCleanup(plan, {expectedManifestHash, sessionStoreAdapter})` 支持由可信 owner 协调的离线过程。当前已验证的 owner 仅由合成 fixture 创建全新 home、保留所有 child handles、关闭创建入口并等待全部 child close；维护重启只挂载原生存储服务，不启动 bot/profile 能力。公开 CLI 不提供从普通 home、PID 或布尔参数构造此能力的方法。共享真实 home 的自动停止和卸载尚不支持。
 
-受支持的固定存储组合为 pinned 0.2.1-rc.2 JSONL 明文 v4（可附精确记录的 v3 历史文件）、v7 per-record 投影缓存和一个明确启用的 durable query index。每条 ID、全部 generation/cache 路径、逻辑 header 和字节哈希都要核验；旧 whole-unit cache、未知备份/格式、未记录的目标工作区会话、共享未知 writer 或禁用但残留的 index 均拒绝。原生列表、搜索、catalog 和 workspace 引用必须一致后，才能清理已记录的 data/dependency、所选 profile 行/链接与目录登记，代码和安装元数据最后处理。保留其他会话、共享 workspace 登记、附件和独立 fork；不作取证级擦除保证。
+受支持的固定存储组合为 pinned 0.2.1-rc.2 JSONL v4 的原生默认 zstd 多帧或明文格式（均可附精确记录的 v3 历史文件）、v7 per-record 投影缓存和一个明确启用的 durable query index。zstd 按原生合同要求第一帧只含一行 header；逐帧验证结构与校验和，不按扩展名猜测内容。解析上限为原始文件 128 MiB、header 64 KiB、每个后续帧解码 128 MiB、总解码 512 MiB 和 65536 帧；超过限制、非零字典 ID、skippable 帧及损坏格式保留并报冲突。每条 ID、全部 generation/cache 路径、逻辑 header 和原始文件字节哈希都要核验；旧 whole-unit cache、未知备份/格式、未记录的目标工作区会话、共享未知 writer 或禁用但残留的 index 均拒绝。原生列表、搜索、catalog 和 workspace 引用必须一致后，才能清理已记录的 data/dependency、所选 profile 行/链接与目录登记，代码和安装元数据最后处理。保留其他会话、共享 workspace 登记、附件和独立 fork；不作取证级擦除保证。
 
 清理 plan、完整 receipt 快照和逐项 journal 保存在 manifest 指定 DSH home 的 `bot-instances/cleanup/<installationId>/`，位于实例根外。中断重试只核验同一计划的已完成项及已记 intent 的精确路径，不补扫认领新目标；遗留 mutex、丢失 owner 能力或新出现的文件需要人工审查。现有 Git 源码、linked worktree、未知备份和 `preserve` 数据继续保留。新安装根也只有在文件清单、创建收据和当前 CAS 全部相符时才移除。
 

@@ -7,6 +7,8 @@ import {planInstanceCleanup,executeInstanceCleanup} from '../src/instance-uninst
 import {cleanupFixture} from './native-session-cleanup-fixture.mjs';
 import {sha256,rowHash} from '../src/instance-cleanup-files.mjs';
 import {DatabaseSync} from 'node:sqlite';
+import {zstdCompressSync,zstdDecompressSync} from 'node:zlib';
+import {zstdFrameEnd} from './recover-session-title-metadata.mjs';
 async function nativePlan(f){
  // Fixture owner explicitly quiesces before the read-only planner. Refusal remains a plan conflict.
  try{await f.stoppedSnapshot();}catch{}
@@ -45,6 +47,42 @@ test('native offline full receipt cleanup reconciles list/search/catalog/cache/w
  const inventory=JSON.parse(await fs.readFile(path.join(f.home,'bot-instances','installation-roots.json'),'utf8'));assert.deepEqual(inventory.roots.map(r=>r.instanceId),['beta']);
  assert(!receipt.journalPath.startsWith(f.root+path.sep));assert.equal(JSON.parse(await fs.readFile(receipt.journalPath,'utf8')).status,'complete');
  const repeated=await executeInstanceCleanup(plan,{expectedManifestHash:plan.manifestHash,sessionStoreAdapter:f.adapter});assert.equal(repeated.status,'complete',JSON.stringify(repeated.conflicts));
+});
+
+test('native default zstd multi-frame generations reconcile catalog/cache/workspace and preserve B/plain raw bytes',async t=>{
+ const f=await cleanupFixture(t,{compression:'default'});await f.primeCatalog();const historical=await f.addHistorical();
+ const originals=await Promise.all(f.records.map(async r=>({id:r.header.id,path:r.path,bytes:await fs.readFile(r.path)})));
+ for(const r of originals){assert(r.path.endsWith('session.v4.jsonl.zstd'));let frames=0;for(let at=0;at<r.bytes.length;at=zstdFrameEnd(r.bytes,at))frames++;assert(frames>=2,'actual native header and event frames required');}
+ const cache=JSON.parse(await fs.readFile(path.join(f.home,'storages','session_projcache','sessions','alpha-session.json'),'utf8'));assert.equal(cache.record.rows.synthetic.val.body,'synthetic cached alpha-session');
+ const db=new DatabaseSync(path.join(f.home,'query.sqlite'),{readOnly:true});try{assert.equal(db.prepare('SELECT count(*) AS n FROM persisted_docs WHERE session_id = ?').get('alpha-session').n,1);}finally{db.close();}
+ const plan=await nativePlan(f);assert.deepEqual(plan.conflicts,[]);
+ for(const r of originals.filter(r=>r.id.startsWith('alpha-')))assert.equal(plan.sessions.find(s=>s.sessionId===r.id).artifacts.find(a=>a.path===r.path).sha256,sha256(r.bytes));
+ const receipt=await executeInstanceCleanup(plan,{expectedManifestHash:plan.manifestHash,sessionStoreAdapter:f.adapter});assert.equal(receipt.status,'complete',JSON.stringify(receipt.conflicts));
+ assert.deepEqual(receipt.native.listed.slice().sort(),['beta-session','ordinary-session']);assert.deepEqual(receipt.native.catalogIds.slice().sort(),['beta-session','ordinary-session']);
+ assert.deepEqual(receipt.native.pinned,['beta-session']);assert.deepEqual(receipt.native.archived,[]);assert(!receipt.native.workspaceIds.some(id=>id.startsWith('alpha-')));
+ for(const r of originals){if(r.id.startsWith('alpha-'))await assert.rejects(fs.stat(r.path),{code:'ENOENT'});else assert.deepEqual(await fs.readFile(r.path),r.bytes);}
+ await assert.rejects(fs.stat(historical),{code:'ENOENT'});await assert.rejects(fs.stat(f.root),{code:'ENOENT'});
+});
+
+for(const corruption of ['plain-disguised','unknown-magic','truncated-tail','bad-checksum','header-checksum','skippable-tail','reserved-flag','dictionary','multirow-header','huge-header','unknown-generation'])test(`default zstd refuses ${corruption} before deleting any target`,async t=>{
+ const f=await cleanupFixture(t,{compression:'default'});await f.stoppedSnapshot();const file=f.records[0].path,original=await fs.readFile(file),end=zstdFrameEnd(original);let bytes=Buffer.from(original);
+ if(corruption==='plain-disguised')bytes=zstdDecompressSync(original.subarray(0,end));
+ if(corruption==='unknown-magic')bytes[0]^=1;
+ if(corruption==='truncated-tail')bytes=bytes.subarray(0,-1);
+ if(corruption==='bad-checksum')bytes[bytes.length-1]^=1;
+ if(corruption==='header-checksum')bytes[end-1]^=1;
+ if(corruption==='skippable-tail')bytes=Buffer.concat([bytes,Buffer.from([0x50,0x2a,0x4d,0x18,0,0,0,0])]);
+ if(corruption==='reserved-flag')bytes[4]|=0x10;
+ if(corruption==='dictionary')bytes=Buffer.from([0x28,0xb5,0x2f,0xfd,0x21,1,0,1,0,0]);
+ if(corruption==='multirow-header')bytes=zstdCompressSync(Buffer.concat([zstdDecompressSync(original.subarray(0,end)),Buffer.from('{}\n')]));
+ if(corruption==='huge-header'){const header=JSON.parse(zstdDecompressSync(original.subarray(0,end)).toString('utf8'));header.extra='x'.repeat(70*1024);bytes=Buffer.concat([zstdCompressSync(Buffer.from(JSON.stringify(header)+'\n')),original.subarray(end)]);}
+ if(corruption==='unknown-generation')await fs.writeFile(path.join(path.dirname(file),'session.v5.jsonl.zstd'),original);else await fs.writeFile(file,bytes);
+ const plan=await nativePlan(f);assert(plan.conflicts.some(c=>c.code==='UNSUPPORTED_SESSION_DELETE'),JSON.stringify(plan.conflicts));assert.deepEqual(await fs.readFile(file),corruption==='unknown-generation'?original:bytes);assert(await fs.stat(f.records[3].path));assert(await fs.stat(path.join(f.root,'entry.mjs')));
+});
+
+test('default zstd execution rechecks raw compressed bytes rather than decoded header alone',async t=>{
+ const f=await cleanupFixture(t,{compression:'default'}),plan=await nativePlan(f),file=f.records[0].path,original=await fs.readFile(file),changed=Buffer.from(original);changed[changed.length-1]^=1;await fs.writeFile(file,changed);
+ const receipt=await executeInstanceCleanup(plan,{expectedManifestHash:plan.manifestHash,sessionStoreAdapter:f.adapter});assert.equal(receipt.status,'conflict');assert.equal(receipt.conflicts[0].code,'SESSION_ARTIFACT_CHANGED');assert.deepEqual(await fs.readFile(file),changed);assert(await fs.stat(f.records[3].path));assert(await fs.stat(path.join(f.root,'entry.mjs')));
 });
 
 for(const phase of ['prepared','session-intent','session-file','native-verified','data','dependency','profile','registration','code'])test(`interruption at ${phase} retries exact targets, never removes code early`,async t=>{

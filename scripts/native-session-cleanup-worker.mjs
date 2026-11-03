@@ -4,6 +4,8 @@ import path from 'node:path';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 const home=process.argv[2];
+const compression=process.argv[3]||'none';
+if(!['none','default'].includes(compression))throw Error('Unknown fixture compression');
 if(!home||!path.isAbsolute(home)||!process.send)throw Error('Explicit fixture IPC home required');
 const hostPackage=createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json');
 const host=createRequire(hostPackage),base=createRequire(host.resolve('@deepseek-ai/dsh-base/package.json'));
@@ -20,7 +22,8 @@ const mount=async(name,config)=>ctx.plugin(ctx.loader.unwrapExports(modules[name
 for(const name of ['dsh-session','dsh-session-projection'])await mount(name);
 const {z}=await import(pathToFileURL(host.resolve('zod')));
 ctx.sessionProjections.register({key:'synthetic',stateVersion:1,stateSchema:z.object({body:z.string()}),init:header=>({body:'synthetic cached '+header.id}),apply:state=>state});
-await mount('dsh-session-persistence-jsonl',{root:path.join(home,'sessions'),compression:'none'});
+// 'default' deliberately omits compression: exercise the pinned backend's shipped zstd default.
+await mount('dsh-session-persistence-jsonl',{root:path.join(home,'sessions'),...(compression==='none'?{compression:'none'}:{})});
 await mount('dsh-storage');await mount('dsh-storage-json',{root:path.join(home,'storages')});await mount('dsh-storage-domain',{backend:'json'});
 await mount('dsh-workspace');await mount('dsh-session-projection-cache',{writeEveryEvents:1,writeIntervalMs:10000});
 await mount('dsh-session-query-sqlite',{path:path.join(home,'query.sqlite'),openAt:'startup'});

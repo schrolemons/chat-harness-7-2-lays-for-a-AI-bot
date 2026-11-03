@@ -7,19 +7,21 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
+import {zstdCompressSync,zstdDecompressSync,constants} from 'node:zlib';
+import {zstdFrameEnd} from './recover-session-title-metadata.mjs';
 import {initializeManifest,appendOwnedSession,appendInstallationEvidence,readManifest} from '../src/instance-manifest.mjs';
 import {fingerprintSessionHeader} from '../src/instance-session-ownership.mjs';
 import {createOfflineSessionStoreAdapter} from '../src/instance-session-cleanup.mjs';
 import {sha256,rowHash,tree,cleanupError} from '../src/instance-cleanup-files.mjs';
 import {SNOW_RELEASE} from './install-managed-snow.mjs';
 const worker=fileURLToPath(new URL('./native-session-cleanup-worker.mjs',import.meta.url));
-export async function cleanupFixture(t,{shared=false}={}) {
+export async function cleanupFixture(t,{shared=false,compression='none'}={}) {
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'instance-cleanup-')),home=path.join(dir,'home');await fs.mkdir(home);
  const root=path.join(dir,'alpha'),beta=path.join(dir,'beta');await fs.mkdir(root);await fs.mkdir(beta);
  const children=new Set(),records=[],ownerToken=randomUUID();let frozen=false,unknown=false,host,snapshot,serial=0;
  async function launch(internal=false){
   if(frozen&&!internal)throw cleanupError('LAUNCH_FROZEN');
-  const child=fork(worker,[home],{execArgv:[],silent:true,windowsHide:true,env:{...process.env,NODE_OPTIONS:'',NODE_PATH:''}});children.add(child);
+  const child=fork(worker,[home,compression],{execArgv:[],silent:true,windowsHide:true,env:{...process.env,NODE_OPTIONS:'',NODE_PATH:''}});children.add(child);
   let stderr='';child.stderr.on('data',b=>stderr+=b);const pending=new Map();
   const closed=new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',(code)=>{children.delete(child);for(const {reject} of pending.values())reject(Error('Fixture child closed '+code+' '+stderr));pending.clear();if(code===0)resolve();else reject(Error('Fixture child failed '+code+' '+stderr));});});
   const ready=new Promise((resolve,reject)=>{const done=m=>{if(m.ready){child.off('message',done);resolve();}};child.on('message',done);closed.then(()=>reject(Error('Exited before ready')),reject);});
@@ -84,7 +86,12 @@ export async function cleanupFixture(t,{shared=false}={}) {
  };
  return {dir,home,root,beta,descriptor,profile,records,owner,adapter:createOfflineSessionStoreAdapter(owner),
   manifest:()=>readManifest(root),launch:()=>launch(),revokeOwner(){unknown=true;},
-  async addHistorical(){await owner.freezeAndSnapshot();const r=records[0],file=path.join(path.dirname(r.path),'session.v3.jsonl'),lines=(await fs.readFile(r.path,'utf8')).split('\n'),header=JSON.parse(lines[0]);header.version=3;lines[0]=JSON.stringify(header);await fs.writeFile(file,lines.join('\n'));extraArtifacts.set(r.header.id,[{path:file,kind:'log'}]);return file;},
+  async addHistorical(){
+   await owner.freezeAndSnapshot();const r=records[0],compressed=compression==='default',file=path.join(path.dirname(r.path),'session.v3.jsonl'+(compressed?'.zstd':'')),bytes=await fs.readFile(r.path);
+   const firstEnd=compressed?zstdFrameEnd(bytes):bytes.indexOf(10)+1,first=compressed?zstdDecompressSync(bytes.subarray(0,firstEnd),{maxOutputLength:64*1024}):bytes.subarray(0,firstEnd),header=JSON.parse(first.toString('utf8'));header.version=3;
+   const line=Buffer.from(JSON.stringify(header)+'\n'),head=compressed?zstdCompressSync(line,{params:{[constants.ZSTD_c_checksumFlag]:1}}):line;
+   await fs.writeFile(file,Buffer.concat([head,bytes.subarray(firstEnd)]));extraArtifacts.set(r.header.id,[{path:file,kind:'log'}]);return file;
+  },
   async seedUnrecorded(){return host.call('seed',{items:[{id:'unrecorded-session',cwd,preset:'alpha-chat'}]});},
   async primeCatalog(){await host.stop();host=await launch();return host.call('snapshot',{ids:records.map(r=>r.header.id)});},
   async stoppedSnapshot(){return owner.freezeAndSnapshot();}
