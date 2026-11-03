@@ -25,7 +25,7 @@ test('browser capability is created once per mode, registered before endpoint us
  await f.monitor.open(true);assert.equal(f.children.length,1);await f.monitor.open(false);assert.equal(f.children.length,2);assert.ok(f.children[0].exitCode!==null||f.children[0].signalCode!==null);
  await f.monitor.stop();assert.equal(f.children[1].signalCode,'SIGTERM');assert.equal(external.exitCode,null);await assert.rejects(f.monitor.open(true),/MONITOR_CLOSING/);
 });
-test('browser close failure retains uncertainty and never claims stopped; foreign process identity is not closed',async t=>{
+test('browser close failure retains uncertainty and never claims stopped',async t=>{
  let closeCount=0;const f=await fixture(t,{connectBrowser:async()=>({close:async()=>{closeCount++;throw Error('close failed');}})});
  await f.monitor.open(true);await assert.rejects(f.monitor.stop(),/close failed/);assert.equal(f.monitor.status().uncertain,true);assert.equal(f.children[0].exitCode,null);assert.equal(closeCount,1);
 });

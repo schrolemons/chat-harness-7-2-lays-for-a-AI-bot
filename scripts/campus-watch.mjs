@@ -561,8 +561,8 @@ async function main() {
       await checkBookmarks(page, state, changes);
     }
     // Keep the most recent session snapshot; do not move any visible window.
-    await siteSessions.close();siteSessions=null;
-    await browser.disconnect();
+    if(ownedMonitor)await ownedMonitor.cleanup(()=>siteSessions.close());else await siteSessions.close();siteSessions=null;
+    if(ownedMonitor)await ownedMonitor.cleanup(()=>browser.disconnect());else await browser.disconnect();
     clearTimeout(watchdog);
   } catch (error) {
     logLine('检查失败：' + (error?.message ?? error));
@@ -570,8 +570,8 @@ async function main() {
     reportScriptHeartbeat(ROOT, 'scripts/campus-watch.mjs', false, error?.message ?? String(error));
     stageWebChanges(state, changes);
     saveState(state);
-    try { await siteSessions?.close();siteSessions=null; } catch {}
-    try { await browser?.disconnect(); } catch {}
+    try { await siteSessions?.close();siteSessions=null; } catch (error) { ownedMonitor?.noteCleanupFailure(error); }
+    try { await browser?.disconnect(); } catch (error) { ownedMonitor?.noteCleanupFailure(error); }
     release();
     clearTimeout(watchdog);
     process.exitCode = 1;
@@ -596,7 +596,7 @@ async function main() {
   const prepared = await prepareWebNotifications(notificationChanges.filter(change=>change.kind!=='login'), {
     cache: state.webSummaryCache,
     generate: WATCH_PLUGIN_CONFIG.aiWebSummary === false ? undefined : payload => generateWebSummary(payload, {
-      root: ROOT, timeoutMs: WATCH_PLUGIN_CONFIG.summaryTimeoutMs || 35000
+      root: ROOT, timeoutMs: WATCH_PLUGIN_CONFIG.summaryTimeoutMs || 35000, recordCreatedSession: ownedMonitor?.recordCreatedSession
     }),
     onError: error => logLine('网页 AI 整理不可用，改用简短摘要：' + error.message)
   });

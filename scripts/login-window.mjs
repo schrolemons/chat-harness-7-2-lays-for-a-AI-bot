@@ -35,7 +35,7 @@ async function main(){
  ownedCleanup=async()=>{await sessions?.close();await browser?.disconnect();releaseProfile?.();releaseLogin();};
  const scoped=()=>({pages:()=>context.pages(),newPage:()=>context.newPage()});
  async function attach(){sessions=createSiteSessions(ROOT,browser,{strictClose:!!ownedMonitor});context=await sessions.context(activeTarget.url);}
- async function transition(headless){await sessions?.checkpoint();if(ownedMonitor){await sessions?.close();await browser.disconnect();}else{await browser.close();await waitStopped();}browser=await launch(headless);await attach();}
+ async function transition(headless){if(ownedMonitor){await ownedMonitor.cleanup(()=>sessions?.checkpoint());await ownedMonitor.cleanup(()=>sessions?.close());await ownedMonitor.cleanup(()=>browser.disconnect());}else{await sessions?.checkpoint();await browser.close();await waitStopped();}browser=await launch(headless);await attach();}
  try{
   const deadline=Date.now()+190000;
   while(!(releaseProfile=acquireLease(path.join(ROOT,'state','campus-watch.lock')))){if(Date.now()>=deadline)throw Error('后台检查尚未结束');await sleep(1000);}
@@ -59,10 +59,10 @@ async function main(){
   await transition(true);
   if(!result.ready){log('登录协助结束：'+result.reason);return;}
   if(!(await verify()))throw Error('无头交接后的原平台访问验证未通过');
-  await sessions.checkpoint();
+  if(ownedMonitor)await ownedMonitor.cleanup(()=>sessions.checkpoint());else await sessions.checkpoint();
   if(recovery.recovered(activeTarget.url,result.generation).ok){await notify();resume=true;log('该平台登录及无头访问均已验证，恢复后台监管');}
  }catch(error){log('登录协助异常：'+error.message);if(activeTarget&&recovery.get(activeTarget.url).generation===generation){recovery.fail(activeTarget,{generation});await notify().catch(()=>{});}}
- finally{try{await sessions?.close();}catch(error){log('保存平台会话失败：'+error.message);}try{await browser?.disconnect();}catch{}releaseProfile?.();releaseLogin();}
+ finally{try{await sessions?.close();}catch(error){ownedMonitor?.noteCleanupFailure(error);log('保存平台会话失败：'+error.message);}try{await browser?.disconnect();}catch(error){ownedMonitor?.noteCleanupFailure(error);}releaseProfile?.();releaseLogin();}
  if(resume&&ownedMonitor){await ownedMonitor.spawn('campus-watch',['--force','--retry-url',activeTarget.url]);return;}
  if(resume){const child=spawn(process.execPath,[path.join(ROOT,'scripts','campus-watch.mjs'),'--force','--retry-url',activeTarget.url],{cwd:ROOT,detached:true,stdio:'ignore',windowsHide:true});child.unref();}
 }

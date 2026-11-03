@@ -41,13 +41,14 @@ async function pinnedJsonl(ctx,hostBaseUrl,hostImport) {
 export async function createSessionOwnershipRecorder({ctx,descriptor,scope,hostBaseUrl,hostImport,isActive=()=>true}) {
   const backend=await pinnedJsonl(ctx,hostBaseUrl,hostImport);
   const policy=readInstanceSessionPolicy({descriptor,env:{QQ_BRIDGE_PRESET_MAP:JSON.stringify(scope.presetMap)}});
-  return async function recordCreatedSession({sessionId,workspaceId}={}) {
+  return async function recordCreatedSession({sessionId,workspaceId}={},restriction) {
     const reject=message=>{throw fail('SESSION_OWNERSHIP_MISMATCH',message);};
     if(!isActive())reject('Instance generation is closed');
     if(typeof sessionId!=='string'||!sessionId||typeof workspaceId!=='string'||!workspaceId)reject('Explicit successful create IDs required');
     if(ctx.reflect._getImpl('sessionPersistence')!==backend.provider)throw unsupported('Persistence provider changed');
     const agent=ctx.get('agents')?.get(sessionId),header=agent?.session?.header;
     if(!agent||agent.id!==sessionId||header?.id!==sessionId||!scope.ownsContext(agent.ctx)||!policy.ownsPreset(header.agentPreset))reject('Live agent/header/scope/preset evidence differs');
+    if(restriction&&(restriction.preset!=='campus-summary'||header.agentPreset!==policy.resolvePreset('campus-summary')))reject('Worker may record only its campus-summary preset');
     const workspace=ctx.get('workspaceRegistry')?.get(workspaceId);
     if(!workspace?.sessionIds.includes(sessionId))reject('Workspace has no exact session member');
     const expected=await fs.realpath(policy.workspace(policy.workspaceKind(header.agentPreset)));

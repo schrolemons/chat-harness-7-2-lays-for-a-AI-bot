@@ -13,8 +13,8 @@ async function childFixture(t){
   const script=path.join(root,'child.mjs');
   await fs.writeFile(script,`import {createRuntimeIpcClient} from ${JSON.stringify(clientUrl)};
 const client=createRuntimeIpcClient({instanceId:'fixture',generation:'one'});
-process.on('message',async m=>{if(m.test==='record'){try{const result=await client.recordCreatedSession(m.record);process.send({test:'result',result});}catch(e){process.send({test:'result',error:e.code});}}
-if(m.test==='raw')process.send(m.payload);if(m.test==='worker'){try{process.send({test:'result',result:await client.spawnWorker('campus-watch',[])});}catch(e){process.send({test:'result',error:e.code});}}});
+process.on('message',async m=>{if(m.type==='qq-bridge:reply'&&m.id?.startsWith('forged'))process.send({test:'result',error:m.error?.code});if(m.test==='record'){try{const result=await client.recordCreatedSession(m.record);process.send({test:'result',result});}catch(e){process.send({test:'result',error:e.code});}}
+if(m.test==='cleanup'){try{process.send({test:'result',result:await client.reportCleanup({clean:m.clean,error:m.clean?'':'checkpoint failed'})});}catch(e){process.send({test:'result',error:e.code||e.message});}}if(m.test==='raw')process.send(m.payload);if(m.test==='worker'){try{process.send({test:'result',result:await client.spawnWorker('campus-watch',[])});}catch(e){process.send({test:'result',error:e.code});}}});
 process.send({test:'ready'});`);
   const child=spawn(process.execPath,[script],{windowsHide:true,stdio:['ignore','ignore','pipe','ipc']});
   t.after(async()=>{if(child.exitCode===null&&child.signalCode===null){const end=once(child,'exit');child.kill();await end;}await fs.rm(root,{recursive:true,force:true});});
@@ -35,11 +35,19 @@ test('malformed IDs, stale generations and unsupported methods never call record
   const child=await childFixture(t),records=[];
   const channel=api.bindOwnedRuntimeIpc({child,instanceId:'fixture',generation:'one',isActive:()=>true,recordCreatedSession:r=>records.push(r)});t.after(()=>channel.detach());
   const reply=result(child);child.send({test:'record',record:{sessionId:'s',workspaceId:'w',path:'invented'}});assert.equal((await reply).error,'IPC_REQUEST_INVALID');
-  child.send({test:'raw',payload:{type:'qq-bridge:request',version:1,instanceId:'other',generation:'old',id:'forged',method:'session.recordCreated',params:{sessionId:'s',workspaceId:'w'}}});
+  for(const [instanceId,generation]of [['other','one'],['fixture','old']]){const forged=result(child);child.send({test:'raw',payload:{type:'qq-bridge:request',version:1,instanceId,generation,id:'forged-'+instanceId,method:'session.recordCreated',params:{sessionId:'s',workspaceId:'w'}}});assert.equal((await forged).error,'IPC_REQUEST_INVALID');}
   const worker=result(child);child.send({test:'worker'});assert.equal((await worker).error,'WORKER_UNSUPPORTED');assert.deepEqual(records,[]);
 });
 test('recorder failure preserves the reported IDs and never invokes replacement creation',async t=>{
   const child=await childFixture(t),records=[];
   const channel=api.bindOwnedRuntimeIpc({child,instanceId:'fixture',generation:'one',isActive:()=>true,recordCreatedSession:r=>{records.push(r);throw Object.assign(Error('unsupported host'),{code:'OWNERSHIP_UNSUPPORTED'});}});t.after(()=>channel.detach());
   const reply=result(child);child.send({test:'record',record:{sessionId:'keep-id',workspaceId:'keep-workspace'}});assert.equal((await reply).error,'OWNERSHIP_UNSUPPORTED');assert.deepEqual(records,[{sessionId:'keep-id',workspaceId:'keep-workspace'}]);
+});
+
+
+test('closed admission still acknowledges only current owned cleanup reports',async t=>{
+ const child=await childFixture(t),reports=[];
+ const channel=api.bindOwnedRuntimeIpc({child,instanceId:'fixture',generation:'one',isActive:()=>false,isOwned:()=>true,reportCleanup:r=>{reports.push(r);return {accepted:true};}});t.after(()=>channel.detach());
+ channel.closeAdmission();const reply=result(child);child.send({test:'cleanup',clean:false});assert.deepEqual((await reply).result,{accepted:true});assert.deepEqual(reports,[{clean:false,error:'checkpoint failed'}]);
+ const denied=result(child);child.send({test:'worker'});assert.equal((await denied).error,'RUNTIME_CLOSING');
 });

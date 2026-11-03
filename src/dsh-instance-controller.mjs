@@ -95,12 +95,12 @@ export async function mountInstanceController(ctx, descriptor, deps = {}) {
       },
     }); check();
     let recorder;
-    const recordCreatedSession = async record => {
+    const recordCreatedSession = async (record, restriction) => {
       check();
       recorder ??= createSessionOwnershipRecorder({ctx,descriptor,scope,hostImport,
         hostBaseUrl:ctx.root.baseUrl || ctx.loader?.config?.baseUrl || ctx.loader?.ctx?.baseUrl,
         isActive:()=>!closing && status.state==='ready'});
-      const append = await recorder; check(); return append(record);
+      const append = await recorder; check(); return append(record, restriction);
     };
     runtime = await deps.createRuntime?.({ ctx: scope.ctx, descriptor, config: deps.config, presetMap:scope.presetMap, recordCreatedSession }); check();
     for (const serverName of Object.keys(BUNDLED_MCP)) {

@@ -29,21 +29,23 @@ export async function assertGlobalBudgetAllowsModel(root, { fetchImpl = fetch } 
 }
 
 /** One short, fresh, tool-free DSH turn for the whole change batch. Never sends to QQ. */
-export async function generateWebSummary(payload, { root, timeoutMs = 35000 } = {}) {
+export async function generateWebSummary(payload, { root, timeoutMs = 35000, recordCreatedSession } = {}) {
   await assertGlobalBudgetAllowsModel(root);
   const cfg = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
   const tier=selectCostPolicy(readCostPolicy(root),{reason:'webSummary'}),provider=String(cfg.dsh?.provider||'deepseek-official');
-  const api = new NodeApiClient(cfg.dsh.baseUrl, 8000, cfg.dsh.authToken ? { token: cfg.dsh.authToken } : {}, {root,onOwnershipError:(error,record)=>console.warn('会话归属未记录',record.sessionId,error.message)});
+  const api = new NodeApiClient(cfg.dsh.baseUrl, 8000, cfg.dsh.authToken ? { token: cfg.dsh.authToken } : {}, {root,recordCreatedSession,onOwnershipError:(error,record)=>console.warn('会话归属未记录',record.sessionId,error.message)});
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(Error('网页整理超时')), Math.max(1000, Math.min(timeoutMs, 60000)));
   const signal = abort.signal;
-  let sessionId, turnCompleted = false;
+  let sessionId, turnCompleted = false, preserveUnrecorded = false;
   try {
     const list = unwrap(await api.agentPresets.list({}, signal), 'agentPresets.list').presets;
     if (!list.some(preset => preset.id === api.sessionPolicy.resolvePreset('campus-summary') && !preset.broken)) throw Error('网页整理预设未就绪');
     const cwd = api.sessionPolicy.workspace('summary') || path.join(root, 'state', 'web-summary-workspace');
     fs.mkdirSync(cwd, { recursive: true });
-    const created = unwrap(await api.sessions.create({ cwd, agentPreset: 'campus-summary' }, signal), 'session.create');
+    const response = await api.sessions.create({ cwd, agentPreset: 'campus-summary' }, signal);
+    preserveUnrecorded = response.ownership?.status === 'unrecorded';
+    const created = unwrap(response, 'session.create');
     sessionId = created.sessionId;
     unwrap(await api.sessions.selectModel({sessionId,provider,model:tier.model,reasoningEffort:tier.reasoningEffort},signal),'summary session.selectModel');
     const url = new URL('/api/remote.mux', cfg.dsh.baseUrl);
@@ -95,6 +97,6 @@ export async function generateWebSummary(payload, { root, timeoutMs = 35000 } = 
     clearTimeout(timer);
     // Cancel any unfinished generation before archiving the disposable session.
     if (!turnCompleted && sessionId) try { await api.sessions.cancel({ sessionId }); } catch {}
-    if (sessionId) try { await api.callUnary('workspace/archiveSession', { sessionId }); } catch {}
+    if (sessionId && !preserveUnrecorded) try { await api.callUnary('workspace/archiveSession', { sessionId }); } catch {}
   }
 }

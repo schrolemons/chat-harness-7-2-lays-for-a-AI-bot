@@ -185,8 +185,10 @@ export function createInstanceRuntime(options = {}) {
       for (const entry of order) {
         if(entry.kind==='snow'&&monitor)await monitor.stop();
         if(!entry.record&&running(entry.child))throw fail('OWNERSHIP_UNCERTAIN');
-        await entry.ownership.stop(); entry.ipc?.detach();
+        await entry.ownership.stop(); await entry.ipc?.drain(); entry.ipc?.detach();
       }
+      const dirty=children.find(e=>['campus-watch','login-window'].includes(e.kind)&&e.cleanupResult?.clean!==true);
+      if(dirty)throw fail(dirty.cleanupResult?'WORKER_CLEANUP_FAILED':'WORKER_CLEANUP_UNKNOWN',dirty.cleanupResult?.error||`${dirty.kind} exited without confirmed cleanup`);
       if (lease) { await lease.release(); lease = null; }
       children = [];
       monitor = null;
@@ -206,8 +208,16 @@ export function createInstanceRuntime(options = {}) {
     const ready = new Promise((resolve,reject)=>{registered=resolve;registrationFailed=reject;});
     ready.catch(()=>{});
     if(kind!=='snow')entry.ipc=bindOwnedRuntimeIpc({child,instanceId,generation:invocation,
-      isActive:()=>admission&&children.includes(entry)&&running(child),
-      recordCreatedSession:kind==='bridge'?async record=>{await ready;if(!admission)throw fail('RUNTIME_CLOSING');if(typeof options.recordCreatedSession!=='function')throw fail('OWNERSHIP_UNSUPPORTED');return options.recordCreatedSession(record);}:undefined,
+      isActive:()=>admission&&!entry.cleanupResult&&children.includes(entry)&&running(child),
+      isOwned:()=>children.includes(entry)&&running(child),
+      reportCleanup:['campus-watch','login-window'].includes(kind)?async result=>{
+        await ready;
+        if(entry.cleanupResult)throw fail('WORKER_CLEANUP_ALREADY_REPORTED');
+        entry.cleanupResult=result;
+        if(!result.clean){uncertain=true;admission=false;state='failed';remember(fail('WORKER_CLEANUP_FAILED',result.error));}
+        return {accepted:true};
+      }:undefined,
+      recordCreatedSession:['bridge','campus-watch'].includes(kind)?async record=>{await ready;if(!admission)throw fail('RUNTIME_CLOSING');if(typeof options.recordCreatedSession!=='function')throw fail('OWNERSHIP_UNSUPPORTED');return options.recordCreatedSession(record,kind==='campus-watch'?{preset:'campus-summary'}:undefined);}:undefined,
       spawnWorker:async(workerKind,workerArgs)=>{await ready;return spawnWorker(entry,workerKind,workerArgs);},
       openMonitor:['campus-watch','login-window'].includes(kind)?async headless=>{
         await ready;if(!admission)throw fail('RUNTIME_CLOSING');
@@ -220,6 +230,7 @@ export function createInstanceRuntime(options = {}) {
     });
     child.on('error', () => {});
     child.once('exit', () => {
+      if(['campus-watch','login-window'].includes(kind)&&entry.cleanupResult?.clean!==true){uncertain=true;admission=false;if(state!=='stopping')state='failed';remember(fail(entry.cleanupResult?'WORKER_CLEANUP_FAILED':'WORKER_CLEANUP_UNKNOWN',entry.cleanupResult?.error||`${kind} exited without confirmed cleanup`));}
       if (state === 'running' && ['snow','bridge'].includes(kind)) { admission=false; state = 'failed'; remember(fail('INSTANCE_CHILD_EXITED', `${kind} process exited; stop this instance before retrying`)); }
     });
     try {

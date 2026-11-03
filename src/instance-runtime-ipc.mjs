@@ -7,7 +7,7 @@ const exact=(v,keys)=>object(v)&&Object.keys(v).length===keys.length&&keys.every
 
 /** Host-only transport capability. Runtime binds only its exact registered
  * current ChildProcess; no HTTP endpoint, PID lookup or model tool grants it. */
-export function bindOwnedRuntimeIpc({child,instanceId,generation,isActive,recordCreatedSession,spawnWorker,openMonitor}={}){
+export function bindOwnedRuntimeIpc({child,instanceId,generation,isActive,isOwned,reportCleanup,recordCreatedSession,spawnWorker,openMonitor}={}){
   if(!(child instanceof ChildProcess)||!child.connected||!text(instanceId)||!text(generation)||typeof isActive!=='function')throw fail('IPC_CAPABILITY_INVALID');
   let closed=false;const pending=new Set(),seen=new Set();
   const send=message=>new Promise(resolve=>{if(!child.connected)return resolve();try{child.send(message,()=>resolve());}catch{resolve();}});
@@ -18,8 +18,14 @@ export function bindOwnedRuntimeIpc({child,instanceId,generation,isActive,record
       try{
         if(!exact(message,['type','version','instanceId','generation','id','method','params'])||message.version!==1||message.instanceId!==instanceId||message.generation!==generation||!text(message.id)||seen.has(message.id))throw fail('IPC_REQUEST_INVALID');
         seen.add(message.id);if(seen.size>4096)seen.delete(seen.values().next().value);
-        if(closed||!isActive())throw fail('RUNTIME_CLOSING');
-        if(message.method==='session.recordCreated'){
+        const terminal=message.method==='worker.cleanup';
+        if(terminal?(!isOwned?.()):closed||!isActive())throw fail('RUNTIME_CLOSING');
+        if(terminal){
+          const p=message.params;
+          if(!exact(p,['clean','error'])||typeof p.clean!=='boolean'||typeof p.error!=='string'||p.error.length>2000||(p.clean&&p.error))throw fail('IPC_REQUEST_INVALID');
+          if(typeof reportCleanup!=='function')throw fail('WORKER_UNSUPPORTED');
+          reply.result=await reportCleanup({clean:p.clean,error:p.error});
+        }else if(message.method==='session.recordCreated'){
           const p=message.params;
           if(!exact(p,['sessionId','workspaceId'])||!text(p.sessionId)||!text(p.workspaceId))throw fail('IPC_REQUEST_INVALID');
           if(typeof recordCreatedSession!=='function')throw fail('OWNERSHIP_UNSUPPORTED');
@@ -59,12 +65,12 @@ export function createRuntimeIpcClient({transport=process,instanceId=process.env
   const disconnected=()=>{rejectAll();shut();};
   if(transport.connected&&text(instanceId)&&text(generation)){transport.on('message',onMessage);transport.on('disconnect',disconnected);}
   const request=(method,params)=>new Promise((resolve,reject)=>{
-    if(closed||!transport.connected||typeof transport.send!=='function'||!text(instanceId)||!text(generation))return reject(fail('IPC_UNAVAILABLE'));
+    if((closed&&method!=='worker.cleanup')||!transport.connected||typeof transport.send!=='function'||!text(instanceId)||!text(generation))return reject(fail('IPC_UNAVAILABLE'));
     const id=randomUUID(),timer=setTimeout(()=>{pending.delete(id);reject(fail('IPC_TIMEOUT'));},timeoutMs);
     pending.set(id,{resolve,reject,timer});
     const failed=error=>{if(!error)return;const p=pending.get(id);if(p){pending.delete(id);clearTimeout(timer);reject(fail('IPC_DISCONNECTED'));}};
     try{transport.send({type:'qq-bridge:request',version:1,instanceId,generation,id,method,params},failed);}catch(error){failed(error);}
   });
-  return Object.freeze({recordCreatedSession:r=>request('session.recordCreated',r),spawnWorker:(kind,args)=>request('worker.spawn',{kind,args}),openMonitor:headless=>request('monitor.open',{headless}),
+  return Object.freeze({reportCleanup:r=>request('worker.cleanup',r),recordCreatedSession:r=>request('session.recordCreated',r),spawnWorker:(kind,args)=>request('worker.spawn',{kind,args}),openMonitor:headless=>request('monitor.open',{headless}),
     dispose(){rejectAll();transport.off('message',onMessage);transport.off('disconnect',disconnected);}});
 }

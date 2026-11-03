@@ -4,39 +4,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
-import {initializeManifest,readManifest} from '../src/instance-manifest.mjs';
-import {createInstanceScope} from '../src/dsh-instance-scope.mjs';
-import {readInstanceSessionPolicy} from '../src/instance-session-policy.mjs';
+import {readManifest} from '../src/instance-manifest.mjs';
 import {NodeApiClient} from '../src/dsh-client.js';
-const hostPackage=createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json');
-const requireHost=createRequire(hostPackage),requireBase=createRequire(requireHost.resolve('@deepseek-ai/dsh-base/package.json'));
-const hostImport=async name=>name.startsWith('file:')?import(name):import(pathToFileURL((()=>{try{return requireHost.resolve(name);}catch{return requireBase.resolve(name);}})()).href);
-const modules={};for(const name of ['cordis','cordis-plugin-loader','dsh-system-prompt','dsh-tools','dsh-session','dsh-agent','dsh-session-projection','dsh-agent-preset-registry','dsh-session-persistence-jsonl','dsh-storage','dsh-storage-json','dsh-storage-domain','dsh-workspace','dsh-session-query-sqlite'])modules[name]=await hostImport('@deepseek-ai/'+name);
-async function fixture(t){
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'native-session-owned-')),ctx=new modules.cordis.Context();
- const mount=async(name,config)=>ctx.plugin(ctx.loader?ctx.loader.unwrapExports(modules[name]):modules[name].default||modules[name],config);
- await ctx.plugin(modules['cordis-plugin-loader'].default,{baseUrl:pathToFileURL(hostPackage).href});
- for(const name of ['dsh-system-prompt','dsh-tools','dsh-session','dsh-agent','dsh-session-projection'])await mount(name);
- await mount('dsh-agent-preset-registry',{default:'standard'});
- await mount('dsh-session-persistence-jsonl',{root:path.join(dir,'host','sessions'),compression:'none'});
- await mount('dsh-storage');await mount('dsh-storage-json',{root:path.join(dir,'host','storages')});await mount('dsh-storage-domain',{backend:'json'});await mount('dsh-workspace');await mount('dsh-session-query-sqlite',{path:':memory:',openAt:'never'});
- const scopes=[];
- t.after(async()=>{for(const scope of scopes)await scope.dispose();await ctx.fiber.dispose();assert.equal(path.dirname(dir),os.tmpdir());await fs.rm(dir,{recursive:true,force:true});});
- async function instance(id){
- const descriptor={version:1,instanceId:id,root:path.join(dir,id),dshHome:path.join(dir,'host'),profile:'fixture',bundleName:'synthetic-'+id,entryId:id+'-mode',settingsNamespace:id+'-mode',presetIdMap:{}};
- await fs.mkdir(descriptor.root);await initializeManifest(descriptor.root,descriptor);
- const scope=await createInstanceScope(ctx,{...descriptor,hostImport,definitions:['qq-chat','qq-chat-v2','qq-admin','qq-learning','qq-task-worker','campus-summary'].map(id=>({id,plugins:[]}))});scopes.push(scope);scope.activate();
- return {descriptor,scope,policy:readInstanceSessionPolicy({descriptor})};
- }
- async function nativeCreate(instance,preset,workspace){
-  let agent;
-  await instance.scope.ctx.plugin({inject:['sessions','agents'],apply(owner){const session=owner.sessions.create(undefined,{meta:{cwd:workspace.path,agentPreset:preset}});agent={id:session.id,session,ctx:owner};owner.agents.register(agent);}});
-  await workspace.attachSession(agent.id);return agent;
- }
- return {ctx,dir,instance,nativeCreate};
-}
+import {nativeSessionFixture as fixture,hostPackage,hostImport} from './native-session-owned-fixture.mjs';
+const modules={cordis:await hostImport('@deepseek-ai/cordis')};
 
 test('native header/scope/workspace/JSONL proof appends exact new sessions for two roots without changing ordinary sessions',async t=>{
  const f=await fixture(t),a=await f.instance('alpha'),b=await f.instance('beta');
@@ -74,4 +46,18 @@ test('same-name fake locate provider is unsupported and cannot mint ownership ev
  try{await ctx.plugin({apply(owner){owner.provide('sessionPersistence',{locate(){return {kind:'jsonl',path:path.join(os.tmpdir(),'fake.jsonl')};}});}});
  await assert.rejects(createSessionOwnershipRecorder({ctx,descriptor:{},scope:{},hostBaseUrl:pathToFileURL(hostPackage).href,hostImport}),/UNSUPPORTED/);
  }finally{await ctx.fiber.dispose();}
+});
+
+
+test('native recorder enforces host campus-only preset restriction against same-instance non-summary sessions',async t=>{
+ const f=await fixture(t),instance=await f.instance('campus');
+ const {createSessionOwnershipRecorder}=await import('../src/instance-session-ownership.mjs');
+ const recorder=await createSessionOwnershipRecorder({ctx:f.ctx,descriptor:instance.descriptor,scope:instance.scope,hostBaseUrl:pathToFileURL(hostPackage).href,hostImport});
+ for(const preset of ['qq-chat','campus-summary']){
+  const directory=instance.policy.workspace(preset==='campus-summary'?'summary':'chat');await fs.mkdir(directory,{recursive:true});
+  const ws=await f.ctx.workspaceRegistry.create(directory),agent=await f.nativeCreate(instance,instance.policy.resolvePreset(preset),ws);
+  const recording=recorder({sessionId:agent.id,workspaceId:ws.id},{preset:'campus-summary'});
+  if(preset==='qq-chat')await assert.rejects(recording,/campus-summary/);else await recording;
+ }
+ assert.equal((await readManifest(instance.descriptor.root)).sessions.length,1);
 });

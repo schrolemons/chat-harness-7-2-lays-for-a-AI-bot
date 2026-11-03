@@ -51,14 +51,14 @@ async function fixture(t, { registryDir, botUin = '123456789', instanceId = 'pub
     child.once('exit', () => { live.delete(child.pid); exits.push(child === children[0] ? 'snow' : 'bridge'); });
     return child;
   };
-  const descriptor={version:1,instanceId,label:'Fixture bot',root,dshHome:path.dirname(registryDir),registryDir,entryId:instanceId,settingsNamespace:instanceId,presetIdMap:{}};
+  const descriptor={version:1,instanceId,label:'Fixture bot',profile:'fixture',bundleName:'synthetic-runtime',root,dshHome:path.dirname(registryDir),registryDir,entryId:instanceId,settingsNamespace:instanceId,presetIdMap:{}};
   await fs.writeFile(path.join(root,'.qq-bridge-instance.json'),JSON.stringify(descriptor));
   const runtimeOptions = { descriptor, root, instanceId, registryDir, nodePath: process.execPath, snowHome,
     probePort: async () => false, probeProcess: probe, spawnProcess, stopTimeoutMs: 1500,
     presetMap: readInstanceSessionPolicy({descriptor}).presetMap, ...options.runtimeOptions };
   const runtime = api.createInstanceRuntime(runtimeOptions);
   t.after(async () => {
-    try { await runtime.dispose(); }
+    try { if(options.cleanupError)await assert.rejects(runtime.dispose(),matches(options.cleanupError));else await runtime.dispose(); }
     finally {
       for (const child of children) if (child.exitCode === null && child.signalCode === null) {
         const exited = once(child, 'exit'); child.kill(); await exited;
@@ -263,7 +263,7 @@ test('runtime marker rejects missing asset hashes, hardlinks and junction escape
 });
 
 const ipcModule=new URL('../src/instance-runtime-ipc.mjs',import.meta.url).href;
-const workerCode=`(async()=>{const {createRuntimeIpcClient}=await import(${JSON.stringify(ipcModule)});const client=createRuntimeIpcClient({onShutdown:()=>process.exit(0)});process.on('message',async m=>{if(m==='shutdown'||m.test==='exit')process.exit(0);if(m.test==='worker'){try{process.send({testReply:m.id,result:await client.spawnWorker(m.kind,m.args||[])});}catch(e){process.send({testReply:m.id,error:e.code});}}});setInterval(()=>{},1000);})()`;
+const workerCode=`(async()=>{const {createRuntimeIpcClient}=await import(${JSON.stringify(ipcModule)});const client=createRuntimeIpcClient({onShutdown:async()=>{if(process.env.QQ_BRIDGE_WORKER_KIND)await client.reportCleanup({clean:true,error:''});process.exit(0)}});process.on('message',async m=>{if(m==='shutdown')process.exit(0);if(m.test==='exit'){if(process.env.QQ_BRIDGE_WORKER_KIND)await client.reportCleanup({clean:true,error:''});process.exit(0);}if(m.test==='worker'){try{process.send({testReply:m.id,result:await client.spawnWorker(m.kind,m.args||[])});}catch(e){process.send({testReply:m.id,error:e.code});}}});setInterval(()=>{},1000);})()`;
 function workerRequest(child,kind,args=[]){const id=crypto.randomUUID();return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.off('message',listen);reject(Error('fixture IPC timeout'));},3000);const listen=m=>{if(m.testReply===id){clearTimeout(timer);child.off('message',listen);resolve(m);}};child.on('message',listen);child.send({test:'worker',id,kind,args});});}
 
 test('disable drains owned monitor and login workers; other bot and external sleeper remain alive',async t=>{
@@ -284,7 +284,7 @@ test('worker spawn failure is not acknowledged and lease remains held until veri
 });
 
 test('worker refusal to shut down prevents a false stopped result after bridge has exited',async t=>{
- const code=workerCode.replace('onShutdown:()=>process.exit(0)',"onShutdown:()=>{if(!process.env.QQ_BRIDGE_WORKER_KIND)process.exit(0)}");
+ const code=workerCode.replace("onShutdown:async()=>{if(process.env.QQ_BRIDGE_WORKER_KIND)await client.reportCleanup({clean:true,error:''});process.exit(0)}","onShutdown:()=>{if(!process.env.QQ_BRIDGE_WORKER_KIND)process.exit(0)}");
  const f=await fixture(t,{childCode:code,runtimeOptions:{stopTimeoutMs:100}});await f.runtime.start();await workerRequest(f.children[1],'campus-watch');
  await assert.rejects(f.runtime.stop(),matches('PROCESS_STOP_FAILED'));assert.notEqual(f.children[1].exitCode,null);assert.equal(f.children[2].exitCode,null);assert.equal(f.runtime.status().uncertain,true);assert.equal(f.runtime.status().leaseHeld,true);
  const ended=once(f.children[2],'exit');f.children[2].send({test:'exit'});await ended;await f.runtime.stop();
@@ -295,4 +295,78 @@ test('worker admission closes synchronously and stop drains a worker registering
  const f=await fixture(t,{childCode:workerCode});let release,entered;const gate=new Promise(r=>release=r),at=new Promise(r=>entered=r);let blocked=false;
  const runtime=api.createInstanceRuntime({...f.options,probeProcess:async pid=>{if(f.children.length===3&&pid===f.children[2].pid&&!blocked){blocked=true;entered();await gate;}return f.live.get(pid)||null;}});t.after(()=>runtime.dispose());
  await runtime.start();const first=workerRequest(f.children[1],'campus-watch');await at;const stopping=runtime.stop();const late=await workerRequest(f.children[1],'campus-watch');assert.equal(late.error,'RUNTIME_CLOSING');assert.equal(f.children.length,3);release();await first;await stopping;assert.equal(runtime.status().leaseHeld,false);
+});
+
+
+test('registered campus recorder is summary-only; login has no recording capability',async t=>{
+ const records=[];
+ const code=workerCode.replace("if(m.test==='worker')", "if(m.test==='record'){try{process.send({testReply:m.id,result:await client.recordCreatedSession({sessionId:'new',workspaceId:'workspace'})});}catch(e){process.send({testReply:m.id,error:e.code});}}if(m.test==='worker')");
+ const f=await fixture(t,{childCode:code,runtimeOptions:{recordCreatedSession:async(record,restriction)=>{records.push({record,restriction});return {durable:true};}}});
+ await f.runtime.start();await workerRequest(f.children[1],'campus-watch');await workerRequest(f.children[2],'login-window');
+ const request=child=>new Promise(resolve=>{const id=crypto.randomUUID();const listen=m=>{if(m.testReply===id){child.off('message',listen);resolve(m);}};child.on('message',listen);child.send({test:'record',id});});
+ assert.deepEqual((await request(f.children[2])).result,{durable:true});
+ assert.deepEqual(records,[{record:{sessionId:'new',workspaceId:'workspace'},restriction:{preset:'campus-summary'}}]);
+ assert.equal((await request(f.children[3])).error,'OWNERSHIP_UNSUPPORTED');
+});
+
+
+const monitorFixture=new URL('./owned-monitor-main-fixture.mjs',import.meta.url).href;
+for(const kind of ['campus-watch','login-window'])for(const mode of ['close','checkpoint','business','clean'])test(`production ${kind} main/finally ${mode}: exited worker requires confirmed resource cleanup`,async t=>{
+ const code=workerCode.replace("if(m.test==='worker')", `if(m.test==='main'){try{await(await import(${JSON.stringify(monitorFixture)})).executeMonitorMain(process.env.QQ_BRIDGE_WORKER_KIND,m.mode);process.exit(process.exitCode||0);}catch(e){console.error(e);process.exit(2);}}if(m.test==='worker')`);
+ const realBrowser=!!process.env.TEST_OWNED_BROWSER_PATH&&kind==='campus-watch'&&mode==='close';
+ const f=await fixture(t,{childCode:code,native:realBrowser,cleanupError:['close','checkpoint'].includes(mode)?'WORKER_CLEANUP_FAILED':undefined,runtimeOptions:realBrowser?{monitorBrowserPath:process.env.TEST_OWNED_BROWSER_PATH,stopTimeoutMs:15000,env:{...process.env,TEST_OWNED_MONITOR_BROWSER:'1'}}:{}});await f.runtime.start();await workerRequest(f.children[1],'campus-watch');let worker=f.children[2];
+ if(kind==='login-window'){await workerRequest(worker,'login-window');worker=f.children[3];}
+ const ended=once(worker,'exit');worker.send({test:'main',mode});await ended;
+ if(['close','checkpoint'].includes(mode)){await assert.rejects(f.runtime.stop(),matches('WORKER_CLEANUP_FAILED'));assert.equal(f.runtime.status().uncertain,true);assert.equal(f.runtime.status().leaseHeld,true);assert.ok(await f.claim());if(realBrowser){const browser=f.runtime.status().children.find(child=>child.kind==='monitor-browser');assert.ok(browser,'owned browser registered');assert.equal(browser.running,false);}}
+ else{await f.runtime.stop();assert.equal(f.runtime.status().leaseHeld,false);}
+});
+
+
+for(const outcome of ['durable','failure'])test(`actual owned campus main -> summary -> native recorder: ${outcome} ACK and original ID`,{timeout:15000},async t=>{
+ const {nativeSessionFixture,hostPackage,hostImport}=await import('./native-session-owned-fixture.mjs');
+ const {createSessionOwnershipRecorder}=await import('../src/instance-session-ownership.mjs');
+ const {readManifest}=await import('../src/instance-manifest.mjs');
+ const {pathToFileURL}=await import('node:url');const {WebSocketServer}=await import('ws');
+ const native=await nativeSessionFixture(t);let recorder,entered,release,instance;const at=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
+ const code=workerCode.replace("if(m.test==='worker')", `if(m.test==='main'){try{await(await import(${JSON.stringify(monitorFixture)})).executeMonitorMain('campus-watch','summary');process.exit(process.exitCode||0);}catch(e){console.error(e);process.exit(2);}}if(m.test==='worker')`);
+ const f=await fixture(t,{childCode:code,runtimeOptions:{env:{...process.env,DSH_HOME:path.join(native.dir,'host')},recordCreatedSession:async(record,restriction)=>{entered(record);await gate;if(outcome==='failure')throw Error('fixture append unavailable');const result=await recorder(record,restriction);assert.equal((await readManifest(f.root)).sessions[0].sessionId,record.sessionId);return result;}}});
+ instance=await native.instance('public',f.options.descriptor);
+ recorder=await createSessionOwnershipRecorder({ctx:native.ctx,descriptor:instance.descriptor,scope:instance.scope,hostBaseUrl:pathToFileURL(hostPackage).href,hostImport});
+ const calls=[],created=[];let followed;
+ const server=http.createServer(async(req,res)=>{try{
+  if(req.url==='/api/tokens/budgets'){res.end(JSON.stringify({ok:true,global:{limit:1,cost:0,reached:false}}));return;}
+  if(req.url.startsWith('/?token=')){res.setHeader('set-cookie','fixture=local');res.end();return;}
+  let body='';for await(const chunk of req)body+=chunk;const message=JSON.parse(body),data=message.payload.args.request||message.payload.args;
+  calls.push(message.method);let value={};
+  if(message.method==='agentPresets/list')value={presets:[{id:instance.policy.resolvePreset('campus-summary')}]};
+  else if(message.method==='workspace/create'){const ws=await native.ctx.workspaceRegistry.create(data.path);value={workspace:{workspaceId:ws.id,path:ws.path}};}
+  else if(message.method==='session/create'){const ws=native.ctx.workspaceRegistry.get(data.workspaceId),agent=await native.nativeCreate(instance,data.agentPreset,ws);created.push(agent.id);value={sessionId:agent.id,agentPreset:data.agentPreset};}
+  else if(message.method==='session/prompt'){const {socket,streamId}=followed;for(const event of [{type:'assistant/message',data:{message:{content:[{type:'text',text:'{"fixture":"summary"}'}]}}},{type:'turn/end',data:{reason:'completed'}}])socket.send(JSON.stringify({type:'item',streamId,value:{type:'event',event}}));}
+  else assert.ok(['session/rename','session/selectModel','workspace/archiveSession','session/cancel'].includes(message.method),message.method);
+  res.end(JSON.stringify({type:'server-response',rpcId:message.rpcId,result:{ok:true,value}}));
+ }catch(error){res.statusCode=500;res.end(String(error));}});
+ const sockets=new WebSocketServer({server});sockets.on('connection',socket=>socket.on('message',bytes=>{const {streamId}=JSON.parse(bytes);followed={socket,streamId};socket.send(JSON.stringify({type:'item',streamId,value:{type:'snapshot'}}));}));
+ server.listen(0,'127.0.0.1');await once(server,'listening');t.after(async()=>{for(const socket of sockets.clients)socket.terminate();await new Promise(r=>sockets.close(r));await new Promise(r=>server.close(r));});
+ const port=server.address().port;await f.writeConfig({consolePort:port,consoleToken:'fixture',dsh:{baseUrl:`http://127.0.0.1:${port}`,authToken:'fixture'}});
+ await f.runtime.start();await workerRequest(f.children[1],'campus-watch');const ended=once(f.children[2],'exit');f.children[2].send({test:'main'});
+ const record=await at;assert.deepEqual(created,[record.sessionId]);assert.equal(calls.includes('session/selectModel'),false);assert.equal((await readManifest(f.root)).sessions.length,0);release();await ended;
+ assert.equal(f.children[2].exitCode,0);assert.equal(created.length,1);assert(native.ctx.agents.get(record.sessionId));assert.equal(calls.filter(m=>m==='workspace/archiveSession').length,outcome==='durable'?1:0);
+ assert.equal((await readManifest(f.root)).sessions.length,outcome==='durable'?1:0);await f.runtime.stop();
+});
+
+
+test('worker exit without terminal cleanup evidence retains lease even with no live child',async t=>{
+ const f=await fixture(t,{childCode:workerCode,cleanupError:'WORKER_CLEANUP_UNKNOWN'});await f.runtime.start();await workerRequest(f.children[1],'campus-watch');
+ const ended=once(f.children[2],'exit');f.children[2].kill();await ended;await assert.rejects(f.runtime.stop(),matches('WORKER_CLEANUP_UNKNOWN'));
+ assert.ok(f.children.every(child=>child.exitCode!==null||child.signalCode!==null));assert.equal(f.runtime.status().leaseHeld,true);
+});
+
+
+test('dirty terminal cleanup cannot be overwritten by a later clean report',async t=>{
+ const code=workerCode.replace("if(m.test==='worker')", "if(m.test==='cleanup'){try{process.send({testReply:m.id,result:await client.reportCleanup({clean:m.clean,error:m.clean?'':'dirty checkpoint'})});}catch(e){process.send({testReply:m.id,error:e.code});}}if(m.test==='worker')");
+ const f=await fixture(t,{childCode:code,cleanupError:'WORKER_CLEANUP_FAILED'});await f.runtime.start();await workerRequest(f.children[1],'campus-watch');const child=f.children[2];
+ const report=clean=>new Promise(resolve=>{const id=crypto.randomUUID();const listen=m=>{if(m.testReply===id){child.off('message',listen);resolve(m);}};child.on('message',listen);child.send({test:'cleanup',id,clean});});
+ assert.equal((await report(false)).result.accepted,true);assert.equal((await report(true)).error,'WORKER_CLEANUP_ALREADY_REPORTED');
+ assert.equal((await workerRequest(child,'login-window')).error,'RUNTIME_CLOSING');const ended=once(child,'exit');child.kill();await ended;
+ await assert.rejects(f.runtime.stop(),matches('WORKER_CLEANUP_FAILED'));assert.equal(f.runtime.status().leaseHeld,true);
 });
