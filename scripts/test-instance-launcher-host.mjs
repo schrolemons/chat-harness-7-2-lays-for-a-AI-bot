@@ -198,3 +198,10 @@ test('dispose during candidate binding closes admission, cancels write and drain
   assert.equal(result.code,409);await disposal;assert.equal(f.handle.dispose(),disposal);
   assert.equal(await f.bytes(),before);assert.equal(servers.every(server=>!server.listening),true);assert.deepEqual(f.events,[]);
 });
+
+test('runtime fingerprint read failure returns the original configuration error without breaking error response handling',async t=>{
+  const f=await fixture(t,{runtime:{status:()=>({state:'running',configRevision:'synthetic-active-revision'})}});
+  await fs.writeFile(path.join(f.root,'config.json'),'{');
+  const response=await fetch(f.url+'/status',{signal:AbortSignal.timeout(1000)}),body=await response.json();
+  assert.equal(response.status,500);assert.equal(body.ok,false);assert.equal(body.needsRestart,true);assert.match(body.error,/配置损坏/);
+});

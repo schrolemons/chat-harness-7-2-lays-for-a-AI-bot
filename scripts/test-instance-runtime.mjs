@@ -7,6 +7,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { readLauncherSettings, saveLauncherSettings } from './launcher-settings.mjs';
 import { readInstanceSessionPolicy } from '../src/instance-session-policy.mjs';
 import { probeProcess as nativeProbe } from '../src/instance-ownership.mjs';
 
@@ -227,6 +228,43 @@ test('changing configuration while running refuses another start until the owned
   await f.runtime.stop();
   assert.equal((await f.runtime.start()).state, 'running');
   assert.equal(f.calls.length, 4);
+});
+
+test('launcher-only port save leaves real owned runtime duplicate start idempotent',async t=>{
+  const f=await fixture(t);const before=await f.runtime.start(),pids=before.children.map(child=>child.pid);
+  saveLauncherSettings(f.root,{ports:{launcher:42299}});
+  const after=await f.runtime.start();assert.equal(after.state,'running');assert.equal(after.configRevision,before.configRevision);
+  assert.deepEqual(after.children.map(child=>child.pid),pids);assert.equal(f.calls.length,2);
+});
+
+test('saving the same effective settings tolerates added default fields and equivalent owner/list normalization',async t=>{
+  const f=await fixture(t);
+  await f.writeConfig({ownerQQ:'345678901',allow:{private:['456789012'],groups:[]}});
+  const before=await f.runtime.start(),bytes=await fs.readFile(f.configFile,'utf8');
+  const selected=readLauncherSettings(f.root);
+  saveLauncherSettings(f.root,{...selected,ownerQQ:'345678901',allow:{private:['456789012'],groups:[]}});
+  assert.notEqual(await fs.readFile(f.configFile,'utf8'),bytes);
+  const after=await f.runtime.start();assert.equal(after.configRevision,before.configRevision);assert.equal(f.calls.length,2);
+});
+
+test('semantic runtime revision retains same-port DSH host path protocol, Snow token and other real config changes',async t=>{
+  const f=await fixture(t);
+  await f.writeConfig({dsh:{baseUrl:'http://127.0.0.1:42080/rpc'}});
+  const original=JSON.parse(await fs.readFile(f.configFile,'utf8')),started=await f.runtime.start();
+  const changes=[
+    {...original,dsh:{baseUrl:'http://localhost:42080/rpc'}},
+    {...original,dsh:{baseUrl:'http://127.0.0.1:42080/other'}},
+    {...original,dsh:{baseUrl:'https://127.0.0.1:42080/rpc'}},
+    {...original,snowluma:{...original.snowluma,accessToken:'changed-synthetic-token'}},
+    {...original,allow:{private:[345678901],groups:[]}},
+    {...original,sessionCwd:'synthetic-workspace'},
+  ];
+  for(const cfg of changes){
+    await fs.writeFile(f.configFile,JSON.stringify(cfg));
+    await assert.rejects(f.runtime.start(),matches('INSTANCE_CONFIG_CHANGED'));
+    assert.equal(f.calls.length,2);assert.deepEqual(f.runtime.status().children.map(child=>child.pid),started.children.map(child=>child.pid));
+  }
+  await fs.writeFile(f.configFile,JSON.stringify(original));assert.equal((await f.runtime.start()).state,'running');
 });
 
 test('native process identities stop only real isolated sleeper children while an unrelated sleeper remains alive', { timeout: 30000 }, async t => {

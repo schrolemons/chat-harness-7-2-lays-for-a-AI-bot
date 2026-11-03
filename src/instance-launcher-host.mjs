@@ -1,7 +1,8 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { readLauncherSettings, saveLauncherSettings, validateBotUin, validateLauncherPorts, normalizeQqList } from '../scripts/launcher-settings.mjs';
+import { readConfig, readLauncherSettings, saveLauncherSettings, validateBotUin, validateLauncherPorts, normalizeQqList } from '../scripts/launcher-settings.mjs';
+import { runtimeConfigFingerprint } from './instance-runtime-config.mjs';
 
 const failure = (code, status = 409) => Object.assign(Error(code), { code, status });
 // Distinct installed packages have distinct module caches; the host owns the
@@ -35,7 +36,15 @@ export function createInstanceLauncher(ctx, { descriptor, runtime }, deps = {}) 
   let active, closing = false, disposal, queue = Promise.resolve(), stopError, needsRestart = false;
   const address = () => { const value = active?.address(); return value && typeof value !== 'string' ? `http://127.0.0.1:${value.port}` : undefined; };
   const identity = () => ({ instanceId: descriptor.instanceId, serviceUrl: address(), generation });
-  const view = () => ({ ok: true, ...identity(), readiness: 'unverified', runtime: runtime.status(), needsRestart });
+  const view = (handlingError = false) => {
+    const observed = runtime.status(), active = !['stopped','disposed'].includes(observed.state);
+    let changed=needsRestart;
+    if(active && observed.configRevision) {
+      try { changed=runtimeConfigFingerprint(readConfig(descriptor.root))!==observed.configRevision; }
+      catch(error) { if(!handlingError)throw error;changed=true; }
+    }
+    return { ok: true, ...identity(), readiness: 'unverified', runtime: observed, needsRestart: active && changed };
+  };
   const send = (res, code, body) => {
     res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store',
       'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST,OPTIONS' });
@@ -54,7 +63,7 @@ export function createInstanceLauncher(ctx, { descriptor, runtime }, deps = {}) 
   }
   function createServer() {
     const server = (deps.createHttpServer || http.createServer)((req,res) => {
-      void handle(req,res).catch(error => send(res, error.status || 500, { ...view(), ok: false, code: error.code, error: error.message }));
+      void handle(req,res).catch(error => send(res, error.status || 500, { ...view(true), ok: false, code: error.code, error: error.message }));
     });
     servers.add(server); server.once('close', () => servers.delete(server));
     // Binding failures reject ready/save; keep the emitter observed after binding too.
@@ -84,7 +93,8 @@ export function createInstanceLauncher(ctx, { descriptor, runtime }, deps = {}) 
   async function save(body,res) {
     admit();
     if (['starting','stopping'].includes(runtime.status().state)) throw failure('INSTANCE_RUNTIME_BUSY');
-    const current = readLauncherSettings(descriptor.root);
+    const beforeConfig = readConfig(descriptor.root);
+    const current = readLauncherSettings(descriptor.root, beforeConfig);
     if (body.revision && body.revision !== current.revision) throw failure('CONFIG_REVISION_CONFLICT');
     // Validate the whole patch before opening a candidate listener or writing bytes.
     if (body.botUin !== undefined) validateBotUin(body.botUin);
@@ -104,10 +114,10 @@ export function createInstanceLauncher(ctx, { descriptor, runtime }, deps = {}) 
         const retire=()=>{ void closeServer(previous).catch(error=>ctx.logger?.error(error)); };
         res.once('finish',retire); res.once('close',retire); if(res.destroyed)retire();
       }
-      const changed=JSON.stringify({...saved,revision:undefined,ports:{...saved.ports,launcher:undefined}})!==JSON.stringify({...current,revision:undefined,ports:{...current.ports,launcher:undefined}});
+      const changed=runtimeConfigFingerprint(readConfig(descriptor.root))!==runtimeConfigFingerprint(beforeConfig);
       if (changed && !['stopped','disposed'].includes(runtime.status().state)) needsRestart=true;
-      return { ...saved, ...view(), configured:!!saved.botUin, live:false,
-        message:needsRestart?'已保存；运行中的服务需重启后应用':'已保存；服务下次启动时应用' };
+      const result={ ...saved, ...view(), configured:!!saved.botUin, live:false };
+      return {...result,message:result.needsRestart?'已保存；运行中的服务需重启后应用':'已保存'};
     } catch(error) { error.status ??= 400; throw error; }
     finally { if(candidate)await closeServer(candidate); }
   }

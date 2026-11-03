@@ -9,6 +9,7 @@ import { readLauncherSettings } from '../scripts/launcher-settings.mjs';
 import { readInstanceSessionPolicy } from './instance-session-policy.mjs';
 import { bindOwnedRuntimeIpc } from './instance-runtime-ipc.mjs';
 import { createOwnedMonitorBrowser } from './owned-monitor-browser.mjs';
+import { runtimeConfigFingerprint } from './instance-runtime-config.mjs';
 
 export const MANAGED_SNOW_MANIFEST = '.qq-bridge-managed.json';
 const fail = (code, message) => Object.assign(new Error(message), { code });
@@ -153,7 +154,7 @@ export function createInstanceRuntime(options = {}) {
     let cfg;
     try { cfg = JSON.parse((await fs.readFile(path.join(root, 'config.json'), 'utf8')).replace(/^\uFEFF/, '')); }
     catch { throw fail('INSTANCE_CONFIG_INVALID', 'Instance config.json cannot be read'); }
-    return { cfg, selected: readLauncherSettings(root, cfg), revision: digest(JSON.stringify(cfg)) };
+    return { cfg, selected: readLauncherSettings(root, cfg), revision: runtimeConfigFingerprint(cfg) };
   };
   const remember = error => { lastError = { code: error.code || 'INSTANCE_RUNTIME_FAILED', message: error.message }; };
   const guard = attempt => { if (disposed || attempt !== generation) throw fail('INSTANCE_START_CANCELLED', 'Instance startup was cancelled'); };
