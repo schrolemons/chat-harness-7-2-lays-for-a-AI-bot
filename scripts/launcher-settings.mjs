@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { followsNativeDsh } from '../src/instance-dsh-target.mjs';
 
 export const DEFAULT_LAUNCHER_PORTS = Object.freeze({
   dsh: 3080, console: 3100, snowHttp: 3000, snowWs: 3001, launcher: 3199, snowWebui: 5099
@@ -20,22 +21,24 @@ function endpointPort(value, fallback) {
   return fallback;
 }
 
-export function readLauncherPorts(cfg = {}) {
+export function readLauncherPorts(cfg = {}, {managed=false} = {}) {
   return validateLauncherPorts({ ...DEFAULT_LAUNCHER_PORTS,
     dsh: endpointPort(cfg.dsh?.baseUrl, DEFAULT_LAUNCHER_PORTS.dsh),
     console: cfg.consolePort ?? DEFAULT_LAUNCHER_PORTS.console,
     snowHttp: endpointPort(cfg.snowluma?.httpUrl, DEFAULT_LAUNCHER_PORTS.snowHttp),
     snowWs: endpointPort(cfg.snowluma?.wsUrl, DEFAULT_LAUNCHER_PORTS.snowWs),
     ...Object.fromEntries(Object.keys(DEFAULT_LAUNCHER_PORTS)
-      .filter(key => cfg.launcher?.ports?.[key] !== undefined).map(key => [key, cfg.launcher.ports[key]])) });
+      .filter(key => cfg.launcher?.ports?.[key] !== undefined && !(key==='dsh' && cfg.launcher.ports[key] === '')).map(key => [key, cfg.launcher.ports[key]])),
+    ...(managed && followsNativeDsh(cfg)?{dsh:''}:{}) },DEFAULT_LAUNCHER_PORTS,{managed});
 }
 
-export function validateLauncherPorts(value, current = DEFAULT_LAUNCHER_PORTS) {
+export function validateLauncherPorts(value, current = DEFAULT_LAUNCHER_PORTS, {managed=false} = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('端口设置必须为对象');
   const result = {};
   const used = new Map();
   for (const key of Object.keys(DEFAULT_LAUNCHER_PORTS)) {
     const raw = Object.hasOwn(value, key) ? value[key] : current[key];
+    if(managed && key==='dsh' && raw===''){result[key]='';continue;}
     const port = typeof raw === 'string' && /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : raw;
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`${PORT_LABELS[key]} 端口必须为 1–65535 的整数`);
     if (used.has(port)) throw new Error(`${PORT_LABELS[key]} 与 ${PORT_LABELS[used.get(port)]} 端口重复`);
@@ -65,23 +68,23 @@ export function normalizeQqList(value) {
   }))];
 }
 
-export function readLauncherSettings(root, cfg) {
+export function readLauncherSettings(root, cfg, {managed=false} = {}) {
   cfg ??= readConfig(root);
   const value = cfg.snowluma?.botUin ?? '';
   const selected = { botUin: value === '' ? '' : validateBotUin(value), ownerQQ: cfg.ownerQQ ?? null,
-    allow: { private: cfg.allow?.private ?? [], groups: cfg.allow?.groups ?? [] }, ports: readLauncherPorts(cfg) };
+    allow: { private: cfg.allow?.private ?? [], groups: cfg.allow?.groups ?? [] }, ports: readLauncherPorts(cfg,{managed}) };
   return { ...selected, revision: crypto.createHash('sha256').update(JSON.stringify(selected)).digest('hex') };
 }
 
-export function saveLauncherSettings(root, input) {
+export function saveLauncherSettings(root, input, {managed=false} = {}) {
   const target = path.join(root, 'config.json');
   const previous = readConfig(root);
-  const current = readLauncherSettings(root, previous);
+  const current = readLauncherSettings(root, previous,{managed});
   if (input.revision && input.revision !== current.revision) {
     const error = new Error('配置已被其他页面更新，请重新读取后保存'); error.status = 409; throw error;
   }
   const botUin = input.botUin === undefined ? current.botUin : validateBotUin(input.botUin);
-  const ports = input.ports === undefined ? current.ports : validateLauncherPorts(input.ports, current.ports);
+  const ports = input.ports === undefined ? current.ports : validateLauncherPorts(input.ports, current.ports,{managed});
   let ownerQQ = previous.ownerQQ ?? null;
   if (input.ownerQQ !== undefined) ownerQQ = String(input.ownerQQ ?? '').trim() === '' ? null : normalizeQqList([input.ownerQQ])[0];
   const allow = { ...previous.allow,
@@ -92,7 +95,7 @@ export function saveLauncherSettings(root, input) {
     next.launcher = { ...previous.launcher, ports };
     // An unchanged save must preserve remote hosts, credentials and URL paths.
     // Editing a port explicitly selects the corresponding local service.
-    if (ports.dsh !== current.ports.dsh) next.dsh = { ...previous.dsh, baseUrl: `http://127.0.0.1:${ports.dsh}` };
+    if (ports.dsh !== '' && ports.dsh !== current.ports.dsh) next.dsh = { ...previous.dsh, baseUrl: `http://127.0.0.1:${ports.dsh}` };
     if (ports.console !== current.ports.console) next.consolePort = ports.console;
     if (ports.snowHttp !== current.ports.snowHttp) next.snowluma.httpUrl = `http://127.0.0.1:${ports.snowHttp}`;
     if (ports.snowWs !== current.ports.snowWs) next.snowluma.wsUrl = `ws://127.0.0.1:${ports.snowWs}`;
@@ -103,5 +106,5 @@ export function saveLauncherSettings(root, input) {
     fs.writeFileSync(temporary, JSON.stringify(next, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
     fs.renameSync(temporary, target);
   } finally { try { fs.unlinkSync(temporary); } catch {} }
-  return readLauncherSettings(root, next);
+  return readLauncherSettings(root, next,{managed});
 }

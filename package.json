@@ -163,7 +163,9 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "inject": ["@deepseek-ai/dsh-client-connection"],
+      "inject": [
+        "@deepseek-ai/dsh-client-connection"
+      ],
       "platform": "web"
     }
   },
@@ -346,7 +348,27 @@
       "scripts/test-history-context.mjs",
       "scripts/test-incoming-auto-reply.mjs",
       "scripts/test-local-history.mjs",
-      "scripts/test-milk-dedup.mjs"
+      "scripts/test-milk-dedup.mjs",
+      "scripts/test-dsh-instance-controller.mjs",
+      "scripts/test-instance-descriptor.mjs",
+      "scripts/test-instance-manifest.mjs",
+      "scripts/test-instance-profile-migration.mjs",
+      "scripts/test-instance-public-install.mjs",
+      "scripts/test-instance-runtime-ipc.mjs",
+      "scripts/test-instance-session-ownership.mjs",
+      "scripts/test-instance-session-routing.mjs",
+      "scripts/test-instance-snow-connection.mjs",
+      "scripts/test-managed-snow-install.mjs",
+      "scripts/test-managed-snow-listeners.mjs",
+      "scripts/test-owned-monitor-browser.mjs",
+      "scripts/test-owned-monitor-seams.mjs",
+      "scripts/test-instance-uninstall.mjs",
+      "scripts/test-campus-monitor-scheduling.mjs",
+      "scripts/test-campus-site-sessions.mjs",
+      "scripts/test-instance-dsh-target.mjs",
+      "scripts/test-instance-snow-receipt.mjs",
+      "scripts/test-instance-integration.mjs",
+      "scripts/test-budget-console-ui.mjs"
     ]
   }
 }

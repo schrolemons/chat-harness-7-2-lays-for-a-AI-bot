@@ -9,12 +9,13 @@ const ids = value => [...new Set((Array.isArray(value) ? value : []).map(id => S
 /** Runtime restart identity, deliberately separate from settings' revision CAS.
  * Only host listener metadata and known equivalent/default representations are
  * excluded. Unknown config fields remain conservative restart dependencies. */
-export function runtimeConfigFingerprint(cfg) {
-  const settings = readLauncherSettings(undefined, cfg);
+export function runtimeConfigFingerprint(cfg,{managed=false,dshTarget}={}) {
+  const settings = readLauncherSettings(undefined, cfg,{managed});
   const ports = { ...cfg.launcher?.ports, ...settings.ports }; delete ports.launcher;
   const owner = String(cfg.ownerQQ ?? '').trim();
   const { private: _private, privates: _privates, groups: _groups, group: _group, ...allow } = cfg.allow || {};
   const normalized = { ...cfg,
+    ...(dshTarget?{dsh:{...cfg.dsh,baseUrl:dshTarget.baseUrl}}:{}),
     ownerQQ: !owner ? null : /^\d+$/.test(owner) && Number.isSafeInteger(Number(owner)) && Number(owner) > 0 ? Number(owner) : cfg.ownerQQ,
     allow: { ...allow, private: ids(cfg.allow?.private ?? cfg.allow?.privates), groups: ids(cfg.allow?.groups ?? cfg.allow?.group) },
     snowluma: { ...cfg.snowluma, botUin: settings.botUin },

@@ -6,6 +6,7 @@ import { createInstanceScope } from './dsh-instance-scope.mjs';
 import { createHostImport } from './dsh-host-import.mjs';
 import { loadInstanceDefinitions } from './dsh-instance-definitions.mjs';
 import { BUNDLED_MCP, mountBundledMcp } from '../dsh-mcp-entry.mjs';
+import { instanceDshEnvironment } from './instance-dsh-target.mjs';
 
 const fail = code => Object.assign(Error(code), { code });
 
@@ -104,7 +105,7 @@ export async function mountInstanceController(ctx, descriptor, deps = {}) {
     };
     runtime = await deps.createRuntime?.({ ctx: scope.ctx, descriptor, config: deps.config, presetMap:scope.presetMap, recordCreatedSession }); check();
     for (const serverName of Object.keys(BUNDLED_MCP)) {
-      await (deps.mountMcp || mountBundledMcp)(scope.ctx, { root: descriptor.root, serverName, nodePath: deps.nodePath || deps.config?.nodePath, env: deps.env, hostImport }); check();
+      await (deps.mountMcp || mountBundledMcp)(scope.ctx, { root: descriptor.root, serverName, nodePath: deps.nodePath || deps.config?.nodePath, env: instanceDshEnvironment(descriptor,deps.env), hostImport }); check();
     }
     for (const id of Object.values(scope.presetMap)) {
       const definition = await ctx.agentPresets.resolve(id); check();

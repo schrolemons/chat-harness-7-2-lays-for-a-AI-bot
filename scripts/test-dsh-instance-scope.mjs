@@ -2,6 +2,9 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import path from 'node:path';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+const fixtureRoot=await fs.mkdtemp(path.join(os.tmpdir(),'native-scope-'));
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { createInstanceScope } from '../src/dsh-instance-scope.mjs';
@@ -47,7 +50,7 @@ async function makeHost() {
 }
 const definitions = [{ id: 'chat', name: 'Chat', plugins: [{ id: 'restrict', name: 'cordis:fixture-restrict', config: { entry: { __jsExpr: 'fiber.entry.options.id' } } }] }];
 const originalDefinitions = structuredClone(definitions);
-const options = (instanceId, extra = {}) => ({ instanceId, root: path.resolve('synthetic', instanceId), label: instanceId, definitions, ...extra });
+const options = (instanceId, extra = {}) => ({ instanceId, root: path.join(fixtureRoot, instanceId), label: instanceId, definitions, ...extra });
 const connect = (ctx, endpoint) => ctx.plugin(MCP, { transport: 'streamable-http', serverName: 'snowluma', url: `http://127.0.0.1:${server.address().port}/${endpoint}`, failOnStartupError: true, reconnect: { enabled: false } });
 try {
   const owner = await makeHost();
@@ -118,4 +121,5 @@ try {
 } finally {
   for (const ctx of contexts.reverse()) await ctx.fiber.dispose();
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+  await fs.rm(fixtureRoot,{recursive:true,force:true});
 }

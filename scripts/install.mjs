@@ -94,7 +94,7 @@ export async function preparePublicInstall({sourceRoot=RELEASE_ROOT,target,dshHo
   const managed=await installManagedSnow({descriptor,artifact:acquired.artifact,expectedDigest:SNOW_RELEASE.sha256});
   const runtime={snowHome:managed.snowHome,nodePath:path.join(managed.snowHome,'node.exe')};
   runtime.nodePath=await resolveInstanceNode({descriptor,config:runtime,host:{execPath:'Desktop.exe',versions:{electron:'installation-check'}}});
-  bootstrapLocal(target,{descriptor,snowHome:managed.snowHome,ports:selectedPorts});
+  bootstrapLocal(target,{descriptor,snowHome:managed.snowHome,ports:{...selectedPorts,dsh:Object.hasOwn(ports||{},'dsh')?selectedPorts.dsh:''}});
   const created={source:'created',cleanup:'owned',createdByTransaction:creation.transactionId};
   const nodeModules=path.join(target,'node_modules'),npmManifest=path.join(nodeModules,'.package-lock.json');
   const statePath=path.join(target,'state'),stateInventory=await inventoryCreatedTree(statePath);

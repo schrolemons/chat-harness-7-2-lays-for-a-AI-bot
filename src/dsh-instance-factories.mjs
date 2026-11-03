@@ -49,8 +49,8 @@ function loggedSpawn(root) {
 
 export function createProductionFactories({ nodePath }) {
   return {
-    createRuntime:({descriptor,config,presetMap,recordCreatedSession})=>createInstanceRuntime({descriptor,snowHome:config.snowHome||undefined,nodePath,presetMap,
+    createRuntime:({ctx,descriptor,config,presetMap,recordCreatedSession})=>createInstanceRuntime({descriptor,snowHome:config.snowHome||undefined,nodePath,presetMap,getDshOrigin:()=>ctx.root.get('webServer').getOrigin(),
       recordCreatedSession,spawnProcess:loggedSpawn(descriptor.root)}),
-    mountLauncher:({ctx,descriptor,controller,runtime})=>createLauncher(ctx,{descriptor,runtime:{start:()=>controller.start(),stop:()=>controller.stop(),status:()=>runtime.status()}}),
+    mountLauncher:({ctx,descriptor,controller,runtime})=>createLauncher(ctx,{descriptor,getDshOrigin:()=>ctx.root.get('webServer').getOrigin(),runtime:{start:()=>controller.start(),stop:()=>controller.stop(),status:()=>runtime.status()}}),
   };
 }

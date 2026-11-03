@@ -41,6 +41,13 @@ test('all six ports roundtrip and port changes survive a full client reload thro
  assert.equal(p.requests.at(-1).url,'http://127.0.0.1:4299/stop');
  const patch=p.requests.find(x=>x.method==='POST'&&x.url.endsWith('/config')).body;assert.equal(patch.revision,'initial');assert.equal(patch.instanceId,'a');assert.equal(patch.generation,'a-1');
 });
+
+test('native following DSH field stays blank through an unrelated client save',async t=>{
+ const p=await page(t);p.configs.a.ports.dsh='';p.configs.a.dshTarget={mode:'native',baseUrl:'http://127.0.0.1:54321'};
+ await p.click('a','settings');assert.equal(p.nodes.get('qq-launcher-a-port-dsh').value,'');
+ assert.match(p.nodes.get('qq-launcher-a-port-dsh').title,/54321/);p.nodes.get('qq-launcher-a-port-launcher').value='4299';await p.submit('a');
+ assert.equal(p.requests.find(r=>r.method==='POST'&&r.url.endsWith('/config')).body.ports.dsh,'');
+});
 test('invalid or duplicate ports block writes while retaining an editable form',async t=>{
  const p=await page(t);await p.click('a','settings');for(const value of ['0','65536','3000','12.5','4e3','']){
  p.nodes.get('qq-launcher-a-port-launcher').value=value;await p.submit('a');assert.equal(p.requests.some(x=>x.method==='POST'),false);assert.match(p.nodes.get('qq-launcher-a-settings-message').textContent,/端口/);assert.equal(p.nodes.get('qq-launcher-a-settings-save').disabled,false);}

@@ -1,0 +1,47 @@
+// Combined official native host + owned synthetic processes. No QQ or model APIs.
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import path from 'node:path';import http from 'node:http';import crypto from 'node:crypto';
+import {nativeSessionFixture,hostImport} from './native-session-owned-fixture.mjs';
+import {initializeManifest,appendInstallationEvidence} from '../src/instance-manifest.mjs';import {readInstanceDescriptor} from '../src/instance-descriptor.mjs';
+import {mountInstanceController} from '../src/dsh-instance-controller.mjs';import {createProductionFactories} from '../src/dsh-instance-factories.mjs';
+import {OWNED_PRESET_SOURCES} from '../src/instance-session-policy.mjs';
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+async function port(){const s=http.createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
+test('two owned roots share current native host, retain history and isolate leases tools services and rebind',{timeout:90000},async t=>{
+ const f=await nativeSessionFixture(t),{default:WebServer}=await hostImport('@deepseek-ai/dsh-host-webserver'),MCP=await hostImport('@deepseek-ai/dsh-mcp-client'),scopeApi=await hostImport('@deepseek-ai/dsh-scope');
+ let web=await f.ctx.plugin(WebServer,{host:'127.0.0.1',port:0,compression:'none'});const firstOrigin=f.ctx.webServer.getOrigin();
+ const calls=[],external=http.createServer(async(req,res)=>{if(req.method!=='POST'){res.writeHead(405).end();return;}let raw='';for await(const c of req)raw+=c;const q=JSON.parse(raw);if(q.id===undefined){res.writeHead(202).end();return;}let result={};if(q.method==='initialize')result={protocolVersion:q.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'synthetic',version:'1'}};if(q.method==='tools/list')result={tools:[{name:'probe',inputSchema:{type:'object'}}]};if(q.method==='tools/call'){calls.push(req.url);result={content:[{type:'text',text:req.url}]};}res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({jsonrpc:'2.0',id:q.id,result}));});
+ await new Promise(r=>external.listen(0,'127.0.0.1',r));const externalOrigin=`http://127.0.0.1:${external.address().port}`;
+ const connect=(ctx,label,serverName)=>ctx.plugin(MCP,{serverName,transport:'streamable-http',url:externalOrigin+'/'+label,failOnStartupError:true,reconnect:{enabled:false}});
+ await connect(f.ctx,'external','snowluma');
+ const externalConfig=path.join(f.dir,'external-config');await fs.writeFile(externalConfig,'external synthetic bytes');const externalHash=hash(await fs.readFile(externalConfig));
+ const handles=[];t.after(async()=>{for(const c of handles)await c.dispose();external.closeAllConnections();await new Promise(r=>external.close(r));});
+ async function installation(id,uin,target=''){
+  const root=path.join(f.dir,id);await fs.mkdir(root);const descriptor={version:1,root,instanceId:id,label:id,dshHome:path.join(f.dir,'host'),profile:'fixture',bundleName:'synthetic-'+id,entryId:id+'-mode',settingsNamespace:id+'-mode',presetIdMap:{}};
+  await fs.writeFile(path.join(root,'.qq-bridge-instance.json'),JSON.stringify(descriptor));await initializeManifest(root,descriptor);
+  await fs.writeFile(path.join(root,'package.json'),'{"type":"module"}');const snowHome=path.join(root,'managed-dependencies','snow');await fs.mkdir(path.join(snowHome,'config'),{recursive:true});
+  await fs.copyFile(process.execPath,path.join(snowHome,'node.exe'));const snow="process.on('message',m=>{if(m==='shutdown')process.exit(0)});setInterval(()=>{},1000);";await fs.writeFile(path.join(snowHome,'index.mjs'),snow);
+  await fs.writeFile(path.join(snowHome,'.qq-bridge-managed.json'),JSON.stringify({version:1,kind:'snowluma',instanceId:id,entry:'index.mjs',runtime:'node.exe',createdDirectories:['config'],files:{'index.mjs':hash(snow),'node.exe':hash(await fs.readFile(path.join(snowHome,'node.exe')))}}));
+  const marker=path.join(snowHome,'.qq-bridge-managed.json');await appendInstallationEvidence(root,{profileEntries:[],links:[],paths:[{path:snowHome,kind:'dependency',source:'created',cleanup:'owned',createdByTransaction:crypto.randomUUID(),manifestPath:marker,sha256:hash(await fs.readFile(marker))}]});
+  await fs.mkdir(path.join(root,'scripts'));await fs.writeFile(path.join(root,'scripts','snow-bootstrap.mjs'),'// synthetic');await fs.mkdir(path.join(root,'src'));
+  await fs.writeFile(path.join(root,'src','bridge.js'),"import fs from 'node:fs';fs.writeFileSync('observed.json',JSON.stringify({home:process.env.DSH_HOME,token:process.env.DSH_LAUNCH_TOKEN,target:JSON.parse(process.env.QQ_BRIDGE_DSH_TARGET)}));process.on('message',m=>{if(m.type==='qq-bridge:shutdown')process.exit(0)});setInterval(()=>{},1000);");
+  const ports=Object.fromEntries(await Promise.all(['console','snowHttp','snowWs','launcher','snowWebui'].map(async k=>[k,await port()])));ports.dsh=target?Number(new URL(target).port):'';
+  await fs.writeFile(path.join(root,'config.json'),JSON.stringify({launcher:{ports},dsh:{baseUrl:target||'http://127.0.0.1:3080'},snowluma:{botUin:uin},consolePort:ports.console}));
+  return {descriptor:await readInstanceDescriptor(root),config:{snowHome,nodePath:process.execPath},root};
+ }
+ async function mount(inst){let c;await f.ctx.plugin({inject:['loader','tools','agentPresets'],async apply(ctx){c=await mountInstanceController(ctx,inst.descriptor,{...createProductionFactories({nodePath:process.execPath}),config:inst.config,hostImport,loadDefinitions:async()=>OWNED_PRESET_SOURCES.map(id=>({id,plugins:[]})),mountTitles:async()=>{},mountMcp:async(scope,o)=>{assert.equal(o.env.DSH_HOME,inst.descriptor.dshHome);assert.equal(o.env.DSH_LAUNCH_TOKEN,'');await connect(scope,inst.descriptor.instanceId,o.serverName);}});return ()=>c.dispose();}});handles.push(c);await c.ready;return c;}
+ const a=await installation('alpha','123456789'),b=await installation('beta','234567890'),c=await installation('duplicate','123456789',externalOrigin);
+ let aa=await mount(a);const bb=await mount(b),cc=await mount(c);await Promise.all([aa.start(),bb.start()]);await assert.rejects(cc.start(),/lease|ACCOUNT|QQ|account/i);
+ async function observation(inst){for(let n=0;n<100;n++){try{return JSON.parse(await fs.readFile(path.join(inst.root,'observed.json')));}catch(e){if(e.code!=='ENOENT')throw e;await new Promise(r=>setTimeout(r,10));}}throw Error('Owned child observation unavailable');}
+ assert.deepEqual(await observation(a),{home:a.descriptor.dshHome,token:'',target:{mode:'native',baseUrl:firstOrigin}});assert.equal((await observation(b)).target.baseUrl,firstOrigin);
+ const old={id:'old-alpha'},scope=scopeApi.createScope(f.ctx,old);old.ctx=scope.ctx;await f.ctx.agentPresets.mount(scope.ctx,'alpha:qq-chat');t.after(()=>scope.dispose());
+ const run=agent=>f.ctx.tools.execute({callId:'integration',name:'mcp__snowluma__probe',arguments:{},agent,signal:new AbortController().signal});assert.equal((await run(old)).isError,false);
+ const session=f.ctx.sessions.create('retained-alpha',{meta:{cwd:a.descriptor.workspaces.chat,agentPreset:'alpha:qq-chat'}});session.append('user/message',{id:'retained-message',role:'user',source:{kind:'user'},content:[{type:'text',text:'synthetic retained history'}]},{surfaceOp:'append'});const persisted=await f.ctx.sessionPersistence.create(session.header);await persisted.append(session.snapshotEvents());await persisted.close();const history=f.ctx.sessionPersistence.locate(session.header).path,historyHash=hash(await fs.readFile(history));
+ const bPids=bb.runtimeStatus().children.map(c=>c.pid),address=aa.launcherAddress();const config=await(await fetch(address+'/config')).json();assert.equal(config.ports.dsh,'');assert.equal(config.dshTarget.baseUrl,firstOrigin);
+ const moved=await(await fetch(address+'/config',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...config,ports:{...config.ports,launcher:await port()}})})).json();assert.equal(moved.ok,true);assert.equal(moved.needsRestart,false);assert.equal(JSON.parse(await fs.readFile(path.join(a.root,'config.json'))).launcher.ports.dsh,'');
+ await aa.dispose();assert.equal((await run(old)).isError,true);assert.deepEqual(bb.runtimeStatus().children.map(c=>c.pid),bPids);for(const pid of bPids)process.kill(pid,0);assert.equal(hash(await fs.readFile(history)),historyHash);assert((await f.ctx.sessionQuery.listSessions()).some(r=>r.header.id===session.id));assert(external.listening);
+ await cc.start();assert.equal((await observation(c)).target.baseUrl,externalOrigin);await cc.stop();aa=await mount(a);await aa.start();assert.equal((await run(old)).isError,false);
+ await Promise.all([aa.stop(),bb.stop()]);await web.dispose();web=await f.ctx.plugin(WebServer,{host:'127.0.0.1',port:0,compression:'none'});const secondOrigin=f.ctx.webServer.getOrigin();assert.notEqual(secondOrigin,firstOrigin);
+ await Promise.all([aa.start(),bb.start()]);await aa.stop();await bb.stop();assert.equal((await observation(a)).target.baseUrl,secondOrigin);assert.equal((await observation(b)).target.baseUrl,secondOrigin);
+ assert.equal(hash(await fs.readFile(history)),historyHash);assert.equal(hash(await fs.readFile(externalConfig)),externalHash);assert(external.listening);
+ const ordinary={id:'ordinary'},ordinaryScope=scopeApi.createScope(f.ctx,ordinary);ordinary.ctx=ordinaryScope.ctx;t.after(()=>ordinaryScope.dispose());assert.equal((await run(ordinary)).isError,false);assert.equal(calls.at(-1),'/external');
+});

@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { startConsoleFixture } from './console-ui-fixture.mjs';
+import {DEFAULT_PRIVATE_REPLIES,DEFAULT_GROUP_REPLIES} from '../plugins/qq-components/life-token-budget/default-replies.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -14,17 +15,20 @@ const executablePath = [
 
 test('O layer edits and saves both mechanical reply lists in a real browser', async () => {
   const fixture = await startConsoleFixture();
-  const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+  let browser;
   try {
+    browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
     const page = await browser.newPage();
     await page.goto(fixture.url);
     await page.locator('[data-view="usage"]').first().click();
     const privateBox = page.locator('#usageMechanicalPrivate');
     const groupBox = page.locator('#usageMechanicalGroup');
     await privateBox.waitFor();
-    await page.waitForFunction(()=>document.getElementById('usageBudgetWindowSummary')?.textContent.includes('群聊普通5条 + @消息5条'));
+    await page.waitForFunction(()=>document.getElementById('usageBudgetWindowSummary')?.textContent.includes('群聊普通5条 + @／引用bot消息5条'));
     assert.match(await page.locator('[data-page="usage"] .parameter-scope').last().innerText(),/全局规则、按会话分别计数/);
-    await page.waitForFunction(() => document.getElementById('usageMechanicalPrivate')?.value.includes('用户我好饿'));
+    await page.waitForFunction(value => document.getElementById('usageMechanicalPrivate')?.value===value,DEFAULT_PRIVATE_REPLIES.join('\n'));
+    assert.equal(await privateBox.inputValue(),DEFAULT_PRIVATE_REPLIES.join('\n'));
+    assert.equal(await groupBox.inputValue(),DEFAULT_GROUP_REPLIES.join('\n'));
     await privateBox.fill('私聊一\n私聊二');
     await groupBox.fill('群聊一\n群聊二');
     await page.locator('#usageMechanicalGapSec').fill('12');await page.locator('#usageMechanicalMinute').fill('3');await page.locator('#usageMechanicalHour').fill('18');
@@ -34,13 +38,14 @@ test('O layer edits and saves both mechanical reply lists in a real browser', as
     assert.deepEqual(fixture.state.mechanicalReplies, {
       privateReplies: ['私聊一', '私聊二'], groupReplies: ['群聊一', '群聊二']
     });
-  } finally { await browser.close(); await fixture.close(); }
+  } finally { await browser?.close(); await fixture.close(); }
 });
 
 test('context settings save and reload the three canonical budget windows', async () => {
   const fixture = await startConsoleFixture();
-  const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+  let browser;
   try {
+    browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
     const page = await browser.newPage();
     await page.goto(fixture.url);
     await page.locator('[data-view="setting-c-1"]').first().click();
@@ -53,13 +58,14 @@ test('context settings save and reload the three canonical budget windows', asyn
     await page.waitForFunction(()=>document.getElementById('usageRecoveryPrivate')?.value==='7');
     assert.equal(await page.locator('#usageRecoveryGroup').inputValue(),'8');
     assert.equal(await page.locator('#usageRecoveryGroupAt').inputValue(),'9');
-  } finally { await browser.close(); await fixture.close(); }
+  } finally { await browser?.close(); await fixture.close(); }
 });
 
 test('O layer saves conversation caps and a weak-reply interval in minutes', async () => {
   const fixture=await startConsoleFixture();
-  const browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});
+  let browser;
   try {
+    browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});
     const page=await browser.newPage();await page.goto(fixture.url);await page.locator('[data-view="usage"]').first().click();
     const row=page.locator('[data-budget-key]').first();await row.waitFor();const key=await row.getAttribute('data-budget-key');
     await row.locator('input').nth(0).fill('0');await row.locator('input').nth(1).fill('1.25');await row.locator('input').nth(2).fill('7');
@@ -68,11 +74,11 @@ test('O layer saves conversation caps and a weak-reply interval in minutes', asy
     await page.reload();await page.locator('[data-view="usage"]').first().click();
     await page.waitForFunction(key=>document.querySelector('[data-budget-key="'+key+'"] input')?.value==='0',key);
     assert.equal(await page.locator('[data-budget-key="'+key+'"] input').nth(2).inputValue(),'7');
-  }finally{await browser.close();await fixture.close();}
+  }finally{await browser?.close();await fixture.close();}
 });
 test('private cold trigger saves independently, survives reload, and keeps form controls aligned',async()=>{
- const fixture=await startConsoleFixture(),browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});
- try{const page=await browser.newPage({viewport:{width:1440,height:1000}});await page.goto(fixture.url);await page.locator('[data-view="usage"]').first().click();
+ const fixture=await startConsoleFixture();let browser;
+ try{browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});const page=await browser.newPage({viewport:{width:1440,height:1000}});await page.goto(fixture.url);await page.locator('[data-view="usage"]').first().click();
  await page.route('**/api/tokens/budgets',async route=>{const response=await route.fetch(),body=await response.json();for(const row of body.rows||[])delete row.privateWakeEveryMessages;await route.fulfill({response,json:body});});
  const count=page.locator('#usagePrivateWakeEvery');await count.waitFor();await count.fill('3');await page.locator('#usagePrivateWakeSave').click();await page.waitForFunction(()=>document.getElementById('usagePrivateWakeMsg')?.textContent.includes('已保存'));
  await page.reload();await page.locator('[data-view="usage"]').first().click();await page.waitForFunction(()=>document.getElementById('usagePrivateWakeEvery')?.value==='3');
@@ -84,5 +90,5 @@ test('private cold trigger saves independently, survives reload, and keeps form 
  const saves=await page.locator('.usage-rule-grid button').evaluateAll(xs=>xs.map(x=>({width:x.getBoundingClientRect().width,height:x.getBoundingClientRect().height})));assert(saves.every(x=>x.width>120&&x.height<65),'save labels must remain horizontal and readable');
  await count.fill('0');await page.locator('#usagePrivateWakeSave').click();assert.match(await page.locator('#usagePrivateWakeMsg').innerText(),/1–100/);
  await page.setViewportSize({width:390,height:900});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
- }finally{await browser.close();await fixture.close();}
+ }finally{await browser?.close();await fixture.close();}
 });

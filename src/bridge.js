@@ -1,5 +1,6 @@
 import {createRuntimeIpcClient} from './instance-runtime-ipc.mjs';
 import {bindInstanceSnowConfig} from './instance-snow-connection.mjs';
+import {bindInstanceDshConfig} from './instance-dsh-target.mjs';
 import {loadInstanceSessionPolicy} from './instance-session-policy.mjs';
 import { presetBindings, summarizePreset } from './console/preset-overview.js';
 import {buildDshBundle} from '../scripts/build-dsh-bundle.mjs';
@@ -1444,7 +1445,7 @@ let stateDirHardened = null;
 
 // ── 主流程 ──────────────────────────────────────────────────────────────────
 async function main() {
-  const cfg = bindInstanceSnowConfig(loadConfig(),{root:ROOT,active:instanceSessionPolicy.active,env:process.env});
+  const cfg = bindInstanceDshConfig(bindInstanceSnowConfig(loadConfig(),{root:ROOT,active:instanceSessionPolicy.active,env:process.env}),{active:instanceSessionPolicy.active});
   fs.mkdirSync(STATE_DIR, { recursive: true });
   hardenStateDirAcl();
   acquireLock();

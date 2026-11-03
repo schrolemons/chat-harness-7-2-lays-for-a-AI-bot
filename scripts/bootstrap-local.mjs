@@ -9,7 +9,8 @@ export function bootstrapLocal(root,{descriptor,snowHome,ports}={}){
  if(descriptor){
   const policy=readInstanceSessionPolicy({descriptor});cfg.sessionCwd=policy.workspace('chat');cfg.agentPreset=policy.resolvePreset('qq-chat');
   cfg.snowluma={...cfg.snowluma,homeDir:snowHome,launcherPath:'',botUin:'',accessToken:'',followDiscoveredEndpoint:false,httpUrl:`http://127.0.0.1:${ports.snowHttp}`,wsUrl:`ws://127.0.0.1:${ports.snowWs}`};
-  cfg.launcher={...cfg.launcher,ports};cfg.consolePort=ports.console;cfg.dsh.baseUrl=`http://127.0.0.1:${ports.dsh}`;
+  cfg.launcher={...cfg.launcher,ports};cfg.consolePort=ports.console;
+  if(ports.dsh!=='')cfg.dsh.baseUrl=`http://127.0.0.1:${ports.dsh}`;
  }
  fs.writeFileSync(file,JSON.stringify(cfg,null,2)+'\n',{flag:'wx',mode:0o600});
  fs.mkdirSync(path.join(root,'state'),{recursive:true,mode:0o700});

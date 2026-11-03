@@ -38,10 +38,10 @@ export async function browserHostFixture(t) {
   async function enable(id,{port,wait=0}={}) {
     const root=path.join(dir,id);await fs.mkdir(root,{recursive:true});port??=await freePort();
     const descriptor={root,instanceId:id,label:id==='a'?'A 测试 bot':'B 测试 bot',bundleName:'synthetic-bot-'+id};
-    await fs.writeFile(path.join(root,'config.json'),JSON.stringify({snowluma:{botUin:'123456789'},launcher:{ports:{dsh:3080,console:await freePort(),snowHttp:3000,snowWs:3001,launcher:port,snowWebui:5099}}}));
+    await fs.writeFile(path.join(root,'config.json'),JSON.stringify({snowluma:{botUin:'123456789'},launcher:{ports:{dsh:'',console:await freePort(),snowHttp:3000,snowWs:3001,launcher:port,snowWebui:5099}}}));
     let state='stopped';
     const runtime={status:()=>({state}),async start(){events.push(id+':start');state='running';},async stop(){events.push(id+':stop');state='stopped';}};
-    const handle=createInstanceLauncher(ctx,{descriptor,runtime},wait?{createHttpServer(fn){const server=http.createServer(fn),listen=server.listen.bind(server);server.listen=(...args)=>{setTimeout(()=>listen(...args),wait);return server;};return server;}}:{});
+    const handle=createInstanceLauncher(ctx,{descriptor,runtime,getDshOrigin:()=>ctx.webServer.getOrigin()},wait?{createHttpServer(fn){const server=http.createServer(fn),listen=server.listen.bind(server);server.listen=(...args)=>{setTimeout(()=>listen(...args),wait);return server;};return server;}}:{});
     handles.push(handle);await ctx.fiber.await();return {handle,descriptor,port};
   }
   function pageScript(ids=['a','b']) {
@@ -92,10 +92,12 @@ test('real pinned native Connection serves authenticated live discovery and synt
  await page.click('#qq-launcher-a-button');await page.waitForFunction(()=>document.getElementById('qq-launcher-a-button').title.includes('连接状态待确认'));
  assert.deepEqual(f.events,['a:start']);
  await page.click('#qq-launcher-a-settings');await page.waitForFunction(()=>!document.getElementById('qq-launcher-a-settings-save').disabled);
+ assert.equal(await page.$eval('#qq-launcher-a-port-dsh',node=>node.value),'');
  const nextPort=await f.freePort();await page.$eval('#qq-launcher-a-port-launcher',(node,value)=>node.value=String(value),nextPort);
  await page.click('#qq-launcher-a-settings-save');await page.waitForFunction(()=>document.getElementById('qq-launcher-a-settings-message').textContent.includes('已保存'));
  assert.equal(new URL(a.handle.address()).port,String(nextPort));
- const screenshotDir=path.join(repo,'.superpowers/sdd/PLUGIN_WIRING_PLAN/task-6-artifacts');await fs.mkdir(screenshotDir,{recursive:true});
+ assert.equal(JSON.parse(await fs.readFile(path.join(a.descriptor.root,'config.json'))).launcher.ports.dsh,'');
+ const screenshotDir=process.env.TEST_UI_ARTIFACT_DIR||path.join(repo,'.superpowers/sdd/PLUGIN_WIRING_PLAN/task-6-artifacts');await fs.mkdir(screenshotDir,{recursive:true});
  await page.screenshot({path:path.join(screenshotDir,'dual-instance-settings-wide-fix1.png')});
  await page.setViewport({width:390,height:844});await page.screenshot({path:path.join(screenshotDir,'dual-instance-settings-narrow-fix1.png')});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);

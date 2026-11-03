@@ -1255,5 +1255,9 @@
   "src/vendor/LICENSE.deepseek",
   "src/vendor/dsh-api-client.mjs",
   "src/voice-core.js",
-  "src/web-search.js"
+  "src/web-search.js",
+  "src/instance-dsh-target.mjs",
+  "scripts/test-instance-dsh-target.mjs",
+  "scripts/test-instance-snow-receipt.mjs",
+  "scripts/test-instance-integration.mjs"
 ]

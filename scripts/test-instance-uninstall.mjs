@@ -256,3 +256,14 @@ test('no adapter is unsupported, never a fabricated permanent-delete success',as
  assert.equal(receipt.status,'conflict');assert(receipt.conflicts.some(x=>x.code==='UNSUPPORTED_SESSION_DELETE'));
  assert.equal((await fs.readdir(root)).length,1);
 });
+
+test('exact installer top-level override receipt cleans while unrelated root rows remain',async t=>{
+ const f=await cleanupFixture(t),manifest=await f.manifest(),patch=manifest.profileEntries[0].path;
+ await fs.writeFile(patch,'# unrelated preserved\n- id: unrelated\n  name: unrelated\n- id: alpha-mode\n  name: synthetic-alpha\n  config:\n    enabled: false\n');
+ const plan=await nativePlan(f);assert.deepEqual(plan.conflicts,[]);
+ const result=await executeInstanceCleanup(plan,{expectedManifestHash:plan.manifestHash,sessionStoreAdapter:f.adapter});assert.equal(result.status,'complete');assert.equal(await fs.readFile(patch,'utf8'),'# unrelated preserved\n- id: unrelated\n  name: unrelated\n');
+});
+test('duplicate root override and insert receipt identity refuses cleanup',async t=>{
+ const f=await cleanupFixture(t),manifest=await f.manifest(),patch=manifest.profileEntries[0].path;await fs.appendFile(patch,'- id: alpha-mode\n  name: synthetic-alpha\n  config:\n    enabled: false\n');
+ assert((await nativePlan(f)).conflicts.some(r=>r.code==='PROFILE_ROW_CHANGED'));
+});

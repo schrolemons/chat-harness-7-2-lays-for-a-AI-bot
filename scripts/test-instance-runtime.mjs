@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { readLauncherSettings, saveLauncherSettings } from './launcher-settings.mjs';
+import {initializeManifest,appendInstallationEvidence} from '../src/instance-manifest.mjs';
 import { readInstanceSessionPolicy } from '../src/instance-session-policy.mjs';
 import { probeProcess as nativeProbe } from '../src/instance-ownership.mjs';
 
@@ -22,7 +23,7 @@ async function fixture(t, { registryDir, botUin = '123456789', instanceId = 'pub
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'qq-managed-runtime-'));
   registryDir ||= path.join(root, 'account-registry');
   const snowHome = path.join(root, 'managed-dependencies', 'snowluma');
-  await fs.mkdir(snowHome, { recursive: true });
+  await fs.mkdir(path.join(snowHome,'config'), { recursive: true });
   await fs.mkdir(path.join(root, 'src'));
   await fs.mkdir(path.join(root, 'scripts'));
   const entry = 'setInterval(() => {}, 1000);\n';
@@ -32,7 +33,7 @@ async function fixture(t, { registryDir, botUin = '123456789', instanceId = 'pub
   await fs.writeFile(path.join(root, 'scripts', 'snow-bootstrap.mjs'), '// fixture preload\n');
   for(const kind of ['campus-watch','login-window'])await fs.writeFile(path.join(root,'scripts',kind+'.mjs'),entry);
   const marker = path.join(snowHome, '.qq-bridge-managed.json');
-  await fs.writeFile(marker, JSON.stringify({ version: 1, kind: 'snowluma', instanceId, entry: 'index.mjs', runtime: 'node.exe',
+  await fs.writeFile(marker, JSON.stringify({ version: 1, kind: 'snowluma', instanceId, entry: 'index.mjs', runtime: 'node.exe',createdDirectories:['config'],
     files: { 'index.mjs': hash(entry), 'node.exe': hash('fixture-runtime-binary') } }));
   const configFile = path.join(root, 'config.json');
   const ports = { dsh: 42080, console: 42100, snowHttp: 42000, snowWs: 42001, launcher: 42199, snowWebui: 45099 };
@@ -52,8 +53,10 @@ async function fixture(t, { registryDir, botUin = '123456789', instanceId = 'pub
     child.once('exit', () => { live.delete(child.pid); exits.push(child === children[0] ? 'snow' : 'bridge'); });
     return child;
   };
-  const descriptor={version:1,instanceId,label:'Fixture bot',profile:'fixture',bundleName:'synthetic-runtime',root,dshHome:path.dirname(registryDir),registryDir,entryId:instanceId,settingsNamespace:instanceId,presetIdMap:{}};
+  const descriptor={version:1,instanceId,label:'Fixture bot',profile:'fixture',bundleName:'synthetic-runtime',root,dshHome:options.dshHome||path.join(root,'home'),registryDir,entryId:instanceId,settingsNamespace:instanceId,presetIdMap:{}};
   await fs.writeFile(path.join(root,'.qq-bridge-instance.json'),JSON.stringify(descriptor));
+  await initializeManifest(root,descriptor);
+  await appendInstallationEvidence(root,{profileEntries:[],links:[],paths:[{path:snowHome,kind:'dependency',source:'created',cleanup:'owned',createdByTransaction:crypto.randomUUID(),manifestPath:marker,sha256:hash(await fs.readFile(marker))}]});
   const runtimeOptions = { descriptor, root, instanceId, registryDir, nodePath: process.execPath, snowHome,
     probePort: async () => false, probeProcess: probe, spawnProcess, stopTimeoutMs: 1500,
     presetMap: readInstanceSessionPolicy({descriptor}).presetMap, ...options.runtimeOptions };
@@ -75,6 +78,18 @@ async function fixture(t, { registryDir, botUin = '123456789', instanceId = 'pub
 
 test('managed runtime exports its lifecycle API', () => {
   assert.equal(typeof api.createInstanceRuntime, 'function');
+});
+
+test('managed child binds descriptor home and selected target rather than poisoned ambient authority',async t=>{
+ const f=await fixture(t,{runtimeOptions:{env:{...process.env,DSH_HOME:path.join(os.tmpdir(),'foreign-home'),DSH_LAUNCH_TOKEN:'foreign-launch',DSH_BASE_URL:'http://foreign.invalid'},getDshOrigin:()=> 'http://127.0.0.1:54321'}});
+ await f.writeConfig({launcher:{ports:{...f.ports,dsh:''}},dsh:{baseUrl:'http://127.0.0.1:3080'}});
+ await f.runtime.start();const env=f.calls.find(c=>c.args.some(a=>a.endsWith('bridge.js'))).options.env;
+ assert.equal(env.DSH_HOME,f.options.descriptor.dshHome);assert.equal(env.DSH_LAUNCH_TOKEN,'');
+ assert.equal(JSON.parse(env.QQ_BRIDGE_DSH_TARGET).baseUrl,'http://127.0.0.1:54321');
+ assert.equal(env.DSH_BASE_URL,'');
+ const b=await fixture(t,{runtimeOptions:{env:{...process.env,DSH_HOME:f.options.descriptor.dshHome,DSH_LAUNCH_TOKEN:'first-home-token'}}});await b.runtime.start();
+ const second=b.calls[1].options.env;assert.notEqual(second.DSH_HOME,env.DSH_HOME);assert.equal(second.DSH_HOME,b.options.descriptor.dshHome);assert.equal(second.DSH_LAUNCH_TOKEN,'');
+ await b.runtime.stop();await f.runtime.stop();
 });
 
 test('disable and replacement runtime preserve session data and installed source without explicit cleanup',async t=>{
@@ -375,7 +390,7 @@ for(const outcome of ['durable','failure'])test(`actual owned campus main -> sum
  const {pathToFileURL}=await import('node:url');const {WebSocketServer}=await import('ws');
  const native=await nativeSessionFixture(t);let recorder,entered,release,instance;const at=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
  const code=workerCode.replace("if(m.test==='worker')", `if(m.test==='main'){try{await(await import(${JSON.stringify(monitorFixture)})).executeMonitorMain('campus-watch','summary');process.exit(process.exitCode||0);}catch(e){console.error(e);process.exit(2);}}if(m.test==='worker')`);
- const f=await fixture(t,{childCode:code,runtimeOptions:{env:{...process.env,DSH_HOME:path.join(native.dir,'host')},recordCreatedSession:async(record,restriction)=>{entered(record);await gate;if(outcome==='failure')throw Error('fixture append unavailable');const result=await recorder(record,restriction);assert.equal((await readManifest(f.root)).sessions[0].sessionId,record.sessionId);return result;}}});
+ const f=await fixture(t,{childCode:code,dshHome:path.join(native.dir,'host'),runtimeOptions:{recordCreatedSession:async(record,restriction)=>{entered(record);await gate;if(outcome==='failure')throw Error('fixture append unavailable');const result=await recorder(record,restriction);assert.equal((await readManifest(f.root)).sessions[0].sessionId,record.sessionId);return result;}}});
  instance=await native.instance('public',f.options.descriptor);
  recorder=await createSessionOwnershipRecorder({ctx:native.ctx,descriptor:instance.descriptor,scope:instance.scope,hostBaseUrl:pathToFileURL(hostPackage).href,hostImport});
  const calls=[],created=[];let followed;
@@ -393,7 +408,7 @@ for(const outcome of ['durable','failure'])test(`actual owned campus main -> sum
  }catch(error){res.statusCode=500;res.end(String(error));}});
  const sockets=new WebSocketServer({server});sockets.on('connection',socket=>socket.on('message',bytes=>{const {streamId}=JSON.parse(bytes);followed={socket,streamId};socket.send(JSON.stringify({type:'item',streamId,value:{type:'snapshot'}}));}));
  server.listen(0,'127.0.0.1');await once(server,'listening');t.after(async()=>{for(const socket of sockets.clients)socket.terminate();await new Promise(r=>sockets.close(r));await new Promise(r=>server.close(r));});
- const port=server.address().port;await f.writeConfig({consolePort:port,consoleToken:'fixture',dsh:{baseUrl:`http://127.0.0.1:${port}`,authToken:'fixture'}});
+ const port=server.address().port;await f.writeConfig({launcher:{ports:{...f.ports,dsh:port}},consolePort:port,consoleToken:'fixture',dsh:{baseUrl:`http://127.0.0.1:${port}`,authToken:'fixture'}});
  await f.runtime.start();await workerRequest(f.children[1],'campus-watch');const ended=once(f.children[2],'exit');f.children[2].send({test:'main'});
  const record=await at;assert.deepEqual(created,[record.sessionId]);assert.equal(calls.includes('session/selectModel'),false);assert.equal((await readManifest(f.root)).sessions.length,0);release();await ended;
  assert.equal(f.children[2].exitCode,0);assert.equal(created.length,1);assert(native.ctx.agents.get(record.sessionId));assert.equal(calls.filter(m=>m==='workspace/archiveSession').length,outcome==='durable'?1:0);

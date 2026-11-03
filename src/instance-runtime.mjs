@@ -10,6 +10,8 @@ import { readInstanceSessionPolicy } from './instance-session-policy.mjs';
 import { bindOwnedRuntimeIpc } from './instance-runtime-ipc.mjs';
 import { createOwnedMonitorBrowser } from './owned-monitor-browser.mjs';
 import { runtimeConfigFingerprint } from './instance-runtime-config.mjs';
+import { selectInstanceDshTarget, instanceDshEnvironment } from './instance-dsh-target.mjs';
+import {readManifest,appendInstallationEvidence} from './instance-manifest.mjs';
 
 export const MANAGED_SNOW_MANIFEST = '.qq-bridge-managed.json';
 const fail = (code, message) => Object.assign(new Error(message), { code });
@@ -64,7 +66,7 @@ export async function verifyManagedSnow(root, snowHome, instanceId) {
       await regular(file);
       if (digest(await fs.readFile(file)) !== expected) throw fail('MANAGED_DEPENDENCY_INVALID', 'Managed SnowLuma file verification failed');
     }
-    return { home: snowHome, entry: path.join(snowHome, manifest.entry), runtime: path.join(snowHome, manifest.runtime) };
+    return { home: snowHome, entry: path.join(snowHome, manifest.entry), runtime: path.join(snowHome, manifest.runtime), configNamespace:manifest.createdDirectories?.length===1&&manifest.createdDirectories[0]==='config' };
   } catch (error) {
     if (error.code === 'ENOENT') throw fail('MANAGED_DEPENDENCY_REQUIRED', '未安装或未完整验证本实例专属 SnowLuma 依赖');
     if (error.code?.startsWith('MANAGED_')) throw error;
@@ -83,23 +85,38 @@ function portInUse(port) {
   });
 }
 
-async function writeSnowAccount(snow, cfg, botUin, ports) {
+export async function writeSnowAccount(snow, cfg, botUin, ports, descriptor) {
+  if(!snow.configNamespace)throw fail('SNOW_CONFIG_NAMESPACE_UNPROVEN','Installer-created config namespace is required');
   const directory = path.join(snow.home, 'config');
-  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   await containedPath(snow.home, directory);
   const file = path.join(directory, `onebot_${botUin}.json`);
+  const manifest=await readManifest(descriptor.root);
+  if(!manifest||manifest.instanceId!==descriptor.instanceId||manifest.dshHome!==descriptor.dshHome)throw fail('MANIFEST_CONFLICT','Snow author requires the selected installation receipt');
+  const marker=path.join(snow.home,MANAGED_SNOW_MANIFEST);
+  const dependency=manifest.paths.find(row=>row.path===snow.home);
+  if(!dependency||dependency.kind!=='dependency'||dependency.source!=='created'||dependency.cleanup!=='owned'||!dependency.createdByTransaction||dependency.manifestPath!==marker||dependency.sha256!==digest(await fs.readFile(marker)))throw fail('SNOW_CONFIG_NAMESPACE_UNPROVEN','Snow namespace must match its installer dependency receipt');
+  const receipt=manifest.paths.find(row=>row.path===file);
+  if(receipt && (receipt.source!=='created'||receipt.cleanup!=='owned'||!receipt.mutable||receipt.producer!=='managed-snow-account'||!receipt.createdByTransaction))throw fail('SNOW_CONFIG_UNOWNED','Existing config has no author receipt');
   let previous = {};
-  try { await regular(file); previous = JSON.parse(await fs.readFile(file, 'utf8')); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  try { await regular(file); if(!receipt)throw fail('SNOW_CONFIG_UNOWNED','Existing config is not adopted');previous = JSON.parse(await fs.readFile(file, 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error;if(receipt)throw fail('SNOW_CONFIG_MISSING','Recorded config disappeared'); }
   const token = String(cfg.snowluma?.accessToken || '');
   const listener = (name, port) => ({ name, port, host: '127.0.0.1', path: '/', accessToken: token,
     messageFormat: 'array', reportSelfMessage: false });
   const account = { ...previous, mode: 'snapshot', networks: {
     httpServers: [{ ...listener('http-default', ports.snowHttp), enableWebSocket: false }], httpClients: [],
     wsServers: [{ ...listener('ws-default', ports.snowWs), role: 'Universal' }], wsClients: [] } };
+  const bytes=JSON.stringify(account, null, 2) + '\n';
+  if(!receipt){
+    // Exclusive creation is the producer proof. Failed append preserves the file
+    // as ambiguous and blocks launch; retry never adopts it by its filename.
+    await fs.writeFile(file,bytes,{mode:0o600,flag:'wx'});
+    await appendInstallationEvidence(descriptor.root,{profileEntries:[],links:[],paths:[{path:file,kind:'data',source:'created',cleanup:'owned',mutable:true,producer:'managed-snow-account',createdByTransaction:crypto.randomUUID(),sha256:digest(bytes)}]});
+    return;
+  }
   const temporary = `${file}.${crypto.randomUUID()}.tmp`;
   try {
-    await fs.writeFile(temporary, JSON.stringify(account, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+    await fs.writeFile(temporary, bytes, { mode: 0o600, flag: 'wx' });
     await fs.rename(temporary, file);
   } finally { await fs.unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
 }
@@ -154,7 +171,8 @@ export function createInstanceRuntime(options = {}) {
     let cfg;
     try { cfg = JSON.parse((await fs.readFile(path.join(root, 'config.json'), 'utf8')).replace(/^\uFEFF/, '')); }
     catch { throw fail('INSTANCE_CONFIG_INVALID', 'Instance config.json cannot be read'); }
-    return { cfg, selected: readLauncherSettings(root, cfg), revision: runtimeConfigFingerprint(cfg) };
+    const dshTarget=selectInstanceDshTarget(cfg,options.getDshOrigin);
+    return { cfg, dshTarget, selected: readLauncherSettings(root, cfg,{managed:true}), revision: runtimeConfigFingerprint(cfg,{managed:true,dshTarget}) };
   };
   const remember = error => { lastError = { code: error.code || 'INSTANCE_RUNTIME_FAILED', message: error.message }; };
   const guard = attempt => { if (disposed || attempt !== generation) throw fail('INSTANCE_START_CANCELLED', 'Instance startup was cancelled'); };
@@ -289,13 +307,13 @@ export function createInstanceRuntime(options = {}) {
         guard(attempt);
         lease = await acquireAccountLease({ registryDir, botUin: selected.botUin, instanceId, owner, probeProcess: probe });
         guard(attempt);
-        await writeSnowAccount(snow, loaded.cfg, selected.botUin, selected.ports);
+        await writeSnowAccount(snow, loaded.cfg, selected.botUin, selected.ports,descriptor);
         guard(attempt);
-        const env = { ...(options.env || process.env) };
+        const env = instanceDshEnvironment(descriptor,options.env || process.env);
         delete env.NODE_OPTIONS; delete env.NODE_PATH;
         delete env.SNOWLUMA_ACCEPT_EULA; delete env.SNOWLUMA_ACCEPT_PRIVACY;
         for(const key of Object.keys(env))if(key.startsWith('QQ_BRIDGE_')||key.startsWith('SNOWLUMA_'))delete env[key];
-        childEnv={...env,QQL_BOT_UIN:selected.botUin,QQ_BRIDGE_INSTANCE_ID:instanceId,QQ_BRIDGE_ROOT:root,QQ_BRIDGE_SETTINGS_NAMESPACE:settingsNamespace,QQ_BRIDGE_RUNTIME_GENERATION:invocation,QQ_BRIDGE_PRESET_MAP:presetJson,
+        childEnv={...env,QQL_BOT_UIN:selected.botUin,QQ_BRIDGE_INSTANCE_ID:instanceId,QQ_BRIDGE_ROOT:root,QQ_BRIDGE_SETTINGS_NAMESPACE:settingsNamespace,QQ_BRIDGE_RUNTIME_GENERATION:invocation,QQ_BRIDGE_PRESET_MAP:presetJson,QQ_BRIDGE_DSH_TARGET:JSON.stringify(loaded.dshTarget),
           QQ_BRIDGE_SNOW_CONFIG:JSON.stringify({home:snow.home,botUin:selected.botUin,httpUrl:`http://127.0.0.1:${selected.ports.snowHttp}`,wsUrl:`ws://127.0.0.1:${selected.ports.snowWs}`,accessToken:String(loaded.cfg.snowluma?.accessToken||''),consolePort:selected.ports.console})};
         monitor=createOwnedMonitorBrowser({root,instanceId,nonce:lease.nonce,env:childEnv,probeProcess:probe,
           executablePath:options.monitorBrowserPath || path.join(process.env['ProgramFiles(x86)'] || 'C:/Program Files (x86)','Microsoft','Edge','Application','msedge.exe'),

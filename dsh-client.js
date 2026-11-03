@@ -173,6 +173,8 @@ window.__ModuleLoader__.load({
         bot.value = data.botUin || ''; owner.value = String(data.ownerQQ ?? '');
         privates.value = (data.allow?.private || []).join('\n'); groups.value = (data.allow?.groups || []).join('\n');
         for (const key of Object.keys(ports)) ports[key].value = String(data.ports?.[key] ?? '');
+        ports.dsh.placeholder = '留空：跟随当前 DSH';
+        ports.dsh.title = data.dshTarget?.baseUrl ? '当前连接目标：' + data.dshTarget.baseUrl : '留空时跟随当前 DSH';
         const port = data.ports?.console; consoleUrl = Number.isInteger(port) && port > 0 && port <= 65535 ? 'http://127.0.0.1:' + port : '';
         settingsRevision = data.revision || '';
       }
@@ -192,6 +194,7 @@ window.__ModuleLoader__.load({
         const values = {}, used = new Set();
         for (const [key, input] of Object.entries(ports)) {
           const raw = input.value.trim(), value = Number(raw);
+          if (key === 'dsh' && raw === '') { values[key] = ''; continue; }
           if (!/^\d+$/.test(raw) || !Number.isInteger(value) || value < 1 || value > 65535 || used.has(value)) { message.textContent = PORT_LABELS[key] + '必须为 1–65535 的整数，且端口不能重复'; input.focus(); return; }
           used.add(value); values[key] = value;
         }

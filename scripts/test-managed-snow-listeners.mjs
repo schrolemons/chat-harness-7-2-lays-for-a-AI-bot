@@ -1,7 +1,8 @@
+import crypto from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {test} from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import path from 'node:path';import os from 'node:os';import net from 'node:net';import {spawn} from 'node:child_process';import {once} from 'node:events';import {parse} from 'acorn';
 import {installManagedSnow,SNOW_RELEASE} from './install-managed-snow.mjs';
-import {initializeManifest} from '../src/instance-manifest.mjs';
+import {initializeManifest,appendInstallationEvidence} from '../src/instance-manifest.mjs';
 import {readInstanceDescriptor} from '../src/instance-descriptor.mjs';
 import {createInstanceRuntime} from '../src/instance-runtime.mjs';
 import {scopeSnowSource} from './snow-bootstrap.mjs';
@@ -39,6 +40,7 @@ test('real official vendor network factories bind configured ports with every QQ
  let descriptor={version:1,root,instanceId:'test-bot',label:'Test bot',dshHome:path.join(base,'host'),profile:'fixture',bundleName:'fixture-bot',entryId:'fixture-bot',settingsNamespace:'fixture-bot',presetIdMap:{}};
  await fs.writeFile(path.join(root,'.qq-bridge-instance.json'),JSON.stringify(descriptor));await initializeManifest(root,descriptor);descriptor=await readInstanceDescriptor(root);
  const installed=await installManagedSnow({descriptor,artifact:process.env.TEST_SNOW_ARTIFACT,expectedDigest:SNOW_RELEASE.sha256});
+ await appendInstallationEvidence(root,{profileEntries:[],links:[],paths:[{path:installed.snowHome,kind:'dependency',source:'created',cleanup:'owned',createdByTransaction:crypto.randomUUID(),manifestPath:installed.manifestPath,sha256:crypto.createHash('sha256').update(await fs.readFile(installed.manifestPath)).digest('hex')}]});
  const ports=await freePorts();await fs.writeFile(path.join(root,'config.json'),JSON.stringify({launcher:{ports},snowluma:{botUin:'123456789',accessToken:'fixture-owned-token'}}));
  await fs.mkdir(path.join(root,'src'));await fs.mkdir(path.join(root,'scripts'));await fs.writeFile(path.join(root,'src','bridge.js'),'');await fs.writeFile(path.join(root,'scripts','snow-bootstrap.mjs'),'');
  const identities=new Map([[process.pid,{pid:process.pid,parentPid:1,startTime:'test-owner',executablePath:process.execPath}]]);let snowOptions;const sleepers=[];

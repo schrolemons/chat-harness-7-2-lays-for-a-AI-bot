@@ -10,7 +10,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 import crypto from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { initializeManifest } from '../src/instance-manifest.mjs';
+import { initializeManifest,appendInstallationEvidence } from '../src/instance-manifest.mjs';
 import { claimInstanceRoot } from '../src/instance-descriptor.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -307,12 +307,13 @@ test('native root default factories own real synthetic services, seven MCPs, log
   const mcp=`import readline from 'node:readline';const lines=readline.createInterface({input:process.stdin});lines.on('line',line=>{const q=JSON.parse(line);if(q.id===undefined)return;let result={};if(q.method==='initialize')result={protocolVersion:q.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'synthetic',version:'1'}};if(q.method==='tools/list')result={tools:[{name:'probe',description:'synthetic',inputSchema:{type:'object'}}]};if(q.method==='tools/call')result={content:[{type:'text',text:JSON.stringify({pid:process.pid,entry:process.argv[1],executable:process.execPath})}]};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,result})+'\\n');});`;
   for(const file of Object.values(BUNDLED_MCP)){const target=path.join(value.root,file);await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,mcp);}
   await fs.writeFile(path.join(value.root,'node_modules/@playwright/mcp/package.json'),JSON.stringify({name:'@playwright/mcp',type:'module',exports:{'./package.json':'./package.json'}}));
-  const snowHome=path.join(value.root,'managed-dependencies','synthetic-snow');await fs.mkdir(snowHome,{recursive:true});
+  const snowHome=path.join(value.root,'managed-dependencies','synthetic-snow');await fs.mkdir(path.join(snowHome,'config'),{recursive:true});
   const nodeFile=path.join(snowHome,path.basename(process.execPath));await fs.copyFile(process.execPath,nodeFile);
   const snow=`console.log('Synthetic WebUI initial credentials: LOCAL-ONLY');console.error('Synthetic gateway startup diagnostic');process.on('message',m=>{if(m==='shutdown')process.exit(0)});setInterval(()=>{},1000);`;
   await fs.writeFile(path.join(snowHome,'index.mjs'),snow);
   const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
-  await fs.writeFile(path.join(snowHome,'.qq-bridge-managed.json'),JSON.stringify({version:1,kind:'snowluma',instanceId:value.instanceId,entry:'index.mjs',runtime:path.basename(nodeFile),files:{'index.mjs':digest(snow),[path.basename(nodeFile)]:digest(await fs.readFile(nodeFile))}}));
+  await fs.writeFile(path.join(snowHome,'.qq-bridge-managed.json'),JSON.stringify({version:1,kind:'snowluma',instanceId:value.instanceId,entry:'index.mjs',runtime:path.basename(nodeFile),createdDirectories:['config'],files:{'index.mjs':digest(snow),[path.basename(nodeFile)]:digest(await fs.readFile(nodeFile))}}));
+  const marker=path.join(snowHome,'.qq-bridge-managed.json');await appendInstallationEvidence(value.root,{profileEntries:[],links:[],paths:[{path:snowHome,kind:'dependency',source:'created',cleanup:'owned',createdByTransaction:crypto.randomUUID(),manifestPath:marker,sha256:digest(await fs.readFile(marker))}]});
   await fs.mkdir(path.join(value.root,'scripts'),{recursive:true});await fs.writeFile(path.join(value.root,'scripts/snow-bootstrap.mjs'),'// synthetic preload');
   await fs.writeFile(path.join(value.root,'src/bridge.js'),`console.log('Synthetic bridge startup',process.execPath);process.on('message',m=>{if(m.type==='qq-bridge:shutdown')process.exit(0)});setInterval(()=>{},1000);`);
   const sockets=[];
@@ -332,8 +333,8 @@ test('native root default factories own real synthetic services, seven MCPs, log
   assert.equal(typeof controller.launcherAddress(),'string','production root must mount its default owned launcher');
   const status=async()=>await(await fetch(controller.launcherAddress()+'/status')).json();
   const post=async(route,body={})=>{const identity=await status();const response=await fetch(controller.launcherAddress()+route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...body,instanceId:identity.instanceId,generation:identity.generation}),signal:AbortSignal.timeout(20000)});return {http:response.status,...await response.json()};};
-  assert.equal((await status()).runtime.state,'stopped');await assert.rejects(fs.access(path.join(snowHome,'config')),{code:'ENOENT'});
-  const started=await post('/start');assert.equal(started.http,200);assert.equal(started.readiness,'unverified');assert.equal(started.runtime.children.length,2);
+  assert.equal((await status()).runtime.state,'stopped');assert.deepEqual(await fs.readdir(path.join(snowHome,'config')),[]);
+  const started=await post('/start');assert.equal(started.http,200,JSON.stringify(started));assert.equal(started.readiness,'unverified');assert.equal(started.runtime.children.length,2);
   const servicePids=started.runtime.children.map(child=>child.pid);await post('/start');assert.deepEqual((await status()).runtime.children.map(child=>child.pid),servicePids);
   const freshPort=async()=>{const server=http.createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const number=server.address().port;await new Promise(resolve=>server.close(resolve));return number;};
   const rawBefore=await fs.readFile(path.join(value.root,'config.json'),'utf8');
@@ -456,7 +457,7 @@ for (const startupFailure of [false, true]) test(`actual native MCP ${startupFai
   const f = await fixture(t), value = await f.descriptor('transport-close-failure');
   const file = path.join(value.root, 'fixture.mjs'), helperPidFile = path.join(value.root, 'helper-pid');
   await fs.writeFile(file, `import readline from 'node:readline'; import fs from 'node:fs'; import {spawn} from 'node:child_process';
-const helper=spawn(process.execPath,['-e','setTimeout(()=>{},11000)'],{detached:true,windowsHide:true,stdio:['ignore',process.stdout,process.stderr]});fs.writeFileSync(${JSON.stringify(helperPidFile)},String(helper.pid));helper.unref();
+const helper=spawn(process.execPath,['-e','setTimeout(()=>{},11000)'],{detached:true,windowsHide:true,cwd:${JSON.stringify(os.tmpdir())},stdio:['ignore',process.stdout,process.stderr]});fs.writeFileSync(${JSON.stringify(helperPidFile)},String(helper.pid));helper.unref();
 const lines=readline.createInterface({input:process.stdin});
 lines.on('line', line=>{const q=JSON.parse(line);if(q.id===undefined)return;if(q.method==='tools/list'&&process.env.SYNTHETIC_FAIL_START){process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,error:{code:-32603,message:'synthetic startup failure'}})+'\\n');return;}let result={};if(q.method==='initialize')result={protocolVersion:q.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'synthetic',version:'1'}};if(q.method==='tools/list')result={tools:[]};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,result})+'\\n');});
 lines.on('close',()=>process.exit(0));`);

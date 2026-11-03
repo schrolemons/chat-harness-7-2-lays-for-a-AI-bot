@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { readConfig, readLauncherSettings, saveLauncherSettings, validateBotUin, validateLauncherPorts, normalizeQqList } from '../scripts/launcher-settings.mjs';
 import { runtimeConfigFingerprint } from './instance-runtime-config.mjs';
+import {selectInstanceDshTarget} from './instance-dsh-target.mjs';
 
 const failure = (code, status = 409) => Object.assign(Error(code), { code, status });
 // Distinct installed packages have distinct module caches; the host owns the
@@ -54,18 +55,20 @@ const localOrigin = value => {
 
 /** HTTP capability for one controller generation. Health never starts/adopts a service.
  * The root controller owns runtime disposal; this handle owns only admission/listeners. */
-export function createInstanceLauncher(ctx, { descriptor, runtime }, deps = {}) {
+export function createInstanceLauncher(ctx, { descriptor, runtime, getDshOrigin }, deps = {}) {
   if (!descriptor?.instanceId || !path.isAbsolute(descriptor.root || '') || !runtime?.start || !runtime?.stop || typeof runtime.status !== 'function') throw failure('INSTANCE_LAUNCHER_REQUIRED');
   let generation = crypto.randomUUID();
   const servers = new Set(), bindings = new Map(), closings = new WeakMap();
   let active, closing = false, disposal, queue = Promise.resolve(), stopError, needsRestart = false;
   const address = () => { const value = active?.address(); return value && typeof value !== 'string' ? `http://127.0.0.1:${value.port}` : undefined; };
   const identity = () => ({ instanceId: descriptor.instanceId, serviceUrl: address(), generation });
+  const settings=cfg=>readLauncherSettings(descriptor.root,cfg,{managed:true});
+  const fingerprint=cfg=>runtimeConfigFingerprint(cfg,{managed:true,...(getDshOrigin?{dshTarget:selectInstanceDshTarget(cfg,getDshOrigin)}:{})});
   const view = (handlingError = false) => {
     const observed = runtime.status(), active = !['stopped','disposed'].includes(observed.state);
     let changed=needsRestart;
     if(active && observed.configRevision) {
-      try { changed=runtimeConfigFingerprint(readConfig(descriptor.root))!==observed.configRevision; }
+      try { changed=fingerprint(readConfig(descriptor.root))!==observed.configRevision; }
       catch(error) { if(!handlingError)throw error;changed=true; }
     }
     return { ok: true, ...identity(), readiness: 'unverified', runtime: observed, needsRestart: active && changed };
@@ -119,27 +122,27 @@ export function createInstanceLauncher(ctx, { descriptor, runtime }, deps = {}) 
     admit();
     if (['starting','stopping'].includes(runtime.status().state)) throw failure('INSTANCE_RUNTIME_BUSY');
     const beforeConfig = readConfig(descriptor.root);
-    const current = readLauncherSettings(descriptor.root, beforeConfig);
+    const current = settings(beforeConfig);
     if (body.revision && body.revision !== current.revision) throw failure('CONFIG_REVISION_CONFLICT');
     // Validate the whole patch before opening a candidate listener or writing bytes.
     if (body.botUin !== undefined) validateBotUin(body.botUin);
     if (body.ownerQQ !== undefined && String(body.ownerQQ ?? '').trim()) normalizeQqList([body.ownerQQ]);
     for (const key of ['private','groups']) if(body.allow?.[key] !== undefined) normalizeQqList(body.allow[key]);
-    const ports = body.ports === undefined ? current.ports : validateLauncherPorts(body.ports,current.ports);
+    const ports = body.ports === undefined ? current.ports : validateLauncherPorts(body.ports,current.ports,{managed:true});
     let candidate;
     try {
       if (ports.launcher !== active.address()?.port) {
         candidate=createServer(); await bind(candidate,ports.launcher);
       }
       admit();
-      const saved=saveLauncherSettings(descriptor.root,body);
+      const saved=saveLauncherSettings(descriptor.root,body,{managed:true});
       if (candidate) {
         const previous=active; active=candidate; candidate=null; generation=crypto.randomUUID();
         // Accepted responses drain on their original socket before retiring it.
         const retire=()=>{ void closeServer(previous).catch(error=>ctx.logger?.error(error)); };
         res.once('finish',retire); res.once('close',retire); if(res.destroyed)retire();
       }
-      const changed=runtimeConfigFingerprint(readConfig(descriptor.root))!==runtimeConfigFingerprint(beforeConfig);
+      const changed=fingerprint(readConfig(descriptor.root))!==fingerprint(beforeConfig);
       if (changed && !['stopped','disposed'].includes(runtime.status().state)) needsRestart=true;
       const result={ ...saved, ...view(), configured:!!saved.botUin, live:false };
       return {...result,message:result.needsRestart?'已保存；运行中的服务需重启后应用':'已保存'};
@@ -151,8 +154,8 @@ export function createInstanceLauncher(ctx, { descriptor, runtime }, deps = {}) 
     const route=String(req.url||'').split('?')[0];
     if(req.method==='OPTIONS') { send(res,204,{}); return; }
     if(req.method==='GET' && ['/', '/status','/config'].includes(route)) {
-      const settings=route==='/config'?readLauncherSettings(descriptor.root):undefined;
-      send(res,200,{...(settings?{...settings,configured:!!settings.botUin,live:false}:{}),...view()}); return;
+      const selected=route==='/config'?settings():undefined;
+      send(res,200,{...(selected?{...selected,configured:!!selected.botUin,live:false,...(getDshOrigin?{dshTarget:selectInstanceDshTarget(readConfig(descriptor.root),getDshOrigin)}:{})}:{}),...view()}); return;
     }
     if(req.method!=='POST'||!['/start','/stop','/restart','/config'].includes(route)) { send(res,404,{ok:false,error:'not found'}); return; }
     const body=await readBody(req); admit();
@@ -171,7 +174,7 @@ export function createInstanceLauncher(ctx, { descriptor, runtime }, deps = {}) 
     send(res,200,result);
   }
   active=createServer();
-  const ready=bind(active,readLauncherSettings(descriptor.root).ports.launcher);
+  const ready=bind(active,settings().ports.launcher);
   ready.catch(()=>{});
   const remove=registerDiscovery(ctx,()=>!closing&&address()?{...identity(),label:descriptor.label,clientModuleId:descriptor.bundleName}:null);
   const closeAdmission=()=>{closing=true;};

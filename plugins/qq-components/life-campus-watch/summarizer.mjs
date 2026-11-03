@@ -5,6 +5,8 @@ import WebSocket from 'ws';
 import { NodeApiClient, unwrap } from '../../../src/dsh-client.js';
 import { SUMMARY_PROMPT } from './summary-policy.mjs';
 import {readCostPolicy,selectCostPolicy} from '../obs-cost-policy/policy.mjs';
+import {loadInstanceSessionPolicy} from '../../../src/instance-session-policy.mjs';
+import {bindInstanceDshConfig} from '../../../src/instance-dsh-target.mjs';
 
 /** 独立定时脚本也必须服从桥接的全局额度；状态不可读时不启动模型回合。 */
 export async function assertGlobalBudgetAllowsModel(root, { fetchImpl = fetch } = {}) {
@@ -31,7 +33,8 @@ export async function assertGlobalBudgetAllowsModel(root, { fetchImpl = fetch } 
 /** One short, fresh, tool-free DSH turn for the whole change batch. Never sends to QQ. */
 export async function generateWebSummary(payload, { root, timeoutMs = 35000, recordCreatedSession } = {}) {
   await assertGlobalBudgetAllowsModel(root);
-  const cfg = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
+  const policy=loadInstanceSessionPolicy({root});
+  const cfg = bindInstanceDshConfig(JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8')),{active:policy.active});
   const tier=selectCostPolicy(readCostPolicy(root),{reason:'webSummary'}),provider=String(cfg.dsh?.provider||'deepseek-official');
   const api = new NodeApiClient(cfg.dsh.baseUrl, 8000, cfg.dsh.authToken ? { token: cfg.dsh.authToken } : {}, {root,recordCreatedSession,onOwnershipError:(error,record)=>console.warn('会话归属未记录',record.sessionId,error.message)});
   const abort = new AbortController();

@@ -15,9 +15,9 @@ import {createOfflineSessionStoreAdapter} from '../src/instance-session-cleanup.
 import {sha256,rowHash,tree,cleanupError} from '../src/instance-cleanup-files.mjs';
 import {SNOW_RELEASE} from './install-managed-snow.mjs';
 const worker=fileURLToPath(new URL('./native-session-cleanup-worker.mjs',import.meta.url));
-export async function cleanupFixture(t,{shared=false,compression='none',nestedSnowAsset=false}={}) {
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'instance-cleanup-')),home=path.join(dir,'home');await fs.mkdir(home);
- const root=path.join(dir,'alpha'),beta=path.join(dir,'beta');await fs.mkdir(root);await fs.mkdir(beta);
+export async function cleanupFixture(t,{shared=false,compression='none',nestedSnowAsset=false,installed}={}) {
+ const dir=installed?.dir||await fs.mkdtemp(path.join(os.tmpdir(),'instance-cleanup-')),home=installed?.descriptor.dshHome||path.join(dir,'home');await fs.mkdir(home,{recursive:true});
+ const root=installed?.descriptor.root||path.join(dir,'alpha'),beta=path.join(dir,'beta');if(!installed)await fs.mkdir(root);await fs.mkdir(beta);
  const children=new Set(),records=[],ownerToken=randomUUID();let frozen=false,unknown=false,host,snapshot,serial=0;
  async function launch(internal=false){
   if(frozen&&!internal)throw cleanupError('LAUNCH_FROZEN');
@@ -31,14 +31,17 @@ export async function cleanupFixture(t,{shared=false,compression='none',nestedSn
   return {child,call,closed,async stop(){await call('shutdown');await closed;}};
  }
  t.after(async()=>{if(host&&children.has(host.child))await host.stop();if(children.size)throw Error('Fixture writer leaked');if(path.dirname(dir)!==os.tmpdir())throw Error('Invalid fixture root');await fs.rm(dir,{recursive:true,force:true});});
- const cwd=shared?path.join(dir,'shared'):path.join(root,'state','workspaces','chat');await fs.mkdir(cwd,{recursive:true});
- const descriptor={version:1,instanceId:'alpha',label:'Synthetic Alpha',root,dshHome:home,profile:'fixture',bundleName:'synthetic-alpha',entryId:'alpha-mode',settingsNamespace:'alpha-mode',presetIdMap:{'qq-chat':'alpha-chat'},workspaces:{chat:cwd,learning:cwd,task:cwd,summary:cwd}};
+ const cwd=installed?.descriptor.workspaces.chat||(shared?path.join(dir,'shared'):path.join(root,'state','workspaces','chat'));await fs.mkdir(cwd,{recursive:true});
+ const descriptor=installed?.descriptor||{version:1,instanceId:'alpha',label:'Synthetic Alpha',root,dshHome:home,profile:'fixture',bundleName:'synthetic-alpha',entryId:'alpha-mode',settingsNamespace:'alpha-mode',presetIdMap:{'qq-chat':'alpha-chat'},workspaces:{chat:cwd,learning:cwd,task:cwd,summary:cwd}};
+ const preset=descriptor.presetIdMap['qq-chat'];
+ const profile=path.join(home,'profiles',descriptor.profile);
+ const bdesc={...descriptor,instanceId:'beta',root:beta,bundleName:'synthetic-beta'};await initializeManifest(beta,bdesc);
  const write=async(file,value)=>{await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,typeof value==='string'?value:JSON.stringify(value,null,2)+'\n');};
+ if(!installed){
  await write(path.join(root,'package.json'),{name:'synthetic-alpha',version:'1.0.0'});await write(path.join(root,'entry.mjs'),'export const synthetic=true;\n');
  const creation={transactionId:randomUUID(),root,source:'created',files:await Promise.all(['package.json','entry.mjs'].map(async p=>({path:p,sha256:sha256(await fs.readFile(path.join(root,p)))})))};
  await write(path.join(root,'.instance-install','creation.json'),creation);await write(path.join(root,'.qq-bridge-instance.json'),descriptor);
  await initializeManifest(root,descriptor);
- const bdesc={...descriptor,instanceId:'beta',root:beta,bundleName:'synthetic-beta'};await initializeManifest(beta,bdesc);
  const created={source:'created',cleanup:'owned',createdByTransaction:creation.transactionId};
  await write(path.join(root,'config.json'),{synthetic:true});await write(path.join(root,'state','mode.json'),{enabled:false});
  await write(path.join(root,'node_modules','.package-lock.json'),{name:'synthetic-alpha'});await write(path.join(root,'node_modules','example','index.js'),'module.exports=1;');
@@ -48,7 +51,7 @@ export async function cleanupFixture(t,{shared=false,compression='none',nestedSn
  const snowFiles={'index.mjs':sha256(await fs.readFile(path.join(snow,'index.mjs'))),'node.exe':sha256(await fs.readFile(path.join(snow,'node.exe')))};
  if(nestedSnowAsset){const name='native/sqlite/prebuilds/synthetic.node';await write(path.join(snow,name),'Synthetic non-executable asset');snowFiles[name]=sha256(await fs.readFile(path.join(snow,name)));}
  await write(snowFile,{version:1,kind:'snowluma',instanceId:'alpha',entry:'index.mjs',runtime:'node.exe',artifact:SNOW_RELEASE,files:snowFiles,patches:[]});
- const profile=path.join(home,'profiles','fixture');await write(path.join(profile,'package.json'),{dependencies:{'synthetic-alpha':'link:'+root.replaceAll('\\','/'),'unrelated':'1.0.0'},dsh:{profile:{bundles:['unrelated','synthetic-alpha']}}});
+ await write(path.join(profile,'package.json'),{dependencies:{'synthetic-alpha':'link:'+root.replaceAll('\\','/'),'unrelated':'1.0.0'},dsh:{profile:{bundles:['unrelated','synthetic-alpha']}}});
  const row={id:'alpha-mode',name:'synthetic-alpha',config:{enabled:false}},patch=path.join(profile,'cordis.patch.yml');
  await write(patch,'# Keep unrelated comment\n- insert:\n    - id: unrelated\n      name: unrelated\n    - id: alpha-mode\n      name: synthetic-alpha\n      config:\n        enabled: false\n');
  await fs.mkdir(path.join(profile,'node_modules'));await fs.symlink(root,path.join(profile,'node_modules','synthetic-alpha'),process.platform==='win32'?'junction':'dir');
@@ -59,8 +62,9 @@ export async function cleanupFixture(t,{shared=false,compression='none',nestedSn
   {...created,path:path.join(root,'node_modules'),kind:'dependency',manifestPath:path.join(root,'node_modules','.package-lock.json'),sha256:sha256(await fs.readFile(path.join(root,'node_modules','.package-lock.json'))),...await tree(path.join(root,'node_modules'))},
   {...created,path:snow,kind:'dependency',manifestPath:snowFile,sha256:sha256(await fs.readFile(snowFile))}
  ]});
+ }
  host=await launch();
- records.push(...await host.call('seed',{items:[{id:'alpha-session',cwd,preset:'alpha-chat',archive:true},{id:'beta-session',cwd:path.join(beta,'workspace'),preset:'beta-chat',pin:true},{id:'ordinary-session',cwd:shared?cwd:path.join(dir,'ordinary-workspace')},{id:'alpha-pinned',cwd,preset:'alpha-chat',pin:true}]}));
+ records.push(...await host.call('seed',{items:[{id:'alpha-session',cwd,preset,archive:true},{id:'beta-session',cwd:path.join(beta,'workspace'),preset:'beta-chat',pin:true},{id:'ordinary-session',cwd:shared?cwd:path.join(dir,'ordinary-workspace')},{id:'alpha-pinned',cwd,preset,pin:true}]}));
  for(const r of records.filter(r=>r.header.id.startsWith('alpha-')))await appendOwnedSession(root,{sessionId:r.header.id,workspaceId:r.workspaceId,path:r.path,source:'created',cleanup:'owned',headerFingerprint:fingerprintSessionHeader(r.header)});
  if(shared){const r=records.find(r=>r.header.id==='ordinary-session');await appendOwnedSession(root,{sessionId:r.header.id,workspaceId:r.workspaceId,path:r.path,source:'verified-legacy',cleanup:'preserve',headerFingerprint:fingerprintSessionHeader(r.header)});}
  const extraArtifacts=new Map();
@@ -94,7 +98,7 @@ export async function cleanupFixture(t,{shared=false,compression='none',nestedSn
    const line=Buffer.from(JSON.stringify(header)+'\n'),head=compressed?zstdCompressSync(line,{params:{[constants.ZSTD_c_checksumFlag]:1}}):line;
    await fs.writeFile(file,Buffer.concat([head,bytes.subarray(firstEnd)]));extraArtifacts.set(r.header.id,[{path:file,kind:'log'}]);return file;
   },
-  async seedUnrecorded(){return host.call('seed',{items:[{id:'unrecorded-session',cwd,preset:'alpha-chat'}]});},
+  async seedUnrecorded(){return host.call('seed',{items:[{id:'unrecorded-session',cwd,preset}]});},
   async primeCatalog(){await host.stop();host=await launch();return host.call('snapshot',{ids:records.map(r=>r.header.id)});},
   async stoppedSnapshot(){return owner.freezeAndSnapshot();}
  };

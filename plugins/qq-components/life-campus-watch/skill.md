@@ -12,6 +12,7 @@ L 层「生命周期与编排」组件，负责 campus-watch 脚本的定时拉�
 - 可选组件配置：`aiWebSummary=false` 使用规则摘要；模型与思考强度统一读取 O 层调用档位，旧 `summaryModel` 不再作为覆盖入口；`summaryTimeoutMs` 默认35000，最大60000。每次用新整理会话，结束后归档，工具清单为空且执行守卫拒绝全部工具。
 
 ## 职责
+- descriptor 受管进程的摘要连接使用父 runtime 的 DSH 目标快照与所选 home，不从另一实例的环境令牌取得权限。摘要会话仍经映射预设、专属 workspace 和原有 IPC 归属记录；写入失败保留已创建 ID，不重复创建。独立脚本维持普通显式配置行为。
 - 每 1 分钟（schedule.everyMs）触发一次 onTick。
 - 每分钟检查快检是否到期；讲座未启用时不派发快检，讲座实际访问遵守 lecturesIntervalMinutes（至少5分钟）。全检默认每30分钟（config.fullCheckMinutes）。
 - 调桥接能力 `spawnCampusWatch()` 拉起脚本，脚本使用原子 PID 租约与180秒浏览器阶段看门狗；活进程的锁不因120秒时间窗口而失效。

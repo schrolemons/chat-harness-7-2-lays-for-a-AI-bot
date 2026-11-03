@@ -83,6 +83,17 @@ export async function prepareFileCleanup(manifest) {
    const marker=await plainJson(row.manifestPath);
    if(marker.version!==1||marker.kind!=='snowluma'||marker.instanceId!==manifest.instanceId||marker.artifact?.sha256!==SNOW_RELEASE.sha256)throw cleanupError('DEPENDENCY_INVENTORY_REQUIRED');
    expected={files:[...Object.entries(marker.files).map(([p,h])=>({path:p,sha256:h})),{path:path.relative(row.path,row.manifestPath).replaceAll('\\','/'),sha256:row.sha256}],links:[]};
+   if(marker.createdDirectories!==undefined){
+    if(rowHash(marker.createdDirectories)!==rowHash(['config']))throw cleanupError('DEPENDENCY_INVENTORY_REQUIRED');
+    expected.directories=['config'];
+    for(const entry of expected.files)for(let d=path.dirname(resolved(row.path,entry.path));within(row.path,d);d=path.dirname(d))expected.directories.push(path.relative(row.path,d).replaceAll('\\','/'));
+    expected.directories=[...new Set(expected.directories)];
+    for(const authored of manifest.paths.filter(p=>p.producer==='managed-snow-account'&&samePath(path.dirname(p.path),path.join(row.path,'config')))){
+     if(authored.source!=='created'||authored.cleanup!=='owned'||!authored.mutable||!authored.createdByTransaction||!/^onebot_[1-9]\d{4,19}\.json$/.test(path.basename(authored.path)))throw cleanupError('MUTABLE_NAMESPACE_UNPROVEN');
+     const current=await state(authored.path);if(current.kind!=='file')throw cleanupError('OWNED_PATH_MISSING');
+     expected.files.push({path:path.relative(row.path,authored.path).replaceAll('\\','/'),sha256:current.sha256});
+    }
+   }
   }
   if(!row.mutable) {
    const normalize=v=>({files:[...v.files].sort((a,b)=>a.path.localeCompare(b.path)),links:(v.links||[]).map(({path,target})=>({path,target})).sort((a,b)=>a.path.localeCompare(b.path))});
@@ -111,7 +122,8 @@ export async function prepareFileCleanup(manifest) {
  if(rows.length){
   if(rows.some(r=>!samePath(r.path,patch)))throw cleanupError('PROFILE_PATH_CONFLICT');
   const before=await state(patch),raw=await fs.readFile(patch,'utf8'),parsed=yamlRows(raw),selected=new Set();
-  for(const row of rows){const matches=parsed.rows.filter(r=>r.id===row.id);if(matches.length!==1||matches[0].name!==row.name||rowHash(matches[0])!==row.sha256)throw cleanupError('PROFILE_ROW_CHANGED');selected.add(matches[0]);}
+  const entries=[...parsed.rows,...parsed.document.filter(r=>!r.insert)];
+  for(const row of rows){const matches=entries.filter(r=>r.id===row.id);if(matches.length!==1||matches[0].name!==row.name||rowHash(matches[0])!==row.sha256)throw cleanupError('PROFILE_ROW_CHANGED');selected.add(matches[0]);}
   const content=removeYamlRows(raw,parsed,selected);operations.push({kind:'write',path:patch,before,content,after:{kind:'file',sha256:sha256(content)},phase:'profile'});
   const file=path.join(profile,'package.json'),pkgBefore=await state(file);let contentPkg=await fs.readFile(file,'utf8');const pkg=JSON.parse(contentPkg);
   if(pkg.dependencies?.[manifest.bundleName]!=='link:'+root.replaceAll('\\','/')||!pkg.dsh?.profile?.bundles?.includes(manifest.bundleName))throw cleanupError('PROFILE_PACKAGE_CHANGED');

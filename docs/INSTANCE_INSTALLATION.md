@@ -80,3 +80,14 @@ node scripts/release-public.mjs --stage C:/Build/public-stage --output C:/Build
 `release-files.json` 是评审后的精确路径 allowlist，使用 UTF-8 路径，包括中文角色。新增公开文件要同时更新清单；禁用路径即使误加入清单也拒绝打包。打包前后都检查隐私规则，源码包带 `npm-shrinkwrap.json` 保存同一锁定依赖图。提交前仍需运行测试、生成检查和 privacy check。pack 不执行 tag、发布、上传或安装。
 
 这里验证的是源码、合成 profile、真实发行 ZIP/npm tarball 和原生客户端模块图。实际安装后的 Electron/HMR、QQ 登录与真实消息需独立验收。当前 native UI 依赖提供 webServer 的 DSH host；纯 worker 组合不受支持。旧无 descriptor 的 standalone CLI 可保留原用途，但不能据此声称新版 native UI 兼容旧 global 启动器协议。
+# 当前 native 连接与验证边界
+
+受管实例的 DSH API 端口留空表示跟随提供该插件的原生 `webServer.getOrigin()`。公共新安装默认留空；旧本机根 URL 且未设置 `launcher.ports.dsh` 的配置也跟随当前主机。明确设置的端口、远程地址、HTTPS 或带路径的地址保留其指定目标。设置页显示当前有效地址；修改其他设置不会把临时端口保存为固定值。运行中主机地址变化需明确停止并重新启动 bot，启动器报告需要重启，不自动重连或寻找其他主机。
+
+bridge 和受管网页摘要读取同一次启动的目标快照。子进程及实例 MCP 使用 descriptor 中的 `dshHome`；不会继承另一 home 的 `DSH_LAUNCH_TOKEN`。无 descriptor 的 standalone 和普通原生会话维持其原有显式客户端行为。
+
+安装器在已核验的 Snow ZIP 中创建独占空 `config` 目录，并将其记录在不可变依赖标记。标记字节的 SHA-256 必须匹配同一安装 manifest 中 `source: created`、`cleanup: owned`、带 `createdByTransaction` 的精确 Snow 依赖路径与 `manifestPath` 收据；缺少或修改收据不授予写入权限。运行时只为自己实际创建的 `onebot_<UIN>.json` 追加作者凭据；已有而未记录的文件拒绝覆盖，凭据写入失败也拒绝启动。正常重写保留初始证据，停止后的清理对当前字节进行 CAS 核验。其他 Snow 自动生成的日志、数据库、WebUI 配置或未知空目录不因路径相似取得所有权；未知内容会阻止完整清理。旧标记没有目录创建证据时不自动补记或收养。
+
+Windows 验证使用 Node **24.22.1**，CI 固定同版本；受管运行最低为 24.20.0，避开已诊断的旧 Windows native teardown race。统一 runner 使用临时源码、独立物理依赖副本与空 `DSH_HOME`/`HOME`、npm cache。Windows `USERPROFILE` 保留操作系统值以兼容浏览器默认目录校验，浏览器仍只使用测试创建的一次性 profile。官方 Snow 与真实浏览器专项前置条件通过 `TEST_SNOW_ARTIFACT`、`TEST_OWNED_BROWSER_PATH`、`TEST_LAUNCHER_BROWSER` 明确提供；可选 Desktop 载体参考使用 `TEST_DESKTOP_MAIN`。常规 CI 不自动下载 Snow 或启动 QQ。完整发行验收必须另行运行这些专项，不能以缺少资产时的跳过当通过。
+
+公共发行安装测试在同一从零产物上核验原生默认 zstd、缓存、索引、显式 Snow 配置和完整收据的只读清理计划。完整删除执行另由较小的受控原生夹具验证；真实依赖树的逐文件同步日志吞吐仍有规模限制，安装测试不将数千次删除混入其成功条件。该证明的 home 和所有 writer 都由测试独占创建；不提供真实共享 home 的删除协调器。普通生产删除仍须保持 `UNSUPPORTED_SESSION_DELETE`，不以 bot 已停止替代共享原生存储的独占证明。源码测试、发行字节、实际已加载运行时与真实 QQ/模型结果须分别报告。

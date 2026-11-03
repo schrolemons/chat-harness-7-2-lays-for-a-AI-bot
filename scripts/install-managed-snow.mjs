@@ -97,7 +97,9 @@ export async function installManagedSnow({descriptor,artifact,expectedDigest}={}
       await fs.writeFile(target,data,{flag:'wx',mode:0o600});await ordinary(target);
       const actual=hash(await fs.readFile(target));if(actual!==hash(data))throw fail('INSTALL_VERIFY_FAILED');files[entry.name]=actual;
     }
-    const marker={version:1,kind:'snowluma',instanceId:selected.instanceId,entry:'index.mjs',runtime:'node.exe',files,
+    // Pinned archive has no config entry; exclusive creation cannot adopt vendor/user output.
+    await fs.mkdir(path.join(staging,'config'),{mode:0o700});
+    const marker={version:1,kind:'snowluma',instanceId:selected.instanceId,entry:'index.mjs',runtime:'node.exe',files,createdDirectories:['config'],
       artifact:{...SNOW_RELEASE},patches:[{id:SNOW_QUOTE_PATCH_ID,file:'index.mjs',inputSha256:SNOW_QUOTE_PATCH_INPUT,outputSha256:files['index.mjs']}]};
     await fs.writeFile(path.join(staging,markerName),JSON.stringify(marker,null,2)+'\n',{flag:'wx',mode:0o600});
     await realDirectory(managed);await fs.rename(staging,snowHome);staging=null;

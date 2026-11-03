@@ -60,6 +60,7 @@ test('real official artifact fresh install uses local dependencies, owned Node a
   assert.equal(typeof install.preparePublicInstall,'function');const base=await temp(t),home=path.join(base,'home'),profilePath=path.join(home,'profiles','desktop');await fs.mkdir(profilePath,{recursive:true});
   await fs.writeFile(path.join(profilePath,'package.json'),'{"name":"synthetic-profile","private":true,"dependencies":{},"dsh":{"profile":{"bundles":[]}}}\n');await fs.writeFile(path.join(profilePath,'cordis.patch.yml'),'[]\n');
   const packed=await api.packPublicRelease({sourceRoot:root,target:path.join(base,'release-stage'),packDirectory:base});
+  if(process.env.TEST_ARTIFACT_OUTPUT_DIR){await fs.mkdir(process.env.TEST_ARTIFACT_OUTPUT_DIR,{recursive:true});await fs.copyFile(packed.artifact,path.join(process.env.TEST_ARTIFACT_OUTPUT_DIR,path.basename(packed.artifact)));await fs.writeFile(path.join(process.env.TEST_ARTIFACT_OUTPUT_DIR,'artifact-proof.json'),JSON.stringify({bytes:packed.bytes,sha256:packed.sha256,unpackedBytes:packed.unpackedBytes},null,2)+'\n');}
   const bootstrap=path.join(base,'bootstrap');await fs.mkdir(bootstrap);await fs.writeFile(path.join(bootstrap,'package.json'),'{"private":true}');
   api.runNpm(bootstrap,['install','--ignore-scripts','--no-audit','--no-fund',packed.artifact]);
   const extracted=path.join(bootstrap,'node_modules','qq-bridge-public');
@@ -88,7 +89,7 @@ test('real official artifact fresh install uses local dependencies, owned Node a
   }
   assert.deepEqual(await fs.readFile(path.join(result.descriptor.root,'config.json')),configBefore);
   const {applyInstanceInstall}=await import('./migrate-instance-profile.mjs');await applyInstanceInstall(result.plan,{expectedHashes:result.plan.beforeHashes,writersStopped:true});
-  const cfg=JSON.parse(await fs.readFile(path.join(result.descriptor.root,'config.json'),'utf8'));assert.deepEqual(cfg.allow,{private:[],groups:[]});assert.equal(cfg.ownerQQ,null);assert.equal(cfg.snowluma.botUin,'');assert.equal(cfg.launcher.ports.dsh,3080);assert.equal(cfg.launcher.ports.launcher,3299);
+  const cfg=JSON.parse(await fs.readFile(path.join(result.descriptor.root,'config.json'),'utf8'));assert.deepEqual(cfg.allow,{private:[],groups:[]});assert.equal(cfg.ownerQQ,null);assert.equal(cfg.snowluma.botUin,'');assert.equal(cfg.launcher.ports.dsh,'');assert.equal(cfg.launcher.ports.launcher,3299);
   for(const kind of ['chat','learning','task','summary'])assert.equal(path.basename(result.descriptor.workspaces[kind]),'public-bot-'+kind);
   const proof=spawnSync(process.execPath,['--input-type=module','--eval',`import {createRequire} from 'node:module';const req=createRequire(${JSON.stringify(path.join(profilePath,'package.json'))});const pkg=req('qq-bridge-public/package.json');console.log(JSON.stringify({name:pkg.name,entry:req.resolve('qq-bridge-public'),inject:pkg.dsh.client.inject}));`],{encoding:'utf8',windowsHide:true});assert.equal(proof.status,0,proof.stderr);assert.equal(JSON.parse(proof.stdout).name,'qq-bridge-public');
   const depStat=await fs.lstat(path.join(result.descriptor.root,'node_modules'));assert(!depStat.isSymbolicLink());
@@ -103,4 +104,18 @@ test('real official artifact fresh install uses local dependencies, owned Node a
   const row=(id,inject=[])=>({id,rev:'fixture',url:'/plugins/'+id+'/client.js',initialUrl:'/plugins/'+id+'/client.js',external:[],inject});
   const system=new exports.ClientModuleSystem({manifest:{modules:[...ids.map(id=>row(id,[connection])),row(connection)],plugins:[]},staticModules:{},bootstrapModule:{id:'@deepseek-ai/dsh-client-modules',exports},registrationTarget:target,async loadBundle(url){const id=[connection,...ids].find(id=>url.includes(id));arrived.push(id);if(id===connection)target.load({id,factory:()=>({})});else vm.runInNewContext(await fs.readFile(path.join(id===ids[0]?result.descriptor.root:second,'dsh-client.js'),'utf8'),{window:{__ModuleLoader__:target},URL,console});}});
   for(const id of ids)await system.prefetch(id);assert.deepEqual(arrived,[connection,...ids]);
+  // Same actually installed artifact, exact retained installer receipts and real
+  // native default-zstd session/cache/index lifecycle. Never starts Snow or QQ.
+  const {verifyManagedSnow,writeSnowAccount}=await import('../src/instance-runtime.mjs');
+  await writeSnowAccount(await verifyManagedSnow(result.descriptor.root,result.runtime.snowHome,result.descriptor.instanceId),{snowluma:{}},'123456789',{snowHttp:3201,snowWs:3202},result.descriptor);
+  const {cleanupFixture}=await import('./native-session-cleanup-fixture.mjs');
+  const controlled=await cleanupFixture(t,{compression:'default',installed:{dir:base,descriptor:result.descriptor}});await controlled.primeCatalog();await controlled.stoppedSnapshot();
+  const {planInstanceCleanup}=await import('../src/instance-uninstall-plan.mjs');
+  const before=await controlled.owner.snapshotForCleanup();
+  const cleanup=await planInstanceCleanup(await controlled.manifest(),{sessionStoreAdapter:controlled.adapter});assert.deepEqual(cleanup.conflicts,[]);
+  assert.equal(cleanup.sessions.length,2);assert(cleanup.paths.length>1000);
+  assert.deepEqual(await controlled.owner.snapshotForCleanup(),before,'planning preserves all exact native bytes and retained sessions');
+  // Full dependency deletion is separately scale-limited by per-file durable
+  // journaling; test-instance-uninstall proves complete execution on smaller receipts.
+  console.log(JSON.stringify({installedCleanupPlanProof:{conflicts:0,compression:'native-default-zstd',authoredSnowConfig:true,operations:cleanup.paths.length,sessions:cleanup.sessions.length,execute:false,preserved:before.snapshot.listed}}));
 });
