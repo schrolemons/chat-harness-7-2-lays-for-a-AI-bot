@@ -31,7 +31,7 @@ export async function assertPlainDirectory(dir) {
     if(path.dirname(p)===p)break;
   }
 }
-function jsonEdit(raw,keys,value,remove=false) {
+export function jsonEdit(raw,keys,value,remove=false) {
   const ast=parseExpressionAt(raw,0,{ecmaVersion:'latest'});
   let node=ast;
   for(let i=0;i<keys.length-1;i++) {
@@ -56,7 +56,7 @@ function jsonEdit(raw,keys,value,remove=false) {
   const insertion=(node.properties.length?',':'')+JSON.stringify(keys.at(-1))+':'+JSON.stringify(value);
   return raw.slice(0,node.end-1)+insertion+raw.slice(node.end-1);
 }
-function yamlRows(raw) {
+export function yamlRows(raw) {
   const stack=[],spans=new Map();
   const document=yaml.load(raw,{listener:(event,state)=>{
     if(event==='open')stack.push(state.position);
@@ -65,7 +65,7 @@ function yamlRows(raw) {
   if(!Array.isArray(document))throw installError('PROFILE_STRUCTURE_INVALID');
   return {document,spans,rows:document.flatMap(p=>Array.isArray(p.insert)?p.insert:[])};
 }
-function removeYamlRows(raw,parsed,selected) {
+export function removeYamlRows(raw,parsed,selected) {
   const edits=[];
   const remove=row=>{
       const span=parsed.spans.get(row),start=raw.lastIndexOf('\n',span.start)+1;

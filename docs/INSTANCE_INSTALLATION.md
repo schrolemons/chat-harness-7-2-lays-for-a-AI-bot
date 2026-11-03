@@ -57,6 +57,16 @@ node C:/BotSetup/node_modules/qq-bridge-public/scripts/install.mjs --rollback-pl
 
 fresh 安装还记录 `node_modules` 的实际创建文件哈希、目录和链接真实目标，不能仅用 lockfile 哈希推断整个目录未变。`config.json`、两个初始 state 文件及全新 state 命名空间记录 `mutable: true`：其初始哈希证明创建来源，正常运行会变化；卸载必须对明确所有权范围另做当前清理计划和 CAS，不能拿旧创建哈希直接删当前状态。现有私人 config/state 不因迁移自动获得这些记录。
 
+## 显式清理与原生删除限制
+
+停止、禁用和升级都不调用卸载。`node scripts/cleanup-instance.mjs C:/Bots/public-bot` 只读取该根的 receipt 并输出计划/冲突。当前 DSH 没有完整在线永久删除接口；CLI 没有可证明全部 home 写入者退出和禁止重启的 owner capability，因此返回 `UNSUPPORTED_SESSION_DELETE`，不修改实例。`--writers-stopped`、单个 bot/PID 已停止、归档会话都不能替代该证明。
+
+程序接口 `planInstanceCleanup(manifest, {sessionStoreAdapter})` / `executeInstanceCleanup(plan, {expectedManifestHash, sessionStoreAdapter})` 支持由可信 owner 协调的离线过程。当前已验证的 owner 仅由合成 fixture 创建全新 home、保留所有 child handles、关闭创建入口并等待全部 child close；维护重启只挂载原生存储服务，不启动 bot/profile 能力。公开 CLI 不提供从普通 home、PID 或布尔参数构造此能力的方法。共享真实 home 的自动停止和卸载尚不支持。
+
+受支持的固定存储组合为 pinned 0.2.1-rc.2 JSONL 明文 v4（可附精确记录的 v3 历史文件）、v7 per-record 投影缓存和一个明确启用的 durable query index。每条 ID、全部 generation/cache 路径、逻辑 header 和字节哈希都要核验；旧 whole-unit cache、未知备份/格式、未记录的目标工作区会话、共享未知 writer 或禁用但残留的 index 均拒绝。原生列表、搜索、catalog 和 workspace 引用必须一致后，才能清理已记录的 data/dependency、所选 profile 行/链接与目录登记，代码和安装元数据最后处理。保留其他会话、共享 workspace 登记、附件和独立 fork；不作取证级擦除保证。
+
+清理 plan、完整 receipt 快照和逐项 journal 保存在 manifest 指定 DSH home 的 `bot-instances/cleanup/<installationId>/`，位于实例根外。中断重试只核验同一计划的已完成项及已记 intent 的精确路径，不补扫认领新目标；遗留 mutex、丢失 owner 能力或新出现的文件需要人工审查。现有 Git 源码、linked worktree、未知备份和 `preserve` 数据继续保留。新安装根也只有在文件清单、创建收据和当前 CAS 全部相符时才移除。
+
 ## 发布与支持边界
 
 现有 CI 执行源码测试和 privacy check；唯一打包入口复用 `npm pack`：

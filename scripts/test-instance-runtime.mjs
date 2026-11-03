@@ -77,6 +77,14 @@ test('managed runtime exports its lifecycle API', () => {
   assert.equal(typeof api.createInstanceRuntime, 'function');
 });
 
+test('disable and replacement runtime preserve session data and installed source without explicit cleanup',async t=>{
+ const f=await fixture(t),session=path.join(f.root,'state','owned-session.jsonl');await fs.mkdir(path.dirname(session));await fs.writeFile(session,'synthetic retained history\n');
+ const files=[session,path.join(f.root,'src','bridge.js'),f.marker,f.configFile],before=await Promise.all(files.map(file=>fs.readFile(file)));
+ await f.runtime.start();await f.runtime.stop();await f.runtime.dispose();
+ const replacement=api.createInstanceRuntime(f.options);try{await replacement.start();await replacement.stop();}finally{await replacement.dispose();}
+ for(let i=0;i<files.length;i++)assert.deepEqual(await fs.readFile(files[i]),before[i]);
+});
+
 test('missing or altered managed dependency marker refuses startup without adopting an external Snow home', async t => {
   const f = await fixture(t);
   await fs.unlink(f.marker);
