@@ -27,9 +27,18 @@ test('client names before returning, removes local title argument, and archives 
   assert.equal(log.at(-1)[0],'archive');
 });
 test('native fallback handles internal sessions and preserves user titles and ordinary native chat',()=>{
-  const hooks={};const ctx={sessionTitle:{get:s=>s.title},on:(event,fn)=>{hooks[event]=fn;}};apply(ctx);
-  function session(preset,title){const s={id:'session-fixture',events:preset?[{type:'agent-preset/selected',data:{agentPreset:preset}}]:[],header:{cwd:'C:/native'},title};s.append=(type,data)=>{s.events.push({type,data});s.title=data;};return s;}
-  const s=session('qq-learning');const savedEvents=s.events;delete s.events;s.snapshotEvents=()=>savedEvents;s.append=(type,data)=>{savedEvents.push({type,data});s.title=data;};hooks['session/created'](s);assert.match(s.title.title,/知识与黑话学习/);
-  s.title={title:'人工名称',source:{kind:'user'}};hooks['session/event'](s,{type:'agent-preset/selected'});assert.equal(s.title.title,'人工名称');
+  const hooks={},renamed=[];
+  const ctx={sessionTitle:{get:s=>s.title,rename(s,title){renamed.push(s.id);return s.append('session/title',{title,messageSeqs:[],source:{kind:'user'}});}},on:(event,fn)=>{hooks[event]=fn;}};apply(ctx);
+  function session(preset,title){const s={id:'session-fixture',events:preset?[{type:'agent-preset/selected',data:{agentPreset:preset}}]:[],header:{cwd:'C:/native'},title};s.append=(type,data)=>{const eventSeq=s.events.length;s.events.push({type,data});return s.title={...data,eventSeq};};return s;}
+  const s=session('qq-learning');const savedEvents=s.events;delete s.events;s.snapshotEvents=()=>savedEvents;s.append=(type,data)=>{const eventSeq=savedEvents.length;savedEvents.push({type,data});return s.title={...data,eventSeq};};hooks['session/created'](s);assert.match(s.title.title,/知识与黑话学习/);
+  assert.deepEqual(s.title.messageSeqs,[]);assert.equal(s.title.source.kind,'user');assert.equal(renamed.length,1);
+  savedEvents.push({type:'agent-preset/selected',data:{agentPreset:'qq-task-worker'}});hooks['session/event'](s,{type:'agent-preset/selected'});assert.match(s.title.title,/独立任务/);
+  s.append('session/title',{title:'人工名称',messageSeqs:[],source:{kind:'user'}});hooks['session/event'](s,{type:'agent-preset/selected'});assert.equal(s.title.title,'人工名称');
   const native=session();hooks['session/created'](native);assert.equal(native.title,undefined);
+  const unrelated=session('qq-unrelated');const originalEvents=[...unrelated.events];hooks['session/created'](unrelated);assert.equal(unrelated.title,undefined);assert.deepEqual(unrelated.events,originalEvents);
+  const provider=session('qq-learning',{title:'提供者名称',source:{kind:'provider'},eventSeq:42});hooks['session/created'](provider);assert.equal(provider.title.title,'提供者名称');
+  for(const kind of ['user','provider'])for(const title of ['Untitled','New Chat','未命名']){
+    const explicit=session('qq-learning',{title,source:{kind},eventSeq:43});hooks['session/created'](explicit);assert.equal(explicit.title.title,title);
+    s.append('session/title',{title,messageSeqs:[],source:{kind}});hooks['session/event'](s,{type:'agent-preset/selected'});assert.equal(s.title.title,title);
+  }
 });

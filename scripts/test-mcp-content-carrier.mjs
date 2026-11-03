@@ -1,5 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+test('send tool contracts require explicit grouping before a one-message answer to several inputs',async()=>{
+ const {createReplyContentCarrier}=await import('../src/mcp-content-carrier.mjs');
+ const field=createReplyContentCarrier().decorate('qq_send_message',['send',{},async()=>{}])[1].contentId.description;
+ assert.match(field,/多条来信/);assert.match(field,/只发一条/);assert.match(field,/先.*qq_reply_contents/);assert.match(field,/显式.*contentId/);
+ const source=fs.readFileSync(new URL('../src/mcp-snowluma-safe.js',import.meta.url),'utf8');
+ for(const name of ['qq_send_message','qq_reply']){
+  const description=source.match(new RegExp("'"+name+"',\\s*'([^']+)'"))?.[1];
+  assert.match(description,/先.*qq_reply_contents/);assert.match(description,/contentId/);
+ }
+});
 test('send tools expose one semantic content id and concurrent calls carry independent source scopes',async()=>{
  const {createReplyContentCarrier}=await import('../src/mcp-content-carrier.mjs');
  const carrier=createReplyContentCarrier(),observed=[];

@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { roleCharStats, roleSectionReport } from '../src/role-card.js';
 import { pickBucketMs } from '../src/token-ledger.js';
 import { manualDirCommand } from '../src/state-acl.mjs';
+import { presetBindings } from '../src/console/preset-overview.js';
 import { DEFAULT_PRIVATE_REPLIES, DEFAULT_GROUP_REPLIES } from '../plugins/qq-components/life-token-budget/default-replies.js';
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -314,7 +315,7 @@ export function makeFixtureState() {
     roleInjectMax: 8000,
     dshEffort: 'max',
     whitelist: { allow: { groups: [123456789, 100003], private: [100001] }, deny: { groups: [], private: [] }, ownerQQ: '100001' },
-    diaryCatchUpSent: { 'private:10001': false, 'private:10001': false },
+    diaryCatchUpSent: { 'private:10001': false, 'private:10002': false },
     sessions: [
       { key: 'group:40001', sessionId: 'demo-community-20260920', owner: false },
       { key: 'group:40001', sessionId: 'demo-development-20260920', owner: false },
@@ -477,6 +478,16 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           case '/api/socialV2/self-review-feedback': return json({ok:true,pending:[],completed:[],admin:[],queues:{user:[],self:[],admin:[]},difficulties:[],history:[],counts:{pending:0,completed:0},historyCount:0});
           case '/api/socialV2/optimization-memory': return json({ok:true,content:'离线优化记录',chars:6,path:'fixture/_optimization.md',exists:true,updatedAt:Date.now()});
           case '/api/status': return json({ ok: true, dshReady: true, mode: state.mode, role: state.role, roleMode: state.roleMode, closedAgentPreset: state.closedAgentPreset, ownerQQ: state.whitelist.ownerQQ, allowGroups: state.whitelist.allow.groups, allowPrivate: state.whitelist.allow.private, activity: '[08:30:00] 演示桥接已连接\n[08:30:12] group:40001 · 已处理一条消息\n[08:30:20] 二代社交助手正在运行\n以上均为离线模拟数据。' });
+          case '/api/presets/overview': {
+            const admin = state.v2.adminDev || {};
+            const defaultPreset = 'cordis';
+            const bindings = presetBindings({ mode: state.mode, admin, defaultPreset }).map(binding => ({
+              ...binding,
+              configuration: { id: binding.preset, name: binding.label, description: '离线合成预设配置',
+                features: ['离线示例能力'], configStatus: 'read', moduleCount: 1 }
+            }));
+            return json({ ok: true, mode: state.mode, defaultPreset, adminEnabled: admin.enabled === true, bindings });
+          }
           case '/api/presets': return json({ presets: ['standard','ptc','minimal','cordis','qq-chat','qq-chat-v2','qq-chat-dev','qq-task-worker','qq-learning','campus-summary'].map(id=>({id,trust:'user'})) });
           case '/api/roles': return json({
             roles: state.roles.slice(),
@@ -555,7 +566,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
             const todayDate = new Date();
             const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
             const today = dateKey(todayDate);
-            return json({ ok: true, conversations: ['private:10001', 'private:10001'].map(key => ({ key, targetDate: today, hasDiary: true,
+            return json({ ok: true, conversations: ['private:10001', 'private:10002'].map(key => ({ key, targetDate: today, hasDiary: true,
               diaryChars: 120, diarySource: 'memory', lastDiaryDate: today, targetSent: true, sentAt: Date.now(),
               deliveryStatus: 'sent', diaryPending: false })) });
           }
@@ -677,7 +688,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
               todayDate.setDate(todayDate.getDate() - 1);
               const yesterday = dateKey(todayDate);
               return json({ ok: true, plugin: 'ctx-memory-store', result: { ok: true, dates: [{ date: yesterday, count: 1, chars: 120,
-                deliveries: ['private:10001', 'private:10001'].map(key => ({ key, status: state.diaryCatchUpSent[key] ? 'sent' : 'archive_only' })) }] } });
+                deliveries: ['private:10001', 'private:10002'].map(key => ({ key, status: state.diaryCatchUpSent[key] ? 'sent' : 'archive_only' })) }] } });
             }
             if (body.tool !== 'worklog_history') return json({ ok: false, error: '演示工具不存在' }, 404);
             const reports = [

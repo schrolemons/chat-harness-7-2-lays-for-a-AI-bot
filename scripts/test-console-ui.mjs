@@ -7,12 +7,13 @@ import { createRequire } from 'node:module';
 import { resolve, join } from 'node:path';
 import { startConsoleFixture } from './console-ui-fixture.mjs';
 import { TOOL_CONFIG_FLAGS } from '../src/tools/flags.js';
+import { manualDirCommand } from '../src/state-acl.mjs';
 import { isInternalPromptComponent } from '../console/shared/components/presentation.js';
 import { COMPONENT_OWNERS, componentPage } from '../console/shared/components/ownership.js';
 
 const args = process.argv.slice(2);
 const artifacts = args.find(x => x.startsWith('--artifacts='))?.slice('--artifacts='.length);
-const views = ['overview','sessions','persona','social-v1','slang','alias','terms','usage','context-visual','access','operations','reference','games','codex-peer','injection-lab','v2-t','v2-e','setting-c-0','setting-c-1','setting-c-2','setting-l-0','setting-l-1','setting-l-2','setting-o-0','setting-o-1','setting-o-2','environment-chat','environment-admin','environment-web','environment-watch','environment-scripts','images','video','layer-v','human','layer-s','registry'];
+const views = ['overview','sessions','persona','social-v1','slang','alias','terms','usage','context-visual','access','operations','reference','games','codex-peer','injection-lab','v2-t','v2-e','setting-c-0','setting-c-1','setting-c-2','setting-l-0','setting-l-1','setting-l-2','setting-o-0','setting-o-1','setting-o-2','environment-chat','environment-admin','environment-presets','environment-web','environment-watch','environment-scripts','images','video','layer-v','human','layer-s','registry'];
 if (args.some(arg=>['--original','--record-baseline'].includes(arg))) throw new Error('Legacy baseline modes have been retired; tests exercise the current modular console.');
 
 async function loadPlaywright() {
@@ -156,7 +157,7 @@ try {
       assert(visiblePages.length > 0, `${view} has no visible content`);
       assert(visiblePages.every(x => x === view), `${view} exposes another page: ${visiblePages.join(', ')}`);
     }
-    const drafts = { wlGroups: '100001, 100002', roleInput: '未保存的角色', v2MemoryKey: 'private:10001', sKeywords: '未保存关键词', slangMeaning: '未保存的含义', tsMsg: '未发送的测试消息' };
+    const drafts = { wlGroups: '100001, 100002', roleInput: '未保存的角色', v2PmContent: '未保存的会话事实', sKeywords: '未保存关键词', slangMeaning: '未保存的含义', tsMsg: '未发送的测试消息' };
     for (const [id, value] of Object.entries(drafts)) await fill(id, value);
     await navigate('overview');
     await page.waitForTimeout(3300); // Exercise the real 3-second status polling interval.
@@ -185,26 +186,27 @@ try {
   });
 
   await test('Daily diary catch-up excludes today, shows one send timestamp and disables after delivery', async () => {
+    assert.equal(Object.keys(fixture.state.diaryCatchUpSent).length, 2, 'synthetic diary recipients must remain distinct after sanitization');
     await page.locator('#v2DdRefresh').click();
     const card = page.locator('.diary-session-card').filter({ hasText: 'private:10001' }).first();
     await card.waitFor();
-    const detail = await card.locator('.diary-session-detail').innerText();
+    const detail = (await card.locator('.diary-session-detail').allInnerTexts()).join('\n');
     assert.match(detail, /最近确认发送：/);
     assert.doesNotMatch(detail, /上次发送日期：/);
-    assert.equal((detail.match(/\d{4}[-/]\d{2}[-/]\d{2}/g) || []).length, 1, 'send date should appear once');
+    assert.equal((detail.match(/\d{4}[-/]\d{2}[-/]\d{2} \d{2}:\d{2}/g) || []).length, 1, 'confirmed send timestamp should appear once');
     assert.equal(await card.locator('[data-dd-action="sendNow"]').isDisabled(), false, 'manual resend should remain available after a prior same-day send');
     const catchUp = card.locator('[data-dd-action="catchUpAll"]');
     assert.equal(await catchUp.isDisabled(), false, 'yesterday archive should be eligible');
-    const otherUserCard = page.locator('.diary-session-card').filter({ hasText: 'private:10001' }).first();
+    const otherUserCard = page.locator('.diary-session-card').filter({ hasText: 'private:10002' }).first();
     assert.equal(await otherUserCard.locator('[data-dd-action="catchUpAll"]').isDisabled(), false, 'another user with backlog has an independent catch-up action');
     await catchUp.click();
     await page.waitForFunction(() => document.getElementById('v2DdMsg')?.textContent.includes('补发完成'));
-    await page.waitForFunction(() => document.querySelector('.diary-session-card [data-dd-key="private%3A100001"][data-dd-action="catchUpAll"]')?.disabled === true);
+    await page.waitForFunction(() => document.querySelector('.diary-session-card [data-dd-key="private%3A10001"][data-dd-action="catchUpAll"]')?.disabled === true);
     assert.equal(await card.locator('[data-dd-action="catchUpAll"]').isDisabled(), true, 'the selected user disables after their backlog is sent');
     assert.equal(await otherUserCard.locator('[data-dd-action="catchUpAll"]').isDisabled(), false, 'another user with backlog remains independently available');
     assert.equal(await page.locator('#v2DdCatchUp').isDisabled(), false, 'global catch-up remains available while another user has backlog');
     assert.equal(fixture.state.diaryCatchUpSent['private:10001'], true, 'catch-up should reach the offline service for the selected user');
-    assert.equal(fixture.state.diaryCatchUpSent['private:10001'], false, 'the other user must not be changed by the selected user catch-up');
+    assert.equal(fixture.state.diaryCatchUpSent['private:10002'], false, 'the other user must not be changed by the selected user catch-up');
     const otherCatchUp = otherUserCard.locator('[data-dd-action="catchUpAll"]');
     await page.locator('#v2DdMsg').evaluate(el => { el.textContent = ''; });
     const [otherResponse] = await Promise.all([
@@ -215,7 +217,7 @@ try {
     await page.waitForFunction(() => document.getElementById('v2DdMsg')?.textContent.includes('补发完成'));
     await page.waitForFunction(() => document.querySelectorAll('.diary-session-card [data-dd-action="catchUpAll"]:disabled').length === 2);
     assert.equal(await page.locator('#v2DdCatchUp').isDisabled(), true, 'global catch-up disables only after every user is caught up');
-    assert.equal(fixture.state.diaryCatchUpSent['private:10001'], true, 'the second user can be caught up independently');
+    assert.equal(fixture.state.diaryCatchUpSent['private:10002'], true, 'the second user can be caught up independently');
   });
 
   await test('Opening daily diary history automatically loads dates and the newest preview', async () => {
@@ -235,22 +237,34 @@ try {
     assert.match(await page.locator('#availabilityStatus').innerText(), /1 条计划/);
   });
 
-  await test('Mode and preset contracts', async () => {
+  await test('Mode switching and administrator preset drafts have separate contracts', async () => {
     for (const mode of ['chat', 'reserved', 'reserved2', 'closed-agent']) {
-      assert.deepEqual(await clickWrite(`#modeRow [data-mode="${mode}"]`, '/api/mode'), { mode, closedAgentPreset: '' });
+      assert.deepEqual(await clickWrite(`#modeRow [data-mode="${mode}"]`, '/api/mode'), { mode });
     }
-    const select = await reveal('#closedPreset');
-    assert.equal(await select.locator('option[value="qq-learning"]').count(),0,'默认收起后台专用预设');
-    assert.match(await select.locator('option[value="qq-chat-dev"]').innerText(),/管理员助手/);
-    const count=fixture.requests.filter(r=>r.path==='/api/mode').length;
-    await page.locator('#showAllPresets').check();
-    assert.equal(await select.locator('optgroup[label="后台专用"] option').count(),3);
-    assert.equal(fixture.requests.filter(r=>r.path==='/api/mode').length,count,'筛选选项不得修改运行配置');
-    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/mode') && r.request().method() === 'POST'), select.selectOption('qq-chat-v2')]);
-    assert.deepEqual(fixture.requests.at(-1).body, { mode: 'closed-agent', closedAgentPreset: 'qq-chat-v2' });
-    assert.match(await page.locator('#closedPresetHelp').innerText(),/二代仿真/);
-    await page.locator('#showAllPresets').uncheck();
-    assert.equal(await select.inputValue(),'qq-chat-v2','收起高级选项也不能丢失已选预设');
+    assert.equal(await page.locator('#closedPreset,#showAllPresets').count(), 0, 'preset controls belong to the administrator environment');
+    const select = await reveal('#v2AdminDevPreset');
+    await page.waitForFunction(() => document.querySelector('#v2AdminDevPreset option[value="qq-chat-dev"]'));
+    assert.match(await select.locator('option[value="qq-chat-dev"]').innerText(), /管理员助手/);
+    const writes = fixture.requests.length;
+    const original = await select.inputValue();
+    await select.selectOption('qq-chat-v2');
+    assert.match(await page.locator('#envAdminPresetExample').innerText(), /二代仿真/);
+    assert.equal(fixture.requests.length, writes, 'editing a preset draft must not save or change the running mode');
+    assert.equal(fixture.state.mode, 'closed-agent');
+    await select.selectOption(original);
+    assert.deepEqual(await clickWrite('#modeRow [data-mode="reserved2"]', '/api/mode'), { mode: 'reserved2' });
+  });
+
+  await test('Preset overview loads current bindings without writing configuration', async () => {
+    const writes = fixture.requests.length;
+    await navigate('environment-presets');
+    await page.locator('[data-preset-binding="owner"]').waitFor();
+    assert.equal(await page.locator('#presetOverviewRows article').count(), 8);
+    assert.match(await page.locator('#presetOverviewStatus').innerText(), /已读取.*只读/);
+    assert.match(await page.locator('#presetOverviewExplanation').innerText(), /未启用.*当前运行模式/);
+    assert.equal(await page.locator('#section-environment-presets input,#section-environment-presets select,#section-environment-presets textarea').count(), 0);
+    assert.equal(fixture.requests.length, writes);
+    assert(fixture.reads.some(read => read.path === '/api/presets/overview'));
   });
 
   await test('Role creation, selection, clearing and silent-mode contracts', async () => {
@@ -284,7 +298,7 @@ try {
       cmd: document.getElementById('stateDirCmd').textContent,
     }));
     assert.match(shown.path, /state/, '应当显示 state 目录路径');
-    assert.match(shown.cmd, /icacls/, '应当给出可复制的提权命令');
+    assert.equal(shown.cmd, manualDirCommand(shown.path), '应当完整显示唯一 ACL 修复实现提供的命令');
     // 验证重新检测动作在自己的 API 边界提交，并显示最终状态。
     await page.waitForFunction(() => document.getElementById('stateDirReharden') !== null);
     const [request] = await Promise.all([
@@ -370,7 +384,7 @@ try {
     await fill('tsMsg', '离线测试，不会发往 QQ。');
     assert.deepEqual(await clickWrite('#tsSend', '/api/test-send'), { kind: 'group', id: '123456789', message: '离线测试，不会发往 QQ。' });
     await (await reveal('#aiNotifyKind')).selectOption('private');
-    await fill('aiNotifyId', '100001');
+    await fill('aiNotifyId', '10001');
     await fill('aiNotifyMessage', '离线提醒，不会发往 DSH。');
     assert.deepEqual(await clickWrite('#aiNotifySend', '/api/console/notify-ai'), { key: 'private:10001', message: '离线提醒，不会发往 DSH。' });
   });
@@ -637,19 +651,22 @@ try {
     assert.equal(await page.locator('#simPromptText').getAttribute('readonly'), '', '保存后应回到只读');
   });
 
-  await test('仿真提示词可切换到一代/二代，两代内容相互独立', async () => {
+  await test('仿真提示词随运行模式切换，两代内容相互独立', async () => {
+    await clickWrite('#modeRow [data-mode="reserved2"]', '/api/mode');
     await navigate('persona');
-    await page.waitForFunction(() => document.getElementById('simPromptText').value.length > 0);
+    await page.waitForFunction(() => document.getElementById('simPromptStatus')?.textContent.includes('二代仿真'));
     const v2 = await page.locator('#simPromptText').inputValue();
-    assert.match(await page.locator('#simPromptStatus').textContent(), /二代仿真|qq-chat-v2/);
-    await page.locator('#simPromptPreset').selectOption('qq-chat');
-    await page.waitForFunction((prev) => document.getElementById('simPromptText').value !== prev, v2);
+    assert(v2.length > 0);
+    await clickWrite('#modeRow [data-mode="reserved"]', '/api/mode');
+    await navigate('persona');
+    await page.waitForFunction(() => document.getElementById('simPromptStatus')?.textContent.includes('一代仿真'));
     const v1 = await page.locator('#simPromptText').inputValue();
+    assert(v1.length > 0);
     assert.notEqual(v1, v2, '两代预设的提示词应各自独立');
-    assert.match(await page.locator('#simPromptStatus').textContent(), /一代仿真|qq-chat/);
-    // 切回二代，避免影响后续断言
-    await page.locator('#simPromptPreset').selectOption('qq-chat-v2');
+    await clickWrite('#modeRow [data-mode="reserved2"]', '/api/mode');
+    await navigate('persona');
     await page.waitForFunction((prev) => document.getElementById('simPromptText').value === prev, v2);
+    assert.match(await page.locator('#simPromptStatus').textContent(), /二代仿真/);
   });
 
   await test('人格注入上限可调，且随模式筛选后统计', async () => {

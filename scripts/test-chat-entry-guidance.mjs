@@ -2,7 +2,13 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {createPlugin} from '../plugins/qq-components/life-wake-reasons/index.js';
 import {frameModules} from '../plugins/qq-components/obs-context-assembly/frame.mjs';
 import {compileModules} from '../plugins/qq-components/obs-context-assembly/policy.mjs';
+import {MULTI_MESSAGE_REPLY_POLICY} from '../src/qq-reply-policy.js';
+import fs from 'node:fs';
 const plugin=()=>{let data={};return createPlugin({config:{},state:{get:()=>data,set:patch=>Object.assign(data,patch)},warn:()=>{},log:()=>{},capabilities:{}});};
+test('wake, inline and authoritative preset contracts group multiple inputs even when answering once',()=>{
+ const contracts=[plugin().hooks.wakeTail({key:'group:1',reason:'probability'}),MULTI_MESSAGE_REPLY_POLICY,fs.readFileSync(new URL('../dsh/agent-presets/qq-chat-v2/agent.cordis.yml',import.meta.url),'utf8')];
+ for(const text of contracts){assert.match(text,/多条来信/);assert.match(text,/只发一条/);assert.match(text,/先.*qq_reply_contents/);assert.match(text,/contentId/);}
+});
 test('private entry guidance contains private decisions and never uses the group-only action paragraph',()=>{
  const text=plugin().hooks.wakeTail({key:'private:1',reason:'private',triggeredLine:''});assert.match(text,/私聊/);assert(!/群里在聊什么|群聊正热|没人叫你/.test(text));assert.match(text,/qq_wait_for_messages/);
 });

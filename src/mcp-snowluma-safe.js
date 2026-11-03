@@ -490,7 +490,7 @@ server.tool(
 
 server.tool(
   'qq_reply',
-  '在指定 QQ 群里引用/回复某条消息，并发送一条文本。多条待处理消息语义不同、对象不同或需要分别回应时，每条被回应的原消息都必须单独调用本工具并传入对应 messageId；不可用 qq_send_message 数组、qq_send_burst 或一次引用替代。若只有一条待处理消息，或多条消息本质含义相同且一个回答可完整回应，可用 qq_send_message 发送一条，不必为了引用而引用。需要引用时先核对原消息发送者、内容和 id，回复文本必须切实回应被引用消息；引用错对象或回复内容不对应都视为错误。可通过 qq_get_recent_messages / qq_get_unread_messages / qq_get_message_detail 查询消息内容和 id；messageId 不能用本地 seq/readThroughSeq 替代。发送前桥接会校验 id 存在且属于当前会话。reserved2 下必须携带会话令牌 token。目标群必须命中白名单（config.json 的 allow.groups），否则拒绝。',
+  '在指定 QQ 群里引用/回复某条消息，并发送一条文本。多条来信先用本回合完整已读 seq 调用 qq_reply_contents 分组，发送显式携带 contentId；引用只选择已声明内容的来源，不能跳过分组。多条待处理消息语义不同、对象不同或需要分别回应时，每条被回应的原消息都必须单独调用本工具并传入对应 messageId；不可用 qq_send_message 数组、qq_send_burst 或一次引用替代。若只有一条待处理消息，或多条消息本质含义相同且一个回答可完整回应，可用 qq_send_message 发送一条，不必为了引用而引用。需要引用时先核对原消息发送者、内容和 id，回复文本必须切实回应被引用消息；引用错对象或回复内容不对应都视为错误。可通过 qq_get_recent_messages / qq_get_unread_messages / qq_get_message_detail 查询消息内容和 id；messageId 不能用本地 seq/readThroughSeq 替代。发送前桥接会校验 id 存在且属于当前会话。reserved2 下必须携带会话令牌 token。目标群必须命中白名单（config.json 的 allow.groups），否则拒绝。',
   {
     conversationIntent: z.enum(['reply','followup','newTopic']).optional().describe('本次实际发送内容的语义；追问/新话题计数以真实送达为准'),
     topicId: z.string().max(120).optional().describe('实际新话题的简短标识，不填秘密或个人信息'),
@@ -738,7 +738,7 @@ server.tool('qq_reply_contents','按完整用户内容声明回复分组：同�
 
 server.tool(
   'qq_send_message',
-  '统一发送工具：可发一条或多条，二代仿真模式专用。字符串=一条消息，数组=多条气泡。若只有一条入站消息，或多条消息本质含义相同且一个回答能完整回应，用本工具发送一条即可。若多条入站消息语义不同、对象不同或需要分别回应，对每条分别用 qq_reply 引用准确原消息；不要用数组代替多条引用回复。数组仍可用于拆分一段连续回复或主动发言。每条发送内容应完整、清楚，不要把同一句话拆碎。',
+  '统一发送工具：可发一条或多条，二代仿真模式专用。多条来信即使只发一条，也先用本回合完整已读 seq 调用 qq_reply_contents：同义碎片多个 seq 合为一组，不同意思分别分组；发送显式携带返回的 contentId。字符串=一条消息，数组=多条气泡。若只有一条入站消息，或多条消息本质含义相同且一个回答能完整回应，用本工具发送一条即可。若多条入站消息语义不同、对象不同或需要分别回应，对每条分别用 qq_reply 引用准确原消息；不要用数组代替多条引用回复。数组仍可用于拆分一段连续回复或主动发言。每条发送内容应完整、清楚，不要把同一句话拆碎。',
   {
     conversationIntent: z.enum(['reply','followup','newTopic']).optional().describe('本次实际发送内容的语义；追问/新话题计数以真实送达为准'),
     topicId: z.string().max(120).optional().describe('实际新话题的简短标识，不填秘密或个人信息'),

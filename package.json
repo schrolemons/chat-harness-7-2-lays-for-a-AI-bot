@@ -312,7 +312,9 @@
       "scripts/test-task-lease-boundaries.mjs",
       "scripts/test-diary-truth.mjs",
       "scripts/test-memory-initiative-policy.mjs",
-      "scripts/test-games-current.mjs"
+      "scripts/test-games-current.mjs",
+      "scripts/test-session-stream-isolation.mjs",
+      "scripts/test-session-title-recovery.mjs"
     ]
   }
 }

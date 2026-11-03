@@ -63,19 +63,111 @@ test('a newly arrived body during send delay cancels the reserved send without c
  assert.equal(sends,0);assert.equal(svc.preview({key}).inflight,0);assert.equal(svc.preview({key}).successful,1);
 });
 
-test('an unresolved quote cannot authorize reply; detail recovery must return its antecedent first',async t=>{
+test('a complete incoming body omits an unavailable quote without blocking its own reply',async t=>{
  const {h,key,st,request}=await fixture(t);h.socialV2.paused=true;
  h.bot.getMessage=async()=>null;
  await h.handleIncoming('group',456,{message_id:202,user_id:789,self_id:9,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'303'}},{type:'text',data:{text:'谁👀'}}]},h.cfg);
  h.socialV2.paused=false;
- await request('/api/socialV2/unread?key='+encodeURIComponent(key));
- let r=await request('/api/socialV2/send-message',{key,messages:'must not guess the missing quote'});
- assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
- h.bot.getMessage=async id=>({message_id:id,group_id:456,user_id:789,sender:{nickname:'甲',user_id:789},message:id===202?[{type:'reply',data:{id:'303'}},{type:'text',data:{text:'谁👀'}}]:[{type:'text',data:{text:'有人最近在跟我说你的坏话'}}]});
+ const read=await request('/api/socialV2/unread?key='+encodeURIComponent(key));
+ const stored=st.unread.find(m=>m.messageId==='202');
+ assert.equal(stored.text,'谁👀');assert.deepEqual(Array.from(stored.omittedReplyIds),['303']);assert.equal(stored.unresolvedReplyIds.length,0);
+ assert.deepEqual(read.body.messages[0].omittedReplyIds,['303']);
+ assert.deepEqual(Array.from(h.buildWakeSnapshotV2(key).messages[0].omittedReplyIds),['303']);
  const detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=202');
- assert.match(detail.body.info.text,/有人最近在跟我说你的坏话/);assert.equal(detail.body.info.textTruncated,false);
+ assert.deepEqual(detail.body.info.omittedReplyIds,['303']);
+ assert.equal(st.unread.some(m=>m.messageId==='303'),false,'omission does not create or read the unknown historical message');
+ const r=await request('/api/socialV2/send-message',{key,messages:'只回应已收到的正文'});assert.equal(r.body.ok,true,JSON.stringify(r.body));
+});
+test('a reliably resolved incoming quote keeps its antecedent and actual identity',async t=>{
+ const {h,key,st,request}=await fixture(t);h.socialV2.paused=true;
+ const fetched=[];
+ h.bot.getMessage=async id=>{fetched.push(id);return {message_id:id,group_id:456,user_id:789,sender:{nickname:'甲',user_id:789},message:[{type:'reply',data:{id:'999'}},{type:'text',data:{text:'已知的引用原文'}}]};};
+ await h.handleIncoming('group',456,{message_id:202,user_id:789,self_id:9,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'303'}},{type:'text',data:{text:'谁👀'}}]},h.cfg);
+ h.socialV2.paused=false;
+ const detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=202');
+ assert.match(detail.body.info.text,/已知的引用原文/);assert.equal(detail.body.info.textTruncated,false);
  assert.match(detail.body.info.text,/QQ 789/,'quote identity must retain the actual QQ, not only its potentially shared nickname');
- assert.ok(st.unread.find(m=>m.messageId==='202').text.includes('有人最近'));
+ assert.ok(st.unread.find(m=>m.messageId==='202').text.includes('已知的引用原文'));
+ assert.equal(fetched.includes(999),false,'a known quoted body does not become pending because of its own nested reference');
+});
+test('detail recovery omits unavailable quote only after retrieving the full current body',async t=>{
+ const {h,key,st,request}=await fixture(t);
+ h.appendSocialV2Message(key,'乙','[引用消息]完整正文','完整正文',false,false,'202',[],'789',[],undefined,false,{bodyComplete:true,unresolvedReplyIds:['303']});
+ h.bot.getMessage=async id=>id===202?{message_id:id,group_id:456,user_id:789,message:[{type:'reply',data:{id:'303'}},{type:'text',data:{text:'完整正文'}}]}:null;
+ const detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=202');
+ assert.equal(detail.body.info.text,'完整正文');assert.equal(detail.body.info.textTruncated,false);assert.deepEqual(detail.body.info.omittedReplyIds,['303']);
+ assert.equal(st.unread.at(-1).unresolvedReplyIds.length,0);
+ assert.equal((await request('/api/socialV2/send-message',{key,messages:'已读取完整当前正文'})).body.ok,true);
+});
+test('an explicitly incomplete current body is not repaired by omitting its unknown quote',async t=>{
+ const {h,key,st,request}=await fixture(t);h.socialV2.paused=true;h.bot.getMessage=async()=>null;
+ await h.handleIncoming('group',456,{message_id:202,user_id:789,self_id:9,bodyComplete:false,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'303'}},{type:'text',data:{text:'残缺正文'}}]},h.cfg);
+ h.socialV2.paused=false;await request('/api/socialV2/unread?key='+encodeURIComponent(key));
+ assert.equal(st.unread.at(-1).bodyComplete,false);
+ const r=await request('/api/socialV2/send-message',{key,messages:'不能猜剩余正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+});
+test('an empty gateway detail never promotes a missing current body into complete input',async t=>{
+ const {h,key,request}=await fixture(t);
+ h.appendSocialV2Message(key,'乙','正文尚未取全','正文尚未取全',false,false,'202',[],'789',[],undefined,false,{bodyComplete:false});
+ h.bot.getMessage=async id=>({message_id:id,group_id:456,user_id:789,message:[]});
+ const detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=202');
+ assert.equal(detail.body.info.textTruncated,true);
+ const r=await request('/api/socialV2/send-message',{key,messages:'不能凭空补出当前正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+});
+test('a resolvable quote alone never repairs the missing current body through detail readback',async t=>{
+ const {h,key,st,request}=await fixture(t);
+ h.appendSocialV2Message(key,'乙','[引用消息]','',false,false,'202',[],'789',[],undefined,false,{bodyComplete:false,unresolvedReplyIds:['303']});
+ h.bot.getMessage=async id=>({message_id:id,group_id:456,user_id:789,message:id===202?[{type:'reply',data:{id:'303'}}]:[{type:'text',data:{text:'只有被引用者的正文'}}]});
+ const detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=202');
+ assert.equal(detail.body.info.bodyComplete,false);assert.equal(detail.body.info.textTruncated,true);
+ assert.equal(st.unread.find(m=>m.messageId==='202').bodyComplete,false);assert.equal(st.recentMessages.find(m=>m.messageId==='202').bodyComplete,false);
+ const r=await request('/api/socialV2/send-message',{key,messages:'不能把被引用者正文当作本条正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+});
+test('a quote-only arrival directed at the bot retains its missing own-body status',async t=>{
+ const {h,key,st,request}=await fixture(t);h.socialV2.paused=true;
+ st.lastUnreadSeq=1;st.recentMessages.push({seq:1,messageId:'303',sender:'我',userId:'9',text:'已知机器人原文',plain:'已知机器人原文',bodyComplete:true,time:Date.now()});h.bot.getMessage=async()=>null;
+ await h.handleIncoming('group',456,{message_id:202,user_id:789,self_id:9,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'303'}}]},h.cfg);
+ h.socialV2.paused=false;const current=st.unread.find(m=>m.messageId==='202');
+ assert.equal(current.bodyComplete,false);assert.equal(current.plain,'');assert.match(current.text,/已知机器人原文/);
+ await request('/api/socialV2/unread?key='+encodeURIComponent(key));
+ const r=await request('/api/socialV2/send-message',{key,messages:'引用不是本条自有正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+});
+test('a known visible complete quote is reused locally with only its own plain body',async t=>{
+ const {h,key,st,request}=await fixture(t);h.socialV2.paused=true;
+ st.lastUnreadSeq=1;st.recentMessages.push({seq:1,messageId:'303',sender:'甲',userId:'789',text:'[引用 更旧内容]本地自有正文',plain:'本地自有正文',bodyComplete:true,unresolvedReplyIds:[],time:Date.now()});
+ const fetched=[];h.bot.getMessage=async id=>{fetched.push(id);return null;};
+ await h.handleIncoming('group',456,{message_id:202,user_id:789,self_id:9,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'303'}},{type:'text',data:{text:'当前自有正文'}}]},h.cfg);
+ h.socialV2.paused=false;const read=await request('/api/socialV2/unread?key='+encodeURIComponent(key));
+ assert.match(read.body.messages[0].text,/本地自有正文/);assert.doesNotMatch(read.body.messages[0].text,/更旧内容/);
+ assert.deepEqual(read.body.messages[0].omittedReplyIds,[]);assert.equal(fetched.length,0);assert.equal(st.recentMessages[0].seenAt,undefined);
+});
+test('foreign, partial, hidden and sequence-only local records cannot impersonate a known quote',async t=>{
+ for(const mode of ['foreign','partial','hidden','seq-only']){
+  const {h,key,st,request}=await fixture(t);h.socialV2.paused=true;
+  const source={seq:303,messageId:mode==='seq-only'?'999':'303',sender:'甲',userId:'789',text:'不可复用正文',plain:'不可复用正文',bodyComplete:mode!=='partial',quotaAdmission:mode==='hidden'?'rejected':undefined,time:Date.now()};
+  (mode==='foreign'?h.getSocialV2State('group:457'):st).recentMessages.push(source);
+  h.bot.getMessage=async()=>null;
+  await h.handleIncoming('group',456,{message_id:202,user_id:789,self_id:9,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'303'}},{type:'text',data:{text:'当前自有正文'}}]},h.cfg);
+  h.socialV2.paused=false;const read=await request('/api/socialV2/unread?key='+encodeURIComponent(key));
+  assert.equal(read.body.messages[0].text,'当前自有正文');assert.deepEqual(read.body.messages[0].omittedReplyIds,['303']);
+ }
+});
+test('omitting unknown references preserves known quotes and media and accepts a complete 200-character body',async t=>{
+ const {h,key,st,request}=await fixture(t);h.socialV2.paused=true;
+ h.bot.getMessage=async id=>id===303?{message_id:id,group_id:456,user_id:789,sender:{nickname:'甲',user_id:789},message:[{type:'text',data:{text:'可靠引用'}}]}:null;
+ await h.handleIncoming('group',456,{message_id:202,user_id:789,self_id:9,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'303'}},{type:'reply',data:{id:'404'}},{type:'text',data:{text:'全'.repeat(200)}},{type:'face',data:{id:'14'}}]},h.cfg);
+ h.socialV2.paused=false;const read=await request('/api/socialV2/unread?key='+encodeURIComponent(key));
+ const stored=st.unread.at(-1);assert.match(stored.text,/可靠引用/);assert.match(stored.text,/全{200}\[表情14\]/);
+ assert.deepEqual(read.body.messages[0].omittedReplyIds,['404']);assert.equal(stored.hasMedia,true);assert.equal(stored.media[0].faceId,'14');
+ assert.equal((await request('/api/socialV2/send-message',{key,messages:'当前正文和媒体已完整收到'})).body.ok,true);
+ for(const [type,data,expected]of [['image',{},'[图片]'],['record',{},'[语音]'],['file',{name:'a.txt'},'[文件a.txt]']]){
+  assert.equal(await h.segmentsToText([{type:'reply',data:{id:'404'}},{type,data}],{resolveReply:async()=>null,omitUnknownReplies:true}),expected);
+ }
+});
+test('an unknown quote alone never manufactures an incoming body or an old receipt',async t=>{
+ const {h,st}=await fixture(t);h.socialV2.paused=true;h.bot.getMessage=async()=>null;
+ await h.handleIncoming('group',456,{message_id:202,user_id:789,self_id:9,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'404'}}]},h.cfg);
+ assert.equal(st.unread.length,0);assert.equal(st.lastUnreadSeq||0,0);assert.equal(h.calls.sent.length,0);
 });
 test('a queued later wake cannot grant its new input to an older still-running turn',async t=>{
  const {h,key,request,append}=await fixture(t);append();
@@ -152,13 +244,14 @@ test('legacy 200-character previews require gateway recovery and do not become c
  r=await request('/api/socialV2/send-message',{key,messages:'recovered original available'});assert.equal(r.body.ok,true,JSON.stringify(r.body));
 });
 
-test('a gateway reply with a different message ID never supplies a quote or admits a pending body',async t=>{
+test('a gateway reply with a different message ID is omitted while the complete own body remains admissible',async t=>{
  const {h,key,request}=await fixture(t);h.socialV2.paused=true;
  h.bot.getMessage=async()=>({message_id:999,group_id:456,user_id:789,message:[{type:'text',data:{text:'wrong original'}}]});
  await h.handleIncoming('group',456,{message_id:205,user_id:789,self_id:9,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'304'}},{type:'text',data:{text:'谁'}}]},h.cfg);
  h.socialV2.paused=false;
  const read=await request('/api/socialV2/unread?key='+encodeURIComponent(key));
  assert.ok(!JSON.stringify(read.body).includes('wrong original'));
+ assert.equal(read.body.messages[0].text,'谁');assert.deepEqual(read.body.messages[0].omittedReplyIds,['304']);
  const r=await request('/api/socialV2/send-message',{key,messages:'must not answer from an unrelated quote'});
- assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+ assert.equal(r.body.ok,true,JSON.stringify(r.body));
 });

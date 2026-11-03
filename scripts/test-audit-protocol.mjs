@@ -301,7 +301,7 @@ for (const type of ['end', 'error']) {
   });
 }
 
-test('transient follow errors preserve subscriptions and close transport for retry', async () => {
+test('transient follow errors preserve subscriptions and isolate retry from the shared transport', async () => {
   globalThis.WebSocket = FakeWebSocket;
   const api = client();
   api.cookie = 'fixture=ok';
@@ -318,9 +318,11 @@ test('transient follow errors preserve subscriptions and close transport for ret
   const ending = iterator.next();
   await tick();
   const ended = await Promise.race([ending, Promise.resolve({ done: false })]);
+  const stayedOpen = socket.readyState === FakeWebSocket.OPEN;
   abort.abort(); await ending;
   assert.ok(api._desiredFollows.has('session-a'));
-  assert.equal(ended.done, true);
+  assert.equal(ended.done, false);
+  assert.equal(stayedOpen, true);
   assert.equal(socket.readyState, FakeWebSocket.CLOSED);
 });
 

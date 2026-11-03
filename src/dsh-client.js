@@ -309,6 +309,8 @@ export class NodeApiClient extends AbstractApiClient {
     this.cookiePromise = null;
     this._authEpoch = 0;
     this._muxSendOpen = null;
+    this._muxForgetFollow = null;
+    this._quarantinedFollows = new Set();
     // 持久化签名密钥的探测缓存：undefined=未探测，null=不可用，Buffer=可用。
     // 探一次就够（文件在 DSH 生命周期内不变），避免每个请求都读一次磁盘。
     this._secret = undefined;
@@ -667,8 +669,7 @@ export class NodeApiClient extends AbstractApiClient {
      * 已经打开的流由 DSH 在会话消失时自行结束。
      */
     forget: (sessionId) => {
-      if (!sessionId) return;
-      this._desiredFollows.delete(String(sessionId));
+      this._forgetSession(sessionId);
     },
   };
 
@@ -677,16 +678,26 @@ export class NodeApiClient extends AbstractApiClient {
     return {
       [Symbol.asyncIterator]: () => gen,
       follow: (sessionId) => this._followSession(sessionId),
-      forget: (sessionId) => { if (sessionId) this._desiredFollows.delete(String(sessionId)); }
+      forget: (sessionId) => this._forgetSession(sessionId)
     };
   }
 
   _followSession(sessionId) {
     if (!sessionId) return;
     const sid = String(sessionId);
+    // Explicit follow is also the retry boundary after an operator repairs a log.
+    this._quarantinedFollows.delete(sid);
     // 先记账再发送：即使此刻没有连接（或正处在重连窗口内），重连时也会重放。
     this._desiredFollows.add(sid);
     if (this._muxSendOpen) this._muxSendOpen(sid);
+  }
+
+  _forgetSession(sessionId) {
+    if (!sessionId) return;
+    const sid = String(sessionId);
+    this._desiredFollows.delete(sid);
+    this._quarantinedFollows.delete(sid);
+    this._muxForgetFollow?.(sid);
   }
 
   async *_remoteMuxGenerator(signal, onOpen) {
@@ -707,6 +718,13 @@ export class NodeApiClient extends AbstractApiClient {
     const followed = new Set();
     const streamToSession = new Map();
     const sessionToStream = new Map();
+    const retryTimers = new Map();
+    const followFailures = new Map();
+    const clearRetry = sid => {
+      clearTimeout(retryTimers.get(sid));
+      retryTimers.delete(sid);
+    };
+    const forgetFollow = sid => { clearRetry(sid); followFailures.delete(sid); };
     const enqueue = (item) => {
       inbox.push(item);
       wake?.();
@@ -716,12 +734,15 @@ export class NodeApiClient extends AbstractApiClient {
       if (ended) return;
       ended = true;
       if (this._muxSendOpen === sendOpen) this._muxSendOpen = null;
+      if (this._muxForgetFollow === forgetFollow) this._muxForgetFollow = null;
+      for (const sid of retryTimers.keys()) clearRetry(sid);
       // 连接断开（含鉴权失败/DSH 重启）时丢弃旧 Cookie，重连会重新 token exchange。
       if (!sig.aborted) this.invalidateAuth();
       enqueue({ kind: 'end' });
     };
     const sendOpen = (sessionId) => {
-      if (ended || !socketOpen || sessionToStream.has(sessionId) || followed.has(sessionId)) return;
+      if (ended || !socketOpen || this._quarantinedFollows.has(sessionId) || sessionToStream.has(sessionId) || followed.has(sessionId)) return;
+      clearRetry(sessionId);
       const streamId = randomUUID();
       streamToSession.set(streamId, sessionId);
       sessionToStream.set(sessionId, streamId);
@@ -751,6 +772,18 @@ export class NodeApiClient extends AbstractApiClient {
         endStream();
       }
     };
+    const scheduleFollow = sessionId => {
+      if (ended || !this._desiredFollows.has(sessionId) || this._quarantinedFollows.has(sessionId)) return;
+      clearRetry(sessionId);
+      const failures = Math.min(5, (followFailures.get(sessionId) || 0) + 1);
+      followFailures.set(sessionId, failures);
+      const timer = setTimeout(() => {
+        retryTimers.delete(sessionId);
+        if (!ended && this._desiredFollows.has(sessionId)) sendOpen(sessionId);
+      }, Math.min(30000, 2000 * 2 ** (failures - 1)));
+      timer.unref?.();
+      retryTimers.set(sessionId, timer);
+    };
     const sendOpenEvents = () => {
       if (ended || !socketOpen || eventStreamId) return;
       const streamId = randomUUID();
@@ -772,6 +805,7 @@ export class NodeApiClient extends AbstractApiClient {
       if (ended || sig.aborted) return;
       socketOpen = true;
       this._muxSendOpen = sendOpen;
+      this._muxForgetFollow = forgetFollow;
       // 重放**全部**期望 follow（跨重连保留），而不只是本次连接排队的那些。
       // 少了这一步，DSH 一重启，所有已存在的 QQ 会话就会静默失联。
       for (const sid of this._desiredFollows) sendOpen(sid);
@@ -791,6 +825,7 @@ export class NodeApiClient extends AbstractApiClient {
       const sessionId = streamToSession.get(msg.streamId);
       const isEventStream = msg.streamId === eventStreamId;
       if (msg.type === 'item') {
+        if (sessionId && (msg.value?.type === 'event' || msg.value?.type === 'snapshot')) followFailures.delete(sessionId);
         if (isEventStream && msg.value) {
           const value = msg.value;
           if (value.type === 'ready') {
@@ -870,9 +905,7 @@ export class NodeApiClient extends AbstractApiClient {
           // 这里主动重开一次订阅；仍然想订阅的会话才重开（forget 过的就让它走）。
           if (this._desiredFollows.has(sessionId)) {
             console.error(`[dsh-client] session/follow 已被服务端结束，重新订阅：${sessionId}`);
-            setTimeout(() => {
-              if (!ended && this._desiredFollows.has(sessionId)) sendOpen(sessionId);
-            }, 2000);
+            scheduleFollow(sessionId);
           }
         }
       } else if (msg.type === 'error') {
@@ -885,13 +918,17 @@ export class NodeApiClient extends AbstractApiClient {
           sessionToStream.delete(sessionId);
           streamToSession.delete(msg.streamId);
           followed.delete(sessionId);
-          // 只有已不存在的会话才永久取消订阅；临时服务错误必须在重连后重试。
-          if (msg.error?.code === 'session/not-found') this._desiredFollows.delete(sessionId);
+          // A session/follow failure is a logical stream failure, not a socket or
+          // authentication failure. Never disconnect healthy sessions or $events.
+          const corrupt = msg.error?.code === 'gateway/internal' &&
+            /stored (?:session|log)[^\r\n]*\bcorrupt\b|SessionFormatError:/i.test(String(msg.error?.message || ''));
+          if (msg.error?.code === 'session/not-found') this._forgetSession(sessionId);
+          else if (corrupt) { clearRetry(sessionId); this._quarantinedFollows.add(sessionId); }
+          else scheduleFollow(sessionId);
           enqueue({
             kind: 'frame',
-            envelope: { rpcId: msg.streamId, payload: { type: 'stream/error', error: msg.error } }
+            envelope: { rpcId: msg.streamId, payload: { type: 'stream/error', sessionId, error: msg.error } }
           });
-          if (msg.error?.code !== 'session/not-found') endStream();
         }
       }
     };
@@ -918,6 +955,8 @@ export class NodeApiClient extends AbstractApiClient {
       }
     } finally {
       if (this._muxSendOpen === sendOpen) this._muxSendOpen = null;
+      if (this._muxForgetFollow === forgetFollow) this._muxForgetFollow = null;
+      for (const sid of retryTimers.keys()) clearRetry(sid);
       sig.removeEventListener('abort', handleAbort);
       socket.removeEventListener('open', handleOpen);
       socket.removeEventListener('message', handleMessage);

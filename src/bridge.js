@@ -1317,7 +1317,7 @@ function withTimeout(promise, ms, label) {
 }
 
 async function segmentsToText(segments, options = {}) {
-  const { resolveAtName, resolveReply, includeReply = true } = options ?? {};
+  const { resolveAtName, resolveReply, includeReply = true, omitUnknownReplies = false } = options ?? {};
   // 有些 OneBot 实现直接把纯文本消息放在 message 字段里（string）
   if (typeof segments === 'string') return segments.trim();
   const out = [];
@@ -1361,7 +1361,8 @@ async function segmentsToText(segments, options = {}) {
             }
           } catch {}
         }
-        out.push(replyText || '[引用消息]');
+        if (replyText) out.push(replyText);
+        else if (!omitUnknownReplies) out.push('[引用消息]');
         break;
       }
       case 'json': out.push('[卡片消息]'); break;
@@ -7353,13 +7354,14 @@ async function main() {
                 userId: found.userId ? String(found.userId) : null,
                 messageId: String(found.messageId),
                 seq: found.seq,
-                bodyComplete:true
+                bodyComplete:true,
+                omittedReplyIds:found.omittedReplyIds||[]
               };
             } else {
               info = await resolveReplyInfo(kind, id, found?.messageId||messageId,null,{includeReply:true,force:true});
               if (info && found) {
                 // Both buffers may contain distinct copies after deserialization.
-                for(const m of [...st.unread,...st.recentMessages])if(m.seq===found.seq)Object.assign(m,{text:info.text,bodyComplete:info.bodyComplete,unresolvedReplyIds:info.unresolvedReplyIds||[]});
+                for(const m of [...st.unread,...st.recentMessages])if(m.seq===found.seq)Object.assign(m,{text:info.text,bodyComplete:info.bodyComplete,unresolvedReplyIds:info.unresolvedReplyIds||[],omittedReplyIds:info.omittedReplyIds||[]});
                 Object.assign(info,{messageId:found.messageId,seq:found.seq});
                 saveSocialV2State();
               } else if (found) {
@@ -12720,6 +12722,11 @@ async function main() {
   }
   async function resolveReplyInfo(kind, convId, messageId, selfId = null, options = {}) {
     if (isModelMessageBlockedV2(convKey(kind, convId), messageId)) return null;
+    const localView=modelFacingStateV2(convKey(kind,convId));
+    const retained=[...localView.unread,...localView.recentMessages].find(m=>m.messageId!=null&&String(m.messageId)===String(messageId)&&messageContentComplete(m)&&typeof m.plain==='string'&&m.plain.trim().length>0);
+    if(retained)return {sender:String(retained.sender||''),userId:retained.userId!=null?String(retained.userId):null,
+      text:options.includeReply===true?String(retained.text||retained.plain):retained.plain,bodyComplete:true,
+      unresolvedReplyIds:[],omittedReplyIds:options.includeReply===true?(retained.omittedReplyIds||[]):[]};
     pruneReplyInfoCache();
     const cacheKey = `${kind}:${String(convId)}:${String(messageId)}:${options.includeReply===true?'full':'quote'}`;
     const hit = replyInfoCache.get(cacheKey);
@@ -12775,12 +12782,17 @@ async function main() {
         }
       }
       const sender = raw.sender?.card || raw.sender?.nickname || String(raw.sender?.user_id ?? raw.user_id ?? '未知');
-      const unresolvedReplyIds=[];
+      const ownText=await segmentsToText(raw.message,{includeReply:false});
+      const bodyComplete=raw.bodyComplete!==false&&raw.truncated!==true&&ownText.length>0;
+      const omitUnknownReplies=bodyComplete;
+      const unresolvedReplyIds=[],omittedReplyIds=[];
       const text = await segmentsToText(raw.message ?? [], {
         resolveAtName: kind === 'group' ? (qq) => resolveGroupMemberName(convId, qq) : null,
         includeReply: options.includeReply===true,
-        resolveReply:async ref=>{const info=await resolveReplyInfo(kind,convId,ref,selfId,{force:options.force});if(!info)unresolvedReplyIds.push(String(ref));return info;}
+        omitUnknownReplies,
+        resolveReply:async ref=>{const info=await resolveReplyInfo(kind,convId,ref,selfId,{force:options.force});if(info&&messageContentComplete(info))return info;(omitUnknownReplies?omittedReplyIds:unresolvedReplyIds).push(String(ref));return null;}
       });
+      if (!text) return null;
       const senderUserId = raw.sender?.user_id ?? raw.user_id ?? null;
       const rawTime = raw.time ? Number(raw.time) * 1000 : 0;
       const stale = rawTime > 0 && Date.now() - rawTime > 2 * 60 * 60 * 1000;
@@ -12788,8 +12800,9 @@ async function main() {
         sender: String(sender ?? ''),
         text: String(text ?? ''),
         userId: senderUserId != null ? String(senderUserId) : null,
-        bodyComplete:true,
-        unresolvedReplyIds
+        bodyComplete,
+        unresolvedReplyIds,
+        omittedReplyIds
       };
       log(`[reply] resolved id=${messageId} rawId=${raw.message_id ?? raw.msg_id ?? ''} sender=${senderUserId ?? ''} text=${String(text ?? '').slice(0, 30).replace(/\n/g, ' ')}`);
       replyInfoCache.set(cacheKey, { info, ts: Date.now() });
@@ -12925,6 +12938,7 @@ async function main() {
       plain: String(plainContent ?? textContent),
       bodyComplete:contentState.bodyComplete!==false,
       unresolvedReplyIds:contentState.unresolvedReplyIds||[],
+      omittedReplyIds:contentState.omittedReplyIds||[],
       tail: truncateTextTail(String(plainContent ?? textContent), 200),
       quoteTargetIsSelf: !!quoteTargetIsSelf,
       isOwner: !!isOwner,
@@ -14678,12 +14692,14 @@ async function main() {
       if (kind !== 'group') return null;
       return resolveGroupMemberName(event.group_id, qq);
     };
-    const unresolvedReplyIds=[];
-    const resolveReply = async (messageId) => {const info=await resolveReplyInfo(kind,id,messageId,event.self_id);if(!info)unresolvedReplyIds.push(String(messageId));return info;};
+    const unresolvedReplyIds=[],omittedReplyIds=[];
     // textContent 带引用对象信息，供 DSH 判断“这句话在对谁说”；
     // plainContent 只保留当前消息自己的文字，用于命令/指向性判断，避免被引用原文干扰。
-    let textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply });
     let plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false });
+    const bodyComplete=event.message!=null&&event.bodyComplete!==false&&event.truncated!==true&&plainContent.length>0;
+    const omitUnknownReplies=bodyComplete;
+    const resolveReply = async (messageId) => {const info=await resolveReplyInfo(kind,id,messageId,event.self_id);if(info&&messageContentComplete(info))return info;(omitUnknownReplies?omittedReplyIds:unresolvedReplyIds).push(String(messageId));return null;};
+    let textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply, omitUnknownReplies });
     // Classify user text independently of arbitrary rendered QQ @ nicknames.
     const quotaText = (event.message || []).filter(segment => segment?.type === 'text')
       .map(segment => String(segment.data?.text || '')).join('').trim() || plainContent;
@@ -14886,7 +14902,7 @@ async function main() {
       const sender = kind === 'group' ? (event.sender?.card || event.sender?.nickname || String(event.user_id)) : '私聊';
       const incomingAtSelf = kind === 'group' && Array.isArray(event.message)
         && event.message.some(seg => seg?.type === 'at' && String(seg.data?.qq) === String(event.self_id ?? ''));
-      const incomingMessage = appendSocialV2Message(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, messageRef || null, mediaList, event.user_id ?? null, extractForwardIds(event.message ?? []), 'pending', incomingAtSelf,{bodyComplete:true,unresolvedReplyIds});
+      const incomingMessage = appendSocialV2Message(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, messageRef || null, mediaList, event.user_id ?? null, extractForwardIds(event.message ?? []), 'pending', incomingAtSelf,{bodyComplete,unresolvedReplyIds,omittedReplyIds});
       if(incomingBudget.stage==='weak')incomingMessage.quotaText=String(quotaText).slice(0,20000);
       try {
       // 二代同样收集群聊黑话学习素材（AI 自主提交之外，桥接仍自动提取高频陌生词）

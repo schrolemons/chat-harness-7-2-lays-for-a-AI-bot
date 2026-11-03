@@ -16,6 +16,18 @@ test('current identity takes priority over historical self-introductions without
 });
 
 const rejectionURL=new URL('../plugins/qq-components/ctx-chat-reply-shape/send-rejection.mjs',import.meta.url);
+test('missing or unadmitted semantic content explains a safe recovery before another send',async()=>{
+ const {describeSendRejection}=await import(rejectionURL);
+ const required=describeSendRejection('发送内容范围拒绝：content_required');
+ assert.equal(required?.code,'REPLY_CONTENT_REQUIRED');assert.equal(required.retryable,true);
+ assert.match(required.hint,/本回合.*完整.*seq/);assert.match(required.hint,/qq_reply_contents/);
+ assert.match(required.hint,/contentId/);assert.match(required.hint,/不.*(?:重试|生成)/);
+ const unadmitted=describeSendRejection('完整内容分组失败：source_not_admitted');
+ assert.equal(unadmitted?.code,'REPLY_SOURCE_NOT_ADMITTED');assert.equal(unadmitted.retryable,true);
+ assert.match(unadmitted.hint,/qq_get_unread_messages/);assert.match(unadmitted.hint,/完整正文.*引用/);
+ assert.match(unadmitted.hint,/旧回合/);assert.match(unadmitted.hint,/qq_reply_contents/);
+ for(const code of ['content_required_extra','source_not_admitted_extra'])assert.equal(describeSendRejection(code),null);
+});
 test('only genuine exhausted send limits become non-retryable; partial allowance stays editable',async()=>{
  const {describeSendRejection}=await import(rejectionURL);
  for(const message of ['最多发送 0 条','本轮发送额度已用完','发送计划拒绝：turn_limit']){
@@ -34,6 +46,31 @@ async function guardFixture(){
  const step=async(messages=[],turn=1)=>{let entered=0;const chain=(handlers.get('agent/pre-step')||[]).reduceRight((next,fn)=>()=>fn({agent:{session},turn,messages},next),async()=>{entered++;return {kind:'enter',messages};});const decision=await chain();return {decision,entered};};
  return {emit,failure,step};
 }
+
+function declaredSource(f,{name='mcp__snowluma__qq_reply_contents',body={},isError=false}={}){
+ f.emit('tool/call',{turn:1,callId:'declare-source',name,arguments:JSON.stringify({key:'group:456',groups:[{seqs:[7],kind:'chat'}]})});
+ f.emit('tool/result',{turn:1,message:{toolCallId:'declare-source',isError,content:[{type:'text',text:JSON.stringify({ok:true,key:'group:456',contents:[{id:'content:valid',seqs:[7],kind:'chat'}],...body})}]}});
+}
+test('a successful matching declaration recovers only the current missing-content send streak',async()=>{
+ const f=await guardFixture();f.failure(undefined,'发送内容范围拒绝：content_required');f.failure(undefined,'发送内容范围拒绝：content_required');
+ assert.equal((await f.step()).decision.kind,'reject');declaredSource(f);
+ assert.equal((await f.step()).decision.kind,'enter');
+ f.failure(undefined,'发送内容范围拒绝：content_required');assert.equal((await f.step()).decision.kind,'enter');
+ f.failure(undefined,'发送内容范围拒绝：content_required');declaredSource(f);
+ assert.equal((await f.step()).decision.kind,'reject','redeclaring the same content cannot repeatedly wash away omitted IDs');
+});
+test('unrelated, mismatched, failed and pending declarations cannot clear missing-content failures',async()=>{
+ for(const options of [{name:'mcp__snowluma__qq_get_recent_messages'},{isError:true},{body:{ok:false}},{body:{key:'group:other'}},{body:{contents:[{id:'content:wrong',seqs:[8],kind:'chat'}]}},{body:{contents:[{id:'content:pending',seqs:[7],kind:'task',taskPending:true}]}}]){
+  const f=await guardFixture();f.failure(undefined,'发送内容范围拒绝：content_required');f.failure(undefined,'发送内容范围拒绝：content_required');declaredSource(f,options);
+  assert.equal((await f.step()).decision.kind,'reject');
+ }
+});
+test('valid content declarations do not clear unrelated send failures or terminal exhaustion',async()=>{
+ for(const error of ['agent token 无效','网络超时','发送计划拒绝：content_limit','发送计划拒绝：turn_limit']){
+  const f=await guardFixture();f.failure(undefined,error);f.failure(undefined,error);declaredSource(f);
+  assert.equal((await f.step()).decision.kind,'reject');
+ }
+});
 
 test('one exhausted semantic content does not stop another declared content in the same native turn',async()=>{
  const f=await guardFixture();
