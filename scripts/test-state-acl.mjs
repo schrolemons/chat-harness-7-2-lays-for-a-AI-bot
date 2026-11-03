@@ -4,7 +4,32 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import childProcess from 'node:child_process';
+import {syncBuiltinESMExports} from 'node:module';
 import {hardenDir,icacls,inspectDirAcl} from '../src/state-acl.mjs';
+
+test('slow PowerShell startup still verifies real ACLs and rejects broad access',{skip:process.platform!=='win32'},t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'qq-state-acl-slow-'));
+ t.after(()=>{assert.equal(path.dirname(root),os.tmpdir());assert(path.basename(root).startsWith('qq-state-acl-'));fs.rmSync(root,{recursive:true,force:true});});
+ assert.equal(hardenDir(root,{force:true}).ok,true);
+ const realSpawnSync=childProcess.spawnSync;
+ let delayed=false;
+ t.mock.method(childProcess,'spawnSync',(command,args,options)=>{
+  if(command==='powershell.exe'&&!delayed){
+   delayed=true;
+   // Keep the script's param block first in its own invocation.
+   args=[...args];args[args.length-1]='Start-Sleep -Milliseconds 16000;\n& {\n'+args.at(-1)+'\n}';
+  }
+  return realSpawnSync(command,args,options);
+ });
+ syncBuiltinESMExports();
+ t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
+ const checked=inspectDirAcl(root);
+ assert.equal(checked.ok,true,checked.detail);
+ assert.equal(checked.checked,1);
+ assert.equal(icacls([root,'/grant','*S-1-1-0:R']).status,0);
+ assert.equal(inspectDirAcl(root).ok,false,'a completed inspection must still reject broad access');
+});
 
 test('secure tree startup checks permissions without rewriting and still repairs an unsafe descendant',{skip:process.platform!=='win32'},t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'qq-state-acl-'));

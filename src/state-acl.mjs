@@ -73,7 +73,9 @@ function runDirAcl(dir, repair=false) {
   try { command=fs.readFileSync(script,'utf8'); }
   catch { return {ok:false,inspectionFailed:true,detail:'ACL 检查实现不可读'}; }
   const res = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
-    encoding:'utf8', timeout:repair?120000:15000, windowsHide:true, maxBuffer:1024*1024,
+    // Cold PowerShell startup on a busy Windows runner can exceed 15 seconds.
+    // Keep inspection bounded without mistaking startup delay for unsafe ACLs.
+    encoding:'utf8', timeout:repair?120000:60000, windowsHide:true, maxBuffer:1024*1024,
     env:{...process.env,QQ_STATE_ACL_TARGET:dir,QQ_STATE_ACL_REPAIR:repair?'1':'0'}
   });
   if (res.error || res.status !== 0) return {ok:false,inspectionFailed:true,detail:res.error?.message || 'ACL 检查进程失败'};
