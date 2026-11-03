@@ -7,7 +7,7 @@ import { parseExpressionAt } from 'acorn';
 import yaml from 'js-yaml';
 import { readInstanceSessionPolicy } from '../src/instance-session-policy.mjs';
 import { readManifest } from '../src/instance-manifest.mjs';
-import { normalizeInstanceDescriptor, readInstanceDescriptor } from '../src/instance-descriptor.mjs';
+import { normalizeInstanceDescriptor } from '../src/instance-descriptor.mjs';
 
 export const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 const canonical = value => value && typeof value==='object' ? Array.isArray(value)?value.map(canonical):Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])])):value;
@@ -15,12 +15,14 @@ export const rowHash = row => sha256(JSON.stringify(canonical(row)));
 const same = (a,b) => process.platform==='win32'?path.resolve(a).toLowerCase()===path.resolve(b).toLowerCase():path.resolve(a)===path.resolve(b);
 const contains = (parent,child) => { const r=path.relative(parent,child);return r==='' || (!r.startsWith('..'+path.sep)&&r!=='..'&&!path.isAbsolute(r)); };
 export const installError=(code)=>Object.assign(Error(code),{code});
-export async function pathState(file) {
-  let s;try{s=await fs.lstat(file);}catch(e){if(e.code==='ENOENT')return {kind:'missing'};throw e;}
-  if(s.isSymbolicLink())return {kind:'link',target:await fs.realpath(file)};
+async function pathSnapshot(file) {
+  let s;try{s=await fs.lstat(file);}catch(e){if(e.code==='ENOENT')return {state:{kind:'missing'}};throw e;}
+  if(s.isSymbolicLink())return {state:{kind:'link',target:await fs.realpath(file)}};
   if(!s.isFile() || s.nlink!==1)throw installError('UNSAFE_INSTALL_PATH');
-  return {kind:'file',sha256:sha256(await fs.readFile(file))};
+  const bytes=await fs.readFile(file);
+  return {state:{kind:'file',sha256:sha256(bytes)},bytes};
 }
+export async function pathState(file) { return (await pathSnapshot(file)).state; }
 export const sameState=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 export async function assertPlainDirectory(dir) {
   if(!path.isAbsolute(dir))throw installError('ABSOLUTE_PATH_REQUIRED');
@@ -123,13 +125,21 @@ export async function planInstanceInstall({descriptor,profilePath,legacy={rows:[
   if(descriptor.root.split(path.sep).includes('.worktrees'))throw installError('DEVELOPMENT_ROOT_REJECTED');
   const packageFile=path.join(profilePath,'package.json'),patchFile=path.join(profilePath,'cordis.patch.yml');
   const beforeHashes={},operations=[],conflicts=[],ownedEvidence=[];
-  const observe=async file=>{const state=await pathState(file);beforeHashes[file]=state;return state;};
+  const snapshots=new Map();
+  const observe=async file=>{
+    const snapshot=await pathSnapshot(file);
+    if(snapshots.has(file)) {
+      if(!sameState(beforeHashes[file],snapshot.state))throw installError('BASELINE_CHANGED');
+    } else {snapshots.set(file,snapshot);beforeHashes[file]=snapshot.state;}
+    return beforeHashes[file];
+  };
+  const capturedText=file=>snapshots.get(file).bytes.toString('utf8');
   for(const file of protectedFiles){if(!path.isAbsolute(file))throw installError('ABSOLUTE_PATH_REQUIRED');await observe(file);}
-  const write=async(file,content)=>{const before=await observe(file),after={kind:'file',sha256:sha256(content)};if(!sameState(before,after))operations.push({kind:'write',path:file,before,after,content,previous:before.kind==='file'?await fs.readFile(file,'utf8'):null});};
+  const write=async(file,content)=>{const before=await observe(file),after={kind:'file',sha256:sha256(content)};if(!sameState(before,after))operations.push({kind:'write',path:file,before,after,content,previous:before.kind==='file'?capturedText(file):null});};
   await observe(packageFile);await observe(patchFile);
-  let pkgRaw=await fs.readFile(packageFile,'utf8'),raw=beforeHashes[patchFile].kind==='missing'?'[]\n':await fs.readFile(patchFile,'utf8');
+  let pkgRaw=capturedText(packageFile),raw=beforeHashes[patchFile].kind==='missing'?'[]\n':capturedText(patchFile);
   const pkg=JSON.parse(pkgRaw),sourcePackage=path.join(descriptor.root,'package.json');await observe(sourcePackage);
-  if(JSON.parse(await fs.readFile(sourcePackage,'utf8')).name!==descriptor.bundleName)conflicts.push({code:'PACKAGE_IDENTITY_CONFLICT',path:sourcePackage});
+  if(JSON.parse(capturedText(sourcePackage)).name!==descriptor.bundleName)conflicts.push({code:'PACKAGE_IDENTITY_CONFLICT',path:sourcePackage});
   const parsed=yamlRows(raw),selected=new Set(),prior=await readManifest(descriptor.root);
   let previousMode={};
   for(const proof of legacy.rows||[]) {
@@ -192,11 +202,15 @@ export async function planInstanceInstall({descriptor,profilePath,legacy={rows:[
   }
   const descriptorFile=path.join(descriptor.root,'.qq-bridge-instance.json');const descriptorState=await observe(descriptorFile);
   if(descriptorState.kind==='missing')await write(descriptorFile,JSON.stringify(descriptor,null,2)+'\n');
-  else if(rowHash(await readInstanceDescriptor(descriptor.root))!==rowHash(await normalizeInstanceDescriptor(descriptor,descriptor.root)))conflicts.push({code:'DESCRIPTOR_CONFLICT'});
+  else {
+    if(descriptorState.kind!=='file'||snapshots.get(descriptorFile).bytes.length>1024*1024)throw installError('DESCRIPTOR_INVALID');
+    if(rowHash(await normalizeInstanceDescriptor(JSON.parse(capturedText(descriptorFile)),descriptor.root))!==rowHash(await normalizeInstanceDescriptor(descriptor,descriptor.root)))conflicts.push({code:'DESCRIPTOR_CONFLICT'});
+  }
   await write(packageFile,pkgRaw);await write(patchFile,raw);
   const override=yamlRows(raw).document.find(r=>r.id===descriptor.entryId&&!r.insert);
   const priorLink=prior?.links.find(r=>r.path===link);
   const evidence={profileEntries:[{path:patchFile,id:descriptor.entryId,name:descriptor.bundleName,sha256:rowHash(override),source:'created',cleanup:'owned'}],links:[{path:link,target:descriptor.root,source:linkState.kind==='missing'?'created':(priorLink?.source||'verified-legacy'),cleanup:linkState.kind==='missing'?'owned':(priorLink?.cleanup||'preserve')}],paths:[prior?.paths.find(r=>r.kind==='code'&&r.path===descriptor.root)||{path:descriptor.root,kind:'code',source:creation?'created':'verified-legacy',cleanup:creation?'owned':'preserve',sha256:beforeHashes[sourcePackage].sha256,...(creation?{createdByTransaction:creation.transactionId,files:creation.files}:{})}]};
   const transactionId=crypto.randomUUID(),journalPath=path.join(descriptor.root,'.instance-install','transactions',transactionId+'.json');
+  for(const file of snapshots.keys())await observe(file);
   return {version:1,transactionId,descriptor,profilePath,beforeHashes,operations,ownedEvidence,conflicts,evidence,journalPath,codeDisposition:creation?'installer-created':'preserve'};
 }

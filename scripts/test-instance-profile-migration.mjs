@@ -82,6 +82,25 @@ test('profile concurrent byte change rejects before writes',async t=>{
   const f=await fixture(t),p=await planInstanceInstall(f),file=path.join(f.profilePath,'package.json');
   await fs.appendFile(file,' ');const changed=await fs.readFile(file);await assert.rejects(applyInstanceInstall(p,{expectedHashes:p.beforeHashes,writersStopped:true}),/BASELINE_CHANGED/);assert.deepEqual(await fs.readFile(file),changed);
 });
+for(const name of ['package.json','cordis.patch.yml'])for(const readNumber of [1,2,3])test(`planning snapshot rejects concurrent ${name} edit after read ${readNumber}`,async t=>{
+  const f=await fixture(t),file=path.join(f.profilePath,name),originalRead=fs.readFile;
+  const original=await originalRead(file,'utf8'),concurrent=original.replace(name==='package.json'?'"defaultPreset": "keep"':'model: untouched',name==='package.json'?'"defaultPreset": "concurrent"':'model: concurrent');
+  assert.notEqual(original,concurrent);let reads=0,injected=false,plan;
+  fs.readFile=async function(target,...args){
+    const bytes=await originalRead.call(this,target,...args);
+    if(target===file&&++reads===readNumber){injected=true;await fs.writeFile(file,concurrent);}
+    return bytes;
+  };
+  try {
+    await assert.rejects(async()=>{
+      plan=await planInstanceInstall(f);
+      for(const op of plan.operations)if(op.kind==='write'&&op.before.kind==='file')assert.equal(hash(op.previous),op.before.sha256,'rollback bytes must match the captured baseline');
+      await applyInstanceInstall(plan,{expectedHashes:plan.beforeHashes,writersStopped:true});
+    },/BASELINE_CHANGED/);
+  } finally {fs.readFile=originalRead;}
+  assert.equal(injected,true);assert.equal(await fs.readFile(file,'utf8'),concurrent);
+  if(plan)await assert.rejects(applyInstanceInstall(plan,{expectedHashes:plan.beforeHashes,writersStopped:true}),/BASELINE_CHANGED/);
+});
 test('resolved legacy link target change rejects before profile mutation',async t=>{
   const f=await fixture(t),link=path.join(f.profilePath,'node_modules','old-mode'),target=path.dirname(f.modulePath);
   await fs.symlink(target,link,process.platform==='win32'?'junction':'dir');
