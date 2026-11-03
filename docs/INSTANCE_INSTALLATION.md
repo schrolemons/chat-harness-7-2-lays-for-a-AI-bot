@@ -29,7 +29,7 @@ node C:/BotSetup/node_modules/qq-bridge-public/scripts/install.mjs --apply-plan 
 
 默认公开包实际名称 `qq-bridge-public`，entry/settings namespace 为 `public-bot-mode`，生成的客户端 registration/filter ID 与包名相同。私人实例保留 `qq-mode` 和原六个 preset ID。公开六预设使用 `public-bot:` 前缀，四个 workspace 末级目录为 `public-bot-chat/learning/task/summary`，标题包含 bot 身份。
 
-公开 listener 初始端口为 console 3200、Snow HTTP 3201、Snow WS 3202、launcher 3299、Snow WebUI 5299；共享 DSH 目标端口仍为 3080。已声明实例及正在监听的端口冲突会阻止准备，不接管外部服务。不同 DSH 目标端口或第二个公开实例可用 `preparePublicInstall()` 的显式 `ports`/身份参数准备；随后可在设置中调整并验证冲突。
+公开 listener 初始端口为 console 3200、Snow HTTP 3201、Snow WS 3202、launcher 3299、Snow WebUI 5299。DSH 目标默认留空，跟随选定 Desktop 的实际地址，不预留固定端口。已声明实例及正在监听的端口冲突会阻止准备，不接管外部服务。自定义 DSH 目标端口或第二个公开实例可用 `preparePublicInstall()` 的显式 `ports`/身份参数准备；随后可在设置中调整并验证冲突。
 
 ## 现有私人安装的迁移
 

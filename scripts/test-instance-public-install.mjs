@@ -50,6 +50,19 @@ test('fresh installer rejects nesting before creating code under another bot mar
   await assert.rejects(install.preparePublicInstall({sourceRoot:root,target,dshHome:home,profile:'desktop',installDependencies:false}),/NESTED_INSTANCE_TARGET/);
   await assert.rejects(fs.lstat(target),{code:'ENOENT'});
 });
+test('fresh installer distinguishes managed auto DSH from actual peer listener conflicts',async t=>{
+  const base=await temp(t),home=path.join(base,'home'),peer=path.join(base,'peer'),target=path.join(base,'target');
+  await fs.mkdir(path.join(home,'profiles','desktop'),{recursive:true});await fs.mkdir(peer);
+  const descriptor={version:1,instanceId:'peer',label:'Peer',bundleName:'peer',entryId:'peer',settingsNamespace:'peer',root:peer,dshHome:home,profile:'desktop',presetIdMap:{}};
+  await fs.writeFile(path.join(peer,'.qq-bridge-instance.json'),JSON.stringify(descriptor));
+  const {initializeManifest}=await import('../src/instance-manifest.mjs');await initializeManifest(peer,descriptor);
+  const config=path.join(peer,'config.json'),args={sourceRoot:root,target,dshHome:home,profile:'desktop'};
+  await fs.writeFile(config,JSON.stringify({launcher:{ports:{dsh:'',console:3300,snowHttp:3080}}}));
+  await assert.rejects(install.preparePublicInstall({...args,ports:{console:3080}}),{code:'INSTANCE_PORT_CONFLICT'});
+  await fs.writeFile(config,JSON.stringify({launcher:{ports:{dsh:'',console:3080,snowHttp:3201}}}));
+  await assert.rejects(install.preparePublicInstall(args),{code:'INSTANCE_PORT_CONFLICT'});
+  await assert.rejects(fs.lstat(target),{code:'ENOENT'});
+});
 test('created dependency inventory hashes exact files and refuses external links',async t=>{
   assert.equal(typeof install.inventoryCreatedTree,'function');const base=await temp(t),dir=path.join(base,'owned');await fs.mkdir(dir);await fs.writeFile(path.join(dir,'a.js'),'synthetic');
   const first=await install.inventoryCreatedTree(dir);assert.equal(first.files.length,1);assert.match(first.files[0].sha256,/^[a-f0-9]{64}$/);assert.deepEqual(first.links,[]);

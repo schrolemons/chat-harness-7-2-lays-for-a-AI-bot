@@ -59,7 +59,7 @@ async function checkPorts(ports,home,instanceId) {
     if(row.state!=='ready')throw installError('ROOT_DECLARATION_INCOMPLETE');
     const descriptor=await readInstanceDescriptor(row.root);
     if(descriptor.instanceId!==row.instanceId)throw installError('ROOT_DECLARATION_CONFLICT');
-    let existing;try{existing=readLauncherPorts(JSON.parse(await fs.readFile(path.join(row.root,'config.json'),'utf8')));}catch(e){if(e.code==='ENOENT')continue;throw e;}
+    let existing;try{existing=readLauncherPorts(JSON.parse(await fs.readFile(path.join(row.root,'config.json'),'utf8')),{managed:true});}catch(e){if(e.code==='ENOENT')continue;throw e;}
     if(ownKeys.some(k=>ownKeys.some(other=>ports[k]===existing[other])))throw installError('INSTANCE_PORT_CONFLICT');
   }
   for(const kind of ownKeys)await new Promise((resolve,reject)=>{const server=net.createServer();server.once('error',()=>reject(installError('INSTANCE_PORT_CONFLICT')));server.listen({host:'127.0.0.1',port:ports[kind],exclusive:true},()=>server.close(resolve));});
@@ -75,7 +75,7 @@ export async function preparePublicInstall({sourceRoot=RELEASE_ROOT,target,dshHo
     }
     if(path.dirname(p)===p)break;
   }
-  const selectedPorts=validateLauncherPorts({dsh:3080,console:3200,snowHttp:3201,snowWs:3202,launcher:3299,snowWebui:5299,...ports});
+  const selectedPorts=validateLauncherPorts({dsh:'',console:3200,snowHttp:3201,snowWs:3202,launcher:3299,snowWebui:5299,...ports},undefined,{managed:true});
   await checkPorts(selectedPorts,dshHome,instanceId);
   const stage=await stagePublicRelease({sourceRoot,target,bundleName,entryId});
   const creation=stage.creation;
@@ -94,7 +94,7 @@ export async function preparePublicInstall({sourceRoot=RELEASE_ROOT,target,dshHo
   const managed=await installManagedSnow({descriptor,artifact:acquired.artifact,expectedDigest:SNOW_RELEASE.sha256});
   const runtime={snowHome:managed.snowHome,nodePath:path.join(managed.snowHome,'node.exe')};
   runtime.nodePath=await resolveInstanceNode({descriptor,config:runtime,host:{execPath:'Desktop.exe',versions:{electron:'installation-check'}}});
-  bootstrapLocal(target,{descriptor,snowHome:managed.snowHome,ports:{...selectedPorts,dsh:Object.hasOwn(ports||{},'dsh')?selectedPorts.dsh:''}});
+  bootstrapLocal(target,{descriptor,snowHome:managed.snowHome,ports:selectedPorts});
   const created={source:'created',cleanup:'owned',createdByTransaction:creation.transactionId};
   const nodeModules=path.join(target,'node_modules'),npmManifest=path.join(nodeModules,'.package-lock.json');
   const statePath=path.join(target,'state'),stateInventory=await inventoryCreatedTree(statePath);
