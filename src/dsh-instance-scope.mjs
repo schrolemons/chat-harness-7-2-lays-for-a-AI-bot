@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createInstancePresetWrapper } from './dsh-instance-preset.mjs';
-import { claimScopeRoot, instanceRootForClaim } from './instance-descriptor.mjs';
+import { claimInstanceRoot, claimScopeRoot, instanceRootForClaim } from './instance-descriptor.mjs';
 
 const instancesKey = Symbol.for('qq-bridge.dsh-instance-scopes.v1');
 
@@ -18,14 +18,15 @@ async function importHost(ctx, name, hostImport) {
 }
 
 /**
- * Own only an instance scope and its preset registrations. No profile/session/filesystem writes.
+ * Own only an instance scope and its preset registrations. No profile/session/data writes.
+ * Strict admission serializes against the shared installation-declaration inventory.
  * Caller context must inject loader, tools and agentPresets. Definitions are native parsed
  * preset definitions. Explicit presetIdMap entries can preserve existing private preset IDs.
  * Starts closed: await all MCP attachments through result.ctx, then call result.activate().
  * Disabling closes retained agents before disposing tools; a later activation of the same
  * instance ID and directory restores their stable scope parent and shared guard state.
  */
-export async function createInstanceScope(ctx, { instanceId, root, label = instanceId, definitions = [], presetIdMap = {}, hostImport, rootClaim } = {}) {
+export async function createInstanceScope(ctx, { instanceId, root, label = instanceId, definitions = [], presetIdMap = {}, hostImport, rootClaim, dshHome, profile, bundleName } = {}) {
   if (typeof instanceId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(instanceId)) throw new Error('Invalid instanceId');
   if (!Array.isArray(definitions)) throw new Error('Preset definitions must be an array');
   const presetMap = Object.create(null);
@@ -42,7 +43,8 @@ export async function createInstanceScope(ctx, { instanceId, root, label = insta
   const instances = hostRoot[instancesKey];
   let state = instances.get(instanceId);
   const ownClaim = !rootClaim;
-  const claim = rootClaim ?? await claimScopeRoot(ctx, { instanceId, root });
+  const claim = rootClaim ?? await (dshHome === undefined ? claimScopeRoot(ctx, { instanceId, root })
+    : claimInstanceRoot(ctx, { instanceId, root, dshHome, profile, bundleName }));
   const directory = instanceRootForClaim(ctx, { instanceId, root }, claim);
   if (state?.active || (state?.root !== undefined && state.root !== directory)) {
     if (ownClaim) await claim();

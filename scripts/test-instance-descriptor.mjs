@@ -5,13 +5,16 @@ import path from 'node:path';
 import test from 'node:test';
 import { claimInstanceRoot, readInstanceDescriptor } from '../src/instance-descriptor.mjs';
 import { createInstanceScope } from '../src/dsh-instance-scope.mjs';
+import { initializeManifest } from '../src/instance-manifest.mjs';
 
 async function fixture(t) {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'bot-descriptor-'));
   t.after(() => fs.rm(base, { recursive: true, force: true }));
-  const a = { instanceId: 'alpha', root: path.join(base, 'Alpha') };
-  const b = { instanceId: 'beta', root: path.join(base, 'Beta') };
+  const identity = { profile: 'fixture', dshHome: path.join(base, 'host') };
+  const a = { ...identity, instanceId: 'alpha', bundleName: 'synthetic-alpha', root: path.join(base, 'Alpha') };
+  const b = { ...identity, instanceId: 'beta', bundleName: 'synthetic-beta', root: path.join(base, 'Beta') };
   await fs.mkdir(a.root); await fs.mkdir(b.root);
+  await initializeManifest(a.root, a); await initializeManifest(b.root, b);
   return { base, a, b, ctx: { root: {} } };
 }
 
@@ -88,11 +91,12 @@ test('descriptor has explicit identity, physical root and isolated defaults, wit
     profile: 'fixture', dshHome: path.join(base, 'host'), presetIdMap: { chat: 'alpha:chat' },
   };
   await fs.writeFile(path.join(a.root, '.qq-bridge-instance.json'), JSON.stringify(descriptor));
+  const before = await fs.readdir(a.root);
   const actual = await readInstanceDescriptor(a.root);
   assert.equal(actual.root, await fs.realpath(a.root));
   assert.equal(actual.registryDir, path.join(base, 'host', 'bot-instances', 'account-leases'));
   assert.deepEqual(actual.workspaces, Object.fromEntries(['chat', 'learning', 'task'].map(kind => [kind, path.join(a.root, 'state', 'workspaces', 'alpha', kind)])));
-  assert.deepEqual(await fs.readdir(a.root), ['.qq-bridge-instance.json']);
+  assert.deepEqual(await fs.readdir(a.root), before);
   await fs.writeFile(path.join(a.root, '.qq-bridge-instance.json'), JSON.stringify({ ...descriptor, root: base }));
   await assert.rejects(readInstanceDescriptor(a.root), /DESCRIPTOR_INVALID/);
 });
@@ -116,7 +120,7 @@ test('scope shares only a caller-owned claim and failed disposal keeps the root 
 test('scope releases its own root on setup failure even when the host loader is missing', async t => {
   const { ctx, a, b } = await fixture(t);
   await assert.rejects(createInstanceScope(ctx, a), /loader|builtins/i);
-  const release = await claimInstanceRoot(ctx, { ...b, root: a.root });
+  const release = await claimInstanceRoot(ctx, a);
   await release();
 });
 
@@ -140,7 +144,8 @@ test('successful scope teardown leaves a borrowed controller claim exclusively h
   await scope.dispose();
   await assert.rejects(claimInstanceRoot(ctx, { ...b, root: a.root }), /ROOT_CONFLICT/);
   await rootClaim();
-  await (await claimInstanceRoot(ctx, { ...b, root: a.root }))();
+  await assert.rejects(claimInstanceRoot(ctx, { ...b, root: a.root }), /ROOT_CONFLICT/);
+  await (await claimInstanceRoot(ctx, a))();
 });
 
 test('failed scope teardown retains its own root claim for other instance IDs too', async t => {

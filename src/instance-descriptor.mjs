@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { readManifest, INSTANCE_MANIFEST_FILE } from './instance-manifest.mjs';
+import { findRootDeclaration, withInstallationRootInventory } from './instance-root-inventory.mjs';
 
 export const INSTANCE_DESCRIPTOR_FILE = '.qq-bridge-instance.json';
 const claimsKey = Symbol.for('qq-bridge.instance-root-claims.v1');
@@ -68,17 +69,24 @@ async function claim(ctx, descriptor, allowMissing) {
   const token = { lexical, directory: null };
   registry.entries.set(instanceId, token);
   const resolve = registry.queue.then(async () => {
+    if (allowMissing) {
+      try {
+        await fs.lstat(root);
+        throw fail('ROOT_INVALID', 'Existing installation scopes require an explicit descriptor and strict root admission');
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
     const physical = await physicalRoot(root, allowMissing);
     const directory = canonical(physical);
     if (!allowMissing && [lexical, directory].some(value => value.split(path.sep).includes('.worktrees'))) throw fail('ROOT_CONFLICT', 'A development worktree cannot be a runtime installation');
     for (const other of registry.entries.values()) if (other !== token && overlaps(directory, other.directory ?? other.lexical)) throw fail('ROOT_CONFLICT', 'Instance roots resolve to overlapping physical directories');
-    {
+    const verifyManifest = async (selected, identity = descriptor) => {
       const manifest = await readManifest(physical).catch(error => {
         if (allowMissing && error.code === 'ENOENT') return null;
         throw error;
       });
-      if (manifest && (manifest.instanceId !== instanceId || ['profile', 'dshHome', 'bundleName'].some(field => descriptor[field] !== undefined
-        && (field === 'dshHome' ? canonical(descriptor[field]) !== canonical(manifest[field]) : descriptor[field] !== manifest[field])))) throw fail('ROOT_CONFLICT', 'Persistent installation identity belongs to another descriptor');
+      if (manifest && (manifest.instanceId !== instanceId || ['profile', 'dshHome', 'bundleName'].some(field => identity[field] !== undefined
+        && (field === 'dshHome' ? canonical(identity[field]) !== canonical(manifest[field]) : identity[field] !== manifest[field])))) throw fail('ROOT_CONFLICT', 'Persistent installation identity belongs to another descriptor');
+      if (selected && (!manifest || manifest.installationId !== selected.installationId)) throw fail('ROOT_DECLARATION_INCOMPLETE', 'Ready declaration must match its exact installation receipt');
       // Inspect exact ancestor markers only to reject nesting, never to adopt their data.
       for (let parent = path.dirname(physical); parent !== path.dirname(parent); parent = path.dirname(parent)) {
         for (const marker of [INSTANCE_MANIFEST_FILE, INSTANCE_DESCRIPTOR_FILE]) {
@@ -86,7 +94,14 @@ async function claim(ctx, descriptor, allowMissing) {
           throw fail('ROOT_CONFLICT', 'Root is nested inside another declared installation');
         }
       }
-    }
+    };
+    if (allowMissing) await verifyManifest();
+    else await withInstallationRootInventory({ ...descriptor, root: physical }, async ({ descriptor: selected, inventory }) => {
+      const declaration = findRootDeclaration(inventory, selected);
+      if (!declaration) throw fail('ROOT_UNDECLARED', 'Initialize the installation explicitly before runtime admission');
+      if (declaration.state !== 'ready') throw fail('ROOT_DECLARATION_INCOMPLETE', 'Installation initialization is uncertain; no automatic repair');
+      await verifyManifest(declaration, selected);
+    });
     token.directory = directory;
     const release = async () => { if (registry.entries.get(instanceId) === token) registry.entries.delete(instanceId); };
     capabilities.set(release, { host, instanceId, token, registry });
@@ -99,7 +114,7 @@ async function claim(ctx, descriptor, allowMissing) {
 /** Invocation-local capability, not a PID/registry ownership proof. Caller releases only after successful teardown. */
 export function claimInstanceRoot(ctx, descriptor) { return claim(ctx, descriptor, false); }
 
-/** Legacy scope-only compatibility: nonexistent fixture roots are resolved through their nearest real ancestor. */
+/** Legacy scope-only compatibility for nonexistent fixtures; existing roots must use strict admission. */
 export function claimScopeRoot(ctx, descriptor) { return claim(ctx, descriptor, true); }
 
 /** Borrow a controller's exact live capability; scopes never release a borrowed claim. */

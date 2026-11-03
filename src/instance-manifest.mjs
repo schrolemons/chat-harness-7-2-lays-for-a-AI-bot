@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import { findRootDeclaration, withInstallationRootInventory } from './instance-root-inventory.mjs';
 
 export const INSTANCE_MANIFEST_FILE = '.qq-bridge-instance-manifest.json';
 const fail = (code, message) => Object.assign(new Error(`${code}: ${message}`), { code });
@@ -82,24 +83,41 @@ async function withManifestLock(root, operation) {
 
 /** Explicit fresh installation only: binds identity and records no inferred owners. */
 export async function initializeManifest(root, descriptor) {
-  return withManifestLock(root, async physicalRoot => {
-    if (!descriptor || !absolute(descriptor.root) || key(await fs.realpath(descriptor.root)) !== key(physicalRoot)
-      || identityFields.some(field => !text(descriptor[field])) || !absolute(descriptor.dshHome)) {
-      throw fail('MANIFEST_INVALID', 'Explicit descriptor identity is required');
+  if (!absolute(root) || !descriptor || !absolute(descriptor.root)
+    || key(await fs.realpath(root)) !== key(await fs.realpath(descriptor.root))) throw fail('MANIFEST_INVALID', 'Explicit descriptor identity is required');
+  return withInstallationRootInventory(descriptor, async transaction => {
+    descriptor = transaction.descriptor;
+    let declaration = findRootDeclaration(transaction.inventory, descriptor);
+    if (declaration?.state === 'pending') throw fail('ROOT_DECLARATION_INCOMPLETE', 'Uncertain initialization requires explicit reviewed cleanup; retry cannot repair it');
+    if (!declaration) {
+      declaration = { root: descriptor.root, installationId: randomUUID(),
+        ...Object.fromEntries(['instanceId', 'profile', 'bundleName'].map(field => [field, descriptor[field]])), state: 'pending' };
+      transaction.inventory.roots.push(declaration);
+      // Persist reservation BEFORE receipt I/O; any failure retains this exclusion.
+      await transaction.save();
     }
-    const previous = await readAt(physicalRoot);
-    if (previous) {
-      if (identityFields.some(field => field === 'dshHome' ? key(previous[field]) !== key(descriptor[field]) : previous[field] !== descriptor[field])
-        || (descriptor.installationId !== undefined && descriptor.installationId !== previous.installationId)) {
-        throw fail('MANIFEST_CONFLICT', 'Installation identity is immutable');
+    return withManifestLock(descriptor.root, async physicalRoot => {
+      const previous = await readAt(physicalRoot);
+      if (previous) {
+        if (identityFields.some(field => field === 'dshHome' ? key(previous[field]) !== key(descriptor[field]) : previous[field] !== descriptor[field])
+          || (descriptor.installationId !== undefined && descriptor.installationId !== previous.installationId)
+          || (declaration.state === 'ready' && declaration.installationId !== previous.installationId)) {
+          throw fail('MANIFEST_CONFLICT', 'Installation identity is immutable');
+        }
+        if (declaration.state === 'pending') {
+          declaration.installationId = previous.installationId; declaration.state = 'ready';
+          await transaction.save();
+        }
+        return previous;
       }
-      return previous;
-    }
-    const manifest = { version: 1, installationId: randomUUID(), root: physicalRoot,
-      ...Object.fromEntries(identityFields.map(field => [field, descriptor[field]])),
-      profileEntries: [], links: [], sessions: [], paths: [] };
-    await atomicWrite(physicalRoot, manifest);
-    return manifest;
+      if (declaration.state === 'ready') throw fail('ROOT_DECLARATION_INCOMPLETE', 'Declared installation receipt is missing; no automatic reinitialization');
+      const manifest = { version: 1, installationId: declaration.installationId, root: physicalRoot,
+        ...Object.fromEntries(identityFields.map(field => [field, descriptor[field]])),
+        profileEntries: [], links: [], sessions: [], paths: [] };
+      await atomicWrite(physicalRoot, manifest);
+      declaration.state = 'ready'; await transaction.save();
+      return manifest;
+    });
   });
 }
 
