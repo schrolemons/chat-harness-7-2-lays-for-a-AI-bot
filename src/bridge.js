@@ -1,3 +1,5 @@
+import {createRuntimeIpcClient} from './instance-runtime-ipc.mjs';
+import {bindInstanceSnowConfig} from './instance-snow-connection.mjs';
 import {loadInstanceSessionPolicy} from './instance-session-policy.mjs';
 import { presetBindings, summarizePreset } from './console/preset-overview.js';
 import {buildDshBundle} from '../scripts/build-dsh-bundle.mjs';
@@ -104,6 +106,7 @@ const ROOT = path.resolve(__dirname, '..');
 const BRIDGE_STARTED_AT = Date.now();
 const STATE_DIR = path.join(ROOT, 'state');
 const instanceSessionPolicy = loadInstanceSessionPolicy({root:ROOT,env:process.env});
+const runtimeIpc = instanceSessionPolicy.active ? createRuntimeIpcClient({onShutdown:async()=>{saveState();releaseLock();process.exit(0);}}) : null;
 migrateOutboundMood(ROOT);
 migrateGroupWake(ROOT);
 const imageAssetStore = createImageAssetStore({ root: ROOT });
@@ -1441,7 +1444,7 @@ let stateDirHardened = null;
 
 // ── 主流程 ──────────────────────────────────────────────────────────────────
 async function main() {
-  const cfg = loadConfig();
+  const cfg = bindInstanceSnowConfig(loadConfig(),{root:ROOT,active:instanceSessionPolicy.active,env:process.env});
   fs.mkdirSync(STATE_DIR, { recursive: true });
   hardenStateDirAcl();
   acquireLock();
@@ -2269,7 +2272,7 @@ async function main() {
     prefix: cfg.dsh.authPrefix,
     // 默认只允许把 launch token 交给回环地址；远程 DSH 需要显式 opt-in（见 dsh-client.ensureAuth）。
     allowRemote: cfg.dsh.allowRemote === true
-  }, {policy:instanceSessionPolicy,onOwnershipError:(error,record)=>log('会话归属未记录，保留现有 ID：'+record.sessionId+' '+error.message)});
+  }, {policy:instanceSessionPolicy,recordCreatedSession:runtimeIpc?.recordCreatedSession,onOwnershipError:(error,record)=>log('会话归属未记录，保留现有 ID：'+record.sessionId+' '+error.message)});
   // DSH 的模型目录 RPC：0.1.5 是 `session/modelCatalog`。**不能走基类门面**
   // `api.sessions.modelCatalog` —— 桥接钉住的 `@deepseek-ai/dsh-host-apiproxy@0.1.1-rc.2`
   // 的 sessions 门面里根本没有这个方法（只有 `models` → 已下线的 `session/models`），
@@ -10310,6 +10313,7 @@ async function main() {
     return out;
   };
   taskCaps.spawnCampusWatch = (args = []) => {
+    if(runtimeIpc)return runtimeIpc.spawnWorker('campus-watch',args).then(result=>result.accepted===true,error=>{log('[caps] spawnCampusWatch 失败：'+error.message);return false;});
     try {
       const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'campus-watch.mjs'), ...args], { cwd: ROOT, detached: true, stdio: 'ignore' });
       child.unref();
@@ -15114,11 +15118,10 @@ async function main() {
             && /(来了|有了|出现|发布|上新|新的|快抢|抢|马上|快去|新|！|!|了)/.test(plainContent)) {
           const stWatch = getSocialV2State(key);
           if (!stWatch.campusWatchAt || Date.now() - Number(stWatch.campusWatchAt) > 60000) {
-            stWatch.campusWatchAt = Date.now();
-            saveSocialV2State();
             try {
-              const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'campus-watch.mjs'), '--force'], { cwd: ROOT, detached: true, stdio: 'ignore' });
-              child.unref();
+              if(await taskCaps.spawnCampusWatch(['--force'])!==true)throw Error('监控进程未接受启动');
+              stWatch.campusWatchAt = Date.now();
+              saveSocialV2State();
               log('[campus] 管理员喊讲座，已触发立即检查+自动选课 ' + key);
               appendActivity(key + ' [campus] 手动触发讲座检查/自动选课');
             } catch (error) {
@@ -16367,7 +16370,7 @@ async function main() {
   // config.json 里存的是 HTTP token（3000），WS（3001）用的是另一个值，直接用它连接
   // 可以避免"每次启动必然先 1006 失败一次、再自愈重连"的固定延迟。
   let startupWsToken = '';
-  try {
+  if(!instanceSessionPolicy.active)try {
     const homes = [cfg.snowluma?.homeDir, cfg.snowluma?.launcherPath ? path.dirname(String(cfg.snowluma.launcherPath)) : '']
       .filter((x, i, arr) => x && arr.indexOf(x) === i);
     for (const home of homes) {
@@ -16496,6 +16499,7 @@ async function main() {
    * 只修其中一个的话，桥接仍会以 1006 反复重连（实测踩过）。
    */
   async function applyHealedTokens(r) {
+    if(instanceSessionPolicy.active)return false;
     const httpToken = r.token;
     const wsToken = r.wsToken || r.token;
     // ⚠️ 端点跟随是可关的（`snowluma.followDiscoveredEndpoint: false`），默认保持原行为。
@@ -16551,6 +16555,7 @@ async function main() {
 
   /** 只写文件、不动物件（连接已成功时用）。 */
   async function syncTokenToFile() {
+    if(instanceSessionPolicy.active)return;
     try {
       const r = persistToken(path.join(ROOT, 'config.json'), cfg.snowluma.accessToken ?? '');
       // 只记「已写回」，不打印 token 片段：日志会被贴进 issue / 截图，
@@ -16561,6 +16566,7 @@ async function main() {
 
   let tokenHealAt = 0;
   async function healTokenIfStale(reason) {
+    if(instanceSessionPolicy.active)return;
     const now = Date.now();
     if (now - tokenHealAt < 10000) return;   // 节流：close 事件会连续触发
     tokenHealAt = now;

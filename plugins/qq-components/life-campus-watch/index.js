@@ -29,6 +29,16 @@ function parseBbCourses(lines) {
 
 export function createPlugin(ctx) {
   const cfg = ctx.config || {};
+  let spawning=null;
+  const requestSpawn=(args,onAccepted=()=>{})=>{
+    if(spawning)return spawning;
+    const accept=value=>{if(value===true)onAccepted();return value===true;};
+    try{
+      const result=ctx.capabilities?.spawnCampusWatch?.(args);
+      if(result&&typeof result.then==='function')return spawning=Promise.resolve(result).then(accept,error=>{ctx.warn?.('监控启动失败：'+error.message);return false;}).finally(()=>{spawning=null;});
+      return accept(result);
+    }catch(error){ctx.warn?.('监控启动失败：'+error.message);return false;}
+  };
   const recovery=createLoginRecovery(ctx.root,{config:cfg});
   recovery.beginBoot(BOOT_ID);
   const fast = Math.max(1, Number(cfg.fastCheckMinutes) || 1) * 60000;
@@ -78,7 +88,7 @@ export function createPlugin(ctx) {
   if(cfg.manualRetry?.nonce&&cfg.manualRetry.nonce!==ctx.state.get().lastRetryNonce&&validateConfig(cfg).ok){
       recovery.retry(cfg.manualRetry.url,knownSites().find(site=>site.url===cfg.manualRetry.url)?.name);ctx.state.set({lastFastAt:0,lastFullAt:0,lastRetryNonce:cfg.manualRetry.nonce});
       const busy=leaseActive(path.join(ctx.root,'state','login-window.lock'))||leaseActive(path.join(ctx.root,'state','campus-watch.lock'));
-      if(!busy)ctx.capabilities?.spawnCampusWatch?.(['--force','--retry-url',cfg.manualRetry.url]);
+      if(!busy)requestSpawn(['--force','--retry-url',cfg.manualRetry.url]);
   }
 
   return { validateConfig,hooks: { onTick({ now = Date.now() } = {}) {
@@ -94,12 +104,12 @@ export function createPlugin(ctx) {
     if (typeof spawn !== 'function') return;
     if (leaseActive(path.join(ctx.root, 'state', 'login-window.lock')) || leaseActive(path.join(ctx.root, 'state', 'campus-watch.lock'))) return;
     const pending=knownSites().find(site=>{const entry=recovery.get(site.url);return entry.phase==='needed'&&entry.requestedAt&&entry.requestedUrl===site.url;});
-    if(pending){spawn(['--force','--retry-url',pending.url]);return;}
+    if(pending)return requestSpawn(['--force','--retry-url',pending.url]);
     const s = ctx.state.get(), t = Number(now) || Date.now();
     if (s.lastFastAt && t - s.lastFastAt < fast) return;
     const needFull = !s.lastFullAt || t - s.lastFullAt >= full;
     // A minute tick is a scheduler check, not a reason to navigate every minute.
     if (!needFull && !hasLectureWork) return;
-    if (spawn(needFull ? [] : ['--lectures-only']) === true) ctx.state.set({ lastFastAt: t, ...(needFull ? { lastFullAt: t } : {}) });
+    return requestSpawn(needFull ? [] : ['--lectures-only'],()=>ctx.state.set({ lastFastAt: t, ...(needFull ? { lastFullAt: t } : {}) }));
   } } };
 }

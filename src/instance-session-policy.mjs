@@ -21,6 +21,7 @@ export function loadInstanceSessionPolicy({ root, env = process.env, descriptor 
 export function readInstanceSessionPolicy({ env = {}, descriptor } = {}) {
   const active = descriptor !== undefined || Object.hasOwn(env, 'QQ_BRIDGE_PRESET_MAP');
   if (env.QQ_BRIDGE_INSTANCE_ID && env.QQ_BRIDGE_INSTANCE_ID !== descriptor?.instanceId) throw invalid('Instance identity mismatch');
+  if (env.QQ_BRIDGE_SETTINGS_NAMESPACE && env.QQ_BRIDGE_SETTINGS_NAMESPACE !== descriptor?.settingsNamespace) throw invalid('Settings namespace mismatch');
   if (active && (!descriptor || descriptor.version!==1 || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(descriptor.instanceId)
     || !path.isAbsolute(descriptor.root || '') || !descriptor.settingsNamespace || descriptor.settingsNamespace !== descriptor.entryId)) throw invalid('Explicit root and settings entry required');
   if(descriptor && (!descriptor.presetIdMap || typeof descriptor.presetIdMap!=='object' || Array.isArray(descriptor.presetIdMap) || Object.keys(descriptor.presetIdMap).some(id=>!OWNED_PRESET_SOURCES.includes(id)))) throw invalid('Unknown descriptor preset sources');

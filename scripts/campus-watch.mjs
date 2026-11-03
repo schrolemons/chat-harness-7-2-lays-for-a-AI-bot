@@ -12,6 +12,7 @@
  * 登录期间暂停后台访问，完成后保存 session cookie 并恢复同 profile 的无头模式。
  */
 import fs from 'node:fs';
+import {createOwnedMonitorClient} from './owned-monitor-client.mjs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
@@ -35,6 +36,8 @@ import {flushLoginNotices} from './campus-login-notifications.mjs';
 import {isMonitorBrowser} from './campus-browser-ownership.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+let ownedCleanup=async()=>{};
+const ownedMonitor=createOwnedMonitorClient({root:ROOT,kind:'campus-watch',onShutdown:()=>ownedCleanup()});
 const CONFIG = JSON.parse(fs.readFileSync(path.join(ROOT, 'campus-watch.json'), 'utf8'));
 const WATCH_PLUGIN_CONFIG = (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'state', 'plugins', 'config', 'life-campus-watch.json'), 'utf8')); } catch { return {}; } })();
 // 单一数据源：BB 课程与讲座配置优先从组件 config 读（控制台可编辑）；组件没写时才回退 campus-watch.json。
@@ -53,17 +56,18 @@ const PROFILE = path.join(ROOT, 'state', 'campus-profile');
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 let siteSessions;
 const loginRecovery=createLoginRecovery(ROOT,{config:WATCH_PLUGIN_CONFIG});
-function requestLoginWindow(targets){
+async function requestLoginWindow(targets){
   const active=targets.filter(target=>loginRecovery.get(target.url).phase==='waiting');
   if(!active.length||leaseActive(path.join(ROOT,'state','login-window.lock'))||!loginRecovery.claimWindow())return false;
   fs.writeFileSync(path.join(ROOT,'state','campus-login-request.json'),JSON.stringify({at:Date.now(),targets:active},null,2));
+  if(ownedMonitor)return (await ownedMonitor.spawn('login-window')).accepted===true;
   const child=spawn(process.execPath,[path.join(ROOT,'scripts','login-window.mjs')],{cwd:ROOT,detached:true,stdio:'ignore',windowsHide:true});child.unref();return true;
 }
 async function loginFailed(target,health={}){
   const recovery=loginRecovery.fail(target);
   Object.assign(health,{auth:'red',hint:recovery.phase==='paused'?'已达到登录尝试上限，等待手动重新监管':'需要登录，已请求QQ提醒'});
   await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});
-  if(recovery.phase==='waiting')requestLoginWindow([target]);
+  if(recovery.phase==='waiting')await requestLoginWindow([target]);
 }
 function skipLoginSite(url,health){
   if(loginRecovery.canCheck(url))return false;
@@ -121,6 +125,7 @@ function readState() { try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8
 function saveState(state) { fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true }); fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8'); }
 
 async function ensureBrowser() {
+  if(ownedMonitor)return ownedMonitor.connect(true);
   const { browser } = await ensureSessionBrowser({
     connect: async () => { try { return await puppeteer.connect({ browserURL: `http://127.0.0.1:${PORT}`, defaultViewport: null }); } catch { return null; } },
     launch: launchBrowser,
@@ -539,10 +544,11 @@ async function main() {
   const state = readState();
   const changes = [];
   let browser;
+  ownedCleanup=async()=>{await siteSessions?.close();siteSessions=null;await browser?.disconnect();saveState(state);release();};
   try {
     browser = await ensureBrowser();
     // 用独立的临时标签页跑 BB/收藏夹检查，结束后关闭；yjs 标签页单独复用。
-    siteSessions=createSiteSessions(ROOT,browser);
+    siteSessions=createSiteSessions(ROOT,browser,{strictClose:!!ownedMonitor});
     const lectureUrl=CONFIG.lectures?.portalUrl||'https://example.invalid/';
     const page=CONFIG.lectures?.enabled&&MONITOR_SCRIPTS.has('lectures')&&(!RETRY_URL||loginOrigin(RETRY_URL)===loginOrigin(lectureUrl))?await siteSessions.page(lectureUrl):null;
     if (!LECTURES_ONLY && MONITOR_SCRIPTS.has('blackboard')) {
@@ -578,7 +584,7 @@ async function main() {
   if (changes.some(c => c.kind === 'login')) {
     try {
       const targets=changes.filter(c=>c.kind==='login'&&c.url).map(c=>({name:c.name||'监控网页',url:c.url}));
-      requestLoginWindow(targets);
+      await requestLoginWindow(targets);
       if(targets.some(target=>loginRecovery.get(target.url).phase==='waiting')){
         // Raw changes are durable. Hand the profile to login immediately rather
         // than keeping it locked while unrelated AI summaries are generated.
@@ -627,4 +633,4 @@ async function main() {
   release();
 }
 
-main();
+main().finally(()=>ownedMonitor?.dispose());

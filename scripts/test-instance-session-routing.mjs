@@ -50,7 +50,7 @@ test('record failure preserves successful response and existing-ID requests are 
 test('bridge keeps canonical legacy mappings while resolving new owned presets and namespaces',async()=>{
  const {bridgeHarness}=await import('./audit-bridge-harness.mjs');const {readInstanceSessionPolicy}=await policyModule();
  const policy=readInstanceSessionPolicy({descriptor,env:{}});
- const h=await bridgeHarness({config:{socialV2:{adminDev:{enabled:true,preset:'qq-admin'}}},savedState:{sessions:{'private:123':'original-private'},sessionPresets:{'private:123':'qq-admin'}},globals:{loadInstanceSessionPolicy:()=>policy}});
+ const h=await bridgeHarness({config:{socialV2:{adminDev:{enabled:true,preset:'qq-admin'}}},savedState:{sessions:{'private:123':'original-private'},sessionPresets:{'private:123':'qq-admin'}},globals:{bindInstanceSnowConfig:cfg=>cfg,loadInstanceSessionPolicy:()=>policy}});
  try{h.setPresets([...Object.values(map),'standard']);h.setMode('reserved2');h.syncAdminDevPreset();assert.equal(h.state.sessions['private:123'],'original-private');assert.equal(await h.ensureSession('group:456'),'fixture-1');assert.equal(h.calls.created[0].agentPreset,map['qq-chat-v2']);assert.equal(h.calls.archived.length,0);}
  finally{await h.close();}
 });
@@ -90,7 +90,7 @@ test('descriptor maps reject unknown sources and ambiguous canonical aliases bef
 
 test('bridge reads and writes only its own settings namespace',async()=>{
  const {bridgeHarness}=await import('./audit-bridge-harness.mjs');const {readInstanceSessionPolicy}=await policyModule();const policy=readInstanceSessionPolicy({descriptor});
- const h=await bridgeHarness({globals:{loadInstanceSessionPolicy:()=>policy}});let server;
+ const h=await bridgeHarness({globals:{bindInstanceSnowConfig:cfg=>cfg,loadInstanceSessionPolicy:()=>policy}});let server;
  try{h.api.settings.describe=async()=>({result:{ok:true,value:{namespaces:[{ns:'qq-mode',value:{mode:'chat'}},{ns:policy.settingsNamespace,value:{mode:'reserved2'}}]}}});await h.refreshMode();assert.equal(h.getMode(),'reserved2');
  const writes=[];h.api.settings.update=async payload=>{writes.push(payload);return {result:{ok:true,value:{}}};};server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));
  const response=await fetch('http://127.0.0.1:'+server.address().port+'/api/mode',{method:'POST',headers:{'x-console-token':'fixture-console-token','content-type':'application/json'},body:JSON.stringify({mode:'chat'})});assert.equal(response.status,200);assert.equal(writes[0].ns,policy.settingsNamespace);
@@ -109,7 +109,7 @@ test('native admin guard classifies owned mapped chat conservatively and keeps e
 
 test('existing canonical policy metadata stays reusable under mapped identity without rewriting mapping',async()=>{
  const {bridgeHarness}=await import('./audit-bridge-harness.mjs'),{readInstanceSessionPolicy}=await policyModule();
- const h=await bridgeHarness({savedState:{sessions:{'group:456':'legacy-group'},sessionPresets:{'group:456':'qq-chat-v2'},sessionPolicies:{'group:456':JSON.stringify(['reserved2','qq-chat-v2',null])}},globals:{loadInstanceSessionPolicy:()=>readInstanceSessionPolicy({descriptor})}});
+ const h=await bridgeHarness({savedState:{sessions:{'group:456':'legacy-group'},sessionPresets:{'group:456':'qq-chat-v2'},sessionPolicies:{'group:456':JSON.stringify(['reserved2','qq-chat-v2',null])}},globals:{bindInstanceSnowConfig:cfg=>cfg,loadInstanceSessionPolicy:()=>readInstanceSessionPolicy({descriptor})}});
  try{h.setMode('reserved2');h.setPresets(Object.values(map));assert.equal(await h.ensureSession('group:456'),'legacy-group');assert.equal(h.calls.created.length,0);assert.equal(h.state.sessionPresets['group:456'],'qq-chat-v2');assert.equal(h.calls.archived.length,0);}finally{await h.close();}
 });
 

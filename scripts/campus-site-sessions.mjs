@@ -5,8 +5,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {loginOrigin} from '../plugins/qq-components/life-campus-watch/login-recovery.mjs';
 
-export function createSiteSessions(root,browser,{seedLegacy=true}={}) {
+export function createSiteSessions(root,browser,{seedLegacy=true,strictClose=false}={}) {
   const sessions=new Map(),directory=path.join(root,'state','campus-site-sessions');
+  let closing=false,stopping;const creating=new Set();
   const fileFor=origin=>path.join(directory,crypto.createHash('sha256').update(origin).digest('hex')+'.json');
   const read=file=>{try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};
   async function sample(ctx,storage){
@@ -19,7 +20,7 @@ export function createSiteSessions(root,browser,{seedLegacy=true}={}) {
       if(snapshot)storage.set(snapshot.origin,snapshot);
     }
   }
-  async function context(url) {
+  async function createContext(url) {
     const origin=loginOrigin(url);
     if(sessions.has(origin))return sessions.get(origin).context;
     const file=fileFor(origin),saved=read(file);
@@ -48,7 +49,11 @@ export function createSiteSessions(root,browser,{seedLegacy=true}={}) {
       };
       sessions.set(origin,{context:ctx,file,storage});
       return ctx;
-    }catch(error){await ctx.close().catch(()=>{});throw error;}
+    }catch(error){try{await ctx.close();}catch(closeError){if(strictClose)throw new AggregateError([error,closeError],'Owned context rollback failed');}throw error;}
+  }
+  function context(url){
+    if(closing)return Promise.reject(Error('SESSION_CLOSING'));
+    const operation=createContext(url);creating.add(operation);operation.finally(()=>creating.delete(operation)).catch(()=>{});return operation;
   }
   async function checkpoint() {
     fs.mkdirSync(directory,{recursive:true});
@@ -60,6 +65,15 @@ export function createSiteSessions(root,browser,{seedLegacy=true}={}) {
     }
   }
   return {context,async page(url){const ctx=await context(url);return (await ctx.pages()).find(page=>!page.isClosed())||ctx.newPage();},checkpoint,
-    async close(){try{await checkpoint();}finally{for(const item of sessions.values())await item.context.close().catch(()=>{});sessions.clear();}}
+    close(){
+      closing=true;
+      return stopping??=(async()=>{
+        const failures=[];const settled=await Promise.allSettled([...creating]);
+        if(strictClose)for(const result of settled)if(result.status==='rejected')failures.push(result.reason);
+        try{await checkpoint();}catch(error){failures.push(error);}
+        for(const [origin,item] of sessions){try{await item.context.close();sessions.delete(origin);}catch(error){if(strictClose)failures.push(error);else sessions.delete(origin);}}
+        if(failures.length)throw new AggregateError(failures,failures.map(error=>error.message).join('; '));
+      })();
+    }
   };
 }

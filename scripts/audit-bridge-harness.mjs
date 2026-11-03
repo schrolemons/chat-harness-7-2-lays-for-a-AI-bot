@@ -1,3 +1,5 @@
+import {createRuntimeIpcClient} from '../src/instance-runtime-ipc.mjs';
+import {bindInstanceSnowConfig} from '../src/instance-snow-connection.mjs';
 import * as instanceSessionPolicy from '../src/instance-session-policy.mjs';
 import * as presetOverview from '../src/console/preset-overview.js';
 import {buildDshBundle} from './build-dsh-bundle.mjs';
@@ -277,7 +279,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, ...replyContentsRoute, migrateOutboundMood, migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...contextLimits, ...dialogueSequence, ...localHistory, ...receiptIndex, ...costPolicy, ...consoleDocument, ...toolCatalog,
-    ...instanceSessionPolicy, ...sessionRecovery, ...presetPolicy, ...adminToolPolicy, ...presetOverview,buildDshBundle,
+    createRuntimeIpcClient, bindInstanceSnowConfig, ...instanceSessionPolicy, ...sessionRecovery, ...presetPolicy, ...adminToolPolicy, ...presetOverview,buildDshBundle,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
     routePluginManagement,
     routeMemoryManagement,routeDiaryManagement,routeLearningManagement,routeContextManagement,routeFeedbackRepairs,

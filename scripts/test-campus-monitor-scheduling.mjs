@@ -42,3 +42,13 @@ test('a queued manual retry bypasses the normal interval and checks only its sel
  const {root,runs,plugin}=setup(t,{fullCheckMinutes:30});const now=1800000000000;plugin.hooks.onTick({now});
  const release=acquireLease(path.join(root,'state','campus-watch.lock'));createLoginRecovery(root).retry('https://example.invalid/','示例');plugin.hooks.onTick({now:now+1000});assert.equal(runs.length,1);release();plugin.hooks.onTick({now:now+2000});assert.deepEqual(runs[1],['--force','--retry-url','https://example.invalid/']);
 });
+
+
+test('async spawn acknowledgement commits cooldown only after success and failed spawn stays due',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'campus-async-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ let state={},accept,runs=0;
+ const plugin=createPlugin({root,config:{webWatchEnabled:true,watchUrls:['Example | https://example.invalid/'],fullCheckMinutes:30},registerTool(){},state:{get:()=>state,set:p=>state={...state,...p}},capabilities:{spawnCampusWatch(){runs++;return new Promise(r=>accept=r);}}});
+ const now=1800000000000,first=plugin.hooks.onTick({now});assert.equal(state.lastFullAt,undefined);assert.equal(runs,1);
+ plugin.hooks.onTick({now:now+1});assert.equal(runs,1,'in-flight spawn must not duplicate');accept(false);await first;assert.equal(state.lastFullAt,undefined);
+ const second=plugin.hooks.onTick({now:now+2});assert.equal(runs,2);accept(true);await second;assert.equal(state.lastFullAt,now+2);
+});

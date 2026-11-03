@@ -20,3 +20,13 @@ test('one-time legacy migration seeds only the exact platform domain, never anot
  const received=[];const context={newPage:async()=>{throw Error('unexpected page');},id:'synthetic',setCookie:async(...items)=>received.push(...items),pages:async()=>[],cookies:async()=>received,close:async()=>{}};
  const sessions=createSiteSessions(root,{createBrowserContext:async()=>context});await sessions.context('https://a.example/');assert.deepEqual(received.map(x=>x.name),['own']);await sessions.close();
 });
+
+
+test('owned session shutdown closes admission, drains context creation and reports close failures',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'owned-site-close-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ let release;const gate=new Promise(r=>release=r),context={newPage:async()=>{},setCookie:async()=>{},pages:async()=>[],cookies:async()=>[],close:async()=>{throw Error('owned context close failed');}};
+ const sessions=createSiteSessions(root,{createBrowserContext:async()=>{await gate;return context;}},{strictClose:true});
+ const creating=sessions.context('https://example.invalid/');const stopping=sessions.close();
+ const late=assert.rejects(sessions.context('https://other.invalid/'),/SESSION_CLOSING/);release();await late;await creating;
+ await assert.rejects(stopping,/owned context close failed/);
+});
