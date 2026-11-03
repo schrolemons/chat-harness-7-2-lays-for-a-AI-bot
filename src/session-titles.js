@@ -13,18 +13,19 @@ export function sessionTitle({sessionId='',agentPreset='',cwd='',title='',key=''
 export async function createTitledSession(api,create,payload={},signal) {
   const {title,...request}=payload;
   const response=await create(request,signal);
-  if(!response.result?.ok)return response;
+  // The native service owns generic purpose names; adopting an existing ID
+  // must preserve its title and must never archive it after a naming failure.
+  if(!response.result?.ok||request.sessionId!==undefined||isUnnamedTitle(title))return response;
   const sessionId=response.result.value.sessionId;
   const next=sessionTitle({...request,title,sessionId});
   let failure;
-  for(let attempt=0;attempt<2;attempt++) {
-    try {
-      const renamed=await api.sessions.rename({sessionId,title:next},signal);
-      if(!renamed.result?.ok)throw Error(renamed.result?.error?.message||'DSH 会话命名失败');
-      return response;
-    }catch(error){failure=error;}
-  }
-  // Creation succeeded: never let a caller start a model turn on an unnamed orphan.
+  try {
+    const renamed=await api.sessions.rename({sessionId,title:next},signal);
+    if(!renamed.result?.ok)throw Error(renamed.result?.error?.message||'DSH 会话命名失败');
+    return response;
+  }catch(error){failure=error;}
+  // Explicit naming is part of this new-session request; fail the request
+  // and archive only the newly created session when that rename fails.
   try {await api.workspace.archiveSession({sessionId});}catch(archiveError){throw Error('会话命名与归档均失败：'+sessionId,{cause:archiveError});}
   throw Error('会话命名失败，空会话已归档：'+sessionId,{cause:failure});
 }

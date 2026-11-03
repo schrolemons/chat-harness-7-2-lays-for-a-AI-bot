@@ -4,10 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createPlugin} from '../plugins/qq-components/ctx-context-session/index.js';
+import {bridgeHarness} from './audit-bridge-harness.mjs';
+import {serializeModelData} from '../src/qq-model-view.js';
 
 test('current identity takes priority over historical self-introductions without rewriting history',()=>{
  const blocks=[];
- createPlugin({config:{},addPromptBlock:t=>blocks.push(t)}).hooks.beforePrompt({roleName:'AI助手',selfName:'AI助手',selfId:'123'});
+ createPlugin({config:{},addPromptBlock:t=>blocks.push(t)}).hooks.beforePrompt({roleName:'蓝鲸',selfName:'蓝鲸助手',selfId:'123'});
  assert.match(blocks.join('\n'),/历史.*(?:自称|自我介绍).*不.*(?:身份|角色)/);
  assert.match(blocks.join('\n'),/自我介绍.*当前角色/);
  assert.doesNotMatch(blocks.join('\n'),/AI助手/);
@@ -107,13 +109,30 @@ test('a confirmed successful send clears the previous failure streak',async()=>{
  f.emit('tool/result',{turn:1,message:{toolCallId:'sent',content:[{type:'text',text:'{"ok":true,"sent":1}'}]}});
  f.failure();assert.equal((await f.step()).decision.kind,'enter');
 });
-test('reading old or paged history never clears failures; only a newly granted reply batch does once',async()=>{
- const f=await guardFixture();f.failure();f.failure();
- const read=(id,result)=>{f.emit('tool/call',{turn:1,callId:id,name:'mcp__snowluma__qq_get_recent_messages'});f.emit('tool/result',{turn:1,message:{toolCallId:id,content:[{type:'text',text:JSON.stringify(result)}]}});};
- read('old',{ok:true,messages:[{seq:10}]});assert.equal((await f.step()).decision.kind,'reject');
- read('old-page',{ok:true,messages:[{seq:20}]});assert.equal((await f.step()).decision.kind,'reject');
- const batch={renewed:true,id:'action:batch:21',throughSeq:21};read('new',{ok:true,messages:[{seq:21}],replyBatch:batch});assert.equal((await f.step()).decision.kind,'enter');
- f.failure();f.failure();read('reread',{ok:true,messages:[{seq:21}],replyBatch:batch});assert.equal((await f.step()).decision.kind,'reject');
+test('actual HTTP message reads cannot clear token, network or exhausted-content failures',async t=>{
+ for(const kind of ['token','network','cap','incomplete-network'])await t.test(kind,async()=>{
+  const h=await bridgeHarness({config:{sendDelayMs:0},files:{'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:1,maxMessagesCasual:1,maxMessagesSerious:1,maxSendPerMinute:0,maxSendPerHour:0,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0}},...(kind.includes('network')?{globals:{fetch:async()=>{const error=Error('网络超时');error.knownFailed=true;throw error;}}}:{})});let server;
+  try{
+   h.setMode('reserved2');const key='private:123',st=h.getSocialV2State(key);st.bootstrapSent=true;
+   h.appendSocialV2Message(key,'fixture','first','first',false,false,'101',[],'123');const sid=await h.ensureSession(key);
+   await h.deliverPrompt(key,'',{wakeReason:'private'});await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:1}}}});
+   server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));
+   const request=async(route,body,token=st.agentToken)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+route,{method:body?'POST':'GET',headers:{'x-console-token':'fixture-console-token','x-agent-token':token,'x-agent-call':'1',...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});return r.json();};
+   if(kind==='cap')assert.equal((await request('/api/socialV2/send-message',{key,messages:'first answer'})).sent,1);
+   const f=await guardFixture(),{describeSendRejection}=await import(rejectionURL);
+   for(let n=0;n<2;n++){
+    const failure=await request('/api/socialV2/send-message',{key,messages:'attempt'+n},kind==='token'?'invalid-fixture-token':st.agentToken);
+    assert.equal(failure.ok,false);assert.match(failure.error,kind==='token'?/令牌/:kind==='cap'?/最多发送 0 条/:/网络超时/);
+    const rejection=describeSendRejection(failure.error);f.failure('mcp__snowluma__qq_send_message','发送失败：'+(rejection?serializeModelData({...rejection,error:failure.error}):failure.error));
+   }
+   assert.equal((await f.step()).decision.kind,'reject');
+   h.appendSocialV2Message(key,'fixture','second','second',false,false,'102',[],'123',[],undefined,false,{bodyComplete:kind!=='incomplete-network'});
+   const read=await request('/api/socialV2/unread?key='+key+'&afterSeq=1');assert.equal(read.ok,true);assert.equal(read.messages[0].bodyComplete,kind!=='incomplete-network');
+   f.emit('tool/call',{turn:1,callId:'actual-read',name:'mcp__snowluma__qq_get_unread_messages',arguments:JSON.stringify({key,afterSeq:1})});
+   f.emit('tool/result',{turn:1,message:{toolCallId:'actual-read',isError:false,content:[{type:'text',text:serializeModelData(read)}]}});
+   assert.equal((await f.step()).decision.kind,'reject','reading input does not prove that the send failure was repaired');
+  }finally{if(server){server.closeAllConnections?.();await new Promise(r=>server.close(r));}await h.close();}
+ });
 });
 
 test('the actual preset composer installs and composes the guard before context rewriting',async()=>{

@@ -10,14 +10,14 @@ function repairedMissingContent(call,result,recovered){
   &&call.groups?.some(g=>validSeqs(g?.seqs)&&g.seqs.every(seq=>c.seqs.includes(seq))&&(g.kind||'chat')===c.kind))?.id;
 }
 export function installSendFailureGuard(ctx){
- const sessions=new Map();const stateFor=id=>{if(!sessions.has(id))sessions.set(id,{turn:null,calls:new Map(),failures:0,lastError:'',grantedBatches:new Set(),availableContents:new Set(),recoveredMissingContents:new Set()});return sessions.get(id);};
+ const sessions=new Map();const stateFor=id=>{if(!sessions.has(id))sessions.set(id,{turn:null,calls:new Map(),failures:0,lastError:'',availableContents:new Set(),recoveredMissingContents:new Set()});return sessions.get(id);};
  ctx.on('session/event',(session,event)=>{
   if(!session?.id||!['turn/start','tool/call','tool/result'].includes(event?.type))return;
-  const s=stateFor(session.id),d=event.data||{};if(s.turn!==d.turn){s.turn=d.turn;s.calls.clear();s.failures=0;s.lastError='';s.grantedBatches.clear();s.availableContents.clear();s.recoveredMissingContents.clear();}
+  const s=stateFor(session.id),d=event.data||{};if(s.turn!==d.turn){s.turn=d.turn;s.calls.clear();s.failures=0;s.lastError='';s.availableContents.clear();s.recoveredMissingContents.clear();}
   if(event.type==='tool/call'){const send=SEND_TOOL.test(String(d.name||'')),read=READ_TOOL.test(String(d.name||''));let args;try{args=JSON.parse(d.arguments);}catch{}if(send||read)s.calls.set(d.callId,{send,read,contentId:args?.contentId,declaration:d.name==='mcp__snowluma__qq_reply_contents',key:args?.key,groups:args?.groups});return;}
   if(event.type!=='tool/result')return;const call=s.calls.get(d.message?.toolCallId);if(!call)return;s.calls.delete(d.message.toolCallId);
   const value=plain(d.message);let result;try{result=JSON.parse(value);}catch{}
-  if(call.read&&d.message.isError!==true){if(result?.ok===true&&Array.isArray(result.contents))for(const c of result.contents)if(c?.id)s.availableContents.add(c.id);const repaired=s.lastError==='REPLY_CONTENT_REQUIRED'&&repairedMissingContent(call,result,s.recoveredMissingContents);if(repaired){s.recoveredMissingContents.add(repaired);s.failures=0;s.lastError='';}const batch=result?.replyBatch;if(result?.ok===true&&batch?.renewed===true&&typeof batch.id==='string'&&Number.isSafeInteger(batch.throughSeq)&&batch.throughSeq>0&&!s.grantedBatches.has(batch.id)){s.grantedBatches.add(batch.id);s.failures=0;s.lastError='';}return;}
+  if(call.read&&d.message.isError!==true){if(result?.ok===true&&Array.isArray(result.contents))for(const c of result.contents)if(c?.id)s.availableContents.add(c.id);const repaired=s.lastError==='REPLY_CONTENT_REQUIRED'&&repairedMissingContent(call,result,s.recoveredMissingContents);if(repaired){s.recoveredMissingContents.add(repaired);s.failures=0;s.lastError='';}return;}
   if(!call.send)return;
   if(Number(result?.sent)>0||result?.success===true||result?.ok===true||(d.message.isError!==true&&result?.ok!==false)){s.failures=0;s.lastError='';return;}
   const rejection=describeSendRejection(value);

@@ -9,7 +9,8 @@ export function apply(ctx) {
   function ensure(session) {
     const events=typeof session?.snapshotEvents==='function'?session.snapshotEvents():session?.events;
     if(!Array.isArray(events))return;
-    const preset=events.findLast(e=>e.type==='agent-preset/selected')?.data?.agentPreset||'';
+    const selected=events.findLast(e=>e.type==='agent-preset/selected');
+    const preset=selected?(selected.data?.agentPreset??''):(session.header?.agentPreset??'');
     const cwd=String(session.header?.cwd||'').replace(/\\/g,'/').toLowerCase();
     if(!cwd.startsWith(root+'state/')&&!managedPresets.has(preset))return;
     const current=ctx.sessionTitle.get(session);

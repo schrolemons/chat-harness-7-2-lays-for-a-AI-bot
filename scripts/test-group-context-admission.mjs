@@ -141,6 +141,21 @@ test('a known visible complete quote is reused locally with only its own plain b
  assert.match(read.body.messages[0].text,/本地自有正文/);assert.doesNotMatch(read.body.messages[0].text,/更旧内容/);
  assert.deepEqual(read.body.messages[0].omittedReplyIds,[]);assert.equal(fetched.length,0);assert.equal(st.recentMessages[0].seenAt,undefined);
 });
+test('full detail recovery replaces the old own-body preview before a later local quote',async t=>{
+ const {h,key,st,request}=await fixture(t);
+ const preview='旧'.repeat(200),full='恢复后的完整正文'.repeat(35);
+ h.appendSocialV2Message(key,'甲',preview,preview,false,false,'303',[],'789',[],undefined,false,{bodyComplete:false});
+ st.recentMessages=structuredClone(st.recentMessages);assert.notEqual(st.unread[0],st.recentMessages[0]);
+ h.bot.getMessage=async id=>id===303?{message_id:id,group_id:456,user_id:789,message:[{type:'reply',data:{id:'404'}},{type:'text',data:{text:full}}]}:id===404?{message_id:id,group_id:456,user_id:789,message:[{type:'text',data:{text:'引用内容不能写进自有正文'}}]}:null;
+ const detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=303');
+ assert.equal(detail.body.ok,true,JSON.stringify(detail.body));
+ assert.equal(detail.body.info.ownPlain,full);assert.equal(detail.body.info.bodyComplete,true);assert.match(detail.body.info.text,/引用内容不能写进自有正文/);
+ for(const list of [st.unread,st.recentMessages])assert.equal(list.find(m=>m.messageId==='303').plain,full);
+ h.bot.getMessage=async()=>null;h.socialV2.paused=true;
+ await h.handleIncoming('group',456,{message_id:202,user_id:789,self_id:9,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'303'}},{type:'text',data:{text:'当前自有正文'}}]},h.cfg);
+ const current=st.unread.find(m=>m.messageId==='202');assert.ok(current.text.includes(full));assert.equal(current.text.includes(preview),false);assert.doesNotMatch(current.text,/引用内容不能写进自有正文/);
+ assert.equal(current.bodyComplete,true);assert.equal(current.omittedReplyIds.length,0);
+});
 test('foreign, partial, hidden and sequence-only local records cannot impersonate a known quote',async t=>{
  for(const mode of ['foreign','partial','hidden','seq-only']){
   const {h,key,st,request}=await fixture(t);h.socialV2.paused=true;

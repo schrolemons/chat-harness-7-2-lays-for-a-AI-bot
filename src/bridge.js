@@ -2163,14 +2163,21 @@ async function main() {
     return slangLearnerSessionId;
   }
 
+  function releaseRetiredLearnerIfIdle(sessionId) {
+    if (!sessionId || sessionId === slangLearnerSessionId || !learnerSessions.has(sessionId)) return;
+    // An observed turn/start owns its collector until an actual terminal event;
+    // a failed prompt acknowledgement does not prove that turn has stopped.
+    if (learnerWaiters.get(sessionId)?.length || learnerCollectors.has(sessionId)) return;
+    learnerSessions.delete(sessionId);
+    if (!reverse.has(sessionId) && !tasksBySession.has(sessionId)) api.events.forget?.(sessionId);
+  }
+
   function invalidateSlangLearnerSession() {
     // 如果在途任务仍在使用旧会话，先保留 learnerSessions 以便事件继续被消费；
     // 没有等待/收集中的旧会话才从集合移除。
     const oldId = slangLearnerSessionId;
     slangLearnerSessionId = null;
-    if (oldId && !learnerWaiters.has(oldId) && !learnerCollectors.has(oldId)) {
-      learnerSessions.delete(oldId);
-    }
+    releaseRetiredLearnerIfIdle(oldId);
     try { fs.unlinkSync(SLANG_SESSION_FILE); } catch {}
   }
 
@@ -2182,7 +2189,7 @@ async function main() {
     });
     function cancel(error){
       const list=learnerWaiters.get(sessionId)||[],index=list.indexOf(waiter);
-      if(index<0)return;list.splice(index,1);if(!list.length)learnerWaiters.delete(sessionId);clearBridgeTimer(waiter.timer);waiter.reject(error);
+      if(index<0)return;list.splice(index,1);if(!list.length)learnerWaiters.delete(sessionId);clearBridgeTimer(waiter.timer);waiter.reject(error);releaseRetiredLearnerIfIdle(sessionId);
     }
     promise.cancel=cancel;return promise;
   }
@@ -5336,8 +5343,7 @@ async function main() {
           // larger than one response be read completely, even outside recent.
           const messages = afterSeq === null ? pending.slice(-limit)
             : pending.filter((m) => Number.isSafeInteger(m.seq) && m.seq > afterSeq).slice(0, limit);
-          const admission={};
-          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, messages, key, admission) : readThroughSeqV2(st);
+          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, messages, key) : readThroughSeqV2(st);
         if (req.headers['x-agent-token'] && Number.isSafeInteger(readThroughSeq)) st.lastWakeReadThroughSeq = readThroughSeq;
           sendJson({
             ok: true,
@@ -5348,7 +5354,7 @@ async function main() {
             firstPendingSeq: pending.length ? pending[0].seq : null,
             windowSize: pending.length,
             messages: messages.map((message) => ({ ...serializeUnreadMessageV2(message), receiptState: receiptStateV2(message) })),
-            readThroughSeq, ...admission
+            readThroughSeq
           });
           return;
         }
@@ -5365,10 +5371,9 @@ async function main() {
           const start = Math.max(0, recent.length - offset - limit);
           const end = Math.max(0, recent.length - offset);
           const messages = recent.slice(start, end);
-          const admission={};
-          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, messages, key, admission) : readThroughSeqV2(st);
+          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, messages, key) : readThroughSeqV2(st);
         if (req.headers['x-agent-token'] && Number.isSafeInteger(readThroughSeq)) st.lastWakeReadThroughSeq = readThroughSeq;
-          sendJson({ ok: true, key, messages: messages.map((message) => ({ ...message, receiptState: receiptStateV2(message) })), readThroughSeq, ...admission });
+          sendJson({ ok: true, key, messages: messages.map((message) => ({ ...message, receiptState: receiptStateV2(message) })), readThroughSeq });
           return;
         }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/reply-contents') {
@@ -7004,8 +7009,7 @@ async function main() {
           // `arrived` is recomputed against what this request may actually hand over,
           // so a suppressed buffer cannot report an arrival it is not allowed to show.
           const newMessages = replyWait ? pending : (arrived ? pending : []);
-          const admission={};
-          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, newMessages, key, admission) : readThroughSeqV2(st);
+          const readThroughSeq = req.headers['x-agent-token'] ? noteModelMessagesV2(st, newMessages, key) : readThroughSeqV2(st);
       if (req.headers['x-agent-token'] && Number.isSafeInteger(readThroughSeq)) st.lastWakeReadThroughSeq = readThroughSeq;
           const lastNew = newMessages.length ? newMessages[newMessages.length - 1]
             : replyWait ? [...modelView.recentMessages].reverse().find((m) => m && !m.isSelf) : null;
@@ -7034,7 +7038,7 @@ async function main() {
               : replyWait ? (quiet ? '已满足静默，按消息语义分别或合并回复。' : '尚未安静够；先判断现有消息是否需要回应。')
               : arrived ? '已收到新消息；需要确认是否说完时调用 qq_wait_for_quiet。' : verdict?.guidance || '本次不结束；再次调用 qq_wait_for_messages 等新来信。',
             newMessages,
-            readThroughSeq, ...admission,
+            readThroughSeq,
             unreadCount: modelView.unread.length
           });
           return;
@@ -7351,6 +7355,7 @@ async function main() {
               info = {
                 sender: String(found.sender || ''),
                 text: String(found.text || found.plain || ''),
+                ownPlain: String(found.plain ?? ''),
                 userId: found.userId ? String(found.userId) : null,
                 messageId: String(found.messageId),
                 seq: found.seq,
@@ -7361,7 +7366,7 @@ async function main() {
               info = await resolveReplyInfo(kind, id, found?.messageId||messageId,null,{includeReply:true,force:true});
               if (info && found) {
                 // Both buffers may contain distinct copies after deserialization.
-                for(const m of [...st.unread,...st.recentMessages])if(m.seq===found.seq)Object.assign(m,{text:info.text,bodyComplete:info.bodyComplete,unresolvedReplyIds:info.unresolvedReplyIds||[],omittedReplyIds:info.omittedReplyIds||[]});
+                for(const m of [...st.unread,...st.recentMessages])if(m.seq===found.seq)Object.assign(m,{text:info.text,plain:info.ownPlain,bodyComplete:info.bodyComplete,unresolvedReplyIds:info.unresolvedReplyIds||[],omittedReplyIds:info.omittedReplyIds||[]});
                 Object.assign(info,{messageId:found.messageId,seq:found.seq});
                 saveSocialV2State();
               } else if (found) {
@@ -12102,7 +12107,7 @@ async function main() {
         && wakeState.agentToken === wakeToken) {
       // Acceptance grants visibility, never acknowledgement. New arrivals and
       // rejected/stale deliveries must not be cleared by an old cursor.
-      noteModelMessagesV2(wakeState, [...wakeSnapshot.receiptWindow, ...wakeSnapshot.messages, ...wakeSnapshot.recent], key, undefined, envelope);
+      noteModelMessagesV2(wakeState, [...wakeSnapshot.receiptWindow, ...wakeSnapshot.messages, ...wakeSnapshot.recent], key, envelope);
       if (Number.isSafeInteger(wakeSnapshot.readThroughSeq)) wakeState.lastWakeReadThroughSeq = wakeSnapshot.readThroughSeq;
     }
     if (accepted.result.value.command?.text && !opts.silent && currentMode !== 'reserved2') {
@@ -12725,7 +12730,7 @@ async function main() {
     const localView=modelFacingStateV2(convKey(kind,convId));
     const retained=[...localView.unread,...localView.recentMessages].find(m=>m.messageId!=null&&String(m.messageId)===String(messageId)&&messageContentComplete(m)&&typeof m.plain==='string'&&m.plain.trim().length>0);
     if(retained)return {sender:String(retained.sender||''),userId:retained.userId!=null?String(retained.userId):null,
-      text:options.includeReply===true?String(retained.text||retained.plain):retained.plain,bodyComplete:true,
+      text:options.includeReply===true?String(retained.text||retained.plain):retained.plain,ownPlain:retained.plain,bodyComplete:true,
       unresolvedReplyIds:[],omittedReplyIds:options.includeReply===true?(retained.omittedReplyIds||[]):[]};
     pruneReplyInfoCache();
     const cacheKey = `${kind}:${String(convId)}:${String(messageId)}:${options.includeReply===true?'full':'quote'}`;
@@ -12799,6 +12804,7 @@ async function main() {
       const info = {
         sender: String(sender ?? ''),
         text: String(text ?? ''),
+        ownPlain: ownText,
         userId: senderUserId != null ? String(senderUserId) : null,
         bodyComplete,
         unresolvedReplyIds,
@@ -13409,7 +13415,7 @@ async function main() {
     return through;
   }
 
-  function noteModelMessagesV2(st, messages, key, admission, dispatchEnvelope) {
+  function noteModelMessagesV2(st, messages, key, dispatchEnvelope) {
     const taskEnvelope=dispatchEnvelope||activeTurnEnvelopes.get(state.sessions[key]);
     if(tokenBudgetOf(key).stage==='silent'){const allowed=paidTaskSourceSeqs(taskEnvelope);messages=messages.filter(message=>allowed.has(message.seq));}
     recordAdmittedMessages(taskEnvelope,messages);
@@ -13423,7 +13429,7 @@ async function main() {
       st.modelSeenSeqs.add(msg.seq);
       stampSeenAtV2(st, msg.seq, now);
     }
-    if(key){const envelope=dispatchEnvelope||activeTurnEnvelopes.get(state.sessions[key]);if(envelope&&!envelope.cancelled){const stage=tokenBudgetOf(key).stage,allow=stage==='normal';const grant=pluginHost.callService('replyPlan','forMessages',{key,actionId:envelope.actionId,currentPlan:envelope.replyPlan,baselineSeq:envelope.replyGrantThroughSeq||0,messages,mood:envelope.mood,reason:envelope.reason,taskSources:envelope.taskSources,canRenew:allow});if(grant?.changed){envelope.replyPlan=grant.plan;envelope.replyGrantThroughSeq=grant.throughSeq;if(admission)admission.replyBatch={renewed:true,id:grant.plan.turnId,throughSeq:grant.throughSeq};}}}
+    if(key){const envelope=dispatchEnvelope||activeTurnEnvelopes.get(state.sessions[key]);if(envelope&&!envelope.cancelled){const stage=tokenBudgetOf(key).stage,allow=stage==='normal';const grant=pluginHost.callService('replyPlan','forMessages',{key,actionId:envelope.actionId,currentPlan:envelope.replyPlan,baselineSeq:envelope.replyGrantThroughSeq||0,messages,mood:envelope.mood,reason:envelope.reason,taskSources:envelope.taskSources,canRenew:allow});if(grant?.changed){envelope.replyPlan=grant.plan;envelope.replyGrantThroughSeq=grant.throughSeq;}}}
     return readThroughSeqV2(st);
   }
 
@@ -15629,7 +15635,7 @@ async function main() {
                 }
               }
               // 旧学习会话 turn 结束后从集合移除，避免残留
-              if (frame.sessionId !== slangLearnerSessionId) learnerSessions.delete(frame.sessionId);
+              releaseRetiredLearnerIfIdle(frame.sessionId);
             }
           }
           continue;

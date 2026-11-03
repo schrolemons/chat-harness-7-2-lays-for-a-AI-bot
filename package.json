@@ -18,7 +18,7 @@
     "test:audit": "node scripts/test-audit.mjs",
     "test:token": "node scripts/test-token-economy.mjs && node scripts/test-reply-wait.mjs && node scripts/test-qq-model-view.mjs && node scripts/test-qq-preset-contract.mjs",
     "test:tokens": "node scripts/test-token-usage.mjs",
-    "test:budget": "node --test scripts/test-token-budget-mechanical.mjs scripts/test-budget-reply-stages.mjs scripts/test-global-budget-check.mjs && node scripts/test-token-budget.mjs",
+    "test:budget": "node --test scripts/test-token-budget-mechanical.mjs scripts/test-budget-reply-stages.mjs scripts/test-global-budget-check.mjs scripts/test-budget-reply-integration.mjs && node scripts/test-token-budget.mjs",
     "test:hardening": "node scripts/test-hardening.mjs",
     "test:reply-wait": "node scripts/test-reply-wait.mjs",
     "self-test": "node src/self-test.js",
@@ -188,6 +188,9 @@
   ],
   "qqBridge": {
     "testFiles": [
+      "scripts/test-learner-subscription-lifecycle.mjs",
+      "scripts/test-chat-regression-guards.mjs",
+      "scripts/test-budget-reply-integration.mjs",
       "scripts/test-token-budget-mechanical.mjs",
       "scripts/test-global-budget-check.mjs",
       "scripts/test-release.mjs",

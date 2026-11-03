@@ -22,9 +22,56 @@ test('client names before returning, removes local title argument, and archives 
   const create=async data=>{assert.equal('title' in data,false);return success({sessionId:'fixture-1'});};
   await createTitledSession(api,create,{agentPreset:'qq-task-worker',title:'任务 · 报表'});
   assert.equal(log[0][1].title,'任务 · 报表');
-  api.sessions.rename=async()=>{throw Error('unavailable');};
-  await assert.rejects(createTitledSession(api,create,{}),/空会话已归档/);
+  let renameAttempts=0;
+  api.sessions.rename=async()=>{renameAttempts++;throw Error('unavailable');};
+  await assert.rejects(createTitledSession(api,create,{title:'任务 · 命名失败'}),/空会话已归档/);
+  assert.equal(renameAttempts,1,'an explicit naming failure is reported after one rename attempt');
   assert.equal(log.at(-1)[0],'archive');
+});
+
+test('generic creates leave purpose naming to the native service without a redundant rename',async()=>{
+  for(const title of [undefined,'','  ','Untitled','New Chat','未命名']){
+    const client=new NodeApiClient('http://127.0.0.1:1',1000,{}),calls=[];
+    client.callUnary=async(method,data)=>{calls.push({method,data});return {result:{ok:true,value:{sessionId:'session-generic-fixture'}}};};
+    await client.sessions.create({agentPreset:'campus-summary',...(title===undefined?{}:{title})});
+    assert.deepEqual(calls.map(call=>call.method),['session.create'],'generic title '+String(title));
+    assert.equal('title' in calls[0].data,false,'local naming input must not leak into the DSH create request');
+  }
+});
+
+test('idempotent adoption preserves existing titles and never invokes rename or archive',async()=>{
+  for(const title of [undefined,'用户请求的另一标题']){
+    const calls=[],response={result:{ok:true,value:{sessionId:'session-adopt-fixture'}}};
+    const api={sessions:{rename:async()=>{calls.push('rename');throw Error('must not rename adopted sessions');}},workspace:{archiveSession:async()=>{calls.push('archive');}}};
+    const create=async data=>{assert.equal(data.sessionId,'session-adopt-fixture');assert.equal('title' in data,false);return response;};
+    assert.equal(await createTitledSession(api,create,{sessionId:'session-adopt-fixture',...(title===undefined?{}:{title})}),response);
+    assert.deepEqual(calls,[]);
+  }
+});
+
+function nativeTitleFixture(headerPreset,selectedPresets=[]){
+  const hooks={};
+  const session={id:'session-header-fixture',header:{cwd:'C:/native',agentPreset:headerPreset},events:selectedPresets.map(agentPreset=>({type:'agent-preset/selected',data:{agentPreset}}))};
+  const ctx={sessionTitle:{get:s=>s.title,rename(s,title){const eventSeq=s.events.length;s.events.push({type:'session/title',data:{title,messageSeqs:[],source:{kind:'user'}}});return s.title={title,messageSeqs:[],source:{kind:'user'},eventSeq};}},on:(event,fn)=>{hooks[event]=fn;}};
+  apply(ctx);hooks['session/created'](session);return session;
+}
+
+test('native purpose naming accepts the initial preset from the current session header',()=>{
+  const session=nativeTitleFixture('qq-learning');
+  assert.match(session.title?.title||'',/知识与黑话学习/);
+  assert.equal(session.title.source.kind,'user');assert.deepEqual(session.title.messageSeqs,[]);
+});
+
+test('the final selected preset overrides the initial header preset',()=>{
+  const session=nativeTitleFixture('qq-learning',['qq-chat','qq-task-worker']);
+  assert.match(session.title?.title||'',/独立任务/);assert.doesNotMatch(session.title.title,/知识与黑话学习/);
+});
+
+test('an explicitly empty preset selection never falls back to a managed header preset',()=>{
+  for(const selected of ['',null,undefined]){
+    const session=nativeTitleFixture('qq-learning',['qq-task-worker',selected]);
+    assert.equal(session.title,undefined,'a selected empty preset must supersede the header');
+  }
 });
 test('native fallback handles internal sessions and preserves user titles and ordinary native chat',()=>{
   const hooks={},renamed=[];

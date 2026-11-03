@@ -7,6 +7,13 @@ const billedEvent = (sessionId) => ({ sessionId, at: Date.now() - 10, model: 'de
   type: 'assistant/message', seq: 1, data: { turn: 1, step: 1, usage: { inputTokens: 1_000_000, outputTokens: 100 } }
 } });
 
+test('budget recovery describes silence without inventing a mechanical acknowledgement',()=>{
+ const plugin=createPlugin({config:{},state:{get:()=>({}),set:()=>{}}});
+ const prompt=plugin.services.tokenBudget.recoveryPrompt({key:'private:1',messages:[{id:'one',text:'question'}]});
+ assert.match(prompt,/静默期间未自动回复/);
+ assert.doesNotMatch(prompt,/机械回复仅表示收到/);
+});
+
 test('hard-exhausted arrivals stay silent and are deduplicated in recovery',()=>{
  let state={};const budget=createPlugin({config:{mechanicalPrivateReplies:['hard private'],mechanicalGroupReplies:['hard group']},state:{get:()=>state,set:p=>state={...state,...p}}}).services.tokenBudget;
  for(const kind of ['private','group'])for(let i=1;i<=4;i++)assert.equal(budget.onSilentIncoming({key:kind+':1',kind,messageId:String(i),atSelf:kind==='group',stage:'silent',periodStart:123,at:10000+i*20000}).text,null);

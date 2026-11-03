@@ -2,7 +2,7 @@
   "id": "life-token-budget",
   "name": "会话花费分级",
   "version": "0.4.2",
-  "description": "会话花费分级：冷漠私聊按可配置来信条数、群聊按间隔处理；硬上限每条触发限流的固定回复，通知直投。",
+  "description": "会话花费分级：冷漠私聊按可配置来信条数、群聊按间隔处理；普通聊天达到硬上限后静默，通知依原任务权限直投。",
   "layer": "O",
   "category": "令牌与花费",
   "order": 21,
@@ -43,7 +43,7 @@
     "mechanicalLimits": {
       "type": "object",
       "editable": false,
-      "description": "满额固定回复的独立防刷屏规则，由令牌与花费页面编辑。"
+      "description": "兼容保留的历史固定回复限流配置；普通聊天达到硬上限后不发送固定回复。"
     },
     "privateWakeEveryMessages": {
       "type": "number",
