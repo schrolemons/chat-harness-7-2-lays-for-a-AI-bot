@@ -31,7 +31,7 @@ export async function browserHostFixture(t) {
     if(req.url.startsWith('/fixture.js')) {res.writeHead(200,{'content-type':'application/javascript'}).end(script);return;}
     if(new URL(req.url,'http://fixture').pathname!=='/') {res.writeHead(404).end();return;}
     if(!ctx.connection.authorizeIndex(req,res))return;
-    res.writeHead(200,{'content-type':'text/html'}).end(ctx.webServer.renderIndex(`<!doctype html><html><head><meta charset="utf-8"><title>Synthetic launcher fixture</title></head><body style="margin:0;background:#f2f5f8;font:14px system-ui;color:#273449"><div data-windows-menu style="position:fixed;left:0;top:0;width:120px;height:40px;display:flex;align-items:center;gap:12px;background:#e8edf4">应用　编辑</div><main style="padding:110px 24px"><h1>双实例启动器合成验收</h1><p>隔离测试预览 · 未安装到用户 DSH · 无真实 QQ / 模型调用</p><aside style="position:fixed;bottom:0;left:0;right:0;padding:4px;background:#e8eef5;font-size:11px;z-index:1300;text-align:center">合成测试预览 · 未安装到用户 DSH</aside><div id="external">普通 DSH 插件区域（保留）</div></main><script src="fixture.js"></script></body></html>`));
+    res.writeHead(200,{'content-type':'text/html'}).end(ctx.webServer.renderIndex(`<!doctype html><html><head><meta charset="utf-8"><title>Synthetic launcher fixture</title></head><body style="margin:0;background:#f2f5f8;font:14px system-ui;color:#273449"><main style="padding:110px 24px"><h1>双实例启动器合成验收</h1><p>隔离测试预览 · 未安装到用户 DSH · 无真实 QQ / 模型调用</p><aside style="position:fixed;bottom:0;left:0;right:0;padding:4px;background:#e8eef5;font-size:11px;z-index:1300;text-align:center">合成测试预览 · 未安装到用户 DSH</aside><div id="external">普通 DSH 插件区域（保留）</div></main><script src="fixture.js"></script></body></html>`));
   });
   const origin=ctx.webServer.getOrigin();
   async function freePort(){const s=http.createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
@@ -72,6 +72,23 @@ test('real pinned native Connection serves authenticated live discovery and synt
  await page.waitForSelector('#qq-launcher-b-button');await b.handle.ready;
  assert.deepEqual(await page.evaluate(()=>Object.keys(window.__qqBotInstances)),['a'],'live B did not come from mutating the HTML snapshot');
  assert.equal(await page.evaluate(()=>window.savedA===document.getElementById('qq-launcher-a-button')),true);
+ assert.equal(await page.$eval('[data-qq-bot-launchers]',node=>node.style.top),'8px');
+ await page.evaluate(()=>{
+  window.savedLateB=document.getElementById('qq-launcher-b-button');window.fixtureResizeCount=0;
+  window.addEventListener('resize',()=>window.fixtureResizeCount++);
+  // Installed preload waits for shell-overlay before appending this shadow host.
+  const overlay=document.createElement('div');overlay.dataset.shellOverlay='';document.body.append(overlay);
+  const host=document.createElement('div');host.dataset.windowsMenu='';const shadow=host.attachShadow({mode:'open'});
+  shadow.innerHTML='<style>:host{position:fixed;top:0;left:var(--dsh-windows-menu-start,48px);height:var(--dsh-windows-titlebar-height,40px);display:flex;align-items:center;z-index:1100;font-family:system-ui;-webkit-app-region:no-drag}[role=menubar]{display:flex;gap:2px}button{height:28px;padding:0 10px;border:0;font:14px system-ui;background:transparent}</style><div role="menubar"><button>应用</button><button>编辑</button></div>';
+  document.body.append(host);
+ });
+ const followsMenu=()=>{const menu=document.querySelector('[data-windows-menu]').getBoundingClientRect(),bar=document.querySelector('[data-qq-bot-launchers]').getBoundingClientRect();return Math.abs(bar.left-Math.round(menu.right+6))<1&&bar.top===0&&bar.height===40;};
+ await page.waitForFunction(followsMenu,{timeout:6500});
+ assert.equal(await page.evaluate(()=>window.fixtureResizeCount),0,'late menu placement must not require resize');
+ await page.evaluate(()=>document.documentElement.style.setProperty('--dsh-windows-menu-start','32px'));
+ await page.waitForFunction(followsMenu,{timeout:6500});
+ assert.equal(await page.evaluate(()=>window.savedLateB===document.getElementById('qq-launcher-b-button')&&window.savedA===document.getElementById('qq-launcher-a-button')),true);
+ assert.equal(await page.evaluate(()=>window.fixtureResizeCount),0,'geometry changes must not require resize');
  await page.click('#qq-launcher-a-button');await page.waitForFunction(()=>document.getElementById('qq-launcher-a-button').title.includes('连接状态待确认'));
  assert.deepEqual(f.events,['a:start']);
  await page.click('#qq-launcher-a-settings');await page.waitForFunction(()=>!document.getElementById('qq-launcher-a-settings-save').disabled);
@@ -79,8 +96,8 @@ test('real pinned native Connection serves authenticated live discovery and synt
  await page.click('#qq-launcher-a-settings-save');await page.waitForFunction(()=>document.getElementById('qq-launcher-a-settings-message').textContent.includes('已保存'));
  assert.equal(new URL(a.handle.address()).port,String(nextPort));
  const screenshotDir=path.join(repo,'.superpowers/sdd/PLUGIN_WIRING_PLAN/task-6-artifacts');await fs.mkdir(screenshotDir,{recursive:true});
- await page.screenshot({path:path.join(screenshotDir,'dual-instance-settings-wide.png')});
- await page.setViewport({width:390,height:844});await page.screenshot({path:path.join(screenshotDir,'dual-instance-settings-narrow.png')});
+ await page.screenshot({path:path.join(screenshotDir,'dual-instance-settings-wide-fix1.png')});
+ await page.setViewport({width:390,height:844});await page.screenshot({path:path.join(screenshotDir,'dual-instance-settings-narrow-fix1.png')});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
  assert.equal(await page.evaluate(()=>{const menu=document.querySelector('[data-windows-menu]').getBoundingClientRect(), bar=document.querySelector('[data-qq-bot-launchers]').getBoundingClientRect();return bar.top>=0&&bar.bottom<=menu.bottom&&bar.left>=menu.right&&bar.right<=innerWidth-140;}),true,'narrow controls stay in the real 40px titlebar lane');
  await page.reload();await page.waitForSelector('#qq-launcher-b-button');await page.waitForSelector('#qq-launcher-a-button');

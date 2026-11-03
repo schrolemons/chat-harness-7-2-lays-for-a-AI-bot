@@ -36,6 +36,9 @@ window.__ModuleLoader__.load({
         const anchored = rect?.width > 0, left = anchored ? Math.round(rect.right + 6) : 12, right = anchored ? 140 : 12;
         const available = Math.max(0, window.innerWidth - left - right);
         const compact = available < state.mounts.size * 390;
+        const placement = [left, right, anchored ? 0 : 8, anchored ? rect.height || 40 : 32, available, state.mounts.size].join(':');
+        if (state.placement === placement) return;
+        state.placement = placement;
         Object.assign(el.style, { left: left + 'px', right: right + 'px', top: anchored ? '0px' : '8px',
           height: anchored ? (rect.height || 40) + 'px' : '32px', minWidth: '0' });
         for (const layout of state.layouts) layout({ compact, available, count: Math.max(1, state.mounts.size) });
@@ -155,7 +158,11 @@ window.__ModuleLoader__.load({
         if (data.needsRestart) main.title += '；配置需重启后应用';
       }
       async function poll() {
-        if (disposed || controlBusy || settingsSaving) return;
+        if (disposed) return;
+        // Preload may append or reposition the native menu after client mount.
+        // Reuse UI polling, including while requests/settings are busy.
+        shared.place();
+        if (controlBusy || settingsSaving) return;
         if (!await refresh()) return;
         try { renderStatus(await request('/status')); }
         catch (error) { if (!disposed && current && !error.stale) paint('状态不可用'); }

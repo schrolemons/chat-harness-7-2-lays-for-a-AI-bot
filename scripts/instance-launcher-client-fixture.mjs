@@ -16,7 +16,9 @@ export async function clientFixture(t) {
       set id(value) { nodes.set(value, this); }, get id() { return [...nodes].find(([, n]) => n === this)?.[0]; } };
     return node;
   }
-  const body = element(), document = { body, documentElement: element(), createElement: element, querySelector: () => null };
+  let menubar = null;
+  const body = element(), document = { body, documentElement: element(), createElement: element,
+    querySelector: selector => selector === '[data-windows-menu]' ? menubar : null };
   const registry = {}, statuses = {}, configs = {}, pending = new Map(); let api;
   const window = { innerWidth: 1200, __qqBotInstances: { poison: { serviceUrl: 'http://127.0.0.1:3199' } },
     __ModuleLoader__: { load(mod) { api = mod.factory(() => ({})); } }, open: (...args) => opened.push(args),
@@ -57,6 +59,8 @@ export async function clientFixture(t) {
   const mount = (id) => { const s = scope(); const dispose = api.mountBotLauncher(s.ctx, { instanceId: id, clientModuleId: registry[id].clientModuleId, label: registry[id].label }); t.after(dispose); return { ...s, dispose }; };
   const click = async (id, action) => { await nodes.get('qq-launcher-' + id + '-' + action).handlers.click(); await flush(); };
   const submit = async id => { await nodes.get('qq-launcher-' + id + '-settings-form').handlers.submit({ preventDefault() {} }); await flush(); };
+  function insertMenu(rect) { menubar = element(); menubar.dataset.windowsMenu = ''; menubar.getBoundingClientRect = () => rect; body.append(menubar); return menubar; }
   return { api, window, registry, configs, statuses, nodes, body, timers, events, requests, opened, pending, discovery, add, mount, click, submit, flush,
+    insertMenu,
     async tick() { await Promise.all([...timers].map(x => x.fn())); await flush(); } };
 }

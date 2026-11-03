@@ -88,3 +88,15 @@ test('an initially unavailable native RPC retries fresh discovery without HTML f
   const p=await clientFixture(t);p.add('a',4199);p.discovery.read=async()=>{throw Error('native channel pending');};p.mount('a');await p.flush();assert.equal(p.requests.length,0);
   p.discovery.read=async()=>({ok:true,value:structuredClone(p.registry)});await p.tick();await p.click('a','button');assert.equal(p.requests.filter(x=>x.url.endsWith('/start')).length,1);
 });
+
+test('late native menu and geometry changes reposition existing A/B without resize or new timers',async t=>{
+  const p=await clientFixture(t);p.add('a',4199);p.add('b',5199);const a=p.mount('a'),b=p.mount('b');await p.flush();
+  const shared=p.body.children[0],bNode=p.nodes.get('qq-launcher-b-button');
+  assert.equal(shared.style.left,'12px');assert.equal(shared.style.top,'8px');assert.equal(p.timers.size,2);
+  const rect={right:168,width:120,height:40};p.insertMenu(rect);await p.tick();
+  assert.equal(shared.style.left,'174px');assert.equal(shared.style.top,'0px');assert.equal(shared.style.height,'40px');
+  rect.right=184;await p.tick();assert.equal(shared.style.left,'190px');
+  assert.equal(p.nodes.get('qq-launcher-b-button'),bNode);assert.equal(p.timers.size,2);assert.equal(p.events.get('resize').size,1);
+  a.dispose();assert.equal(p.nodes.get('qq-launcher-b-button'),bNode);assert.equal(p.body.children.includes(shared),true);assert.equal(p.timers.size,1);
+  b.dispose();assert.equal(p.body.children.includes(shared),false);assert.equal(p.body.children.length,1);assert.equal(p.timers.size,0);assert.equal(p.events.get('resize').size,0);
+});
