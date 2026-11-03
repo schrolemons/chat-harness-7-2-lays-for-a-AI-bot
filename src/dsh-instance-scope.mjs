@@ -71,7 +71,14 @@ export async function createInstanceScope(ctx, { instanceId, root, label = insta
       createHostImport(ctx, hostImport)('@deepseek-ai/cordis-plugin-loader'),
     ]);
     scope = scopeApi.createScope(ctx, state.key);
-    ownScope?.(scope.rawDispose);
+    // Hand off observation before eager preset registration can fail and roll
+    // back. This grants no activation capability or ownership of the root claim.
+    const ownership = Object.freeze({
+      ctx: scope.ctx,
+      ownsContext(context) { return scopeApi.scopeChainOf(scopeApi.scopeOf(context)).includes(state.key); },
+      get disposing() { return closing; },
+    });
+    ownScope?.(scope.rawDispose, ownership);
     wrapperName = `qq-instance-${randomUUID()}`;
     wrapper = createInstancePresetWrapper({ ...loaderApi, ...scopeApi }, {
       state, retain: () => retained++, release: () => { retained--; cleanBuiltin(); },
@@ -87,7 +94,7 @@ export async function createInstanceScope(ctx, { instanceId, root, label = insta
     if (!ownScope) ctx.effect(() => dispose, 'bot-instance.scope');
     return {
       ctx: scope.ctx, presetMap: Object.freeze(presetMap),
-      ownsContext(context) { return scopeApi.scopeChainOf(scopeApi.scopeOf(context)).includes(state.key); },
+      ownsContext: ownership.ownsContext,
       activate() {
         if (closing || state.active !== token) throw new Error('Instance is disposed');
         state.enabled = true;

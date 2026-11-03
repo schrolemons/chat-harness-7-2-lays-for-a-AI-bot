@@ -198,6 +198,38 @@ test('registry-owned preset generation cleanup errors retain their logical insta
   await assert.rejects(claimInstanceRoot(f.owner, value), /INSTANCE_CONFLICT/);
 });
 
+for (const dirtyRollback of [true, false]) test(`scope construction conflict ${dirtyRollback ? 'retains the claim on native cleanup failure' : 'releases the claim after clean rollback'}`, async t => {
+  const f = await fixture(t), value = await f.descriptor(dirtyRollback ? 'construction-dirty' : 'construction-clean');
+  let externalDisposed = 0, instanceDisposed = 0;
+  f.owner.loader.builtins['fixture-external-preset'] = { apply() { return () => { externalDisposed++; }; } };
+  f.owner.loader.builtins['fixture-construction-cleanup'] = { apply() { return () => {
+    instanceDisposed++;
+    f.owner.logger.error(Error('unrelated construction rollback error'));
+    if (dirtyRollback) throw Error('synthetic construction rollback failure');
+  }; } };
+  const external = { id: 'external-conflict', name: 'External preset', plugins: [{ id: 'external', name: 'cordis:fixture-external-preset' }] };
+  const unregisterExternal = await f.owner.agentPresets.register(external);
+  const before = await f.owner.agentPresets.list();
+  const { controller } = await f.mount({ ...value, presetIdMap: { second: external.id } }, { loadDefinitions: async () => [
+    { id: 'first', plugins: [{ id: 'owned', name: 'cordis:fixture-construction-cleanup' }] },
+    { id: 'second', plugins: [] },
+  ] });
+  await assert.rejects(controller.ready, dirtyRollback ? /readiness and rollback failed/ : /Duplicate agent preset/);
+  assert.equal(instanceDisposed, 1, 'the first preset must be activated and rolled back before construction rejects');
+  assert.deepEqual(await f.owner.agentPresets.list(), before);
+  assert.equal(externalDisposed, 0, 'external conflicting definition and generation remain untouched');
+  if (dirtyRollback) {
+    await assert.rejects(controller.dispose(), error => error instanceof AggregateError && error.errors.some(item => /synthetic construction rollback failure/.test(item.message)));
+    assert.equal(controller.status.state, 'failed');
+    await assert.rejects(claimInstanceRoot(f.owner, value), /INSTANCE_CONFLICT/);
+  } else {
+    await controller.dispose();
+    assert.equal(controller.status.cleanupError, null);
+    await (await claimInstanceRoot(f.owner, value))();
+  }
+  await unregisterExternal(); assert.equal(externalDisposed, 1);
+});
+
 test('native cleanup observations ignore external failures and keep the guard closed before runtime stop', async t => {
   const f = await fixture(t), value = await f.descriptor('ordered'), events = [];
   let old;

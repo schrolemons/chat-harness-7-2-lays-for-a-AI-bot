@@ -15,7 +15,7 @@ export async function mountInstanceController(ctx, descriptor, deps = {}) {
   const ownerFiber = ctx.fiber;
   const hostImport = createHostImport(ctx, deps.hostImport);
   const status = { state: 'initializing', error: null, cleanupError: null };
-  let rootClaim, scope, runtime, launcher, closing = false, setup, disposal, cleanupTask, runtimeTask = Promise.resolve(), setupCleanupError;
+  let rootClaim, scope, scopeOwnership, runtime, launcher, closing = false, setup, disposal, cleanupTask, runtimeTask = Promise.resolve(), setupCleanupError;
   let cleanupMonitoring = false;
   const cleanupLogs = [];
   let cancel;
@@ -59,19 +59,19 @@ export async function mountInstanceController(ctx, descriptor, deps = {}) {
   // pinned MCP host also reports uncertain startup rollback as a structured
   // error before ready rejects; retain that specific uncertainty across cleanup.
   const removeExporter = ctx.logger.exporter({ levels: { default: 0 }, export(message) {
-    if (message.type !== 'error' || !scope) return;
+    if (message.type !== 'error' || !scopeOwnership) return;
     const uncertainClose = message.args.some(value => typeof value === 'string' &&
       /transport closure could not be confirmed|failed generation could not confirm transport closure/.test(value));
-    if (!cleanupMonitoring && !uncertainClose) return;
+    if (!cleanupMonitoring && !scopeOwnership.disposing && !uncertainClose) return;
     let fiber = message.fiber?.deref();
     // Preset generations are physically owned by the native registry. Their
     // public logical scope parent still proves this instance's exact ownership.
-    if (fiber && scope.ownsContext(fiber.ctx)) {
+    if (fiber && scopeOwnership.ownsContext(fiber.ctx)) {
       cleanupLogs.push(...message.args.map(value => value instanceof Error ? value : Error(String(value))));
       return;
     }
     while (fiber) {
-      if (fiber === scope.ctx.fiber) {
+      if (fiber === scopeOwnership.ctx.fiber) {
         cleanupLogs.push(...message.args.map(value => value instanceof Error ? value : Error(String(value))));
         return;
       }
@@ -86,7 +86,8 @@ export async function mountInstanceController(ctx, descriptor, deps = {}) {
     rootClaim = await claimInstanceRoot(ctx, descriptor); check();
     const definitions = await (deps.loadDefinitions || loadInstanceDefinitions)(descriptor.root, hostImport); check();
     scope = await createInstanceScope(ctx, { ...descriptor, definitions, rootClaim, hostImport,
-      ownScope(rawDispose) {
+      ownScope(rawDispose, ownership) {
+        scopeOwnership = ownership;
         // Native effect collection removes rawDispose from the parallel disposer
         // list. Reverse yield order waits for controller teardown before the child.
         ctx.effect(function* () { yield rawDispose; yield dispose; }, 'bot-instance.ordered-scope');
