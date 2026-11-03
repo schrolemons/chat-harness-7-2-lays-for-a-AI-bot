@@ -41,7 +41,10 @@ test('empty local configuration and two installations preserve a separate DSH pr
   fs.mkdirSync(profile,{recursive:true});fs.writeFileSync(path.join(profile,'package.json'),JSON.stringify({name:'test-profile',private:true,dsh:{profile:{bundles:[]}}}));fs.writeFileSync(path.join(profile,'cordis.patch.yml'),'- insert:\n    - id: keep-existing\n      name: example-existing\n');
   for(let i=0;i<2;i++){const result=spawnSync(process.execPath,['scripts/install.mjs','--profile','desktop'],{cwd:root,encoding:'utf8',windowsHide:true,env:{...process.env,DSH_HOME:home}});assert.equal(result.status,0,result.stderr||result.stdout);}
   const doc=yaml.load(fs.readFileSync(path.join(profile,'cordis.patch.yml'),'utf8')),bundled=yaml.load(fs.readFileSync(path.join(root,'cordis.patch.yml'),'utf8')),entries=[...doc,...bundled].flatMap(row=>row.insert||[]),ids=entries.map(e=>e.id);
-  assert.ok(ids.includes('keep-existing'));for(const id of ['qq-launcher','mcp-snowluma','mcp-snowluma-host','mcp-web-search-safe','mcp-playwright','mcp-bridge-health','mcp-personal-core','preset-campus-summary'])assert.equal(ids.filter(value=>value===id).length,1,id);assert(!ids.includes('mcp-reference-data-private-phi'));
+  const bundlePackage=JSON.parse(fs.readFileSync(path.join(root,'package.json')));
+  assert.ok(ids.includes('keep-existing'));assert.equal(ids.filter(id=>id===bundlePackage.qqBridge.instance.entryId).length,1);
+  assert.deepEqual(bundled,[{insert:[{id:bundlePackage.qqBridge.instance.entryId,name:bundlePackage.name,config:{}}]}]);
+  assert.ok(!ids.some(id=>id.startsWith('mcp-')||id.startsWith('preset-')));
   for(const e of entries){for(const arg of e.config?.args||[])if(path.isAbsolute(arg)&&/\.(?:mjs|js)$/.test(arg))assert.ok(fs.existsSync(arg),e.id+' missing entry');}
   for(const name of ['qq-bridge'])assert.ok(fs.realpathSync(path.join(profile,'node_modules',name)).startsWith(root));
   const pkg=JSON.parse(fs.readFileSync(path.join(profile,'package.json')));assert.equal(new Set(pkg.dsh.profile.bundles).size,pkg.dsh.profile.bundles.length);

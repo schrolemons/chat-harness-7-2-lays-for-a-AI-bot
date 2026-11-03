@@ -191,6 +191,10 @@
     "release-edition.json"
   ],
   "qqBridge": {
+    "instance": {
+      "entryId": "bot-mode",
+      "settingsNamespace": "bot-mode"
+    },
     "testFiles": [
       "scripts/test-knowledge-quota-ingress.mjs",
       "scripts/test-chat-regression-guards.mjs",

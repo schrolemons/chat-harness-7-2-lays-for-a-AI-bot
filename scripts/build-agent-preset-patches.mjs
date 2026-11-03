@@ -26,6 +26,7 @@ export const REPO_ROOT = path.resolve(__dirname, '..');
 
 /** 由桥接托管的 preset（顺序即 patch 层顺序）。 */
 export const PRESETS = ['qq-chat', 'qq-chat-v2', 'qq-admin', 'qq-task-worker', 'qq-learning'];
+export const INSTANCE_PRESETS = Object.freeze([...PRESETS, 'campus-summary']);
 
 /** preset 行 id：与 config.id（桥接解析的 preset 名）区分开，方便在 profile patch 里按行定位。 */
 export function presetRowId(name) {

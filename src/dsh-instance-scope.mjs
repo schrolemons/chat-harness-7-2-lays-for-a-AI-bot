@@ -1,21 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { createInstancePresetWrapper } from './dsh-instance-preset.mjs';
 import { claimInstanceRoot, claimScopeRoot, instanceRootForClaim } from './instance-descriptor.mjs';
+import { createHostImport } from './dsh-host-import.mjs';
 
 const instancesKey = Symbol.for('qq-bridge.dsh-instance-scopes.v1');
-
-/** Resolve through the live host loader; the loader.import second argument is NOT a URL. */
-async function importHost(ctx, name, hostImport) {
-  const loader = ctx.loader;
-  const baseUrl = ctx.root.baseUrl || loader.config?.baseUrl || loader.ctx?.baseUrl;
-  if (hostImport) return hostImport(name, baseUrl);
-  if (loader.internal?.import) {
-    if (!baseUrl) throw new Error('The active DSH host loader has no host baseUrl');
-    return loader.internal.import(name, baseUrl, {});
-  }
-  if (typeof loader.import === 'function') return loader.import(name);
-  throw new Error('The active DSH host loader cannot import runtime modules');
-}
 
 /**
  * Own only an instance scope and its preset registrations. No profile/session/data writes.
@@ -26,7 +14,7 @@ async function importHost(ctx, name, hostImport) {
  * Disabling closes retained agents before disposing tools; a later activation of the same
  * instance ID and directory restores their stable scope parent and shared guard state.
  */
-export async function createInstanceScope(ctx, { instanceId, root, label = instanceId, definitions = [], presetIdMap = {}, hostImport, rootClaim, dshHome, profile, bundleName } = {}) {
+export async function createInstanceScope(ctx, { instanceId, root, label = instanceId, definitions = [], presetIdMap = {}, hostImport, rootClaim, dshHome, profile, bundleName, ownScope } = {}) {
   if (typeof instanceId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(instanceId)) throw new Error('Invalid instanceId');
   if (!Array.isArray(definitions)) throw new Error('Preset definitions must be an array');
   const presetMap = Object.create(null);
@@ -79,10 +67,11 @@ export async function createInstanceScope(ctx, { instanceId, root, label = insta
   try {
     if (!builtins) throw new Error('The active DSH host loader has no builtins registry');
     const [scopeApi, loaderApi] = await Promise.all([
-      importHost(ctx, '@deepseek-ai/dsh-scope', hostImport),
-      importHost(ctx, '@deepseek-ai/cordis-plugin-loader', hostImport),
+      createHostImport(ctx, hostImport)('@deepseek-ai/dsh-scope'),
+      createHostImport(ctx, hostImport)('@deepseek-ai/cordis-plugin-loader'),
     ]);
     scope = scopeApi.createScope(ctx, state.key);
+    ownScope?.(scope.rawDispose);
     wrapperName = `qq-instance-${randomUUID()}`;
     wrapper = createInstancePresetWrapper({ ...loaderApi, ...scopeApi }, {
       state, retain: () => retained++, release: () => { retained--; cleanBuiltin(); },
@@ -95,17 +84,19 @@ export async function createInstanceScope(ctx, { instanceId, root, label = insta
         plugins: [{ id: 'instance', name: `cordis:${wrapperName}`, config: { plugins } }],
       }));
     }
-    ctx.effect(() => dispose, 'bot-instance.scope');
+    if (!ownScope) ctx.effect(() => dispose, 'bot-instance.scope');
     return {
       ctx: scope.ctx, presetMap: Object.freeze(presetMap),
+      ownsContext(context) { return scopeApi.scopeChainOf(scopeApi.scopeOf(context)).includes(state.key); },
       activate() {
         if (closing || state.active !== token) throw new Error('Instance is disposed');
         state.enabled = true;
       },
+      deactivate() { if (state.active === token) state.enabled = false; },
       dispose,
     };
   } catch (error) {
-    try { await dispose(); } catch (cleanupError) { throw new AggregateError([error, cleanupError], 'Instance setup and rollback failed'); }
+    try { await dispose(); } catch (cleanupError) { throw Object.assign(new AggregateError([error, cleanupError], 'Instance setup and rollback failed'), { cleanupError }); }
     throw error;
   }
 }
