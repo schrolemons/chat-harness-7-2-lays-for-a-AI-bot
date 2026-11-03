@@ -67,6 +67,8 @@ fresh 安装还记录 `node_modules` 的实际创建文件哈希、目录和链�
 
 清理 plan、完整 receipt 快照和逐项 journal 保存在 manifest 指定 DSH home 的 `bot-instances/cleanup/<installationId>/`，位于实例根外。中断重试只核验同一计划的已完成项及已记 intent 的精确路径，不补扫认领新目标；遗留 mutex、丢失 owner 能力或新出现的文件需要人工审查。现有 Git 源码、linked worktree、未知备份和 `preserve` 数据继续保留。新安装根也只有在文件清单、创建收据和当前 CAS 全部相符时才移除。
 
+明确标记 `preserve` 的子文件/目录优先于 owned 父目录展开；若清理会删除它、其内容或必要父目录，整个计划拒绝执行。保留开发者代码根仍允许清理另行证明归属的工作数据。Snow marker 只证明记录的资产及其必要父目录，未知空目录不被认领；运行后生成但未取得对应生产者所有权收据的 `config/onebot_*.json` 等也保留并拒绝卸载。该运行数据收据缺口需单独完成集成验证，不能仅按路径名称补充归属。
+
 ## 发布与支持边界
 
 现有 CI 执行源码测试和 privacy check；唯一打包入口复用 `npm pack`：

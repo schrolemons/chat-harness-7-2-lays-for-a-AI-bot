@@ -9,6 +9,7 @@ import {sha256,rowHash} from '../src/instance-cleanup-files.mjs';
 import {DatabaseSync} from 'node:sqlite';
 import {zstdCompressSync,zstdDecompressSync} from 'node:zlib';
 import {zstdFrameEnd} from './recover-session-title-metadata.mjs';
+import {appendInstallationEvidence} from '../src/instance-manifest.mjs';
 async function nativePlan(f){
  // Fixture owner explicitly quiesces before the read-only planner. Refusal remains a plan conflict.
  try{await f.stoppedSnapshot();}catch{}
@@ -184,6 +185,40 @@ test('developer Git source, metadata and unknown backups are preserved while exp
  const receipt=await executeInstanceCleanup(plan,{expectedManifestHash:plan.manifestHash,sessionStoreAdapter:f.adapter});assert.equal(receipt.status,'complete',JSON.stringify(receipt.conflicts));
  for(const name of ['.git','entry.mjs','.qq-bridge-instance.json','.qq-bridge-instance-manifest.json','unknown-backup.txt'])assert(await fs.stat(path.join(f.root,name)));
  await assert.rejects(fs.stat(path.join(f.root,'state')),{code:'ENOENT'});
+});
+
+for(const kind of ['file','directory','empty-directory','code-file','dependency-file','external-junction'])test(`I1 explicit preserve ${kind} vetoes parent expansion before any cleanup`,async t=>{
+ const f=await cleanupFixture(t);let target=path.join(f.root,'state','retained'),contents;
+ if(kind==='code-file')target=path.join(f.root,'entry.mjs');
+ else if(kind==='dependency-file')target=path.join(f.root,'node_modules','example','index.js');
+ else if(kind==='directory'||kind==='empty-directory'){await fs.mkdir(target);if(kind==='directory'){contents=path.join(target,'nested.txt');await fs.writeFile(contents,'preserved nested bytes');}}
+ else if(kind==='external-junction'){const external=path.join(f.dir,'external-preserved');await fs.mkdir(external);contents=path.join(external,'private.txt');await fs.writeFile(contents,'external synthetic bytes');await fs.symlink(external,target,process.platform==='win32'?'junction':'dir');}
+ else await fs.writeFile(target,'preserved file bytes');
+ if(['file','code-file','dependency-file'].includes(kind))contents=target;
+ const before=contents?await fs.readFile(contents):null;
+ await appendInstallationEvidence(f.root,{profileEntries:[],links:[],paths:[{path:target,kind:'data',source:'verified-legacy',cleanup:'preserve',sha256:sha256(before||'explicit preserved directory')} ]});
+ const plan=await nativePlan(f);assert(plan.conflicts.length,kind);assert.deepEqual(plan.paths,[]);
+ const receipt=await executeInstanceCleanup(plan,{expectedManifestHash:plan.manifestHash,sessionStoreAdapter:f.adapter});assert.equal(receipt.status,'conflict');
+ assert(await fs.lstat(target));if(contents)assert.deepEqual(await fs.readFile(contents),before);
+ for(const record of f.records)assert(await fs.stat(record.path));assert(await fs.stat(path.join(f.root,'config.json')));assert(await fs.stat(path.join(f.root,'entry.mjs')));
+});
+
+for(const nested of [false,true])test(`I2 marker-only Snow rejects unknown empty directory ${nested?'inside known parents':'at root'}`,async t=>{
+ const f=await cleanupFixture(t,{nestedSnowAsset:nested}),snow=path.join(f.root,'managed-dependencies','synthetic-snow'),unknown=path.join(snow,...(nested?['native','sqlite']:[]),'operator-empty-dir');await fs.mkdir(unknown);
+ const plan=await nativePlan(f);assert(plan.conflicts.some(c=>c.code==='UNKNOWN_DESCENDANT'));assert.deepEqual(plan.paths,[]);
+ const receipt=await executeInstanceCleanup(plan,{expectedManifestHash:plan.manifestHash,sessionStoreAdapter:f.adapter});assert.equal(receipt.status,'conflict');assert((await fs.stat(unknown)).isDirectory());assert(await fs.stat(f.records[0].path));assert(await fs.stat(path.join(f.root,'entry.mjs')));
+});
+
+test('I2 marker asset parents are proven directories and still clean successfully',async t=>{
+ const f=await cleanupFixture(t,{nestedSnowAsset:true}),snow=path.join(f.root,'managed-dependencies','synthetic-snow'),plan=await nativePlan(f);assert.deepEqual(plan.conflicts,[]);
+ for(const directory of ['native','native/sqlite','native/sqlite/prebuilds'])assert(plan.paths.some(op=>op.kind==='rmdir'&&op.path===path.join(snow,directory)));
+ const receipt=await executeInstanceCleanup(plan,{expectedManifestHash:plan.manifestHash,sessionStoreAdapter:f.adapter});assert.equal(receipt.status,'complete',JSON.stringify(receipt.conflicts));await assert.rejects(fs.stat(f.root),{code:'ENOENT'});
+});
+
+test('I2 does not adopt runtime-named Snow config without a producer receipt',async t=>{
+ const f=await cleanupFixture(t),file=path.join(f.root,'managed-dependencies','synthetic-snow','config','onebot_123456.json');await fs.mkdir(path.dirname(file));await fs.writeFile(file,'{"synthetic":"preserve"}');
+ const plan=await nativePlan(f);assert(plan.conflicts.some(c=>c.code==='DEPENDENCY_INVENTORY_CHANGED'));assert.deepEqual(plan.paths,[]);
+ const receipt=await executeInstanceCleanup(plan,{expectedManifestHash:plan.manifestHash,sessionStoreAdapter:f.adapter});assert.equal(receipt.status,'conflict');assert.equal(await fs.readFile(file,'utf8'),'{"synthetic":"preserve"}');assert(await fs.stat(f.records[0].path));
 });
 
 test('new unlisted code descendant after planning blocks all mutation',async t=>{

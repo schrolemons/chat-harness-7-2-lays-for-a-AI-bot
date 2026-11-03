@@ -31,12 +31,23 @@ const resolved=(root,relative)=>{if(typeof relative!=='string'||path.isAbsolute(
 /** Resolve only existing receipt inventories. Mutable state gets a stopped-writer CAS snapshot. */
 export async function prepareFileCleanup(manifest) {
  const operations=[],preserve=[],root=manifest.root,approved=new Map(),dirs=new Set();
+ const protectedPaths=manifest.paths.filter(row=>row.cleanup!=='owned'&&typeof row.path==='string'&&path.isAbsolute(row.path));
+ const assertRemovable=file=>{
+  for(const row of protectedPaths){
+   // A preserved developer code root remains a container for separately owned working data.
+   // It must itself survive; other preserve declarations protect their entire subtree/ancestors.
+   const codeContainer=row.kind==='code'&&samePath(row.path,root);
+   if(samePath(file,row.path)||within(file,row.path)||(!codeContainer&&within(row.path,file)))throw cleanupError('PRESERVED_PATH_OVERLAP',row.path);
+  }
+ };
+ const addDirectory=directory=>{assertRemovable(directory);dirs.add(directory);};
  const addFile=async(file,phase,hash,link=false)=>{
+  assertRemovable(file);
   const before=await state(file,{link});if(before.kind==='missing')throw cleanupError('OWNED_PATH_MISSING',file);
   if(hash&&before.sha256!==hash)throw cleanupError('PATH_CHANGED',file);
   const old=approved.get(file);if(old&&rowHash(old.before)!==rowHash(before))throw cleanupError('PATH_CONFLICT');
   if(!old)approved.set(file,{kind:'remove',path:file,before,phase});
-  for(let d=path.dirname(file);within(root,d);d=path.dirname(d))dirs.add(d);
+  for(let d=path.dirname(file);within(root,d);d=path.dirname(d))addDirectory(d);
  };
  const code=manifest.paths.find(r=>r.kind==='code'&&r.cleanup==='owned');
  if(code) {
@@ -76,11 +87,17 @@ export async function prepareFileCleanup(manifest) {
   if(!row.mutable) {
    const normalize=v=>({files:[...v.files].sort((a,b)=>a.path.localeCompare(b.path)),links:(v.links||[]).map(({path,target})=>({path,target})).sort((a,b)=>a.path.localeCompare(b.path))});
    if(rowHash(normalize(inventory))!==rowHash(normalize(expected)))throw cleanupError('DEPENDENCY_INVENTORY_CHANGED');
-   if(expected.directories&&rowHash([...inventory.directories].sort())!==rowHash([...expected.directories].sort()))throw cleanupError('UNKNOWN_DESCENDANT');
+   // Marker-only immutable assets prove their exact parent directories, never arbitrary empty
+   // siblings observed today. Full installer inventories may additionally prove empty directories.
+   const provenDirectories=new Set(expected.directories||[]);
+   if(!expected.directories)for(const entry of [...expected.files,...(expected.links||[])]){
+    for(let d=path.dirname(resolved(row.path,entry.path));within(row.path,d);d=path.dirname(d))provenDirectories.add(path.relative(row.path,d).replaceAll('\\','/'));
+   }
+   if(rowHash([...inventory.directories].sort())!==rowHash([...provenDirectories].sort()))throw cleanupError('UNKNOWN_DESCENDANT');
   }
   for(const f of inventory.files)await addFile(resolved(row.path,f.path),row.kind,f.sha256);
   for(const link of inventory.links)await addFile(resolved(row.path,link.path),row.kind,undefined,true);
-  for(const d of inventory.directories)dirs.add(resolved(row.path,d));dirs.add(row.path);
+  for(const d of inventory.directories)addDirectory(resolved(row.path,d));addDirectory(row.path);
  }
  if(code) {
   const actual=await tree(root);
@@ -117,5 +134,6 @@ export async function prepareFileCleanup(manifest) {
  for(const phase of ['data','dependency']){const indices=operations.map((op,i)=>op.phase===phase?i:-1).filter(i=>i>=0),ordered=indices.map(i=>operations[i]).sort((a,b)=>(a.before.kind==='link'?0:1)-(b.before.kind==='link'?0:1));indices.forEach((v,i)=>operations[v]=ordered[i]);}
  for(const d of [...dirs].sort((a,b)=>b.length-a.length))operations.push({kind:'rmdir',path:d,before:{kind:'directory'},phase:'code'});
  if(code)operations.push({kind:'rmdir',path:root,before:{kind:'directory'},phase:'code'});
+ for(const op of operations)if(op.kind!=='write')assertRemovable(op.path);
  return {operations,preserve};
 }

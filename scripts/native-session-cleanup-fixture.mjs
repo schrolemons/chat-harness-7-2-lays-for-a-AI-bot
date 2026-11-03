@@ -15,7 +15,7 @@ import {createOfflineSessionStoreAdapter} from '../src/instance-session-cleanup.
 import {sha256,rowHash,tree,cleanupError} from '../src/instance-cleanup-files.mjs';
 import {SNOW_RELEASE} from './install-managed-snow.mjs';
 const worker=fileURLToPath(new URL('./native-session-cleanup-worker.mjs',import.meta.url));
-export async function cleanupFixture(t,{shared=false,compression='none'}={}) {
+export async function cleanupFixture(t,{shared=false,compression='none',nestedSnowAsset=false}={}) {
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'instance-cleanup-')),home=path.join(dir,'home');await fs.mkdir(home);
  const root=path.join(dir,'alpha'),beta=path.join(dir,'beta');await fs.mkdir(root);await fs.mkdir(beta);
  const children=new Set(),records=[],ownerToken=randomUUID();let frozen=false,unknown=false,host,snapshot,serial=0;
@@ -45,7 +45,9 @@ export async function cleanupFixture(t,{shared=false,compression='none'}={}) {
  await fs.symlink(path.join(root,'node_modules','example'),path.join(root,'node_modules','example-link'),process.platform==='win32'?'junction':'dir');
  const snow=path.join(root,'managed-dependencies','synthetic-snow'),snowFile=path.join(snow,'.qq-bridge-managed.json');
  await write(path.join(snow,'index.mjs'),'export const fixture=true;');await write(path.join(snow,'node.exe'),'Synthetic non-executable fixture bytes');
- await write(snowFile,{version:1,kind:'snowluma',instanceId:'alpha',entry:'index.mjs',runtime:'node.exe',artifact:SNOW_RELEASE,files:{'index.mjs':sha256(await fs.readFile(path.join(snow,'index.mjs'))),'node.exe':sha256(await fs.readFile(path.join(snow,'node.exe')))},patches:[]});
+ const snowFiles={'index.mjs':sha256(await fs.readFile(path.join(snow,'index.mjs'))),'node.exe':sha256(await fs.readFile(path.join(snow,'node.exe')))};
+ if(nestedSnowAsset){const name='native/sqlite/prebuilds/synthetic.node';await write(path.join(snow,name),'Synthetic non-executable asset');snowFiles[name]=sha256(await fs.readFile(path.join(snow,name)));}
+ await write(snowFile,{version:1,kind:'snowluma',instanceId:'alpha',entry:'index.mjs',runtime:'node.exe',artifact:SNOW_RELEASE,files:snowFiles,patches:[]});
  const profile=path.join(home,'profiles','fixture');await write(path.join(profile,'package.json'),{dependencies:{'synthetic-alpha':'link:'+root.replaceAll('\\','/'),'unrelated':'1.0.0'},dsh:{profile:{bundles:['unrelated','synthetic-alpha']}}});
  const row={id:'alpha-mode',name:'synthetic-alpha',config:{enabled:false}},patch=path.join(profile,'cordis.patch.yml');
  await write(patch,'# Keep unrelated comment\n- insert:\n    - id: unrelated\n      name: unrelated\n    - id: alpha-mode\n      name: synthetic-alpha\n      config:\n        enabled: false\n');
