@@ -1,5 +1,35 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {createRequire} from 'node:module';import {fileURLToPath} from 'node:url';import yaml from 'js-yaml';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {createRequire} from 'node:module';import {fileURLToPath,pathToFileURL} from 'node:url';import {spawnSync} from 'node:child_process';import yaml from 'js-yaml';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+
+test('bundled MCP wrapper mounts and disposes its child through the real Cordis lifecycle',async()=>{
+ const {Context}=await import('@deepseek-ai/cordis');
+ const wrapper=await import('../dsh-mcp-entry.mjs');
+ const ctx=new Context();let mounted=0,disposed=0;
+ const child={name:'fixture-mcp',apply(){mounted++;return ()=>{disposed++;};}};
+ ctx.provide('loader',{import:async()=>({default:child}),unwrapExports:m=>m.default});
+ const parent=ctx.plugin(wrapper,{serverName:'snowluma'});
+ try{await parent;assert.equal(parent.state,2,'wrapper must remain active after mounting its child');assert.equal(mounted,1);}
+ finally{await parent.dispose();await ctx.fiber.dispose();}
+ assert.equal(disposed,1,'the child must be disposed with the wrapper');
+});
+
+test('Playwright MCP launches with dependencies hoisted beside the installed bundle',async t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'qq-hoisted-mcp-'));
+ t.after(()=>{assert.equal(path.dirname(dir),os.tmpdir());assert(path.basename(dir).startsWith('qq-hoisted-mcp-'));fs.rmSync(dir,{recursive:true,force:true});});
+ const bundle=path.join(dir,'node_modules/qq-bridge');
+ fs.mkdirSync(path.join(bundle,'scripts'),{recursive:true});
+ fs.writeFileSync(path.join(bundle,'package.json'),'{"type":"module"}');
+ fs.copyFileSync(path.join(root,'dsh-mcp-entry.mjs'),path.join(bundle,'dsh-mcp-entry.mjs'));
+ fs.copyFileSync(path.join(root,'scripts/browser-mcp-config.mjs'),path.join(bundle,'scripts/browser-mcp-config.mjs'));
+ fs.mkdirSync(path.join(dir,'node_modules/@playwright'),{recursive:true});
+ fs.symlinkSync(fs.realpathSync(path.join(root,'node_modules/@playwright/mcp')),path.join(dir,'node_modules/@playwright/mcp'),process.platform==='win32'?'junction':'dir');
+ const {apply}=await import(pathToFileURL(path.join(bundle,'dsh-mcp-entry.mjs')));
+ let transport;
+ await apply({loader:{import:async()=>({}),unwrapExports:m=>m},plugin:(_,config)=>{transport=config;}},{serverName:'playwright'});
+ assert.ok(fs.existsSync(transport.args[0]),'hoisted dependency must resolve outside the bundle');
+ const result=spawnSync(transport.command,[transport.args[0],'--version'],{encoding:'utf8',windowsHide:true});
+ assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/\d+\.\d+/);
+});
 test('installing the root DSH bundle registers every bridge-owned preset without the manual installer',async()=>{
  const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json')));
  assert.ok(pkg.dsh?.bundle?.patch,'root must be a DSH installable bundle');
@@ -12,6 +42,8 @@ test('installing the root DSH bundle registers every bridge-owned preset without
  for(const id of ['qq-mode','qq-launcher','mcp-snowluma','mcp-snowluma-host','mcp-web-search-safe','mcp-playwright','mcp-games','mcp-bridge-health','mcp-personal-core'])assert.ok(rows.some(r=>r.id===id),id);
 });
 test('the shipped bundle and browser entry are deterministic generated artifacts',async()=>{
+ const {buildDshClient}=await import('./build-dsh-client.mjs');
+ assert.equal((await buildDshClient({check:true})).changed,false,'bundled protocol client must match its build inputs');
  const {buildDshBundle}=await import('./build-dsh-bundle.mjs');
  assert.ok(buildDshBundle({check:true}).every(r=>!r.changed));
  const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'))),client=fs.readFileSync(path.join(root,pkg.exports['./client']),'utf8');
@@ -27,6 +59,6 @@ test('first DSH load creates safe local config once and keeps existing private c
 test('bundled MCP entries derive local entrypoints and mount through the DSH loader with scoped disposal',async()=>{
  const {apply}=await import('../dsh-mcp-entry.mjs');const calls=[],fakePlugin={apply(){}};
  const ctx={loader:{import:async(name,parent)=>{assert.equal(name,'@deepseek-ai/dsh-mcp-client');assert.ok(parent.startsWith('file:'));return {default:fakePlugin};},unwrapExports:m=>m.default},plugin:(p,c)=>{calls.push({p,c});return 'scoped-child';}};
- const result=await apply(ctx,{serverName:'snowluma'});assert.equal(result,'scoped-child');assert.equal(calls.length,1);assert.equal(calls[0].c.serverName,'snowluma');assert.ok(fs.existsSync(calls[0].c.args[0]));assert.ok(path.isAbsolute(calls[0].c.command));
+ const result=await apply(ctx,{serverName:'snowluma'});assert.equal(result,undefined);assert.equal(calls.length,1);assert.equal(calls[0].c.serverName,'snowluma');assert.ok(fs.existsSync(calls[0].c.args[0]));assert.ok(path.isAbsolute(calls[0].c.command));
  await assert.rejects(apply(ctx,{serverName:'arbitrary-script'}),/Unknown bundled MCP/);
 });

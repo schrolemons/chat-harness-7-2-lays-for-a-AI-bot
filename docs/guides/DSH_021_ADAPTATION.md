@@ -53,7 +53,8 @@ Codex / Claude Code 改为按需安装，两个老工具名改判为「可选项
 > 顺带记录：`src/dsh-client.js` 的传输层仍钉在 `@deepseek-ai/dsh-host-apiproxy@0.1.1-rc.2`
 > （`NodeApiClient extends AbstractApiClient`）。它**仍然讲得通 0.2.1 的线协议**——
 > 上面所有断言都是它的实测结果。这是唯一一个版本滞后的依赖，每次升级都要靠
-> `verify:adaptation` 盯住，不能假设它一直兼容。
+> `verify:adaptation` 盯住，不能假设它一直兼容。自 v0.3.2 起，纯客户端生成到
+> `src/vendor/dsh-api-client.mjs`，旧包仅为开发依赖；发行安装不会引入其旧版宿主核心库。
 
 ---
 

@@ -15,7 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import YAML from 'js-yaml';
-import { AbstractApiClient } from '@deepseek-ai/dsh-host-apiproxy/client';
+import { AbstractApiClient } from './vendor/dsh-api-client.mjs';
 
 /** DSH home：凭据文件与（历史）启动日志都在这里。 */
 export function resolveDshHome() {
@@ -600,7 +600,7 @@ export class NodeApiClient extends AbstractApiClient {
   /**
    * 覆写 unary RPC：适配 DSH 0.1.2 起、0.1.5 仍沿用的斜杠 endpoint 和 { args } 包装，
    * 并且只解析最外层信封，不依赖官方包的 value schema
-   * （桥接依赖的 @deepseek-ai/dsh-host-apiproxy 是独立的旧版客户端包，DSH 升级不影响它）。
+   * （已将旧版纯客户端打包为本地模块，不向 DSH profile 安装旧宿主依赖）。
    * 注意：新版基类里 callUnary 是 protected/private，这里用同名 public 方法覆写即可，
    * 业务侧一律走桥接自己的 sessions/workspace/settings 门面，不依赖基类的域方法。
    */

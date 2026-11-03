@@ -1,6 +1,6 @@
 {
   "name": "qq-bridge",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "license": "MIT",
   "description": "Bridge between SnowLuma (OneBot v11 / QQ) and DeepSeek Harness Web API: QQ messages become DSH agent prompts, agent replies go back to QQ. Targets the DSH Cookie-auth / slash-RPC / remote.mux protocol generation, so it deliberately names no DSH version here.",
@@ -116,6 +116,7 @@
     "test:context-display": "node --test scripts/test-context-deliveries.mjs scripts/test-context-navigation.mjs scripts/test-context-processing.mjs scripts/test-context-timeline.mjs scripts/test-context-message-windows.mjs scripts/test-context-output-flow.mjs && node scripts/test-context-card-families-ui.mjs && node scripts/test-context-message-windows-ui.mjs && node scripts/test-context-console.mjs",
     "test:context-limits-ui": "node scripts/test-context-limits-console.mjs",
     "build:bundle": "node scripts/build-dsh-bundle.mjs",
+    "build:client": "node scripts/build-dsh-client.mjs",
     "test:distribution": "node --test scripts/test-dsh-distribution.mjs",
     "setup": "node scripts/install.mjs",
     "configure": "node scripts/configure.mjs",
@@ -128,7 +129,6 @@
     "test:admin-permissions": "node --test scripts/test-admin-environment-permissions.mjs scripts/test-admin-preset-permissions.mjs scripts/test-admin-private-boundary.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-host-apiproxy": "0.1.1-rc.2",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@playwright/mcp": "^0.0.83",
@@ -141,6 +141,7 @@
     "acorn": "^8.19.0"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-host-apiproxy": "0.1.1-rc.2",
     "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
     "globals": "^17.13.0"
@@ -286,6 +287,7 @@
       "scripts/test-admin-preset-permissions.mjs",
       "scripts/test-preset-save-sync.mjs",
       "scripts/test-state-acl.mjs",
+      "scripts/test-snowluma-sdk.mjs",
       "scripts/test-admin-dev-component.mjs",
       "scripts/test-agent-preset-patches.mjs",
       "scripts/test-console-component-contract.mjs",
