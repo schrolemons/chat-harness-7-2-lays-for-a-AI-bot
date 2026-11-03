@@ -37,7 +37,7 @@ async function containedPath(parent, target) {
 /** The installer, never this module, creates this marker. Every listed file is
  * hash-checked, including mandatory entry + runtime binaries. No vendor/home
  * discovery, copying, downloading or adoption occurs here. */
-async function managedSnow(root, snowHome, instanceId) {
+export async function verifyManagedSnow(root, snowHome, instanceId) {
   const managed = path.join(root, 'managed-dependencies');
   if (typeof snowHome !== 'string' || !path.isAbsolute(snowHome) || !within(managed, snowHome)) {
     throw fail('MANAGED_DEPENDENCY_REQUIRED', '未安装本实例专属 SnowLuma 依赖；请先由受管安装器创建并验证副本');
@@ -275,7 +275,7 @@ export function createInstanceRuntime(options = {}) {
         const loaded = await load();
         selected = loaded.selected;
         if (!selected.botUin) throw fail('BOT_QQ_REQUIRED', '请先明确配置本实例机器人 QQ；不会自动启动 QQ 客户端');
-        const snow = await managedSnow(root, snowHome, instanceId);
+        const snow = await verifyManagedSnow(root, snowHome, instanceId);
         const bridge = path.join(root, 'src', 'bridge.js');
         const bootstrap = path.join(root, 'scripts', 'snow-bootstrap.mjs');
         await regular(bridge); await regular(bootstrap); await fs.access(nodePath);

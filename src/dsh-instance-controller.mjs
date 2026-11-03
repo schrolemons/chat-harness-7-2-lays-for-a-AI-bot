@@ -16,20 +16,20 @@ export async function mountInstanceController(ctx, descriptor, deps = {}) {
   const ownerFiber = ctx.fiber;
   const hostImport = createHostImport(ctx, deps.hostImport);
   const status = { state: 'initializing', error: null, cleanupError: null };
-  let rootClaim, scope, scopeOwnership, runtime, launcher, closing = false, setup, disposal, cleanupTask, runtimeTask = Promise.resolve(), setupCleanupError;
+  let rootClaim, scope, scopeOwnership, runtime, launcher, closing = false, setup, disposal, cleanupTask, runtimeTask = Promise.resolve(), setupCleanupError, runtimeStopError;
   let cleanupMonitoring = false;
   const cleanupLogs = [];
   let cancel;
   const aborted = new Promise((_, reject) => { cancel = () => reject(fail('BOT_INSTANCE_DISPOSED')); });
   const check = () => { if (closing) throw fail('BOT_INSTANCE_DISPOSED'); };
-  const close = () => { closing = true; scope?.deactivate(); cancel(); };
+  const close = () => { closing = true; scope?.deactivate(); launcher?.closeAdmission?.(); cancel(); };
   const cleanup = () => cleanupTask ??= (async () => {
     scope?.deactivate();
     cleanupMonitoring = true;
     const errors = setupCleanupError ? [setupCleanupError] : [];
     const attempt = async action => { try { await action(); } catch (error) { errors.push(error); } };
     await attempt(() => runtimeTask);
-    await attempt(() => runtime?.stop());
+    await attempt(() => runtime?.dispose ? runtime.dispose() : runtime?.stop());
     await attempt(() => scope?.dispose());
     await attempt(() => launcher?.dispose());
     await attempt(() => removeExporter());
@@ -104,7 +104,7 @@ export async function mountInstanceController(ctx, descriptor, deps = {}) {
     };
     runtime = await deps.createRuntime?.({ ctx: scope.ctx, descriptor, config: deps.config, presetMap:scope.presetMap, recordCreatedSession }); check();
     for (const serverName of Object.keys(BUNDLED_MCP)) {
-      await (deps.mountMcp || mountBundledMcp)(scope.ctx, { root: descriptor.root, serverName, nodePath: deps.config?.nodePath, env: deps.env, hostImport }); check();
+      await (deps.mountMcp || mountBundledMcp)(scope.ctx, { root: descriptor.root, serverName, nodePath: deps.nodePath || deps.config?.nodePath, env: deps.env, hostImport }); check();
     }
     for (const id of Object.values(scope.presetMap)) {
       const definition = await ctx.agentPresets.resolve(id); check();
@@ -116,7 +116,8 @@ export async function mountInstanceController(ctx, descriptor, deps = {}) {
       await scope.ctx.plugin(ctx.loader.unwrapExports(titles), { presetIds: Object.values(scope.presetMap), presetIdMap: scope.presetMap });
     }
     check();
-    launcher = await deps.mountLauncher?.({ ctx: scope.ctx, descriptor, config: deps.config, controller }); check();
+    launcher = await deps.mountLauncher?.({ ctx: scope.ctx, descriptor, config: deps.config, controller, runtime }); check();
+    await launcher?.ready; check();
     scope.activate(); status.state = 'ready';
   })();
   const readyWork = setup.catch(async error => {
@@ -128,15 +129,15 @@ export async function mountInstanceController(ctx, descriptor, deps = {}) {
   const ready = Promise.race([readyWork, aborted]);
   ready.catch(() => {}); // Observe without changing the public rejection.
   const controller = {
-    ready, status,
+    ready, status, runtimeStatus: () => runtime?.status?.(), launcherAddress: () => launcher?.address(),
     start() {
       if (closing || status.state !== 'ready') return Promise.reject(fail('BOT_INSTANCE_NOT_READY'));
       if (!runtime?.start) return Promise.reject(fail('BOT_INSTANCE_RUNTIME_UNAVAILABLE'));
-      const task = runtimeTask.then(() => { check(); return runtime.start(); });
+      const task = runtimeTask.then(() => { check(); if(runtimeStopError || runtime.status?.().uncertain)throw fail('BOT_INSTANCE_STOP_UNCERTAIN'); return runtime.start(); });
       runtimeTask = task.catch(() => {});
       return task;
     },
-    stop() { const task = runtimeTask.then(() => runtime?.stop()); runtimeTask = task.catch(() => {}); return task; },
+    stop() { const task = runtimeTask.then(async () => { check(); try { const result=await runtime?.stop(); runtimeStopError=null; return result; } catch(error) { runtimeStopError=error; throw error; } }); runtimeTask = task.catch(() => {}); return task; },
     dispose,
   };
   return controller;

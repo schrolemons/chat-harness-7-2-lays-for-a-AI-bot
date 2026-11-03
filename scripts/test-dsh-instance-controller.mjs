@@ -8,6 +8,7 @@ import test from 'node:test';
 import { createRequire } from 'node:module';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
+import crypto from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { initializeManifest } from '../src/instance-manifest.mjs';
 import { claimInstanceRoot } from '../src/instance-descriptor.mjs';
@@ -143,6 +144,29 @@ test('cleanup failure stays failed and preserves root claim rather than reportin
   await assert.rejects(claimInstanceRoot(f.owner, value), /INSTANCE_CONFLICT/);
 });
 
+test('root disposal closes launcher admission before runtime dispose and still revokes scope after runtime uncertainty', async t => {
+  const f=await fixture(t), value=await f.descriptor('owned-disposal'), events=[];
+  const {controller}=await f.mount(value,{
+    createRuntime:()=>({start:async()=>{},stop:async()=>{throw Error('must use dispose');},dispose:async()=>{events.push('runtime-dispose');throw Error('uncertain owned teardown');}}),
+    mountMcp:async ctx=>{await ctx.plugin({apply(){return()=>events.push('scope-dispose');}});},
+    mountLauncher:()=>({ready:Promise.resolve(),closeAdmission:()=>events.push('admission-closed'),dispose:async()=>events.push('launcher-dispose')}),
+  });
+  await controller.ready; const old=await f.agent('owned-disposal:chat');
+  await assert.rejects(controller.dispose(),AggregateError);
+  assert.deepEqual(events.slice(0,2),['admission-closed','runtime-dispose']); assert.equal(events.at(-1),'launcher-dispose');
+  assert.equal(events.filter(x=>x==='scope-dispose').length,7); assert.equal((await f.run(old)).isError,true);
+  await assert.rejects(claimInstanceRoot(f.owner,value),/INSTANCE_CONFLICT/);
+  await assert.rejects(controller.dispose(),AggregateError);assert.equal(events.filter(x=>x==='runtime-dispose').length,1);
+});
+
+test('controller start remains blocked after stop rejection until an explicit successful owned stop', async t => {
+  const f=await fixture(t),value=await f.descriptor('stop-latch');let starts=0,fail=true;
+  const {controller}=await f.mount(value,{createRuntime:()=>({start:async()=>{starts++;},stop:async()=>{if(fail)throw Error('uncertain stop');}})});
+  await controller.ready; await controller.start(); await assert.rejects(controller.stop(),/uncertain stop/);
+  await assert.rejects(controller.start(),/STOP_UNCERTAIN/);assert.equal(starts,1);
+  fail=false;await controller.stop();await controller.start();assert.equal(starts,2);
+});
+
 test('definition loader preserves native expressions and only rewrites local plugin names', async () => {
   const { loadInstanceDefinitions } = await import('../src/dsh-instance-definitions.mjs');
   const actual = await loadInstanceDefinitions(repo, hostImport);
@@ -256,7 +280,7 @@ test('native loader root entry exposes controller readiness without holding acti
   const module = await import('../dsh-entry.mjs'), { EntryTree } = await hostImport('@deepseek-ai/cordis-plugin-loader');
   const gate = deferred(), entered = deferred(); let controller;
   f.owner.loader.builtins['fixture-root'] = { Config: module.Config, inject: ['loader', 'tools', 'agentPresets'], apply(ctx, config) {
-    return module.apply(ctx, config, { hostImport, loadDefinitions: async () => structuredClone(definitions), mountTitles: async () => {},
+    return module.apply(ctx, config, { hostImport, createRuntime: null, mountLauncher: null, loadDefinitions: async () => structuredClone(definitions), mountTitles: async () => {},
       mountMcp: async (scope, { serverName }) => { if (serverName === 'snowluma') { entered.resolve(); await gate.promise; } await f.connect(scope, value.instanceId, serverName); },
       onController: handle => { controller = handle; },
     });
@@ -271,6 +295,60 @@ test('native loader root entry exposes controller readiness without holding acti
   await entry.update({ ...entry.options, disabled: true }); await tree.await();
   assert.equal(controller.status.state, 'disposed');
   assert.ok(!(await f.owner.agentPresets.list()).some(row => row.id === 'native-entry:chat'));
+});
+
+test('native root default factories own real synthetic services, seven MCPs, logs and disable without deleting data', {timeout:60000}, async t => {
+  const f=await fixture(t), value=await f.descriptor('production-entry');
+  const {OWNED_PRESET_SOURCES}=await import('../src/instance-session-policy.mjs');
+  const {BUNDLED_MCP}=await import('../dsh-mcp-entry.mjs');
+  const {EntryTree}=await hostImport('@deepseek-ai/cordis-plugin-loader');
+  const module=await import('../dsh-entry.mjs');
+  await fs.writeFile(path.join(value.root,'package.json'),JSON.stringify({name:value.bundleName,type:'module'}));
+  const mcp=`import readline from 'node:readline';const lines=readline.createInterface({input:process.stdin});lines.on('line',line=>{const q=JSON.parse(line);if(q.id===undefined)return;let result={};if(q.method==='initialize')result={protocolVersion:q.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'synthetic',version:'1'}};if(q.method==='tools/list')result={tools:[{name:'probe',description:'synthetic',inputSchema:{type:'object'}}]};if(q.method==='tools/call')result={content:[{type:'text',text:JSON.stringify({pid:process.pid,entry:process.argv[1],executable:process.execPath})}]};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,result})+'\\n');});`;
+  for(const file of Object.values(BUNDLED_MCP)){const target=path.join(value.root,file);await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,mcp);}
+  await fs.writeFile(path.join(value.root,'node_modules/@playwright/mcp/package.json'),JSON.stringify({name:'@playwright/mcp',type:'module',exports:{'./package.json':'./package.json'}}));
+  const snowHome=path.join(value.root,'managed-dependencies','synthetic-snow');await fs.mkdir(snowHome,{recursive:true});
+  const nodeFile=path.join(snowHome,path.basename(process.execPath));await fs.copyFile(process.execPath,nodeFile);
+  const snow=`console.log('Synthetic WebUI initial credentials: LOCAL-ONLY');console.error('Synthetic gateway startup diagnostic');process.on('message',m=>{if(m==='shutdown')process.exit(0)});setInterval(()=>{},1000);`;
+  await fs.writeFile(path.join(snowHome,'index.mjs'),snow);
+  const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
+  await fs.writeFile(path.join(snowHome,'.qq-bridge-managed.json'),JSON.stringify({version:1,kind:'snowluma',instanceId:value.instanceId,entry:'index.mjs',runtime:path.basename(nodeFile),files:{'index.mjs':digest(snow),[path.basename(nodeFile)]:digest(await fs.readFile(nodeFile))}}));
+  await fs.mkdir(path.join(value.root,'scripts'),{recursive:true});await fs.writeFile(path.join(value.root,'scripts/snow-bootstrap.mjs'),'// synthetic preload');
+  await fs.writeFile(path.join(value.root,'src/bridge.js'),`console.log('Synthetic bridge startup',process.execPath);process.on('message',m=>{if(m.type==='qq-bridge:shutdown')process.exit(0)});setInterval(()=>{},1000);`);
+  const sockets=[];
+  for(let i=0;i<6;i++){const server=http.createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));sockets.push(server);}
+  const ports=Object.fromEntries(['dsh','console','snowHttp','snowWs','launcher','snowWebui'].map((key,i)=>[key,sockets[i].address().port]));
+  // Leave the shared DSH target listening; runtime must not claim or rebind it.
+  for(const server of sockets.slice(1))await new Promise(resolve=>server.close(resolve));
+  t.after(()=>new Promise(resolve=>sockets[0].close(resolve)));
+  const config={launcher:{ports},snowluma:{botUin:'123456789'},consolePort:ports.console};
+  await fs.writeFile(path.join(value.root,'config.json'),JSON.stringify(config));
+  await fs.writeFile(path.join(value.root,'preserved-history'),'synthetic existing history');
+  let controller;
+  f.owner.loader.builtins['fixture-production-root']={Config:module.Config,inject:['loader','tools','agentPresets'],apply(ctx,config){return module.apply(ctx,config,{hostImport,
+    loadDefinitions:async()=>OWNED_PRESET_SOURCES.map(id=>({id,name:id,plugins:[]})),mountTitles:async()=>{},onController:handle=>{controller=handle;}});}};
+  const tree=new EntryTree(f.owner);
+  await tree.root.update([{id:value.entryId,name:'cordis:fixture-production-root',config:{root:value.root,snowHome,nodePath:''}}]);await tree.await();await controller.ready;
+  assert.equal(typeof controller.launcherAddress(),'string','production root must mount its default owned launcher');
+  const status=async()=>await(await fetch(controller.launcherAddress()+'/status')).json();
+  const post=async route=>{const identity=await status();const response=await fetch(controller.launcherAddress()+route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({instanceId:identity.instanceId,generation:identity.generation}),signal:AbortSignal.timeout(20000)});return {http:response.status,...await response.json()};};
+  assert.equal((await status()).runtime.state,'stopped');await assert.rejects(fs.access(path.join(snowHome,'config')),{code:'ENOENT'});
+  const started=await post('/start');assert.equal(started.http,200);assert.equal(started.readiness,'unverified');assert.equal(started.runtime.children.length,2);
+  const servicePids=started.runtime.children.map(child=>child.pid);await post('/start');assert.deepEqual((await status()).runtime.children.map(child=>child.pid),servicePids);
+  const original=controller,entry=tree.resolve(value.entryId);
+  await entry.update({...entry.options,config:{...entry.options.config,mode:'simulation',ownerQQ:'12345'}});await tree.await();
+  assert.equal(controller,original);assert.deepEqual((await status()).runtime.children.map(child=>child.pid),servicePids);
+  const agent=await f.agent('production-entry:qq-chat'),mcpPids=[];
+  for(const serverName of names){const result=await f.run(agent,serverName);assert.equal(result.isError,false);const actual=JSON.parse(result.content[0].text);mcpPids.push(actual.pid);assert.equal(actual.executable,await fs.realpath(nodeFile));}
+  const log=await fs.readFile(path.join(value.root,'state/runtime-logs/snow.log'),'utf8');assert.match(log,/Synthetic WebUI initial credentials: LOCAL-ONLY/);assert.match(log,/Synthetic gateway startup diagnostic/);
+  const bridgeLog=await fs.readFile(path.join(value.root,'state/runtime-logs/bridge.log'),'utf8');assert.match(bridgeLog,/Synthetic bridge startup/);assert.ok(bridgeLog.includes(await fs.realpath(nodeFile)));
+  const oldAddress=controller.launcherAddress();await tree.resolve(value.entryId).update({...tree.resolve(value.entryId).options,disabled:true});await tree.await();
+  assert.equal(controller.status.state,'disposed');assert.equal(controller.runtimeStatus().state,'disposed');
+  for(const pid of [...servicePids,...mcpPids])assert.throws(()=>process.kill(pid,0),{code:'ESRCH'});
+  await assert.rejects(fetch(oldAddress+'/status',{signal:AbortSignal.timeout(1000)}));
+  assert.equal(await fs.readFile(path.join(value.root,'preserved-history'),'utf8'),'synthetic existing history');
+  assert.equal(sockets[0].listening,true);assert.ok(!(await f.owner.agentPresets.list()).some(row=>row.id.startsWith('production-entry:')));
+  await (await claimInstanceRoot(f.owner,value))();
 });
 
 test('default adapter launches seven synthetic stdio scripts bound to the descriptor root', async t => {
@@ -406,7 +484,7 @@ test('real profile settings persist distinct namespaces with volatile refs and s
  const profileContext={name:'fixture',dir:profile,patchPath,installAnchor:hostPackage,cwd:profile,home:path.join(f.base,'home'),startedBundles:[],overlays:[]};
  await f.root.plugin({apply(ctx){ctx.provide('profileContext',profileContext);}});await f.root.plugin(ConfigEditor);await f.root.plugin(Settings);
  const controls=new Map(),starts=new Map();
- f.root.loader.builtins['fixture-settings-root']={Config:module.Config,inject:['loader','tools','agentPresets'],apply(ctx,config){starts.set(config.root,(starts.get(config.root)||0)+1);return module.apply(ctx,config,{hostImport,loadDefinitions:async()=>structuredClone(definitions),mountTitles:async()=>{},mountMcp:async()=>{},onController:handle=>controls.set(config.root,handle)});}};
+ f.root.loader.builtins['fixture-settings-root']={Config:module.Config,inject:['loader','tools','agentPresets'],apply(ctx,config){starts.set(config.root,(starts.get(config.root)||0)+1);return module.apply(ctx,config,{hostImport,createRuntime:null,mountLauncher:null,loadDefinitions:async()=>structuredClone(definitions),mountTitles:async()=>{},mountMcp:async()=>{},onController:handle=>controls.set(config.root,handle)});}};
  const patches=[{insert:[a,b].map(value=>({id:value.entryId,name:'cordis:fixture-settings-root',config:{root:value.root,mode:'reserved2',ownerQQ:''}}))}];
  await fs.writeFile(patchPath,yaml.dump(patches));await boot.mountRootInclude(f.root,configPath,patches);await f.root.loader.await();await Promise.all([...controls.values()].map(c=>c.ready));
  const entries=[...f.root.loader.entries()].filter(e=>[a.entryId,b.entryId].includes(e.options.id)),fibers=entries.map(e=>e.fiber),refs=entries.map(e=>e.fiber.config.mode);

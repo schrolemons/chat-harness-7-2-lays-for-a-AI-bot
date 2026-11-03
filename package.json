@@ -333,6 +333,7 @@
       "scripts/test-dsh-instance-scope.mjs",
       "scripts/test-instance-ownership.mjs",
       "scripts/test-instance-runtime.mjs",
+      "scripts/test-instance-launcher-host.mjs",
       "scripts/test-launcher-host-ports.mjs",
       "scripts/test-launcher-port-settings.mjs",
       "scripts/test-proactive-examples-ui.mjs",

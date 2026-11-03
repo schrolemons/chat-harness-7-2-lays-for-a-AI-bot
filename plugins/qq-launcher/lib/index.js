@@ -1,8 +1,8 @@
 // qq-launcher —— DSH 标题栏「一键启动AI助手」的 Host 半边。
 //
-// 职责只有两件事（客户端半在 lib/client.js）：
-//   ① GET  /status  给标题栏那颗红绿灯报状态：QQ 客户端 / SnowLuma(OneBot 3000+3001) / 桥接(控制台 3100)
-//   ② POST /start   一键拉起 QQ → SnowLuma → 桥接（复用桥接仓库自己的 scripts/start-da-feiyu.mjs）
+// descriptor/runtime 模式只操作根控制器拥有的服务；状态与启动健康分开，
+// 控制请求须携 instanceId/generation。旧独立测试的兼容实现留在下方，
+// 遇到实例描述符即拒绝，不能通过它接管实例服务。
 //
 // 为什么不另起一个常驻服务：Host 半边本来就跑在 DSH 的 Host 进程里，
 // 按钮也只在 DSH 里用；插件跟着 DSH 启停，不需要额外开机自启项。
@@ -23,6 +23,7 @@ import { createGatewayRecovery } from '../../../scripts/gateway-recovery.mjs';
 import { processRunsFile } from '../../../scripts/launcher-process-identity.mjs';
 import { resolveSnowHome } from '../../../scripts/snow-runtime-location.mjs';
 import {FIXED_PRESETS} from '../../../src/preset-policy.js';
+import { createInstanceLauncher } from '../../../src/instance-launcher-host.mjs';
 
 export const name = 'qq-launcher';
 export const inject = [];
@@ -188,9 +189,13 @@ function urlPort(value, fallback) {
 }
 
 export function createLauncher(ctx, config, deps = {}) {
+  if (config && (Object.hasOwn(config, 'descriptor') || Object.hasOwn(config, 'runtime'))) return createInstanceLauncher(ctx, config, deps);
   const qqExe = typeof config?.qqExe === 'string' ? config.qqExe.trim() : '';
   const bridgeDir = resolveBridgeDir(config);
   const settingsRoot = deps.settingsRoot || bridgeDir;
+  for (const root of [config?.root, config?.bridgeDir, settingsRoot, bridgeDir].filter(Boolean)) {
+    if (fs.existsSync(path.join(root, '.qq-bridge-instance.json'))) throw Error('INSTANCE_LAUNCHER_REQUIRED: declared instances require their owned controller runtime');
+  }
   const getSettings = () => readLauncherSettings(settingsRoot);
   const configuredPort = readBridgeConfig(settingsRoot).launcher?.ports?.launcher;
   const port = config?.servicePort === 0 ? 0 : configuredPort !== undefined ? getSettings().ports.launcher
@@ -723,9 +728,10 @@ export function createLauncher(ctx, config, deps = {}) {
 }
 
 export function apply(ctx, config) {
-  const dispose = createLauncher(ctx ?? {}, config ?? {});
+  const handle = createLauncher(ctx ?? {}, config ?? {});
+  const dispose = typeof handle === 'function' ? handle : handle.dispose;
   if (typeof ctx?.effect === 'function') ctx.effect(() => dispose);
   else if (typeof ctx?.on === 'function') ctx.on('dispose', dispose);
-  return dispose;
+  return handle;
 }
 

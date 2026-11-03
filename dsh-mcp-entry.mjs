@@ -15,6 +15,7 @@ export async function mountBundledMcp(ctx, { root, serverName, nodePath, env = {
   const script = BUNDLED_MCP[serverName];
   if (!script) throw Error('Unknown bundled MCP: ' + serverName);
   if (!path.isAbsolute(root || '')) throw Error('Bundled MCP requires an explicit absolute instance root');
+  if (process.versions.electron && (!path.isAbsolute(nodePath || '') || path.resolve(nodePath).toLowerCase() === path.resolve(process.execPath).toLowerCase())) throw Error('NODE_RUNTIME_REQUIRED: explicit Node executable required under Electron');
   // Source-relative ROOT constants must bind to this installation, not merely cwd.
   const entrypoint = serverName === 'playwright'
     ? path.join(path.dirname(createRequire(path.join(root, 'package.json')).resolve('@playwright/mcp/package.json')), 'cli.js')
@@ -26,7 +27,7 @@ export async function mountBundledMcp(ctx, { root, serverName, nodePath, env = {
   }
   const module = await createHostImport(ctx, hostImport)('@deepseek-ai/dsh-mcp-client');
   await ctx.plugin(ctx.loader.unwrapExports(module), {
-    serverName, transport: 'stdio', command: nodePath || (process.versions.electron ? 'node' : process.execPath),
+    serverName, transport: 'stdio', command: nodePath || process.execPath,
     args: [entrypoint, ...(serverName === 'playwright' ? browserMcpArgs(root) : serverName === 'personal-core' ? ['--root', root] : [])],
     cwd: root, env: { ...env, QQ_BRIDGE_ROOT: root }, failOnStartupError: true,
     ...(serverName === 'snowluma' ? { toolCallTimeoutMs: 725000 } : {}),
