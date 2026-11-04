@@ -648,6 +648,8 @@ export class NodeApiClient extends AbstractApiClient {
     return response.json();
   }
 
+  schedule = { list: (request, signal) => this.callUnary('schedule/list', { request }, signal) };
+
   /** 新版 DSH 的 agentPresets 命名空间是复数；旧版基类仍映射到 agentPreset.list。 */
   agentPresets = {
     list: (payload, signal) => this.callUnary('agentPresets.list', payload, signal),

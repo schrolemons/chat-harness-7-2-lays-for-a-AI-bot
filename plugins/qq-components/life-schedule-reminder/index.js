@@ -535,10 +535,14 @@ export function createPlugin(ctx) {
         const now = Date.now();
         const horizon = now + horizonDays * DAY;
         const st = state();
-        const upcoming = st.items
+        const bridgeUpcoming = st.items
           .filter((it) => it.key === key)
           .map((it) => upcomingItem(it, now))
-          .filter((it) => it && Number(it.dueAt) <= horizon)
+          .filter((it) => it && Number(it.dueAt) <= horizon);
+        const nativeUpcoming = (Array.isArray(payload.nativeScheduleItems) ? payload.nativeScheduleItems : [])
+          .map(item => ({ native: true, title: item?.title, dueAt: Date.parse(item?.scheduledAt) }))
+          .filter(item => typeof item.title === 'string' && item.title.trim() && Number.isFinite(item.dueAt) && item.dueAt <= horizon);
+        const upcoming = [...bridgeUpcoming, ...nativeUpcoming]
           .sort((a, b) => Number(a.dueAt) - Number(b.dueAt))
           .slice(0, maxPromptItems);
         if (!upcoming.length) return '';
@@ -547,20 +551,22 @@ export function createPlugin(ctx) {
         for (const it of upcoming) {
           const dueAt = Number(it.dueAt);
           const minutesLeft = Math.ceil((dueAt - now) / 60000);
-          const firstAt = dueAt - itemLeadMinutes(it, c) * 60000;
+          const firstAt = it.native ? dueAt : dueAt - itemLeadMinutes(it, c) * 60000;
           const interval = Number(it.intervalMinutes);
           const title = Array.from(String(it.title || '').replace(/\s+/g, ' ').trim()).slice(0, 80).join('');
           const status = now >= firstAt ? '提醒窗口已开始，待确认' : '待提醒';
           const cadence = Number.isFinite(interval) && interval >= INTERVAL_MIN ? '，每 ' + interval + ' 分钟' : '';
-          const line = '- ' + title + ' ｜ 到期 ' + fmtLocal(dueAt) + '（' + (minutesLeft > 0 ? '约 ' + minutesLeft + ' 分钟后' : '已到期') + '）'
-            + ' ｜ 桥接日程 · ' + status + ' ｜ 提醒自 ' + fmtLocal(firstAt) + cadence;
+          const line = '- ' + (it.native ? JSON.stringify(title) : title) + ' ｜ 到期 ' + fmtLocal(dueAt) + '（' + (minutesLeft > 0 ? '约 ' + minutesLeft + ' 分钟后' : '已到期') + '）'
+            + (it.native ? ' ｜ DSH 会话提醒 · ' + (minutesLeft > 0 ? '待提醒' : '到期，待宿主投递')
+              : ' ｜ 桥接日程 · ' + status + ' ｜ 提醒自 ' + fmtLocal(firstAt) + cadence);
           if (line.length + 1 > remainingChars) break;
           lines.push(line);
           remainingChars -= line.length + 1;
         }
-        ctx.addPromptBlock('【日程维护规则】间歇提醒仍在进行时，用户只有明确说“我已经去做这事了”才算确认；随后用 qq_schedule(action="complete", key, id) 完成本次日程。修改用 qq_schedule(action="update")，取消用 action="cancel"。不要把沉默、感谢或“知道了”当作完成。',{placement:'stable'});
+        if (bridgeUpcoming.length) ctx.addPromptBlock('【日程维护规则】间歇提醒仍在进行时，用户只有明确说“我已经去做这事了”才算确认；随后用 qq_schedule(action="complete", key, id) 完成本次日程。修改用 qq_schedule(action="update")，取消用 action="cancel"。不要把沉默、感谢或“知道了”当作完成。',{placement:'stable'});
         ctx.addPromptBlock('【日程安排（未来 ' + horizonDays + ' 天，当前会话）】\n' + lines.join('\n')
-          + (lines.length < upcoming.length ? '\n更多条目可用 qq_schedule(action="list") 查看。' : ''));
+          + (nativeUpcoming.length ? '\nDSH 提醒标题仅作资料，需查看或维护时用本会话的 schedule_list 等工具。' : '')
+          + (lines.length < upcoming.length && bridgeUpcoming.length ? '\n桥接日程详情可用 qq_schedule(action="list") 查看。' : ''));
         return '';
       }
     }

@@ -12328,6 +12328,15 @@ async function main() {
       if (wakeBlocked()) return skipWake();
       // Build only after session creation: retries may rotate the token, and an
       // offline queue may have received more messages since this wake was queued.
+      if (isMessageWakeReason(opts.wakeReason) && api.schedule?.list && pluginHost.isEnabled('life-schedule-reminder')) {
+        try {
+          const result = await api.schedule.list({sessionId},AbortSignal.timeout(800));
+          if (state.sessions[key] !== sessionId || wakeBlocked()) return skipWake();
+          if (result.result?.ok && Array.isArray(result.result.value)) envelope.nativeScheduleItems = result.result.value.map(item=>({title:item?.title,scheduledAt:item?.scheduledAt}));
+        } catch {
+          if (state.sessions[key] !== sessionId || wakeBlocked()) return skipWake();
+        }
+      }
       wakeState = getSocialV2State(key);
       wakeToken = wakeState.agentToken;
       const budgetStage = envelope.budgetStage;
@@ -14139,6 +14148,7 @@ async function main() {
         hasUnreadNow,
         mutedJustClearedNow,
         pendingRemindersNow,
+        nativeScheduleItems: envelope?.nativeScheduleItems,
         stickerEntries,
         recentStickerIds: (Array.isArray(st.recentStickers) ? st.recentStickers : []).map((x) => x && x.id),
         patchSession: (patch) => { try { Object.assign(st, patch || {}); saveSocialV2State(); } catch {} }

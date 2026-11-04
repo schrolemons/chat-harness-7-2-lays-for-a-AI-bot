@@ -1,6 +1,7 @@
 // Pure component tests: synthetic in-memory records, no live bridge or QQ calls.
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { bridgeHarness } from './audit-bridge-harness.mjs';
 import { createPlugin } from '../plugins/qq-components/life-schedule-reminder/index.js';
 
 const NOW = Date.parse('2030-01-08T12:00:00Z');
@@ -88,3 +89,32 @@ test('prompt uses upcoming projection and excludes occurred or terminal entries'
   assert.match(prompt, /recurrence-entry/);
   assert.doesNotMatch(prompt, /old-entry|finished-entry|outside-horizon/);
 }));
+
+test('one prompt card combines native and bridge deadlines and omits native prompt bodies', () => atNow(() => {
+  const f = fixture([record('bridge-later', DAY)]);
+  f.plugin.hooks.beforePrompt({ key: 'group:1', reason: 'message', nativeScheduleItems: [
+    {title:'native-earlier', scheduledAt:new Date(NOW + 60000).toISOString(), prompt:'private scheduled instructions'},
+    {title:'native-outside-horizon', scheduledAt:new Date(NOW + 20 * DAY).toISOString()},
+    {title:'native-invalid', scheduledAt:'invalid'}
+  ] });
+  const prompt = f.blocks.join('\n');
+  assert.match(prompt, /native-earlier.*DSH 会话提醒 · 待提醒/);
+  assert.ok(prompt.indexOf('native-earlier') < prompt.indexOf('bridge-later'));
+  assert.doesNotMatch(prompt, /private scheduled instructions|native-outside-horizon|native-invalid/);
+}));
+
+test('the wake reads native reminders for the exact DSH session and injects only display fields',async()=>{
+  const h=await bridgeHarness();
+  try {
+    h.setMode('reserved2');
+    const key='private:123', sessionId=await h.ensureSession(key);
+    const calls=[];
+    h.api.schedule={list:async req=>{calls.push(req);return {result:{ok:true,value:[
+      {title:'fixture native schedule',scheduledAt:new Date(Date.now()+3600000).toISOString(),prompt:'fixture hidden schedule body'}
+    ]}};}};
+    await h.sendWakePromptV2(key,'private');
+    assert.deepEqual(calls.map(req=>req.sessionId),[sessionId]);
+    assert.match(JSON.stringify(h.calls.prompts),/fixture native schedule/);
+    assert.doesNotMatch(JSON.stringify(h.calls.prompts),/fixture hidden schedule body/);
+  }finally{await h.close();}
+});
