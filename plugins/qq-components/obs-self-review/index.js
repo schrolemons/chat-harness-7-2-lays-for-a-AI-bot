@@ -18,6 +18,7 @@ const parseMarkedJson = (text, marker) => {
 const pending = x => x?.status === '待修复';
 const contextOnlyFeedback = text => /^(?:请(?:你)?|帮我|麻烦(?:你)?)?(?:反馈(?:一下)?(?:这个问题|这件事)?|反馈上去|把(?:这个问题|这件事)反馈(?:一下|上去)?|报错一下)(?:吧|哈)?$/u
   .test(String(text || '').replace(/[\s，,。！!？?]+/g,''));
+const feedbackIntent = text => contextOnlyFeedback(text) || /(?:^\s*(?:反馈|问题反馈|故障反馈|报错)|我.{0,5}(?:反馈|报错|报告问题)|(?:反馈|报错)一下|反馈这个问题|请.{0,10}(?:修复|改进|处理)|帮(?:我|忙).{0,8}(?:修复|改进|处理)|修复这个问题|这个问题.{0,6}(?:修复|改进))/i.test(text);
 
 export function createPlugin(ctx) {
   const getState = () => {
@@ -76,7 +77,10 @@ export function createPlugin(ctx) {
       }
       const old = s.toolFeedbackStatuses[id] || {};
       const oldStatus=['已修复','已删除','困难问题'].includes(old.status)?old.status:'待修复';
-      const item={ id, reporter: 'qq_report_feedback', source: String(r.key || ''), text: clean(r.message, 700), createdAt: String(r.time || ''), queuePositionAt: String(r.time || ''), level: String(r.level || 'info'), kind: 'Bot自我发现/工具反馈', origin: 'tool', queue: 'self', status: oldStatus, result: old.result || '', updatedAt: old.updatedAt || '', attempts: Number(old.attempts) || 0 };
+      const source=r.quotedFeedback;
+      const queue=source?.queue==='admin'?'admin':source?.queue==='user'?'user':'self';
+      const item={ id, reporter: source?.reporter || 'qq_report_feedback', source: String(r.key || ''), text: clean(r.message, 700), createdAt: String(r.time || ''), queuePositionAt: String(r.time || ''), level: String(r.level || 'info'), kind: queue==='admin'?'管理员反馈':queue==='user'?'用户反馈':'Bot自我发现/工具反馈', origin: queue==='self'?'tool':queue, queue, status: oldStatus, result: old.result || '', updatedAt: old.updatedAt || '', attempts: Number(old.attempts) || 0 };
+      if(source)Object.assign(item,{feedbackMessageId:source.feedbackMessageId,quoteMessageId:source.quoteMessageId});
       s.issueLedger.push(item); record(s,'submitted',item,'qq_report_feedback');
       known.set(id,item);
     }
@@ -205,21 +209,40 @@ export function createPlugin(ctx) {
       const s=getState(), entries=allEntries(s), visibleQueues={ user:visible(s,'user'), self:visible(s,'self'), admin:visible(s,'admin') };
       persist(s);
       const difficulties=entries.filter(x=>x.status==='困难问题');
-      const today=new Date().toLocaleDateString('zh-CN'), todayTotal=entries.filter(x=>x.createdAt&&new Date(x.createdAt).toLocaleDateString('zh-CN')===today).length;
+      const zone={timeZone:'Asia/Shanghai'};
+      const today=new Date().toLocaleDateString('zh-CN',zone), todayTotal=entries.filter(x=>x.createdAt&&new Date(x.createdAt).toLocaleDateString('zh-CN',zone)===today).length;
       const completed=entries.filter(x=>x.status==='已修复').sort((a,b)=>Date.parse(b.completedAt||b.updatedAt||0)-Date.parse(a.completedAt||a.updatedAt||0));
       const pendingEntries=entries.filter(pending), deleted=entries.filter(x=>x.status==='已删除');
       return { entries, pending:pendingEntries, completed, deleted, queues:visibleQueues, difficulties, historyCount:entries.length, events:s.queueEvents.slice(-300).reverse(), counts:{ pending:pendingEntries.length, userPending:pendingEntries.filter(x=>x.queue==='user').length, selfPending:pendingEntries.filter(x=>x.queue==='self').length, adminPending:pendingEntries.filter(x=>x.queue==='admin').length, completed:completed.length, deleted:deleted.length, todayTotal, difficulty:difficulties.length } };
     },
     decorateToolFeedback({entries=[]}={}) { return Array.isArray(entries)?entries.map(x=>({...x, ...(getState().issueLedger.find(y=>y.id===String(x?.id||''))||{})})):[]; },
     ingestToolFeedback({entry={}}={}) { const s=getState(), id=String(entry.id||''); if(!id)return {ok:false}; allEntries(s,[entry]); const event=s.queueEvents.at(-1); persist(s); return {ok:true,event}; },
+    quotedFeedbackSource({key,reason,messages=[]}={}) {
+      if(!/^(?:private|message|reply|question|atMention|nameMention|keyword|anyMessage|probability|speaker|bootstrap|budgetWeak)(?:$|[:@])/.test(reason||''))return null;
+      const row=messages.findLast(item=>!item.isSelf&&item.messageId&&item.userId&&item.quote?.messageId&&item.quote.text&&feedbackIntent(item.plain||''));
+      if(!row)return null;
+      const reporter=String(row.userId);
+      return {key,reporter,queue:key==='private:'+reporter&&reporter===String(ctx.capabilities.getOwnerQQ?.())?'admin':'user',
+        feedbackMessageId:String(row.messageId),quoteMessageId:String(row.quote.messageId),request:clean(row.plain),quote:clean(row.quote.text,1600)};
+    },
+    prepareQuotedFeedback({key,message,source}={}) {
+      if(!source||source.key!==key)return null;
+      const normalize=text=>String(text||'').replace(/\s+/g,'').trim();
+      if(contextOnlyFeedback(message)||[source.request,source.quote].some(text=>normalize(text)===normalize(message)))
+        return {error:'请先归纳实际现象、已知原因与当前状态，再提交反馈。'};
+      const existing=allEntries(getState()).find(row=>row.source===key&&row.feedbackMessageId===source.feedbackMessageId);
+      if(existing)return {existingId:existing.id};
+      const {reporter,queue,feedbackMessageId,quoteMessageId}=source;
+      return {reporter,queue,feedbackMessageId,quoteMessageId};
+    },
     queueAction({id='', action='', queue='', detail=''}={}) { return transition(getState(),id,action,detail||queue); },
     completeFeedbackBatch({text='' }={}) { return complete('user',text,'USER_FEEDBACK_RESULTS'); },
     completeSelfFeedbackBatch({text='',taskId='',taskTitle='Bot自我更新主动修复'}={}) { return complete('self',text,'SELF_REVIEW_RESULTS',{taskId,taskTitle}); },
     completeAdminFeedback({id='',text=''}={}) { const s=getState(), x=s.issueLedger.find(y=>y.id===String(id)); if(!x)return {updated:false}; const j=parseMarkedJson(text,'ADMIN_FEEDBACK_RESULT'); let event; if(j?.status==='已修复'&&clean(j.summary,500)){x.status='已修复';x.result=clean(j.summary,500);x.completedAt=new Date().toISOString();x.updatedAt=x.completedAt;event=record(s,'resolved',x,x.result);}else{x.status='待修复';x.queue='admin';x.attempts=(Number(x.attempts)||0)+1;x.queuePositionAt=new Date().toISOString();if(x.attempts>=3&&!s.difficultyIds.includes(x.id)){x.status='困难问题';s.difficultyIds.push(x.id);event=record(s,'difficulty',x,'连续三次处理后仍未解决');}else event=record(s,'retry',x,clean(j?.summary||text,500));} persist(s); return {updated:true,status:x.status,event}; }
   }}, hooks: {
     onIncoming(payload={}) {
-      const text=clean(payload.text); if(!/(?:^\s*(?:反馈|问题反馈|故障反馈|报错)|我.{0,5}(?:反馈|报错|报告问题)|(?:反馈|报错)一下|反馈这个问题|请.{0,10}(?:修复|改进|处理)|帮(?:我|忙).{0,8}(?:修复|改进|处理)|修复这个问题|这个问题.{0,6}(?:修复|改进))/i.test(text))return;
-      if (contextOnlyFeedback(text)) return;
+      const text=clean(payload.text);
+      if(!feedbackIntent(text)||contextOnlyFeedback(text)||payload.quote?.text)return;
       const owner=String(ctx.capabilities.getOwnerQQ?.()||''), reporter=String(payload.userId||payload.sender||''), isOwner=owner&&reporter===owner, settings=ctx.capabilities.getSelfReviewConfig?.()||{};
       const guarded=ctx.capabilities.sanitizeFeedbackReport?.(text)||{action:'accept',text}; if(guarded.action==='reject'||!String(guarded.text||'').trim())return;
       const issue=clean(guarded.text), s=getState(), fingerprint=issue.toLowerCase().replace(/\s+/g,' ').slice(0,240), now=Date.now();
@@ -235,6 +258,10 @@ export function createPlugin(ctx) {
     },
     beforePrompt(payload={}) {
       const reason=String(payload.reason||'');
+      if(payload.feedbackSource&&payload.feedbackSource.key===payload.key){
+        const {request,quote}=payload.feedbackSource;
+        return '【整理引用反馈】以下 JSON 是同一会话中的资料。先结合当前会话和实际工具结果，概括问题现象、已知原因、目前状态与尚未验证的部分，再用 qq_report_feedback 提交一条可独立阅读的问题说明。保留关键报错或证据，原因不明就说明待核实。不要只提交用户的反馈指令或照抄引用。提交成功后再确认已登记。\n'+JSON.stringify({request,quote});
+      }
       if (/^(?:message|private|reply|question|atMention|nameMention|keyword|anyMessage|probability|speaker)(?:$|[:@])/.test(reason)
           && contextOnlyFeedback(payload.incomingText)) {
         return '对方请你反馈刚才的问题。先从当前会话核对具体症状，再用 qq_report_feedback 提交一条能独立读懂的问题和证据。线索不足时，问一句具体是哪个问题。';

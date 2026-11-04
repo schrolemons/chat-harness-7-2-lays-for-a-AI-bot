@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPluginHost } from '../src/plugin-host.js';
 import { createPlugin } from '../plugins/qq-components/obs-self-review/index.js';
+import { bridgeHarness } from './audit-bridge-harness.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bridge = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
@@ -30,6 +31,45 @@ test('context-only feedback is handled in conversation without creating an empty
   plugin.hooks.onIncoming({key:'private:123',userId:'123',text:'反馈一下，回复把两段话拆断了'});
   assert.equal(repairs,1);
   assert.equal(plugin.services.selfReviewFeedback.listFeedback().pending.length,1);
+});
+
+test('quoted feedback is filed only after a bot summary, with the original reporter and message references', async () => {
+  const h=await bridgeHarness();let server;
+  try {
+    h.setMode('reserved2');
+    const key='private:123', original='本次任务因来源校验没有提交。';
+    const st=h.getSocialV2State(key);
+    st.recentMessages.push({seq:1,messageId:'-9',userId:'999',isSelf:true,plain:original,text:original,time:Date.now(),bodyComplete:true});
+    await h.handleIncoming('private',123,{self_id:999,user_id:123,message_id:-10,
+      message:[{type:'reply',data:{id:-9}},{type:'text',data:{text:'反馈一下'}}]},h.cfg);
+    const call=(method,input)=>h.pluginHost.callService('selfReviewFeedback',method,input);
+    assert.equal(call('listFeedback').pending.length,0);
+    const feedbackSource=call('quotedFeedbackSource',{key,reason:'private',messages:st.unread});
+    assert.equal(feedbackSource?.quote,original);
+    const envelope={key,feedbackSource};
+    assert.match(h.buildWakePromptV2(key,'private','normal',envelope),/整理引用反馈[\s\S]*本次任务因来源校验没有提交/);
+    const sid=await h.ensureSession(key);
+    h.activeTurnEnvelopes.set(sid,envelope);
+    st.agentToken='feedback-fixture-token';
+    server=h.startConsoleServer();
+    if(!server.listening)await new Promise(resolve=>server.once('listening',resolve));
+    const submit=message=>fetch('http://127.0.0.1:'+server.address().port+'/api/socialV2/feedback',{
+      method:'POST',headers:{'x-console-token':'fixture-console-token','x-agent-call':'1','x-agent-token':st.agentToken,'content-type':'application/json'},
+      body:JSON.stringify({key,message})});
+    assert.equal((await submit('反馈一下')).status,422);
+    assert.equal((await submit(original)).status,422);
+    const summary='实际现象：任务提交失败。已知原因：来源校验未通过。当前状态：任务未执行，待核对来源。';
+    assert.equal((await submit(summary)).status,200);
+    assert.equal((await (await submit(summary)).json()).duplicate,true);
+    const {pending}=call('listFeedback');
+    assert.equal(pending.length,1);
+    assert.deepEqual([pending[0].queue,pending[0].reporter,pending[0].feedbackMessageId,pending[0].quoteMessageId,pending[0].text],
+      ['admin','123','-10','-9',summary]);
+  } finally {
+    server?.closeAllConnections?.();
+    if(server?.listening)await new Promise(resolve=>server.close(resolve));
+    await h.close();
+  }
 });
 
 test('self-review report honors the configured optimization memory path', () => {

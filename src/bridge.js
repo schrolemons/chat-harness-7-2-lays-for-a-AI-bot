@@ -7341,6 +7341,11 @@ async function main() {
           }
           const message = truncateText(guarded.text, maxLength);
           const quarantined = guarded.action === 'neutralize';
+          const feedbackEnvelope = req.headers['x-agent-token'] ? activeTurnEnvelopes.get(state.sessions[key]) : null;
+          const quotedFeedback = !feedbackEnvelope?.cancelled && feedbackEnvelope?.feedbackSource
+            ? pluginHost.callService('selfReviewFeedback','prepareQuotedFeedback',{key,message:rawMessage,source:feedbackEnvelope.feedbackSource}) : null;
+          if(quotedFeedback?.error){sendJson({ok:false,error:quotedFeedback.error},422);return;}
+          if(quotedFeedback?.existingId){sendJson({ok:true,id:quotedFeedback.existingId,duplicate:true});return;}
           const feedbackId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
           const feedbackTime = new Date(fNow).toISOString();
           appendFeedbackEntry({
@@ -7349,9 +7354,10 @@ async function main() {
             level,
             message,
             time: feedbackTime,
+            ...(quotedFeedback ? { quotedFeedback } : {}),
             ...(quarantined ? { quarantined: true, guardHits: guarded.hits.map((h) => h.id) } : {})
           });
-          const feedbackLedger = pluginHost.callService('selfReviewFeedback', 'ingestToolFeedback', { entry: { id: feedbackId, key, level, message, time: feedbackTime } });
+          const feedbackLedger = pluginHost.callService('selfReviewFeedback', 'ingestToolFeedback', { entry: { id: feedbackId, key, level, message, time: feedbackTime, quotedFeedback } });
           if (feedbackLedger?.event) appendFeedbackEventsSummaryV2([feedbackLedger.event]);
           pluginHost.callService('selfReviewFeedback', 'decorateToolFeedback', { entries: readFeedbackEntries() });
           log(`[reserved2] AI 反馈 (${key}) [${level}]: ${message.slice(0, 80)}`);
@@ -12339,6 +12345,7 @@ async function main() {
     const sourceMessages=resume?.messages || [...new Map([...(wakeHead?.triggerMessage?[wakeHead.triggerMessage]:[]),...(budgetBatch?.messages||pendingMessagesV2(sourceView))].filter(message=>!message.isSelf && isModelVisibleMessageV2(message) && messageContentComplete(message) && (!inheritedSources || inheritedSources.has(message.seq))).map(m=>[m.seq,m])).values()];
     const envelope = { key, sessionId, actionId:crypto.randomUUID(), reason:String(opts.wakeReason || opts.modelReason || 'message'),
       reminders:opts.wakeReason==='reminder'?(getSocialV2State(key).pendingReminderItems||[]).map(item=>({...item})):[],cancelled:false,scheduledEvent:opts.scheduledEvent,taskAdmission:resume };
+    envelope.feedbackSource = pluginHost.callService('selfReviewFeedback','quotedFeedbackSource',{key,reason:envelope.reason,messages:sourceMessages});
     envelope.directGroupTrigger = String(key).startsWith('group:') && sourceMessages.some(message=>message.replyDisposition!=='history'&&isDirectGroupMessage(message));
     if (!groupChatAllowed(key,taskReason,envelope.directGroupTrigger)) return skipWake();
     if(budgetBatch){envelope.budgetWindowSeqs=budgetBatch.messages.map(m=>m.seq);envelope.budgetWindowThroughSeq=getSocialV2State(key).lastUnreadSeq;}
@@ -13341,6 +13348,7 @@ async function main() {
       bodyComplete:contentState.bodyComplete!==false,
       unresolvedReplyIds:contentState.unresolvedReplyIds||[],
       omittedReplyIds:contentState.omittedReplyIds||[],
+      ...(contentState.quote?{quote:contentState.quote}:{}),
       tail: truncateTextTail(String(plainContent ?? textContent), 200),
       quoteTargetIsSelf: !!quoteTargetIsSelf,
       isOwner: !!isOwner,
@@ -14175,6 +14183,7 @@ async function main() {
         recentOwnMessages:st.recentMessages.filter(m=>m?.isSelf).slice(-6),
         reason,
         incomingText: lastIncomingTextV2(modelView),
+        feedbackSource: envelope?.feedbackSource,
         mood: moodNow,
         replyPlan: envelope?.replyPlan,
 
@@ -15123,8 +15132,18 @@ async function main() {
     let plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false });
     const bodyComplete=event.message!=null&&event.bodyComplete!==false&&event.truncated!==true&&plainContent.length>0;
     const omitUnknownReplies=bodyComplete;
-    const resolveReply = async (messageId) => {const info=await resolveReplyInfo(kind,id,messageId,event.self_id);if(info&&messageContentComplete(info))return info;(omitUnknownReplies?omittedReplyIds:unresolvedReplyIds).push(String(messageId));return null;};
+    const resolvedQuotes=[];
+    const resolveReply = async (messageId) => {
+      const info=await resolveReplyInfo(kind,id,messageId,event.self_id);
+      if(info&&messageContentComplete(info)){
+        resolvedQuotes.push({messageId:String(messageId),text:info.ownPlain||info.text});
+        return info;
+      }
+      (omitUnknownReplies?omittedReplyIds:unresolvedReplyIds).push(String(messageId));
+      return null;
+    };
     let textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply, omitUnknownReplies });
+    const quote=resolvedQuotes.length===1?resolvedQuotes[0]:null;
     // Classify user text independently of arbitrary rendered QQ @ nicknames.
     const quotaText = (event.message || []).filter(segment => segment?.type === 'text')
       .map(segment => String(segment.data?.text || '')).join('').trim() || plainContent;
@@ -15327,7 +15346,7 @@ async function main() {
     // 二代仿真模式（reserved2）：唤醒调度
     if (currentMode === 'reserved2') {
       const sender = kind === 'group' ? (event.sender?.card || event.sender?.nickname || String(event.user_id)) : '私聊';
-      const incomingMessage = appendSocialV2Message(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, messageRef || null, mediaList, event.user_id ?? null, extractForwardIds(event.message ?? []), 'pending', incomingAtSelf,{bodyComplete,unresolvedReplyIds,omittedReplyIds});
+      const incomingMessage = appendSocialV2Message(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, messageRef || null, mediaList, event.user_id ?? null, extractForwardIds(event.message ?? []), 'pending', incomingAtSelf,{bodyComplete,unresolvedReplyIds,omittedReplyIds,quote});
       pluginHost.callService('historyContext','classifyIncoming',{key,state:getSocialV2State(key),message:incomingMessage,wakeAccepted:!groupCurfewBlocked&&!socialV2.paused&&!!evaluateWakeTriggerV2(kind,incomingWakeDecision),requiresResponse:kind==='private'||incomingAtSelf||quoteTargetIsSelf||incomingWakeDecision?.matched?.some(name=>['nameMention','question'].includes(name)),windowSeqs:getSocialV2State(key).doubleStampCheck?.windowSeqs});
       if(incomingBudget.stage==='weak')incomingMessage.quotaText=String(quotaText).slice(0,20000);
       try {
@@ -15497,7 +15516,7 @@ async function main() {
       } finally {
         if (incomingMessage.quotaAdmission === 'pending') incomingMessage.quotaAdmission = 'admitted';
         if (incomingMessage.quotaAdmission === 'admitted') {
-          try { pluginHost.emitIncoming({ key, text: String(plainContent ?? textContent ?? ''), sender,
+          try { pluginHost.emitIncoming({ key, text: String(plainContent ?? textContent ?? ''), sender, quote,
             userId: incomingMessage.userId, messageId: incomingMessage.messageId, isOwner: incomingMessage.isOwner, at: incomingMessage.time }); } catch {}
         }
         saveSocialV2State();
