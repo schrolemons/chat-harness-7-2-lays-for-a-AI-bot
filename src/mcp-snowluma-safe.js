@@ -516,7 +516,7 @@ server.tool(
 
 server.tool(
   'qq_send_private_message',
-  '向指定 QQ 好友发送一条私聊消息。若提供 replyToMessageId，会以 QQ 引用/回复形式发出（引用条 + 文本）。replyToMessageId 必须是非零整数消息 id（QQ 消息 id 可能为负数），可先用 qq_get_message_detail 查询。二代模式（reserved2）下这是可用的发送工具之一，但优先使用 qq_send_message；调用时必须携带会话令牌 token，否则会被拒绝。不要在发送后输出“已发送”类汇报。目标 QQ 必须命中系统白名单（config.json 的 allow.private），否则拒绝。',
+  '向指定的白名单 QQ 好友发送一条私聊消息。二代模式（reserved2）跨会话发送时，先在发起私聊中用完整原指令声明 task，保存已准入的 contentId。调用此工具时，userId 填收件人，token 填发起会话令牌，并显式传入同一个 contentId。收件人无需先来信。游戏会话 ID 和 games_action 的成功结果不能替代 QQ 发送授权；发送游戏演出文字也沿用原任务的 contentId。同一会话内普通回复优先用 qq_send_message；需要引用时，replyToMessageId 必须是本会话的非零 QQ 消息 ID（可为负数），可先查消息详情。',
   {
     userId: z.union([z.number(), z.string()]).describe('好友 QQ 号（必须在白名单内）'),
     message: z.string().describe('消息文本，纯文本，不要用 Markdown 或 CQ 码'),

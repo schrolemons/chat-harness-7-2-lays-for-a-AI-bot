@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+test('cross-session private sends distinguish the game result from the originating QQ grant',async()=>{
+ const source=fs.readFileSync(new URL('../src/mcp-snowluma-safe.js',import.meta.url),'utf8');
+ const description=source.match(/'qq_send_private_message',\s*'([^']+)'/)?.[1];
+ assert.match(description,/发起私聊.*contentId/);
+ assert.match(description,/游戏会话 ID.*不能替代/);
+ assert.match(description,/收件人无需先来信/);
+});
 test('send tool contracts require explicit grouping before a one-message answer to several inputs',async()=>{
  const {createReplyContentCarrier}=await import('../src/mcp-content-carrier.mjs');
  const field=createReplyContentCarrier().decorate('qq_send_message',['send',{},async()=>{}])[1].contentId.description;

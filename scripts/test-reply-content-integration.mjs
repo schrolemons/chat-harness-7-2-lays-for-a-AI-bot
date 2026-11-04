@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
+import {createGamesRuntime} from '../plugins/qq-components/tool-games/games-runtime.mjs';
 async function open(t,{texts=['这幅画很好看','今天天气不错','这首歌很有趣'],rate=0,extraFiles={},extraConfig={},globals,groupMembers}={}){
  const h=await bridgeHarness({config:{sendDelayMs:0,...extraConfig},globals,groupMembers,files:{'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:3,maxMessagesCasual:3,maxMessagesSerious:3,maxSendPerMinute:rate,maxSendPerHour:rate,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},...extraFiles}});
  h.setMode('reserved2');const key='private:123',st=h.getSocialV2State(key);st.bootstrapSent=true;
@@ -206,6 +207,27 @@ test('a newer unread message does not block a bound reply to an earlier complete
  h.appendSocialV2Message(key,'甲','之后的未读消息','之后的未读消息',false,true,'999',[],'123',[],undefined,false,{bodyComplete:true});
  const sent=await request('/api/socialV2/send-message',{key,messages:'回答上一条'},content.id);
  assert.equal(sent.body.sent,1,JSON.stringify(sent.body));
+});
+
+test('a Spark performance carries the originating task ID through the cross-session send',async t=>{
+ const {h,key,st,messages,request}=await open(t,{texts:['去私聊电一电测试朋友'],extraConfig:{allow:{private:['123','12001','12002']},socialV2:{relayAliases:{测试朋友:'private:12001'}}}});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'task'}]});
+ const content=declared.body.contents?.[0];
+ assert.equal(content?.taskExempt,true,JSON.stringify(declared.body));
+ assert.equal(h.getSocialV2State('private:12001').unread.length,0);
+ const game=createGamesRuntime({registryFile:path.join(h.temp,'state','spark-fixture.json')});
+ const session=game.start({gameId:'spark'});
+ assert.equal(session.ok,true);
+ const performance=game.action({sessionId:session.sessionId,action:'spark',payload:{bodyPart:'手腕',durationSec:3,waveform:'pulse'}});
+ assert.equal(performance.ok,true,JSON.stringify(performance));
+ const send=(target,contentId)=>request('/api/send/private',{userId:target,token:st.agentToken,message:performance.message},contentId);
+ const omitted=await send('12001');
+ assert.equal(omitted.body.code,'CROSS_SESSION_TASK_REQUIRED',JSON.stringify(omitted.body));
+ assert.match(omitted.body.error,/发起私聊.*contentId.*收件人无需先来信/);
+ assert.equal((await send('12002',content.id)).body.code,'CROSS_SESSION_TARGET_MISMATCH');
+ assert.equal(h.calls.http.filter(c=>/send_private_msg$/.test(c.url)).length,0);
+ assert.equal((await send('12001',content.id)).body.sent,1);
+ assert.equal(h.calls.http.filter(c=>/send_private_msg$/.test(c.url)).length,1);
 });
 
 test('an explicit game invitation is a task scoped to its named recipient',async t=>{
