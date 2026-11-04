@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PRIVATE_FOLLOWUP_POLICY } from '../../../src/qq-reply-policy.js';
 const helperUrl = relative => { const url = new URL(relative, import.meta.url); url.search = new URL(import.meta.url).search; return url.href; };
-const [{ planConversationDrive }, { effectiveFollowupLimits, isFollowupAllowed }, { createTopicActions }, { createPrivateFollowup }, {hasCurrentTopic, hasReplyContent, hasBareSelfAttention, BARE_ATTENTION_GUIDANCE}] = await Promise.all([
+const [{ planConversationDrive }, { effectiveFollowupLimits, isFollowupAllowed }, { createTopicActions, isIndependentDelivery }, { createPrivateFollowup }, {hasCurrentTopic, hasReplyContent, hasBareSelfAttention, BARE_ATTENTION_GUIDANCE}] = await Promise.all([
   import(helperUrl('../../../src/conversation-drive.js')), import(helperUrl('./followup-policy.mjs')), import(helperUrl('./topic-actions.mjs')), import(helperUrl('./private-followup.mjs')), import(helperUrl('./opening-topic.mjs'))
 ]);
 
@@ -18,9 +18,10 @@ export function createPlugin(ctx) {
   const cfg = ctx.config || {};
   const state = ctx.state;
   const topicActions = createTopicActions(ctx, cfg);
-  const conversationDrive = { ...topicActions, sent({ key, success, eventId, episodeId, at = Date.now(), kind, text = '', topicId, topicLease, originReason } = {}) {
+  const conversationDrive = { ...topicActions, sent({ key, success, eventId, episodeId, at = Date.now(), kind, text = '', topicId, topicLease, origin, originReason } = {}) {
     if (success !== true || !/^(private|group):\d+$/.test(String(key || ''))) return { ok: false };
-    const actual = topicActions.delivered({ key, success, topicLease, kind, text, episodeId, originReason });
+    const actual = topicActions.delivered({ key, success, topicLease, kind, text, episodeId, origin, originReason });
+    if (actual.independent) return {ok:true,recorded:false};
     if (actual.independentPrivateFollowup) return { ok: true, recorded: false, isProactive: true, episodeId: actual.episodeId, kind: 'privateFollowup' };
     kind = actual.kind || kind; episodeId = actual.episodeId || episodeId; topicId = actual.topicId || topicId;
     const current = state.get(), drive = { ...(current.driveByKey?.[key] || {}), ...(topicId ? {currentTopicId:String(topicId)} : {}) }, receipts = drive.receipts || {}, episodes = drive.episodes || {};
@@ -68,7 +69,7 @@ export function createPlugin(ctx) {
     hooks: {
       beforePrompt(payload) {
         if (referencePolicy(payload).mode !== 'off') return '';
-        if (payload?.reason && NON_CHAT_REASONS.test(String(payload.reason))) return '';
+        if (isIndependentDelivery({ originReason: payload?.reason }) || NON_CHAT_REASONS.test(String(payload?.reason || ''))) return '';
         const st = payload?.st;
         if (!st) return '';
         const key = String(payload?.key || '');

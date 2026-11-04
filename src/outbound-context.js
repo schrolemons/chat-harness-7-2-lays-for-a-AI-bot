@@ -83,8 +83,7 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
     };
     assertRecommendation();
     const scope=c.envelope?.sessionId && c.envelope?.turn!=null ? c.envelope.sessionId+':'+c.envelope.turn : undefined;
-    const balanceNotice=c.reason==='milkStock'&&scheduled&&c.plan?.scheduledGrant;
-    const topicLease=balanceNotice?undefined:call('conversationDrive','reserve',{key,scope,operationId,kind:c.conversationIntent,topicId:c.topicId,text,episodeId:c.actionId,originReason:c.reason,now:clock()});
+    const topicLease=call('conversationDrive','reserve',{key,scope,operationId,kind:c.conversationIntent,topicId:c.topicId,text,episodeId:c.actionId,origin:c.origin,originReason:c.reason,now:clock()});
     if(topicLease?.ok===false){const e=Error('话题动作拒绝：'+topicLease.reason+(topicLease.hint?'；'+topicLease.hint:''));e.knownFailed=true;throw e;}
     const plan=topicLease?.timeoutAction ? call('replyPlan','resolve',{key,turnId:topicLease.episodeId,incomingText:'',mood:call('mood','read',{key})||c.envelope?.mood,agent:c.agent})||c.plan : c.plan;
     if(plan && String(text).length>plan.maxMessageChars){call('conversationDrive','release',{lease:topicLease});const e=Error('发送计划拒绝：message_length');e.knownFailed=true;throw e;}
@@ -131,7 +130,7 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
     const fact={key,sourceKey:c.sourceKey,operationId,deliveryId,gatewayMessageId,kind,text,sentAt,success:true,
       origin:c.origin,originReason:c.reason,wakeReason,proactiveId:c.actionId,episodeId:c.actionId,
       expectsReply:conversational&&c.reason!=='milkStock'&&c.origin!=='operator',targetUserId:targetUserId ?? c.targetUserId ?? c.envelope?.targetUserId,
-      mode:c.mode,topicLease,conversationIntent:balanceNotice?undefined:topicLease?.kind||c.conversationIntent,topicId:balanceNotice?undefined:topicLease?.topicId||c.topicId,recommendationPlanId:c.envelope?.biliPlanId};
+      mode:c.mode,topicLease,conversationIntent:topicLease?.independent?undefined:topicLease?.kind||c.conversationIntent,topicId:topicLease?.independent?undefined:topicLease?.topicId||c.topicId,recommendationPlanId:c.envelope?.biliPlanId};
     reportDelivered(fact);
     try{c.envelope?.scheduledEvent?.onDelivered?.(fact);}catch(error){log('scheduled delivery receipt: '+error.message);}
     return result;

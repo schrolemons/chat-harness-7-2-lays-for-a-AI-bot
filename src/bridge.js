@@ -6937,7 +6937,7 @@ async function main() {
             }
           }
           const waitScope = String(state.sessions[key] || key) + ':' + String(waitEnvelope?.turn ?? waitEnvelope?.actionId ?? v2TurnStartAt.get(state.sessions[key]) ?? 'manual');
-          const waitArgs = () => ({ key, scope: waitScope, seq: st.lastUnreadSeq || 0 });
+          const waitArgs = () => ({ key, scope: waitScope, seq: st.lastUnreadSeq || 0, originReason:waitEnvelope?.reason });
           const waitPolicy = pluginHost.callService('waitCycle', 'read', waitArgs());
           if (!waitPolicy) { sendJson({ok:false,error:'无人回复收尾保护未启用，拒绝无保护等待'},503); return; }
           if (waitPolicy.endRound) {
@@ -7754,6 +7754,12 @@ async function main() {
             sendJson({ ok: true, conversations });
             return;
           }
+          const scheduleSource=action==='add' && taskPlan ? scheduleAuthorization(key,key,taskPlan,sourceEnvelope) : null;
+          if (body.targetKey===undefined && body.message===undefined
+              && scheduleSource?.instructions.some(({text})=>parseScheduledRelay(text))) {
+            sendJson({ok:false,code:'SCHEDULE_DESTINATION_REQUIRED',error:'原任务要求到点跨会话联系，qq_schedule 必须提供 targetKey 和 message。请刷新工具定义后重试。'},409);
+            return;
+          }
           let scheduledTask;
           if (body.targetKey !== undefined || body.message !== undefined) {
             if (action!=='add' || !agentCall || key!==sourceKey || !key.startsWith('private:')) {
@@ -7777,7 +7783,7 @@ async function main() {
             out = await pluginHost.callService('schedules', method, {
               key, title: body.title, when: body.when, dueAt: body.dueAt,
               ...(method === 'appendIfAbsent' ? { exampleId: body.exampleId } : {}),
-              ...(taskPlan && !scheduledTask ? { authorization:scheduleAuthorization(key,key,taskPlan,sourceEnvelope) } : {}),
+              ...(scheduleSource && !scheduledTask ? { authorization:scheduleSource } : {}),
               ...scheduledTask,
               place: body.place, detail: body.detail, repeat: body.repeat,
               leadMinutes: body.leadMinutes ?? body.remindBeforeMinutes,

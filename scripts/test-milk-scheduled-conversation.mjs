@@ -144,17 +144,19 @@ test('milk coverage arriving during transport delay is rechecked before the phys
  await assert.rejects(waiting,/定时事件已失效/);assert.equal(sends,0);
 });
 
-test('a server-owned balance notice is independent of the conversation topic cooldown',async()=>{
- let writes=0,topicChecks=0;
- const transport=createOutboundTransport({callService:(service,method)=>{
-  if(service==='conversationDrive'&&method==='reserve'){topicChecks++;return {ok:false,reason:'new_topic_cooldown'};}
+test('outbound preserves an independent notice receipt without forwarding its topic hint',async()=>{
+ let writes=0,receipt;
+ const transport=createOutboundTransport({callService:(service,method,payload)=>{
+  if(service==='conversationDrive'&&method==='reserve')return payload.originReason==='milkStock'
+    ? {ok:true,ordinary:true,independent:true} : {ok:false,reason:'new_topic_cooldown'};
+  if(service==='conversationDrive'&&method==='sent')receipt=payload;
   if(service==='replyPlan'&&method==='reserve')return {ok:true,waitMs:0};
   if(service==='replyPlan'&&method==='authorize')return {ok:true};
  }});
  const envelope={key,reason:'milkStock',scheduledEvent:{key,allowedKinds:['text']},replyPlan:{maxMessageChars:500,scheduledGrant:{ids:['balance']}}};
  const context=transport.capture({key,envelope,agent:true,conversationIntent:'newTopic'});
  await transport.perform({key,context,text:'测试余额恢复',send:async()=>{writes++;}});
- assert.equal(writes,1);assert.equal(topicChecks,0);
+ assert.equal(writes,1);assert.equal(receipt.kind,undefined);
  const chat=transport.capture({key,envelope:{key,replyPlan:{maxMessageChars:500}},conversationIntent:'newTopic'});
  await assert.rejects(transport.perform({key,context:chat,text:'测试普通新话题',send:async()=>{writes++;}}),/new_topic_cooldown/);
  assert.equal(writes,1);

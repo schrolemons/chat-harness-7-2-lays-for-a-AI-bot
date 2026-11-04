@@ -16,6 +16,8 @@ const parseMarkedJson = (text, marker) => {
   try { return JSON.parse(m[1].trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()); } catch { return null; }
 };
 const pending = x => x?.status === '待修复';
+const contextOnlyFeedback = text => /^(?:请(?:你)?|帮我|麻烦(?:你)?)?(?:反馈(?:一下)?(?:这个问题|这件事)?|反馈上去|把(?:这个问题|这件事)反馈(?:一下|上去)?|报错一下)(?:吧|哈)?$/u
+  .test(String(text || '').replace(/[\s，,。！!？?]+/g,''));
 
 export function createPlugin(ctx) {
   const getState = () => {
@@ -217,6 +219,7 @@ export function createPlugin(ctx) {
   }}, hooks: {
     onIncoming(payload={}) {
       const text=clean(payload.text); if(!/(?:^\s*(?:反馈|问题反馈|故障反馈|报错)|我.{0,5}(?:反馈|报错|报告问题)|(?:反馈|报错)一下|反馈这个问题|请.{0,10}(?:修复|改进|处理)|帮(?:我|忙).{0,8}(?:修复|改进|处理)|修复这个问题|这个问题.{0,6}(?:修复|改进))/i.test(text))return;
+      if (contextOnlyFeedback(text)) return;
       const owner=String(ctx.capabilities.getOwnerQQ?.()||''), reporter=String(payload.userId||payload.sender||''), isOwner=owner&&reporter===owner, settings=ctx.capabilities.getSelfReviewConfig?.()||{};
       const guarded=ctx.capabilities.sanitizeFeedbackReport?.(text)||{action:'accept',text}; if(guarded.action==='reject'||!String(guarded.text||'').trim())return;
       const issue=clean(guarded.text), s=getState(), fingerprint=issue.toLowerCase().replace(/\s+/g,' ').slice(0,240), now=Date.now();
@@ -231,8 +234,12 @@ export function createPlugin(ctx) {
       const x={id:makeId(),reporter,source:String(payload.key||''),text:issue,kind:'用户反馈',origin:'user',queue:'user',fingerprint,status:'待修复',attempts:0,createdAt:new Date(now).toISOString()}; s.issueLedger.push(x); const event=record(s,'submitted',x,'用户反馈'); persist(s); ctx.capabilities.recordFeedbackSummary?.(event); ctx.log('反馈已写入历史账本及用户处理队列');
     },
     beforePrompt(payload={}) {
-      if(!payload.isAdminEnvironment)return '';
       const reason=String(payload.reason||'');
+      if (/^(?:message|private|reply|question|atMention|nameMention|keyword|anyMessage|probability|speaker)(?:$|[:@])/.test(reason)
+          && contextOnlyFeedback(payload.incomingText)) {
+        return '对方请你反馈刚才的问题。先从当前会话核对具体症状，再用 qq_report_feedback 提交一条能独立读懂的问题和证据。线索不足时，问一句具体是哪个问题。';
+      }
+      if(!payload.isAdminEnvironment)return '';
       if(reason==='userFeedbackReview') {
         const user=batch('user'), cap=ctx.capabilities.getSelfReviewConfig?.()||{};
         const section=user.length?`【用户反馈队列】每轮最多处理 ${Number(cap.maxFeedbackFixesPerRound)||3} 条。\n${JSON.stringify(user.map(({id,reporter,source,text})=>({id,reporter,source,text})))}\n每个编号都必须回报；复核时无法再现可按已被人工/其他工具修复处理，并说明“复核未再现”。输出 <USER_FEEDBACK_RESULTS>{"items":[{"id":"原编号","status":"已修复或待修复","summary":"改动或核验证据"}]}</USER_FEEDBACK_RESULTS>。`: '当前用户反馈队列为空。';

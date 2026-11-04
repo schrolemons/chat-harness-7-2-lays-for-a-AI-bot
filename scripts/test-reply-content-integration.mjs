@@ -153,6 +153,9 @@ test('a scheduled QQ task persists its original authority and sends only to its 
  const content=declared.body.contents?.[0];
  assert.equal(content?.taskExempt,true,JSON.stringify(declared.body));
  const add=(targetKey,when=dueAt)=>request('/api/socialV2/schedules',{action:'add',key,targetKey,message:'晚安，早点休息',title:'验收一次性联系',dueAt:when},content.id);
+ const legacy=await request('/api/socialV2/schedules',{action:'add',key,title:'缺目标的旧调用',dueAt},content.id);
+ assert.equal(legacy.status,409,JSON.stringify(legacy.body));
+ assert.equal(legacy.body.code,'SCHEDULE_DESTINATION_REQUIRED');
  const denied=await add('private:12002');
  assert.equal(denied.status,409,JSON.stringify(denied.body));
  assert.equal((await add('private:12001',dueAt+60000)).status,409);

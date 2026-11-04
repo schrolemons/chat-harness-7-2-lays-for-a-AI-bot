@@ -3,6 +3,10 @@ const {openingGuidance} = await import(openingURL.href);
 const defaults = { followupWeight: .5, newTopicWeight: .2, followUpCooldownMinutes: 8, newTopicCooldownMinutes: 45, newTopicMaxPerHour: 2 };
 const NUDGE = /(?:还在[吗嘛么]?|在不在|怎么不说话|怎么不回|回我一下|说句话|人呢|有人吗)/;
 const validKey = key => /^(private|group):\d+$/.test(String(key || ''));
+const independentReasons = new Set(['reminder','milkStock','scheduledContact','notification','taskDone','startupGreeting','newFriend','dailyDiary','worklog']);
+export function isIndependentDelivery({origin,originReason}={}) {
+  return independentReasons.has(String(originReason||'').split(':')[0]) || ['operator','relay','mechanical'].includes(origin);
+}
 const directQuestion = text => /[?？]|(?:吗|么|呢)[呀啊嘛]?[。！!]*$/.test(String(text || '').trim());
 const reject = reason => ({ok:false,reason,...(reason==='question_already_asked'?{hint:'本次主动开口已经问过一个问题；不要改写重试、换话题或换发送工具，等用户真实回应后再接。'}:reason==='new_topic_already_chosen'?{hint:'本次主动开口已经选定一个话题；不要改话题ID重试，也不追加另一个开场问题。'}:{})});
 export function createTopicActions(ctx, raw = {}) {
@@ -49,8 +53,8 @@ export function createTopicActions(ctx, raw = {}) {
     ctx.state.set({ openingChoices: choices });
     return choice;
   }
-  function afterWait({ key, scope, seq = 0, emptyWaits, endRound, now = Date.now(), random = Math.random } = {}) {
-    if (!validKey(key) || !scope || endRound !== false || !validateConfig().ok) return { action: 'wait' };
+  function afterWait({ key, scope, seq = 0, emptyWaits, endRound, originReason, now = Date.now(), random = Math.random } = {}) {
+    if (isIndependentDelivery({originReason}) || !validKey(key) || !scope || endRound !== false || !validateConfig().ok) return { action: 'wait' };
     const id = `${scope}:${seq}:${emptyWaits}`, previous = get().topicChoices?.[key];
     if (previous?.id === id && previous.generation === generation(key)) return previous;
     const r = random();
@@ -64,8 +68,9 @@ export function createTopicActions(ctx, raw = {}) {
     ctx.state.set({ topicChoices: { ...(get().topicChoices || {}), [key]: choice } });
     return choice;
   }
-  function reserve({ key, scope, operationId, kind, text = '', topicId, episodeId, originReason, now = Date.now() } = {}) {
+  function reserve({ key, scope, operationId, kind, text = '', topicId, episodeId, origin, originReason, now = Date.now() } = {}) {
     if (!validKey(key) || !operationId) return { ok: false, reason: 'invalid_topic_send' };
+    if (isIndependentDelivery({origin,originReason})) return {ok:true,ordinary:true,independent:true};
     const choice = get().topicChoices?.[key];
     const bound = !!choice && choice.scope === scope && choice.generation === generation(key);
     const cross = originReason === 'privateFollowup';
@@ -94,9 +99,10 @@ export function createTopicActions(ctx, raw = {}) {
     if (!lease?.id) return;
     const leases = { ...(get().topicLeases || {}) }; delete leases[lease.id]; ctx.state.set({ topicLeases: leases });
   }
-  function delivered({ key, success, topicLease, kind, text = '', episodeId, originReason } = {}) {
+  function delivered({ key, success, topicLease, kind, text = '', episodeId, origin, originReason } = {}) {
     if (success !== true) return { isProactive: false };
     release({ lease: topicLease });
+    if (isIndependentDelivery({origin,originReason})) return {independent:true};
     if (topicLease && !topicLease.ordinary) return { ...topicLease, independentPrivateFollowup: topicLease.kind === 'privateFollowup' };
     if (originReason === 'privateFollowup') return { kind: 'privateFollowup', episodeId, isProactive: true, independentPrivateFollowup: true };
     const semantic = ['followup', 'newTopic'].includes(kind) ? kind : (String(text).length <= 40 && NUDGE.test(text)) ? 'followup' : kind;
@@ -108,9 +114,9 @@ export function createTopicActions(ctx, raw = {}) {
     const leases = Object.fromEntries(Object.entries(get().topicLeases || {}).filter(([, lease]) => lease.key !== key));
     ctx.state.set({ topicLeases: leases, topicChoices: choices, topicGenerations: { ...(get().topicGenerations || {}), [key]: generation(key) + 1 } });
   }
-  function endWait({key,scope,seq=0}={}) {
+  function endWait({key,scope,seq=0,originReason}={}) {
     const closed={action:'wait',guidance:'本轮已结束，等待新来信；不得继续追加追问或新话题。'};
-    if(!validKey(key)||!scope)return closed;
+    if(isIndependentDelivery({originReason})||!validKey(key)||!scope)return closed;
     incoming({key});
     ctx.state.set({topicChoices:{...(get().topicChoices||{}),[key]:{...closed,id:scope+':ended',scope,seq,generation:generation(key),reason:'round_ended',at:Date.now()}}});
     return closed;

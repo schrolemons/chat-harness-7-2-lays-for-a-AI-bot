@@ -6,12 +6,31 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPluginHost } from '../src/plugin-host.js';
+import { createPlugin } from '../plugins/qq-components/obs-self-review/index.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bridge = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
 const consoleHtml = readConsoleTestSource();
 const selfReviewScript = fs.readFileSync(path.join(ROOT, 'scripts', 'self-review.mjs'), 'utf8');
 const pluginDir = path.join(ROOT, 'plugins', 'qq-components', 'obs-self-review');
+
+test('context-only feedback is handled in conversation without creating an empty repair record', () => {
+  let state={}, repairs=0;
+  const plugin=createPlugin({
+    state:{get:()=>state,set:patch=>{state={...state,...patch};}},
+    capabilities:{getOwnerQQ:()=>123,requestAdminFeedbackRepair:()=>{repairs++;return true;}}
+  });
+  for (const text of ['反馈一下','反馈一下这个问题','反馈上去。']) {
+    plugin.hooks.onIncoming({key:'private:123',userId:'123',text});
+    assert.match(plugin.hooks.beforePrompt({key:'private:123',reason:'private',incomingText:text}), /qq_report_feedback/);
+    assert.doesNotMatch(plugin.hooks.beforePrompt({key:'private:123',reason:'startupGreeting',incomingText:text}), /qq_report_feedback/);
+  }
+  assert.equal(repairs,0);
+  assert.equal(plugin.services.selfReviewFeedback.listFeedback().pending.length,0);
+  plugin.hooks.onIncoming({key:'private:123',userId:'123',text:'反馈一下，回复把两段话拆断了'});
+  assert.equal(repairs,1);
+  assert.equal(plugin.services.selfReviewFeedback.listFeedback().pending.length,1);
+});
 
 test('self-review report honors the configured optimization memory path', () => {
   assert.match(selfReviewScript, /socialV2\?\.selfReview\?\.memoryFile/);

@@ -41,3 +41,19 @@ test('failed sends do not consume topic or proactive counts; cooldown blocks act
   await assert.rejects(f.transport.perform({ key: f.key, context, text: '再次换话题', send: async () => { sent = true; return {}; } }));
   assert.equal(sent, false);
 });
+
+test('reminders bypass chat-topic cooldown and do not draw or count a new topic',async()=>{
+  for (const reason of ['reminder','milkStock','scheduledContact:scheduled-id','notification','taskDone']) {
+    const f=fixture();
+    f.topicState.set({driveByKey:{[f.key]:{driveNewTopicAt:f.now-1000,driveNewTopicTimes:[f.now-1000]}}});
+    const drive=f.topics.services.conversationDrive;
+    const choice=drive.afterWait({key:f.key,scope:'sid:1',seq:0,emptyWaits:1,endRound:false,originReason:reason,random:()=>assert.fail('reminder entered chat draw')});
+    assert.equal(choice.action,'wait');
+    const context={key:f.key,sourceKey:f.key,actionId:'notice',envelope:{sessionId:'sid',turn:1},origin:'purpose',reason,plan:{maxMessageChars:500},conversationIntent:'newTopic'};
+    let writes=0;
+    await f.transport.perform({key:f.key,context,text:'到点了，记得休息好吗？',send:async()=>{writes++;return {};}});
+    assert.equal(writes,1);
+    assert.deepEqual(f.topicState.get().driveByKey[f.key].driveNewTopicTimes,[f.now-1000]);
+    assert.equal(f.topicState.get().driveByKey[f.key].driveFollowUpAt,undefined);
+  }
+});
