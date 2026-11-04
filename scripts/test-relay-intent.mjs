@@ -12,6 +12,9 @@ import { isScheduledContactRequest, parseRelayCommand, parseScheduledRelay, stri
   assert.equal(isScheduledContactRequest('测试朋友今天开会，心情不好，十点半后，你去说两句，哄他一下'), true);
   assert.equal(isScheduledContactRequest('十点半后，我自己去哄他一下'), false);
   assert.equal(isScheduledContactRequest('十点半后提醒我开会'), false);
+  assert.equal(isScheduledContactRequest('同事今天有点难过，十点半后去安慰一下'), false);
+  assert.equal(isScheduledContactRequest('22:30去安慰一下'), false);
+  assert.equal(isScheduledContactRequest('22:30通知我开会'), false);
 }
 
 // 模拟桥接的白名单解析：十二 / 管理员 / 老板 可解析，其它不行

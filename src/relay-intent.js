@@ -124,7 +124,11 @@ export function parseScheduledRelay(text, options = {}) {
 
 // A colloquial request can warrant clarification without authorizing a specific send.
 export function isScheduledContactRequest(text) {
-  return !!parseScheduledRelay(text) || /(?:^|[，,。；;\n])\s*(?:今天|今晚|明天|明晚|后天|上午|下午|晚上)?\s*(?:[零〇一二两三四五六七八九十\d]{1,4}(?:点|时)(?:半|[零〇一二两三四五六七八九十\d]{1,4}分)?|\d{1,2}[:：]\d{2})(?:之后|以后|后|左右)?\s*[，,]?\s*(?:你|请你|帮我)?\s*(?:去\s*(?:[^。！？；;\n]{0,24}?[，,]\s*)?)?(?:私聊|群聊|联系|问候|安慰|哄|通知|转告|转达)(?!\s*(?:我|你|自己))\s*[^，,。！？；;\n]+[。！!]?\s*$/.test(String(text || ''));
+  const parsed=parseScheduledRelay(text);
+  const natural=parsed?null:/(?:^|[，,。；;\n])\s*(?:今天|今晚|明天|明晚|后天|上午|下午|晚上)?\s*(?:[零〇一二两三四五六七八九十\d]{1,4}(?:点|时)(?:半|[零〇一二两三四五六七八九十\d]{1,4}分)?|\d{1,2}[:：]\d{2})(?:之后|以后|后|左右)?\s*[，,]?\s*(?:你|请你|帮我)?\s*(?:去\s*(?:[^。！？；;\n]{0,24}?[，,]\s*)?)?(?:私聊|群聊|联系|问候|安慰|哄|通知|转告|转达)\s*([^，,。！？；;\n]+)[。！!]?\s*$/.exec(String(text || ''));
+  const target=String(parsed?.name??natural?.[1]??'').trim();
+  // An omitted recipient or a reminder to the current speaker is not a cross-session request.
+  return !!target&&!/^(?:我|你|自己)/.test(target)&&!/^(?:一下|一声|一会儿|下)[。！!]*$/.test(target);
 }
 
 /**
