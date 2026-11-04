@@ -266,6 +266,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   const context = vm.createContext({
     fs, os, path, http, crypto, fileURLToPath, URL, Buffer, AbortSignal, console: { log() {}, error() {} },
     fetch: fakeFetch,
+    // Simulated consoles never launch a native window or display a fixture token.
+    openSetupViewer: () => ({ stdin: { end() {} } }),
     // 锁文件探测用（bridge.js 顶层的 consolePortInUse）；
     // 固定桩掉：测试不应该真去 netstat 宿主机。
     execFileSync: () => '',
