@@ -92,18 +92,18 @@ test('quiet interval suppresses automatic notification and stale item never send
 test('automatic notifications obey global pause and legacy muted state',async()=>{const h=await bridgeHarness();try{h.setMode('reserved2');const now=Date.now(),meta={id:'paused',sourceAt:now,expiresAt:now+10000};h.socialV2.paused=true;assert.equal(await h.taskCaps.sendNotification('private:123','DO_NOT_SEND',meta),false);h.socialV2.paused=false;h.getSocialV2State('private:123').mutedUntilReengaged={at:now};assert.equal(await h.taskCaps.sendNotification('private:123','DO_NOT_SEND',meta),false);assert.equal(h.calls.sent.length,0);}finally{await h.close();}});
 test('notification expiring while queued is blocked at real outgoing boundary',async()=>{const h=await bridgeHarness();try{h.setMode('reserved2');let entered,release;const ready=new Promise(r=>entered=r);h.bot.sendPrivateMessage=async(_id,text)=>{if(text==='BLOCK'){entered();await new Promise(r=>release=r);}else h.calls.sent.push({text});};const first=h.sendToQQ('private:123','BLOCK');await ready;const now=Date.now(),pending=h.taskCaps.sendNotification('private:123','EXPIRED_QUEUED_NOTIFICATION',{id:'queued-expiry',sourceAt:now,expiresAt:now+20});await new Promise(r=>setTimeout(r,40));release();await first;assert.equal(await pending,false);assert.equal(h.calls.sent.length,0);}finally{await h.close();}});
 
-test('diary bypasses conversational length and frequency limits and sends its entire saved body',async()=>{
+test('a new diary sends its complete draft in one message outside the ordinary reply quota',async()=>{
  const h=await bridgeHarness({config:{socialV2:{dailyDiary:{maxChars:300}}}});try{
   h.setMode('reserved2');const now=Date.now(),key='private:123',day=h.pluginHost.callService('memory','diaryTargetDay',{now}).day;
-  const diary='第一段'+ '甲'.repeat(315)+'\n第二段'+ '乙'.repeat(315)+'🙂结尾';
+  const diary='第一段'+ '甲'.repeat(100)+'\n第二段'+ '乙'.repeat(100)+'🙂结尾';
   assert.equal(h.pluginHost.callService('memory','updateDiary',{key,day,now,text:diary}).ok,true);
   const call=h.pluginHost.callService.bind(h.pluginHost);
   h.pluginHost.callService=(service,method,payload)=>service==='replyPlan'&&method==='remaining'?0:call(service,method,payload);
   assert.equal(await h.sendToQQ(key,'ordinary blocked'),false);
   const result=await call('memory','sendDiaryDetailed',{key,now,day,manualRequestId:'quota-exempt-test'});
   assert.equal(result.ok,true,JSON.stringify(result));
-  assert(h.calls.sent.length>1);
-  assert(h.calls.sent.map(item=>item.text).join('').endsWith(diary));
+  assert.equal(h.calls.sent.length,1);
+  assert(h.calls.sent[0].text.endsWith(diary));
   assert.equal(h.taskCaps.deliveryStatus(result.deliveryId).status,'sent');
  }finally{await h.close();}
 });
@@ -111,7 +111,8 @@ test('a partial diary transport is audited with progress and cannot be marked se
  const h=await bridgeHarness({config:{socialV2:{dailyDiary:{maxChars:300}}}});try{
   h.setMode('reserved2');const now=Date.now(),key='private:123',day=h.pluginHost.callService('memory','diaryTargetDay',{now}).day;
   const diary='正文'+ '甲'.repeat(700),manualRequestId='partial-transport';
-  assert.equal(h.pluginHost.callService('memory','updateDiary',{key,day,now,text:diary}).ok,true);
+  // Seed a diary saved before the writing limit was introduced.
+  h.pluginHost.callService('memory','write',{key,text:'【日记】\n'+diary});
   let count=0;h.bot.sendPrivateMessage=async()=>{if(++count>1)return {status:'failed',retcode:1,wording:'fixture error contains NO_AUDIT_SECRET'};};
   const input={key,now,day,manualRequestId};
   const outcome=await h.pluginHost.callService('memory','sendDiaryDetailed',input);

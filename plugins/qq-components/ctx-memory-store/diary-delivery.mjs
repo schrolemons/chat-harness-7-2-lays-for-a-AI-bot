@@ -17,6 +17,15 @@ export function diaryWindow(day,config={}){
   return {day,start,end,label:start+' 至 '+end};
 }
 export function diaryPreviousDay(now,config){return shift(diaryTargetDay(now,config),-1);}
+export function diaryHeading(day,config){
+  return '【'+day+' 日日记】\n时间窗：'+(diaryWindow(day,config)?.label||'')+'\n';
+}
+export function diaryPartLimit(config={}){
+  return Math.max(50,Math.min(500,Math.floor(Number(config.maxChars)||500)));
+}
+export function diaryDraftLimit(day,config){
+  return Math.max(50,Math.min(350,diaryPartLimit(config)-diaryHeading(day,config).length));
+}
 const escape=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 export function diaryReceiptIds({key,day,notes='',indexed=[]}){
   const pattern=new RegExp('diary:'+escape(key)+':\\d{4}-\\d{2}-\\d{2}(?::manual:[a-zA-Z0-9-]{8,80}|:scheduled|:catchup)?','g');

@@ -14,7 +14,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 const memoryModule = relative => { const url = new URL(relative, import.meta.url); url.search = new URL(import.meta.url).search; return import(url.href); };
 const { createAffairStore } = await memoryModule('./affairs.mjs');
-const {diaryTargetDay,diaryWindow,diaryPreviousDay,resolveDiaryDelivery}=await memoryModule('./diary-delivery.mjs');
+const {diaryTargetDay,diaryWindow,diaryPreviousDay,diaryHeading,diaryPartLimit,diaryDraftLimit,resolveDiaryDelivery}=await memoryModule('./diary-delivery.mjs');
 const { parseMemoryDocument, renderPersistentDocument, mergePersistentDocument } = await memoryModule('./sections.mjs');
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -191,7 +191,10 @@ function prevDateKey(now = Date.now()) {
   const d = new Date(now);
   return dateKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, 12, 0, 0, 0));
 }
-function diaryWindowLabel(day,config) { return diaryWindow(day,config)?.label || ''; }
+function diaryLengthError(text,maxChars){
+  if(text.length<=maxChars)return null;
+  return {ok:false,reason:'diary_too_long',chars:text.length,maxChars,error:'日记超过 '+maxChars+' 字，请重新取舍，只保留最值得写的片段和感受，提交完整短稿。'};
+}
 
 export function createPlugin(ctx) {
   const root = ctx.root;
@@ -373,24 +376,26 @@ export function createPlugin(ctx) {
       : contentForDay(targetKey, day);
     const { text: diary } = availability;
     if(!diary)return finish({ok:false,reason:'missing_diary'});
-    const body='【'+day+' 日日记】\n时间窗：'+diaryWindowLabel(day,cfg().dailyDiary)+'\n'+diary;
+    const config=cfg().dailyDiary;
+    const body=diaryHeading(day,config)+diary;
     let sourceAt = availability.updatedAt;
     if (availability.source === 'archive') { try { sourceAt = fs.statSync(diaryArchiveFile(root, day)).mtimeMs; } catch { sourceAt = Date.parse(day + 'T00:00:00'); } }
-    const meta={id:receiptId,sourceAt,partMaxChars:Number(cfg().dailyDiary?.maxChars)||500,expiresAt:new Date(new Date(now).getFullYear(),new Date(now).getMonth(),new Date(now).getDate()+1).getTime()};
+    const meta={id:receiptId,sourceAt,partMaxChars:diaryPartLimit(config),expiresAt:new Date(new Date(now).getFullYear(),new Date(now).getMonth(),new Date(now).getDate()+1).getTime()};
     rememberDiaryAttempt({...attempt, stage:'sending'});
     let outcome;try{outcome=await cap.sendDiaryDelivery(targetKey,body,meta);}catch{outcome={ok:false,reason:'send_unconfirmed'};}
     if(outcome?.ok!==true)return finish({ok:false,reason:outcome?.reason||'send_unconfirmed',receiptStatus:outcome?.receiptStatus||'',partsSent:outcome?.partsSent,partsTotal:outcome?.partsTotal});
-    let confirmed;try{confirmed=await cap.deliveryStatus(receiptId);}catch{}
-    if(confirmed?.ok!==true||confirmed.status!=='sent')return finish({...outcome,ok:false,reason:'delivery_unconfirmed',receiptStatus:confirmed?.status||'unavailable'});
+    // The transport only returns sent after committing the central receipt.
+    if(outcome.receiptStatus!=='sent')return finish({...outcome,ok:false,reason:'delivery_unconfirmed',receiptStatus:'unavailable'});
+    const confirmedAt=Date.now();
     {
-      rememberDelivery(targetKey,day,receiptId,Number(confirmed.finishedAt)||0);
+      rememberDelivery(targetKey,day,receiptId,confirmedAt);
       try{affairsService.appendReceipt({key:targetKey,text:'日记已发：'+day+'｜凭据：'+receiptId});}catch(e){ctx.warn('日记收据索引写入失败：'+e.message);}
       // 归档失败绝不能影响发送：独立 try/catch，只告警。
       // 归档保存完整正文。
       let archived=false;
       try{archived=writeDiaryArchive({root,key:targetKey,day,text:diary,now,maxChars:diaryArchiveMaxChars(cfg()),replaceExisting:!!manualId||scheduled||catchup}).ok===true;}
       catch(e){ctx.warn('日记归档写入失败（'+targetKey+' '+day+'）：'+(e?.message??e));}
-      try { markDiaryArchiveSent({ root, key: targetKey, day, now:Number(confirmed.finishedAt)||now }); }
+      try { markDiaryArchiveSent({ root, key: targetKey, day, now:confirmedAt }); }
       catch (e) { ctx.warn('日记归档发送时间记录失败（' + targetKey + ' ' + day + '）：' + (e?.message ?? e)); }
       if(archived)retireConfirmedDiary(targetKey,day,now);
     }
@@ -526,17 +531,20 @@ export function createPlugin(ctx) {
         diaryDraftContext({key,now=Date.now()}={}){
           const refresh=state().scheduledDiaryRefresh[key];
           const day=refresh&&!refresh.completedAt?refresh.day:diaryTargetDay(now,cfg().dailyDiary);
-          return {ok:true,...diaryWindow(day,cfg().dailyDiary),sameWindowDiary:contentForDay(key,day).text};
+          const config=cfg().dailyDiary;
+          return {ok:true,...diaryWindow(day,config),maxDiaryChars:diaryDraftLimit(day,config),sameWindowDiary:contentForDay(key,day).text};
         },
         diaryCurrent({key,now=Date.now()}={}){
-          const day=diaryTargetDay(now,cfg().dailyDiary);
-          return {ok:true,...diaryWindow(day,cfg().dailyDiary),text:contentForDay(key,day).text};
+          const config=cfg().dailyDiary,day=diaryTargetDay(now,config);
+          return {ok:true,...diaryWindow(day,config),maxDiaryChars:diaryDraftLimit(day,config),text:contentForDay(key,day).text};
         },
         updateDiary({key,day,text,now=Date.now()}={}){
           if(!/^(?:private|group):\d+$/.test(String(key)))return {ok:false,error:'会话格式不正确'};
           const currentDay=diaryTargetDay(now,cfg().dailyDiary);
           if(day!==currentDay)return {ok:false,error:'日记已换窗，请重新读取当前日记后再更新',day:currentDay};
-          if(typeof text!=='string'||!text.trim()||text.length>20000)return {ok:false,error:'日记正文须为1至20000字符'};
+          if(typeof text!=='string'||!text.trim())return {ok:false,error:'请提交日记正文'};
+          const lengthError=diaryLengthError(text.trim(),diaryDraftLimit(day,cfg().dailyDiary));
+          if(lengthError)return lengthError;
           const submitted=parseMemoryDocument('【日记】\n'+text);
           if(submitted.facts.length||submitted.portrait.length||submitted.unfinished.length)return {ok:false,error:'只提交日记正文，不能夹带其他记忆栏目'};
           rollDiaryWindow(key,now);
@@ -579,8 +587,13 @@ export function createPlugin(ctx) {
           const text = String(payload.text || '');
           const m = /<MEMORY>([\s\S]*?)<\/MEMORY>/i.exec(text);
           if (!m || !m[1].trim()) return { matched: false, chars: 0 };
-          rollDiaryWindow(payload.key,payload.now||Date.now());
           const target=this.diaryDraftContext({key:payload.key,now:payload.now||Date.now()});
+          const lengthError=diaryLengthError(extractDiary(m[1].trim()),target.maxDiaryChars);
+          if(lengthError){
+            ctx.warn?.('日记成稿超过写作上限 '+lengthError.chars+'/'+lengthError.maxChars);
+            return {matched:false,...lengthError};
+          }
+          rollDiaryWindow(payload.key,payload.now||Date.now());
           const chars = writePersistent(payload.key, m[1].trim(), true);
           const st=state(),refresh=st.scheduledDiaryRefresh[payload.key];
           const diary=extractDiary(readMemory(root,payload.key).text);

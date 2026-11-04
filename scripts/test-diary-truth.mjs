@@ -64,6 +64,26 @@ test('a success-shaped sender response without central confirmation cannot mark 
  assert.equal(result.reason,'delivery_unconfirmed');assert.equal(f.state.lastDiaryDate?.[key],undefined);
 });
 
+test('overlong drafts must be rewritten before either writing path can replace the diary', t=>{
+ const f=scheduledFixture(t),memory=f.plugin.services.memory,now=f.now-60000;
+ const original='今天最在意的一件事。',long='多余的流水账。'.repeat(100);
+ assert.equal(memory.updateDiary({key,day,now,text:original}).ok,true);
+ assert.equal(memory.updateDiary({key,day,now,text:long}).reason,'diary_too_long');
+ assert.equal(memory.capture({key,now,text:'<MEMORY>【日记】\n'+long+'</MEMORY>'}).reason,'diary_too_long');
+ assert.equal(memory.diaryText({key}),original);
+ assert.match(memory.diaryArchiveRead({date:day}).text,new RegExp(original));
+});
+
+test('the committed transport receipt is sufficient even if a subsequent lookup is unavailable',async t=>{
+ let committed=false;
+ const f=fixture(t,{lookup:async()=>{if(committed)throw Error('receipt read unavailable');return {ok:true,status:'absent'};}});
+ f.ctx.capabilities.sendDiaryDelivery=async()=>{committed=true;return {ok:true,receiptStatus:'sent',partsSent:1,partsTotal:1};};
+ f.plugin.services.memory.write({key,text:'【日记】\nONE_CONFIRMED_MESSAGE'});
+ const result=await f.plugin.services.memory.sendDiaryDetailed({key,day,manualRequestId:'committed-transport'});
+ assert.equal(result.ok,true);
+ assert.equal(f.state.lastDiaryDate[key],day);
+});
+
 test('starting after the boundary exposes a missed previous diary without automatically refreshing or sending it',async t=>{
  const f=scheduledFixture(t);f.ctx.capabilities.runtimeStartedAt=f.now+60000;
  f.plugin.services.memory.write({key,text:'【重要事实】\nKEEP_FACT\n【日记】\nEXISTING_PREVIOUS'});

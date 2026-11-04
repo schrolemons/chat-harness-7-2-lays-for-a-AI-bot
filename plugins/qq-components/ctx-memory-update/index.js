@@ -9,7 +9,7 @@ const {diaryEvidence}=await import(sourceUrl.href);
 const styleUrl=new URL('./diary-style.mjs',import.meta.url);styleUrl.search=new URL(import.meta.url).search;
 const {DIARY_WRITING_POLICY}=await import(styleUrl.href);
 const clockUrl=new URL('../ctx-memory-store/diary-delivery.mjs',import.meta.url);clockUrl.search=new URL(import.meta.url).search;
-const {diaryTargetDay,diaryWindow}=await import(clockUrl.href);
+const {diaryTargetDay,diaryWindow,diaryDraftLimit}=await import(clockUrl.href);
 
 export function createPlugin(ctx) {
   const maxChars = Math.max(800, Number((ctx.config || {}).maxChars) || 4000);
@@ -40,6 +40,7 @@ export function createPlugin(ctx) {
           '【日记】',
           '（提交本窗口经过取舍的完整日记成稿；跨窗口另起一份，不续写、润色或拼接昨天的日记。证据少就如实写少，不补编整天的经历。）',
           DIARY_WRITING_POLICY,
+          '本次日记正文最多 '+(window.maxDiaryChars??diaryDraftLimit(window.day,config))+' 字。先选片段，再写完整短稿；超长就删掉次要片段、合并重复感受并重写，保留完整句意。超限稿不会保存或发送。',
           '允许结合历史聊天偶尔与昨天对比，但须明确写为旧事，不能说成今天刚发生。',
           '</MEMORY>',
           '【本次日记窗口】'+window.day+' 日记：'+window.start+' 至 '+window.end+'（北京时间，按消息发生时间归属；窗口未结束时只总结截至当前的部分）。',
