@@ -63,14 +63,21 @@ async function refreshV2Diary() {
       const blocked = c.diaryPending || ['claimed','unavailable'].includes(deliveryStatus) || (c.attempts || []).some(attempt=>attempt.receiptStatus==='claimed');
       const blockReason = !c.hasDiary ? '目标日期没有日记内容' : unresolved ? '发送凭据尚未确认，请先检查 QQ 会话和记录' : '';
       const previousUnknown=['claimed','uncertain','unavailable'].includes(c.previousDiaryStatus);
-      const statusLabel = c.previousDiaryMissing ? (previousUnknown?'昨日日记发送未确认':'昨日日记未发送') : c.diaryPending ? '刷新或发送处理中' : '当前窗口进行中';
+      const previousLegacy=c.previousDiaryStatus==='legacy_unconfirmed';
+      const previousReceiptLabel={
+        claimed:'投递处理中或中断，补发已暂停',
+        uncertain:'QQ 未确认全部分段，补发已暂停',
+        unavailable:'暂时无法读取投递回执，补发已暂停',
+      }[c.previousDiaryStatus];
+      const statusLabel = c.previousDiaryMissing ? (previousUnknown?'上一窗口投递待核对':previousLegacy?'上一窗口旧记录待核对':'上一窗口日记未发送') : c.diaryPending ? '刷新或发送处理中' : '当前窗口进行中';
       const statusClass = c.previousDiaryMissing ? 'missing' : c.diaryPending ? 'pending' : 'muted';
       const title = '发送对象：' + c.key + (blockReason ? '；' + blockReason : '');
       const catchUpAvailable = (c.previousDiaryMissing&&c.previousDiaryAvailable&&!previousUnknown)||hasCatchUpFor(c.key, c.targetDate);
       const confirmedAt=Number(c.lastConfirmedSentAt)||(alreadySent?Number(c.sentAt):0),confirmedDay=c.lastConfirmedDiaryDate||(alreadySent?c.targetDate:'');
       const sendDateLabel=confirmedAt?'最近确认发送：'+sentTime(confirmedAt)+' · 所属日记：'+confirmedDay:(c.lastDiaryDate?'旧日期记录：'+last+'（没有确认回执，不代表已发送）':'尚无确认发送记录');
       const windowLabel=c.windowStart&&c.windowEnd?c.windowStart+' 至 '+c.windowEnd:diaryWindowForDay(c.targetDate,r.config);
-      const scheduledLabel=c.previousDiaryMissing?'上一窗口：'+c.previousDay+' 日记 · '+(c.previousDiaryAvailable?'可直接补发已有正文，不调用模型':'暂无可补发正文'):c.previousSentAt?'上一窗口已发送：'+sentTime(c.previousSentAt):'手动发送不抵扣本窗口结束时的定时发送';
+      const catchUpLabel=previousReceiptLabel || (!c.previousDiaryAvailable?'暂无可补发正文':previousLegacy?'请先在 QQ 核对，再补发已有正文':'可直接补发已有正文，不调用模型');
+      const scheduledLabel=c.previousDiaryMissing?'上一窗口：'+c.previousDay+' 日记 · '+catchUpLabel:c.previousSentAt?'上一窗口已发送：'+sentTime(c.previousSentAt):'手动发送不抵扣本窗口结束时的定时发送';
       const attempts=[...(c.attempts || []),...(c.previousAttempts || [])];
       const audit=attempts.length ? '<details class="diary-session-detail"><summary>投递记录（'+attempts.length+'）</summary>'
         + attempts.map(attempt=>'<div title="'+esc(attempt.id)+'">'+esc(diaryAttemptLabel(attempt))+'</div>').join('')+'</details>' : '';

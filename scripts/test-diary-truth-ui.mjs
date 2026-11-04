@@ -12,14 +12,19 @@ try{
  let conversations=[
   {key:'private:111',targetDate:'2026-11-02',lastDiaryDate:'2026-11-01',targetSent:true,deliveryStatus:'sent',sentAt:0,previousDay:'2026-11-01',previousDiaryMissing:true,previousDiaryAvailable:true,previousDiaryStatus:'legacy_unconfirmed'},
   {key:'private:222',targetDate:'2026-11-01',targetSent:true,deliveryStatus:'sent',sentAt,lastConfirmedSentAt:sentAt,lastConfirmedDiaryDate:'2026-11-01',scheduledDeliveryStatus:'absent',attempts:[{id:'diary:private:222:2026-11-01:manual:fixture-123',day:'2026-11-01',kind:'manual',stage:'finished',updatedAt:sentAt,reason:'send_unconfirmed',receiptStatus:'uncertain',partsSent:1,partsTotal:2}]},
+  {key:'group:333',targetDate:'2026-11-02',previousDay:'2026-11-01',previousDiaryMissing:true,previousDiaryAvailable:true,previousDiaryStatus:'uncertain'},
  ];
  await page.route('**/api/socialV2/daily-diary',route=>route.fulfill({json:{ok:true,config:{hour:18,minute:30},conversations:conversations.map(c=>({hasDiary:true,diaryChars:123,diarySource:'memory',...c}))}}));
  await page.goto(fixture.url+'/#setting-o-1');
  const cards=page.locator('.diary-session-card');await cards.first().waitFor();
- assert.match(await cards.nth(0).innerText(),/昨日日记未发送/);
- assert.match(await cards.nth(0).innerText(),/可直接补发已有正文，不调用模型/);
+ assert.match(await cards.nth(0).innerText(),/上一窗口旧记录待核对/);
+ assert.match(await cards.nth(0).innerText(),/请先在 QQ 核对，再补发已有正文/);
  assert.equal(await cards.nth(0).locator('.diary-session-state').getAttribute('class'),'diary-session-state missing');
  assert.equal(await cards.nth(0).locator('[data-dd-action="catchUpAll"]').isEnabled(),true);
+ assert.match(await cards.nth(2).innerText(),/上一窗口投递待核对/);
+ assert.match(await cards.nth(2).innerText(),/QQ 未确认全部分段，补发已暂停/);
+ assert.doesNotMatch(await cards.nth(2).innerText(),/可直接补发/);
+ assert.equal(await cards.nth(2).locator('[data-dd-action="catchUpAll"]').isEnabled(),false);
  assert.doesNotMatch(await cards.nth(1).innerText(),/目标日已确认发送|此窗口已有确认发送/);
  assert.match(await cards.nth(1).innerText(),/01:12/);
  await cards.nth(1).locator('summary').filter({hasText:'投递记录'}).click();
