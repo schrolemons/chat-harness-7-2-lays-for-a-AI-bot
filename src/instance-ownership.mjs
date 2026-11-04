@@ -32,12 +32,22 @@ function normalizeUin(value) {
   if (!/^[1-9][0-9]{0,19}$/.test(result)) throw fail('INVALID_OWNERSHIP', 'Invalid QQ account');
   return result;
 }
-async function observed(probe, pid) {
+async function observed(probe, pid, { requireExecutable = true } = {}) {
   let value;
   try { value = await probe(pid); } catch { throw fail('OWNERSHIP_UNCERTAIN', 'Cannot verify process identity'); }
   if (value === null) return null;
-  if (!identity(value) || value.pid !== pid || !absolute(value.executablePath)) throw fail('OWNERSHIP_UNCERTAIN', 'Incomplete process identity');
+  if (!identity(value) || value.pid !== pid || (requireExecutable && !absolute(value.executablePath))) throw fail('OWNERSHIP_UNCERTAIN', 'Incomplete process identity');
   return value;
+}
+
+async function probeWindowsProcesses(pids) {
+  if (!pids.length || pids.some(pid => !validPid(pid))) throw fail('INVALID_OWNERSHIP', 'Invalid process ID');
+  const filter = pids.map(pid => 'ProcessId = ' + pid).join(' OR ');
+  const script = `$ErrorActionPreference='Stop'; $rows=@(Get-CimInstance Win32_Process -Filter '${filter}' | ForEach-Object { @{pid=[int]$_.ProcessId; startTime=if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}; executablePath=$_.ExecutablePath; parentPid=[int]$_.ParentProcessId} }); ConvertTo-Json -InputObject $rows -Compress`;
+  const { stdout } = await execFileAsync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, timeout: 10000, maxBuffer: 256 * 1024 });
+  const rows = JSON.parse(stdout.trim());
+  if (!Array.isArray(rows) || rows.some(row => !pids.includes(row?.pid)) || new Set(rows.map(row => row.pid)).size !== rows.length) throw Error('Invalid probe');
+  return rows;
 }
 
 /** Probe one exact PID only. null means confirmed absent; uncertainty throws.
@@ -46,10 +56,8 @@ async function observed(probe, pid) {
 export async function probeProcess(pid) {
   if (!validPid(pid)) throw fail('INVALID_OWNERSHIP', 'Invalid process ID');
   if (process.platform === 'win32') {
-    const script = `$ErrorActionPreference='Stop'; $p=Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}'; if ($null -eq $p) { 'null' } else { if (!$p.ExecutablePath -or !$p.CreationDate) { throw 'Process identity unavailable' }; @{pid=[int]$p.ProcessId; startTime=$p.CreationDate.ToUniversalTime().ToString('o'); executablePath=$p.ExecutablePath; parentPid=[int]$p.ParentProcessId} | ConvertTo-Json -Compress }`;
     try {
-      const { stdout } = await execFileAsync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, timeout: 10000, maxBuffer: 16384 });
-      const result = JSON.parse(stdout.trim());
+      const [result = null] = await probeWindowsProcesses([pid]);
       if (result !== null && (!identity(result) || result.pid !== pid || !absolute(result.executablePath))) throw new Error('Invalid probe');
       return result;
     } catch { throw fail('OWNERSHIP_UNCERTAIN', 'Windows process identity could not be verified'); }
@@ -145,19 +153,38 @@ export async function acquireAccountLease({ registryDir, botUin, instanceId, own
     }
     try { return await operation(); } finally { database.close(); }
   };
-  const active = async record => {
-    const live = await observed(probe, record.pid);
-    if (!live || live.startTime !== record.startTime) return false;
-    // Matching start identity with an unexpected executable is uncertain, never stale.
-    if (record.executablePath && !samePath(record.executablePath, live.executablePath)) throw fail('OWNERSHIP_UNCERTAIN', 'Process executable identity changed');
-    return true;
+  const firstActive = async records => {
+    for (let offset = 0; offset < records.length; offset += 64) {
+      const batch = records.slice(offset, offset + 64);
+      let inspect = probe;
+      if (probe === probeProcess && process.platform === 'win32') {
+        let rows;
+        try { rows = await probeWindowsProcesses([...new Set(batch.map(record => record.pid))]); }
+        catch { throw fail('OWNERSHIP_UNCERTAIN', 'Cannot verify process identity'); }
+        const byPid = new Map(rows.map(row => [row.pid, row]));
+        inspect = pid => byPid.get(pid) ?? null;
+      }
+      for (const record of batch) {
+        const live = await observed(inspect, record.pid, { requireExecutable: false });
+        if (!live || live.startTime !== record.startTime) continue;
+        // A reused PID is unrelated. For a matching process, missing or
+        // unexpected executable identity still prevents taking over the lease.
+        if (!absolute(live.executablePath) || (record.executablePath && !samePath(record.executablePath, live.executablePath))) {
+          throw fail('OWNERSHIP_UNCERTAIN', 'Process executable identity is unavailable or changed');
+        }
+        return record;
+      }
+    }
+    return null;
   };
   const nonce = randomUUID();
   await guarded(async () => {
     const previous = await readClaim(file, botUin);
     if (previous) {
-      if (await active(previous.owner)) throw fail('ACCOUNT_IN_USE', 'This QQ account already has an active owner');
-      for (const record of previous.processes) if (await active(record)) throw fail('ACCOUNT_IN_USE', 'A previous instance still owns a running process for this QQ account');
+      const live = await firstActive([previous.owner, ...previous.processes]);
+      if (live) throw fail('ACCOUNT_IN_USE', live === previous.owner
+        ? 'This QQ account already has an active owner'
+        : 'A previous instance still owns a running process for this QQ account');
     }
     await writeClaim(file, { version: 1, botUin, instanceId, nonce, owner: requestedOwner, processes: [] });
   });
@@ -183,7 +210,7 @@ export async function acquireAccountLease({ registryDir, botUin, instanceId, own
       if (released) return;
       await guarded(async () => {
         const claim = await matching();
-        for (const record of claim.processes) if (await active(record)) throw fail('ACCOUNT_CHILDREN_ACTIVE', 'Stop owned children before releasing their QQ account');
+        if (await firstActive(claim.processes)) throw fail('ACCOUNT_CHILDREN_ACTIVE', 'Stop owned children before releasing their QQ account');
         await fs.unlink(file);
         released = true;
       });

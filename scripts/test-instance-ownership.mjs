@@ -100,7 +100,9 @@ test('stale owner PID reuse permits recovery only when all recorded children are
   await fs.writeFile(file, JSON.stringify(old));
   processes.set(77001, { ...old.processes[0], parentPid: process.pid });
   await assert.rejects(acquireAccountLease(options), code('ACCOUNT_IN_USE'));
-  processes.set(77001, { ...old.processes[0], startTime: 'reused-pid', parentPid: 1 });
+  processes.set(77001, { pid: 77001, startTime: 'child-start' });
+  await assert.rejects(acquireAccountLease(options), code('OWNERSHIP_UNCERTAIN'));
+  processes.set(77001, { pid: 77001, startTime: 'reused-pid' });
   const fresh = await acquireAccountLease(options);
   assert.notEqual(fresh.nonce, old.nonce);
   await fresh.release();
