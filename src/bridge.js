@@ -2,7 +2,7 @@ import {createRuntimeIpcClient} from './instance-runtime-ipc.mjs';
 import {bindInstanceSnowConfig} from './instance-snow-connection.mjs';
 import {bindInstanceDshConfig} from './instance-dsh-target.mjs';
 import {loadInstanceSessionPolicy} from './instance-session-policy.mjs';
-import {parseGameInvitation, parseRelayCommand, parseScheduledRelay, stripRelayPrefix} from './relay-intent.js';
+import {isScheduledContactRequest, parseGameInvitation, parseRelayCommand, parseScheduledRelay, stripRelayPrefix} from './relay-intent.js';
 import { presetBindings, summarizePreset } from './console/preset-overview.js';
 import {buildDshBundle} from '../scripts/build-dsh-bundle.mjs';
 import { openSetupViewer } from '../scripts/windows-setup-viewer.mjs';
@@ -7762,8 +7762,8 @@ async function main() {
           }
           const scheduleSource=action==='add' && taskPlan ? scheduleAuthorization(key,key,taskPlan,sourceEnvelope) : null;
           if (body.targetKey===undefined && body.message===undefined
-              && scheduleSource?.instructions.some(({text})=>parseScheduledRelay(text))) {
-            sendJson({ok:false,code:'SCHEDULE_DESTINATION_REQUIRED',error:'原任务要求到点跨会话联系，qq_schedule 必须提供 targetKey 和 message。请刷新工具定义后重试。'},409);
+              && scheduleSource?.instructions.some(({text})=>isScheduledContactRequest(text))) {
+            sendJson({ok:false,code:'SCHEDULE_DESTINATION_REQUIRED',error:'原任务要求到点跨会话联系。请确认具体日期、HH:mm 和唯一目标后，用 qq_schedule 提供 targetKey 和 message。DSH 原生提醒只能唤醒本会话，不能代替 QQ 定时发送。'},409);
             return;
           }
           let scheduledTask;
@@ -7773,7 +7773,7 @@ async function main() {
             }
             scheduledTask = authorizeScheduledQQ(key,taskPlan,sourceEnvelope,body);
             if (!scheduledTask) {
-              sendJson({ok:false,error:'SCHEDULE_TARGET_NOT_AUTHORIZED：请核实原指令中的具体日期、HH:mm 和唯一白名单目标'},409);return;
+              sendJson({ok:false,code:'SCHEDULE_TARGET_NOT_AUTHORIZED',error:'请从用户原话确认具体日期、HH:mm 和唯一白名单目标。时间范围或代词有歧义时先澄清，并绑定澄清后的原始指令。DSH 原生提醒只能唤醒本会话，不能代替 QQ 定时发送。'},409);return;
             }
           }
           // appendIfAbsent is console-only and never evicts existing schedule records.

@@ -184,6 +184,21 @@ test('a scheduled QQ task persists its original authority and sends only to its 
  assert.equal(listed.body.items.find(item=>item.id===added.body.item.id)?.deliveryStatus,'sent');
 });
 
+test('a colloquial scheduled contact can be admitted without authorizing a guessed destination or time',async t=>{
+ const text='测试朋友今天开会，心情不好，十点半后，你去说两句，哄他一下';
+ const {h,key,messages,request}=await open(t,{texts:[text],extraConfig:{allow:{private:['123','12001']},socialV2:{relayAliases:{测试朋友:'private:12001'}}}});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'task'}]});
+ const content=declared.body.contents?.[0];
+ assert.equal(content?.taskExempt,true,JSON.stringify(declared.body));
+ const body={action:'add',key,title:'测试联系',dueAt:Date.now()+120000};
+ assert.equal((await request('/api/socialV2/schedules',body,content.id)).body.code,'SCHEDULE_DESTINATION_REQUIRED');
+ const guessed=await request('/api/socialV2/schedules',{...body,targetKey:'private:12001',message:'先歇一会儿'},content.id);
+ assert.equal(guessed.status,409);
+ assert.equal(guessed.body.code,'SCHEDULE_TARGET_NOT_AUTHORIZED');
+ assert.match(guessed.body.error,/先澄清/);
+ assert.equal(h.calls.sent.length,0);
+});
+
 test('a newer unread message does not block a bound reply to an earlier complete source',async t=>{
  const {h,key,messages,request}=await open(t,{texts:['先前的完整问题']});
  const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'chat'}]});

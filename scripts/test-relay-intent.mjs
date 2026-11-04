@@ -1,12 +1,17 @@
 // 传话意图解析回归测试：node scripts/test-relay-intent.mjs
 import assert from 'node:assert/strict';
-import { parseRelayCommand, parseScheduledRelay, stripRelayPrefix } from '../src/relay-intent.js';
+import { isScheduledContactRequest, parseRelayCommand, parseScheduledRelay, stripRelayPrefix } from '../src/relay-intent.js';
 
 {
   const options = { resolve: name => ['测试朋友','12001'].includes(name), preferLongest:true };
   assert.equal(parseScheduledRelay('今晚22:30去私聊测试朋友说声晚安', options)?.name, '测试朋友');
   assert.equal(parseScheduledRelay('今晚22:30去私聊测试朋友甲说声晚安', options), null);
   assert.equal(parseScheduledRelay('今晚22:30去私聊120011说声晚安', options)?.name, '120011');
+  assert.deepEqual(parseScheduledRelay('今晚十点半去私聊测试朋友说声晚安', options), {name:'测试朋友',hour:22,minute:30,dayOffset:0});
+  assert.equal(parseScheduledRelay('十点半后，去私聊测试朋友说声晚安', options), null);
+  assert.equal(isScheduledContactRequest('测试朋友今天开会，心情不好，十点半后，你去说两句，哄他一下'), true);
+  assert.equal(isScheduledContactRequest('十点半后，我自己去哄他一下'), false);
+  assert.equal(isScheduledContactRequest('十点半后提醒我开会'), false);
 }
 
 // 模拟桥接的白名单解析：十二 / 管理员 / 老板 可解析，其它不行

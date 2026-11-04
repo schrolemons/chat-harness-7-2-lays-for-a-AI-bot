@@ -2,7 +2,7 @@ import {createRuntimeIpcClient} from '../src/instance-runtime-ipc.mjs';
 import {bindInstanceSnowConfig} from '../src/instance-snow-connection.mjs';
 import {bindInstanceDshConfig} from '../src/instance-dsh-target.mjs';
 import * as instanceSessionPolicy from '../src/instance-session-policy.mjs';
-import {parseGameInvitation, parseRelayCommand, parseScheduledRelay, stripRelayPrefix} from '../src/relay-intent.js';
+import {isScheduledContactRequest, parseGameInvitation, parseRelayCommand, parseScheduledRelay, stripRelayPrefix} from '../src/relay-intent.js';
 import * as presetOverview from '../src/console/preset-overview.js';
 import {buildDshBundle} from './build-dsh-bundle.mjs';
 import * as presetPolicy from '../src/preset-policy.js';
@@ -268,7 +268,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   const timers = new Set();
   const context = vm.createContext({
     fs, os, path, http, crypto, fileURLToPath, URL, Buffer, AbortSignal, console: { log() {}, error() {} },
-    parseGameInvitation, parseRelayCommand, parseScheduledRelay, stripRelayPrefix,
+    isScheduledContactRequest, parseGameInvitation, parseRelayCommand, parseScheduledRelay, stripRelayPrefix,
     fetch: fakeFetch,
     // Simulated consoles never launch a native window or display a fixture token.
     openSetupViewer: () => ({ stdin: { end() {} } }),

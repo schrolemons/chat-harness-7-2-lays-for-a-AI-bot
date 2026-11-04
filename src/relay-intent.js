@@ -105,7 +105,10 @@ export function parseGameInvitation(text) {
 }
 
 export function parseScheduledRelay(text, options = {}) {
-  const match = /^(?:(今天|今晚|明天|明晚|后天)\s*)?([01]?\d|2[0-3])[:：]([0-5]\d)\s*[，,]?\s*(?:去)?(?:私聊(?:里)?|群聊(?:里)?|联系|问候|安慰|哄(?:一下)?|通知|转告|转达)\s*(.+)$/.exec(stripRelayPrefix(text));
+  const eveningHours=['六','七','八','九','十','十一'];
+  const normalized=stripRelayPrefix(text).replace(/^(今晚|明晚)\s*(十一|十|[六七八九])点(半)?(?=\s*[,，]?\s*(?:去)?(?:私聊|群聊|联系|问候|安慰|哄|通知|转告|转达))/,
+    (_,day,hour,half)=>day+(18+eveningHours.indexOf(hour))+':'+(half?'30':'00'));
+  const match = /^(?:(今天|今晚|明天|明晚|后天)\s*)?([01]?\d|2[0-3])[:：]([0-5]\d)\s*[，,]?\s*(?:去)?(?:私聊(?:里)?|群聊(?:里)?|联系|问候|安慰|哄(?:一下)?|通知|转告|转达)\s*(.+)$/.exec(normalized);
   if (!match) return null;
   const target = match[4].trim();
   const address = /^((?:(?:private|group):)?[1-9]\d{4,19})(?!\d)/.exec(target);
@@ -117,6 +120,11 @@ export function parseScheduledRelay(text, options = {}) {
       || rest && !/^(?:[\s，,：:。！!]|说|发|带|传|问|道|打招呼|提醒|哄)/.test(rest))) return null;
   const dayOffset = match[1]?.startsWith('明') ? 1 : match[1]==='后天' ? 2 : 0;
   return {name:relay.name,hour:Number(match[2]),minute:Number(match[3]),dayOffset};
+}
+
+// A colloquial request can warrant clarification without authorizing a specific send.
+export function isScheduledContactRequest(text) {
+  return !!parseScheduledRelay(text) || /(?:^|[，,。；;\n])\s*(?:今天|今晚|明天|明晚|后天|上午|下午|晚上)?\s*(?:[零〇一二两三四五六七八九十\d]{1,4}(?:点|时)(?:半|[零〇一二两三四五六七八九十\d]{1,4}分)?|\d{1,2}[:：]\d{2})(?:之后|以后|后|左右)?\s*[，,]?\s*(?:你|请你|帮我)?\s*(?:去\s*(?:[^。！？；;\n]{0,24}?[，,]\s*)?)?(?:私聊|群聊|联系|问候|安慰|哄|通知|转告|转达)(?!\s*(?:我|你|自己))\s*[^，,。！？；;\n]+[。！!]?\s*$/.test(String(text || ''));
 }
 
 /**
