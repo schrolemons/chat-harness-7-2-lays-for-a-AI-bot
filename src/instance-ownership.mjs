@@ -3,8 +3,11 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ChildProcess, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { DatabaseSync } from 'node:sqlite';
 
 const execFileAsync = promisify(execFile);
+const SQLITE_BUSY = 5;
+const SQLITE_LOCKED = 6;
 // In-memory capabilities deliberately cannot be restored from a JSON/PID file.
 const ownedRecords = new WeakMap();
 const registeredChildren = new WeakSet();
@@ -107,8 +110,8 @@ async function writeClaim(file, claim) {
   }
 }
 
-/** Atomic per-account lease. A stranded guard directory fails closed; do not
- * auto-delete guards or "force" a claim whose prior ownership is uncertain.
+/** Atomic per-account lease. SQLite holds the cross-process lock only while
+ * changing the claim. The OS releases it on exit, including a forced exit.
  * updateProcesses is additive, retaining evidence of every spawned child.
  */
 export async function acquireAccountLease({ registryDir, botUin, instanceId, owner, probeProcess: probe = probeProcess }) {
@@ -123,11 +126,24 @@ export async function acquireAccountLease({ registryDir, botUin, instanceId, own
   const file = path.join(registryDir, `${botUin}.json`);
   const guard = path.join(registryDir, `${botUin}.guard`);
   const guarded = async operation => {
-    try { await fs.mkdir(guard, { mode: 0o700 }); } catch (error) {
-      if (error.code === 'EEXIST') throw fail('ACCOUNT_BUSY', 'Account ownership is being changed or requires inspection');
-      throw error;
+    const stat = await fs.lstat(guard).catch(error => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    // Use the same path as the legacy directory so older runtimes cannot
+    // acquire a second lock. Leave any existing legacy directory for inspection.
+    if (stat?.isDirectory()) throw fail('ACCOUNT_BUSY', 'Legacy account lock requires ownership inspection');
+    if (stat && (!stat.isFile() || stat.nlink !== 1)) throw fail('OWNERSHIP_UNCERTAIN', 'Invalid account lock file');
+    let database;
+    try {
+      database = new DatabaseSync(guard);
+      database.exec('PRAGMA busy_timeout = 0; BEGIN IMMEDIATE');
+    } catch (error) {
+      database?.close();
+      const result = error.errcode & 0xff;
+      if (result === SQLITE_BUSY || result === SQLITE_LOCKED) throw fail('ACCOUNT_BUSY', 'Account ownership is being changed');
+      throw fail('OWNERSHIP_UNCERTAIN', 'Account lock cannot be acquired');
     }
-    try { return await operation(); } finally { await fs.rmdir(guard); }
+    try { return await operation(); } finally { database.close(); }
   };
   const active = async record => {
     const live = await observed(probe, record.pid);

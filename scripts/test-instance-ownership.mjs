@@ -36,6 +36,8 @@ test('same normalized QQ refuses concurrent ownership while different QQ is inde
   await other.release();
   const replacement = await acquireAccountLease(options);
   await replacement.release();
+  // A legacy runtime must not enter this account's critical section.
+  await assert.rejects(fs.mkdir(path.join(options.registryDir, '12345.guard')), code('EEXIST'));
 });
 
 test('atomic racing claims grant exactly one lease', async t => {
@@ -44,6 +46,49 @@ test('atomic racing claims grant exactly one lease', async t => {
   assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
   assert.ok(results.filter(r => r.status === 'rejected').every(r => ['ACCOUNT_IN_USE', 'ACCOUNT_BUSY'].includes(r.reason.code)));
   await results.find(r => r.status === 'fulfilled').value.release();
+});
+
+test('a killed lock holder cannot strand an account lock', async t => {
+  const { options, file } = await fixture(t);
+  const previousPid = process.pid === 77001 ? 77002 : 77001;
+  await fs.writeFile(file, JSON.stringify({
+    version: 1, botUin: options.botUin, instanceId: 'old', nonce: 'previous',
+    owner: { pid: previousPid, startTime: 'old' }, processes: [],
+  }));
+  const moduleUrl = new URL('../src/instance-ownership.mjs', import.meta.url).href;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', `
+    import { acquireAccountLease } from ${JSON.stringify(moduleUrl)};
+    const owner = { pid: process.pid, startTime: 'child' };
+    await acquireAccountLease({
+      registryDir: process.argv[1], botUin: '12345', instanceId: 'child', owner,
+      probeProcess: async pid => {
+        if (pid === owner.pid) return { ...owner, executablePath: process.execPath };
+        setInterval(() => {}, 1000);
+        process.send('lock held');
+        await new Promise(() => {});
+      },
+    });
+  `, options.registryDir], { windowsHide: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+  const exited = once(child, 'exit');
+  try {
+    assert.equal(await Promise.race([once(child, 'message').then(([value]) => value), exited]), 'lock held');
+    await assert.rejects(acquireAccountLease(options), code('ACCOUNT_BUSY'));
+    const independent = await acquireAccountLease({ ...options, botUin: '67890' });
+    await independent.release();
+  } finally {
+    child.kill();
+    await exited;
+  }
+  const replacement = await acquireAccountLease(options);
+  await replacement.release();
+});
+
+test('a legacy lock directory is preserved for ownership inspection', async t => {
+  const { options, registryDir } = await fixture(t);
+  const legacyGuard = path.join(registryDir, '12345.guard');
+  await fs.mkdir(legacyGuard);
+  await assert.rejects(acquireAccountLease(options), code('ACCOUNT_BUSY'));
+  assert.ok((await fs.stat(legacyGuard)).isDirectory());
 });
 
 test('stale owner PID reuse permits recovery only when all recorded children are gone', async t => {
