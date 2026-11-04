@@ -179,8 +179,8 @@ test('startup cooldown vetoes real host wake before the generic greeting tail is
       if (!host.allowsWake('startupGreeting', { key })) return '';
       const payload = { reason: 'startupGreeting', key, st: {} };
       const text=host.collectPromptBlocks(payload).join('') + host.collectWakeTails(payload);
-      assert.equal(host.allowsWake('startupGreeting',{key}),true,'assembling text must not consume dispatch cooldown');
-      host.callService('startupGreeting','markDispatched',{key});
+      assert.equal(host.allowsWake('startupGreeting',{key}),true,'assembling text must not consume delivery cooldown');
+      host.callService('startupGreeting','markDelivered',{key,sentAt:Date.now()});
       return text;
     };
     assert.ok(assembleAllowedTurn().includes('本轮启动问候'));

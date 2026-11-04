@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
 
-async function setup(t,reason='startupGreeting') {
+async function setup(t,reason='startupGreeting',key='private:123') {
   const h=await bridgeHarness({config:{sendDelayMs:0},files:{
     'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},
     'state/plugins/config/ctx-chat-reply-shape.json':{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0}
   }});
-  h.setMode('reserved2');const key='private:123',st=h.getSocialV2State(key);st.bootstrapSent=true;
+  h.setMode('reserved2');const st=h.getSocialV2State(key);st.bootstrapSent=true;
   const sid=await h.ensureSession(key),server=h.startConsoleServer();
   if(!server.listening)await new Promise(r=>server.once('listening',r));
   t.after(async()=>{await new Promise(r=>server.close(r));await h.close();});
@@ -20,6 +20,15 @@ async function setup(t,reason='startupGreeting') {
   return {h,key,sid,post,event,snapshot};
 }
 const start={type:'turn/start',data:{turn:1}},end={type:'turn/end',data:{turn:1,reason:{kind:'completed'}}};
+
+for(const key of ['private:123','group:456'])test('startup cooldown begins at QQ delivery for '+key,async t=>{
+  const {h,post,event}=await setup(t,'startupGreeting',key);
+  assert.equal(h.pluginHost.allowsWake('startupGreeting',{key}),true,'accepted model request has no QQ receipt');
+  await event(start.type,start.data);
+  const result=await post('启动问候验收');
+  assert.equal(result.ok,true,JSON.stringify(result));
+  assert.equal(h.pluginHost.allowsWake('startupGreeting',{key}),false,'successful QQ delivery starts cooldown');
+});
 
 for(const reason of ['startupGreeting','proactiveCheck','timeBubble'])test(reason+' retains its original grant and cumulative cap across stream reconnect',async t=>{
   const {h,key,sid,post,event,snapshot}=await setup(t,reason);

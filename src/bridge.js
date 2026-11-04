@@ -11965,6 +11965,7 @@ async function main() {
     if (cfg.socialV2?.startupGreeting?.enabled === false) return;
     if (cfg.socialV2?.enabled === false) return;
     if (currentMode !== 'reserved2' || socialV2.paused) return;
+    if (!isSessionAllowedInCurrentMode(key)) return;
     const st = socialV2.conversations.get(key);
     if (!st) return;
     if (st.startupGreetTimer) { clearBridgeTimer(st.startupGreetTimer); st.startupGreetTimer = null; }
@@ -12424,7 +12425,6 @@ async function main() {
     }
     if(initialJournal?.ok)pluginHost.callService('taskAdmission','finishDispatch',{groupId:initialJournal.groupId,outcome:'accepted'});
     envelope.originAdmission.weakBatchConsumed=envelope.originAdmission.weakBatchConsumed || dispatchBudget.budget.stage==='weak';
-    if (opts.wakeReason === 'startupGreeting') pluginHost.callService('startupGreeting', 'markDispatched', { key, dispatchedAt: Date.now() });
     pluginHost.callService('tokenBudget', 'noteDispatch', { key, stage: resume?.originAdmission?.weakBatchConsumed?'normal':dispatchBudget.budget.stage,throughSeq:envelope.budgetWindowThroughSeq??(wakeSnapshot?Math.max(0,...[...wakeSnapshot.messages,...wakeSnapshot.receiptWindow,...wakeSnapshot.recent].map(m=>Number(m.seq)||0)):getSocialV2State(key).lastUnreadSeq) });
     // 补话布点必须在「唤醒提示词真的被 DSH 接受」（模型开始生成）之后才落地：
     // 额度/静音/宵禁/模式闸门跳过的唤醒因此一条补话都不会留下，不会「先说了等我一下然后消失」。

@@ -119,6 +119,12 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
     const sentAt=clock(),gatewayMessageId=result?.data?.message_id??result?.message_id??result?.messageId;
     const deliveryId=gatewayMessageId!=null?key+':gateway:'+gatewayMessageId:key+':attempt:'+operationId;
     try{if(metered)call('replyPlan','commit',{key,operationId,sentAt,deliveryId,replyBudget});}catch(error){log('outbound commit: '+error.message);}
+    if (c.origin==='conversation' && c.reason==='startupGreeting' && kind==='text' && c.sourceKey===key) {
+      try {
+        const content=call('replyPlan','getContent',{key,contentId:c.plan?.contentId});
+        if (content?.seqs?.length===0) call('startupGreeting','markDelivered',{key,sentAt});
+      } catch(error) { log('startup greeting receipt: '+error.message); }
+    }
     const conversational=['proactiveCheck','timeBubble','startupGreeting','privateFollowup','milkStock'].includes(c.reason);
     const ordinary=c.origin==='conversation'&&!conversational;
     const wakeReason=ordinary?'message':c.reason;

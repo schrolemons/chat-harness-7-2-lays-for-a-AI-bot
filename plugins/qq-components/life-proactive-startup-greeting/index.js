@@ -7,7 +7,7 @@ export function createPlugin(ctx) {
   const cooldownMinutes = Number(cfg.cooldownMinutes ?? 180);
   const cooldownMs = Number.isFinite(cooldownMinutes) ? Math.max(0, cooldownMinutes) * 60000 : 180 * 60000;
   const canGreet = (key, now = Date.now()) => {
-    const lastAt = Number(ctx.state.get()?.lastAtByKey?.[String(key || '')]) || 0;
+    const lastAt = Number(ctx.state.get()?.lastDeliveredAtByKey?.[String(key || '')]) || 0;
     return !(cooldownMs > 0 && lastAt && now - lastAt < cooldownMs);
   };
   return {
@@ -18,17 +18,17 @@ export function createPlugin(ctx) {
     },
     services: {
       startupGreeting: {
-        // The bridge reports accepted dispatch; assembling text is not delivery.
-        markDispatched({ key, dispatchedAt = Date.now() } = {}) {
+        // Legacy lastAtByKey tracked DSH admission without a QQ receipt.
+        markDelivered({ key, sentAt } = {}) {
           key = String(key || '');
-          const at = Number(dispatchedAt);
+          const at = Number(sentAt);
           if (!key || !Number.isFinite(at) || at <= 0) return { ok: false };
           const state = ctx.state.get() || {};
-          const lastAtByKey = { ...(state.lastAtByKey || {}) };
-          lastAtByKey[key] = Math.max(Number(lastAtByKey[key]) || 0, at);
-          if (Object.keys(lastAtByKey).length > 200) delete lastAtByKey[Object.keys(lastAtByKey)[0]];
-          ctx.state.set({ lastAtByKey });
-          return { ok: true, dispatchedAt: lastAtByKey[key] };
+          const lastDeliveredAtByKey = { ...(state.lastDeliveredAtByKey || {}) };
+          lastDeliveredAtByKey[key] = Math.max(Number(lastDeliveredAtByKey[key]) || 0, at);
+          if (Object.keys(lastDeliveredAtByKey).length > 200) delete lastDeliveredAtByKey[Object.keys(lastDeliveredAtByKey)[0]];
+          ctx.state.set({ lastDeliveredAtByKey });
+          return { ok: true, sentAt: lastDeliveredAtByKey[key] };
         }
       }
     },
