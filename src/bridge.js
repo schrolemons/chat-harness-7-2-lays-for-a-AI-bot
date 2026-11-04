@@ -6228,6 +6228,12 @@ async function main() {
             sendJson({ ok: false, error: 'targetUserId 必须是正整数 QQ 号' }, 400);
             return;
           }
+          const pokeContext = outboundScope.getStore();
+          const pokeUser = kind==='group'?targetUserId:undefined;
+          if (pokeContext?.agent && pokeContext.sourceKey !== key) {
+            const error = crossSessionTaskError(key,pokeContext,{kind:'poke',targetUserId:pokeUser});
+            if (error) { sendJson({ok:false,code:error.split('：')[0],error},409); return; }
+          }
           // 群聊必须确认目标确实是本群成员（私聊天然只有双方，无需校验）。
           if (kind === 'group') {
             const memberError = await assertGroupMember(id, targetUserId);
@@ -6238,7 +6244,7 @@ async function main() {
           const now = Date.now();
           // 成员校验是异步的（要问 OneBot）；期间操作者可能切模式/改白名单/开静默。
           // 拍一拍此前完全没有发送守卫，这里补上：真正发之前再确认一次。
-          const sendGuard = captureSendGuard(key);
+          const sendGuard = captureSendGuard(key,{wakeOrigin:pokeContext?.envelope,replyContext:{...pokeContext,transportKind:'poke',transportTargetUserId:pokeUser}});
           try {
             sendGuard();
             beginMessageAckOutbound(key);
@@ -8563,7 +8569,10 @@ async function main() {
     for(const message of [...view.unread,...view.recentMessages])if(!message.isSelf && messageAdmitted(envelope,message))bySeq.set(message.seq,message);
     return [...bySeq.values()];
   }
-  function crossSessionTaskError(targetKey, context) {
+  function crossSessionTaskError(targetKey, context, {kind = "text", targetUserId, replyTo} = {}) {
+    if (!['text','poke'].includes(kind) || replyTo || kind==='text' && targetUserId) {
+      return 'CROSS_SESSION_ACTION_UNSUPPORTED：跨会话任务只支持已授权的独立文字或明确要求的拍一拍。';
+    }
     const sourceKey = context?.sourceKey;
     const envelope = context?.envelope;
     const contentId = context?.contentId;
@@ -8586,14 +8595,28 @@ async function main() {
     };
     const targets = new Set();
     for (const message of source) {
-      const command = stripRelayPrefix(message.plain ?? message.text).replace(/^去?私聊(?:里)?\s*(?:电一电|电一下|戳一戳|拍一拍)?\s*/, '告诉');
-      const relay = parseRelayCommand(command,{resolve:name=>!!resolve(name)});
+      const plain = stripRelayPrefix(message.plain ?? message.text);
+      const groupPoke = /^(?:去)?群(?:聊|里)\s*(?:电一电|电一下|戳一戳|戳一下|拍一拍|拍一下)\s*(.+)$/.exec(plain);
+      if (groupPoke) {
+        if (kind!=='poke') continue;
+        const alias = groupPoke[1].trim().replace(/[。！!]+$/,'');
+        const member = pluginHost.callService('aliases','lookupConfirmed',{alias});
+        const groups = (member?.sourceKeys||[]).filter(key=>key.startsWith('group:')&&isSessionAllowedInCurrentMode(key));
+        if (member?.ok && groups.length===1) targets.add(groups[0]+'@'+member.qq);
+        continue;
+      }
+      const poke = /^(?:去)?私聊(?:里)?\s*(?:戳一戳|戳一下|拍一拍|拍一下)\s*/.exec(plain);
+      if ((kind==='poke') !== !!poke) continue;
+      const command = poke ? '告诉'+plain.slice(poke[0].length)
+        : plain.replace(/^(?:去)?私聊(?:里)?\s*(?:电一电|电一下)?\s*/, '告诉');
+      const relay = parseRelayCommand(command,{resolve:name=>!!resolve(name),preferLongest:true});
       if (relay) {
         const target = resolve(relay.name);
         if (target && target !== sourceKey) targets.add(target);
       }
     }
-    if (targets.size !== 1 || !targets.has(targetKey)) {
+    const destination = targetUserId ? targetKey+'@'+targetUserId : targetKey;
+    if (targets.size !== 1 || !targets.has(destination)) {
       return 'CROSS_SESSION_TARGET_MISMATCH：目标必须是原指令中唯一可核实的白名单会话，请先向发起者确认目标。';
     }
     return null;
@@ -9462,9 +9485,8 @@ async function main() {
     return () => {
       if (wakeOrigin?.cancelled) throw new Error('发送已取消：所属回合已被抢占');
       if (replyContext?.agent && replyContext.sourceKey !== key && replyContext.origin !== 'relay') {
-        const error = (replyContext.transportKind && replyContext.transportKind !== 'text') || replyContext.transportTargetUserId || replyContext.transportReplyTo
-          ? 'CROSS_SESSION_ACTION_UNSUPPORTED：这个任务凭据只授权向指定会话发送独立文字。'
-          : crossSessionTaskError(key,replyContext);
+        const error = crossSessionTaskError(key,replyContext,{kind:replyContext.transportKind,
+          targetUserId:replyContext.transportTargetUserId,replyTo:replyContext.transportReplyTo});
         if (error) throw Error(error);
       }
       if(wakeOrigin?.scheduledEvent && (wakeOrigin.scheduledEvent.signal?.aborted || !pluginHost.isEnabled(wakeOrigin.scheduledEvent.plugin) || Date.now()>wakeOrigin.scheduledEvent.expiresAt))throw Error('发送已取消：定时事件已失效');

@@ -64,13 +64,14 @@ export function stripRelayPrefix(input) {
 }
 
 /** 从「名字 + 可选分隔 + 内容」里切出名字；能 resolve 的优先，否则退回到标点/整段。 */
-function splitTarget(rest, resolve, weak) {
+function splitTarget(rest, resolve, weak, preferLongest) {
   const m = TOKEN_RE.exec(rest);
   if (!m) return null;
   const token = m[0];
   // 1) 最短的「能被 resolve 的候选」：告诉十二明天来 → 十二；你们管理员，他吃了吗 → 管理员
   if (typeof resolve === 'function') {
-    for (let len = 1; len <= token.length; len += 1) {
+    for (let offset = 0; offset < token.length; offset += 1) {
+      const len = preferLongest ? token.length - offset : offset + 1;
       const name = cleanName(token.slice(0, len));
       if (!name || PRONOUN_TARGETS.has(name)) continue;
       let ok = false;
@@ -122,21 +123,21 @@ export function parseRelayCommand(text, opts = {}) {
   // 2) 传话给/捎话给/带话给/递话给 X
   m = /^(?:传话|捎话|带话|递话)给\s*([\s\S]*)$/.exec(s);
   if (m) {
-    const hit = splitTarget(m[1], resolve, false);
+    const hit = splitTarget(m[1], resolve, false, opts.preferLongest);
     if (hit) return hit;
   }
 
   // 3) 转告/转达/告诉/通知 (给)? X
   m = /^(?:转告|转达|告诉|通知)(?:给)?\s*([\s\S]*)$/.exec(s);
   if (m) {
-    const hit = splitTarget(m[1], resolve, false);
+    const hit = splitTarget(m[1], resolve, false, opts.preferLongest);
     if (hit) return hit;
   }
 
   // 4) 问问/问一下/问下/问一问/打听一下 X（弱意图）
   m = /^(?:问问|问一下|问下|问一问|打听一下|打听打听)\s*([\s\S]*)$/.exec(s);
   if (m) {
-    const hit = splitTarget(m[1], resolve, true);
+    const hit = splitTarget(m[1], resolve, true, opts.preferLongest);
     if (hit) return hit;
   }
 

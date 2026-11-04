@@ -115,7 +115,9 @@ export function createSendLedger(ctx,policy) {
       if(contentId&&!content)return {ok:false,reason:'content_not_found'};
       if(plan.agent&&!taskExempt&&!scheduledId&&!content)return {ok:false,reason:'content_required'};
       const textScope=content?.id||taskAdmission?.groupId||(Number.isSafeInteger(inputSeq)&&inputSeq>0?'seq:'+inputSeq:null);
-      const textKey=deduplicate&&plan.agent&&kind==='text'&&textScope&&String(text).trim()?createHash('sha256').update(textScope+'\n'+String(text).replace(/\s+/g,' ').trim()).digest('hex'):null;
+      const crossTaskPoke=kind==='poke'&&taskExempt&&key!==plan.sourceKey;
+      const dedupeBody=crossTaskPoke?'[poke]':kind==='text'?String(text).replace(/\s+/g,' ').trim():'';
+      const textKey=deduplicate&&plan.agent&&textScope&&dedupeBody?createHash('sha256').update(textScope+'\n'+dedupeBody).digest('hex'):null;
       if(textKey&&[...e.receipts,...Object.values(e.reservations)].some(r=>r.textKey===textKey))return {ok:false,reason:'duplicate_delivery',hint:'这批来信已发送或正在发送相同内容。核对真实发送与回执，不要因回执报错再次发送；等待新来信。'};
       if(e.reservations[operationId]||e.receipts.some(r=>r.operationId===operationId))return {ok:false,reason:'duplicate_attempt'};
       const rateGroupId=taskExempt?null:rateGroup(plan,content);

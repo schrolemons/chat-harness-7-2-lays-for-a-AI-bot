@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
-async function open(t,{texts=['这幅画很好看','今天天气不错','这首歌很有趣'],rate=0,extraFiles={},extraConfig={},globals}={}){
- const h=await bridgeHarness({config:{sendDelayMs:0,...extraConfig},globals,files:{'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:3,maxMessagesCasual:3,maxMessagesSerious:3,maxSendPerMinute:rate,maxSendPerHour:rate,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},...extraFiles}});
+async function open(t,{texts=['这幅画很好看','今天天气不错','这首歌很有趣'],rate=0,extraFiles={},extraConfig={},globals,groupMembers}={}){
+ const h=await bridgeHarness({config:{sendDelayMs:0,...extraConfig},globals,groupMembers,files:{'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:3,maxMessagesCasual:3,maxMessagesSerious:3,maxSendPerMinute:rate,maxSendPerHour:rate,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},...extraFiles}});
  h.setMode('reserved2');const key='private:123',st=h.getSocialV2State(key);st.bootstrapSent=true;
  const messages=texts.map((text,i)=>h.appendSocialV2Message(key,'甲',text,text,false,true,String(101+i),[],'123',[],undefined,false,{bodyComplete:true}));
  const sid=await h.ensureSession(key);await h.deliverPrompt(key,'',{wakeReason:'private'});await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:1}}}});
@@ -110,7 +110,7 @@ test('a real memory maintenance turn may read and update its diary without takin
 });
 
 test('an admitted private relay carries the source task to its one named destination',async t=>{
- const {h,key,st,messages,request}=await open(t,{texts:['去私聊测试朋友说声晚安'],extraConfig:{allow:{private:['123','12001','12002'],groups:['456']},socialV2:{relayAliases:{测试朋友:'private:12001'}}}});
+ const {h,key,st,messages,request}=await open(t,{texts:['去私聊测试朋友说声晚安'],extraConfig:{allow:{private:['123','12001','12002'],groups:['456']},socialV2:{relayAliases:{测试:'private:12002',测试朋友:'private:12001'}}}});
  const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'task'}]});
  const content=declared.body.contents?.[0];assert.equal(content?.taskExempt,true,JSON.stringify(declared.body));
  const send=(userId,contentId)=>request('/api/send/private',{userId,token:st.agentToken,message:'晚安'},contentId);
@@ -128,4 +128,33 @@ test('a newer unread message does not block a bound reply to an earlier complete
  h.appendSocialV2Message(key,'甲','之后的未读消息','之后的未读消息',false,true,'999',[],'123',[],undefined,false,{bodyComplete:true});
  const sent=await request('/api/socialV2/send-message',{key,messages:'回答上一条'},content.id);
  assert.equal(sent.body.sent,1,JSON.stringify(sent.body));
+});
+
+test('separate paid source tasks may send text and a private poke in one turn',async t=>{
+ const {h,key,st,messages,request}=await open(t,{texts:['去私聊测试朋友说声晚安','去私聊戳一下另一朋友'],extraConfig:{allow:{private:['123','12001','12002'],groups:['456']},socialV2:{relayAliases:{测试朋友:'private:12001',另一朋友:'private:12002'}}}});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:messages.map(m=>({seqs:[m.seq],kind:'task'}))});
+ assert.ok(declared.body.contents?.every(c=>c.taskExempt),JSON.stringify(declared.body));
+ const [relay,poke]=declared.body.contents;
+ assert.equal((await request('/api/send/private',{userId:'12001',token:st.agentToken,message:'晚安'},relay.id)).body.sent,1);
+ const sendPoke=(target,id)=>request('/api/socialV2/send-poke',{key:'private:'+target},id);
+ assert.equal((await sendPoke('12002',relay.id)).body.ok,false);
+ assert.equal((await sendPoke('12001',poke.id)).body.ok,false);
+ const result=await sendPoke('12002',poke.id);assert.equal(result.body.ok,true,JSON.stringify(result.body));
+ assert.equal((await sendPoke('12002',poke.id)).body.ok,false);
+ assert.equal(h.calls.http.filter(c=>/send_poke$/.test(c.url)).length,1);
+});
+
+test('cross-session group poke requires one confirmed group and the named member',async t=>{
+ const {h,key,messages,request}=await open(t,{texts:['去群聊电一电测试群友'],groupMembers:[{user_id:12001,nickname:'测试群友'}],extraConfig:{allow:{private:['123'],groups:['456','457']}}});
+ await h.pluginHost.callTool('alias_add',{alias:'测试群友',qq:'12001',sourceKeys:['group:456']});
+ const r=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'task'}]});
+ const task=r.body.contents?.[0];assert.equal(task?.taskExempt,true,JSON.stringify(r.body));
+ const poke=(group,user)=>request('/api/socialV2/send-poke',{key:'group:'+group,targetUserId:user},task.id);
+ assert.equal((await poke('457','12001')).body.ok,false);
+ assert.equal((await poke('456','12002')).body.ok,false);
+ const ok=await poke('456','12001');assert.equal(ok.body.ok,true,JSON.stringify(ok.body));
+ assert.equal((await poke('456','12001')).body.ok,false);
+ await h.pluginHost.callTool('alias_add',{alias:'测试群友',qq:'12001',sourceKeys:['group:456','group:457']});
+ assert.equal((await poke('456','12001')).body.code,'CROSS_SESSION_TARGET_MISMATCH');
+ assert.equal(h.calls.http.filter(c=>/group_poke$/.test(c.url)).length,1);
 });

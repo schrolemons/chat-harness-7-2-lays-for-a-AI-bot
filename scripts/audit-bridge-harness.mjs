@@ -64,7 +64,7 @@ import * as stateAcl from '../src/state-acl.mjs';
 import { unwrap, createTurnCollector } from '../src/dsh-client.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-export async function bridgeHarness({ config = {}, savedState, files = {}, globals = {} } = {}) {
+export async function bridgeHarness({ config = {}, savedState, files = {}, globals = {}, groupMembers = [] } = {}) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-audit-bridge-'));
   fs.mkdirSync(path.join(temp, 'src'));
   fs.copyFileSync(path.join(root,'src/bridge.js'),path.join(temp,'src/bridge.js'));
@@ -162,6 +162,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   class FakeBot {
     async sendPrivateMessage(id, text) { calls.sent.push({ kind: 'private', id, text }); }
     async sendGroupMessage(id, text) { calls.sent.push({ kind: 'group', id, text }); }
+    async getGroupMemberList() { return (await this.request("get_group_member_list")).data; }
     async getImage({ file }) {
       calls.images.push(file);
       // Valid 1 × 1 PNG, supplied entirely in memory by the fixture gateway.
@@ -176,6 +177,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
           data: [
             { user_id: 111, nickname: '小明', card: '小明', role: 'member' },
             { user_id: 222, nickname: '路人', card: '' },
+            ...groupMembers,
             { user_id: 123, nickname: '管理员', card: '群主', role: 'owner' }
           ]
         };

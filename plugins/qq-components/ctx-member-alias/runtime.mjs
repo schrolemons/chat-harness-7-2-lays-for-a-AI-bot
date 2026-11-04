@@ -79,7 +79,7 @@ export function createPlugin(ctx){
     const key=cleanName(alias).normalize('NFKC').toLowerCase();
     const matches=entries().filter(e=>e.status==='confirmed'&&e.alias.normalize('NFKC').toLowerCase()===key&&validQq(e.qq));
     const qqs=[...new Set(matches.map(e=>String(e.qq)))];
-    return qqs.length===1?{ok:true,alias:cleanName(alias),qq:qqs[0]}:qqs.length>1?{ok:false,ambiguous:true}:{ok:false,found:false};
+    return qqs.length===1?{ok:true,alias:cleanName(alias),qq:qqs[0],sourceKeys:[...new Set(matches.flatMap(e=>e.sourceKeys||[]))]}:qqs.length>1?{ok:false,ambiguous:true}:{ok:false,found:false};
   }
   function linkConfirmed(input={}){
     const alias=cleanName(input.alias),qq=String(input.qq||'');
