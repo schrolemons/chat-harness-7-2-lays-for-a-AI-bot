@@ -2,7 +2,7 @@ import {createRuntimeIpcClient} from './instance-runtime-ipc.mjs';
 import {bindInstanceSnowConfig} from './instance-snow-connection.mjs';
 import {bindInstanceDshConfig} from './instance-dsh-target.mjs';
 import {loadInstanceSessionPolicy} from './instance-session-policy.mjs';
-import {parseRelayCommand, stripRelayPrefix} from './relay-intent.js';
+import {parseGameInvitation, parseRelayCommand, stripRelayPrefix} from './relay-intent.js';
 import { presetBindings, summarizePreset } from './console/preset-overview.js';
 import {buildDshBundle} from '../scripts/build-dsh-bundle.mjs';
 import { openSetupViewer } from '../scripts/windows-setup-viewer.mjs';
@@ -6052,7 +6052,7 @@ async function main() {
               recordSentMessagesV2(key, error.sent);
               log(`[reserved2] 工具分条发送部分成功 ${error.sent.length}/${messages.length} 条，已记录已发消息`);
             }
-            if(error?.nextAt&&!error.sent?.length){sendJson({ok:false,error:error.message,nextAt:error.nextAt},429);return;}
+            if((error?.nextAt||error?.statusCode===429)&&!error.sent?.length){sendJson({ok:false,error:error.message,nextAt:error.nextAt},429);return;}
             // 失败/未发出的消息回滚预占的发送额度，避免假 429。
             const sentCount = Array.isArray(error?.sent) ? error.sent.length : 0;
             const failedCount = Math.max(0, messages.length - sentCount);
@@ -6189,7 +6189,7 @@ async function main() {
               recordSentMessagesV2(key, error.sent);
               log(`[reserved2] 工具统一发送部分成功 ${error.sent.length}/${messages.length} 条，已记录已发消息`);
             }
-            if(error?.nextAt&&!error.sent?.length){sendJson({ok:false,error:error.message,nextAt:error.nextAt},429);return;}
+            if((error?.nextAt||error?.statusCode===429)&&!error.sent?.length){sendJson({ok:false,error:error.message,nextAt:error.nextAt},429);return;}
             // 失败/未发出的消息回滚预占的发送额度，避免假 429。
             const sentCount = Array.isArray(error?.sent) ? error.sent.length : 0;
             const failedCount = Math.max(0, messages.length - sentCount);
@@ -8263,7 +8263,7 @@ async function main() {
               recordSentMessagesV2(key, error.sent);
               log(`[send] ${url.pathname} ${key} 部分成功 ${error.sent.length}/1 条，已记录已发消息`);
             }
-            if(error?.nextAt&&!error.sent?.length){sendJson({ok:false,error:error.message,nextAt:error.nextAt},429);return;}
+            if((error?.nextAt||error?.statusCode===429)&&!error.sent?.length){sendJson({ok:false,error:error.message,nextAt:error.nextAt},429);return;}
             // 失败/未发出的消息回滚预占的发送额度，避免假 429。
             const sentCount = Array.isArray(error?.sent) ? error.sent.length : 0;
             const failedCount = Math.max(0, 1 - sentCount);
@@ -8609,7 +8609,7 @@ async function main() {
       if ((kind==='poke') !== !!poke) continue;
       const command = poke ? '告诉'+plain.slice(poke[0].length)
         : plain.replace(/^(?:去)?私聊(?:里)?\s*(?:电一电|电一下)?\s*/, '告诉');
-      const relay = parseRelayCommand(command,{resolve:name=>!!resolve(name),preferLongest:true});
+      const relay = parseRelayCommand(command,{resolve:name=>!!resolve(name),preferLongest:true}) || (kind==='text' ? parseGameInvitation(plain) : null);
       if (relay) {
         const target = resolve(relay.name);
         if (target && target !== sourceKey) targets.add(target);
@@ -9426,40 +9426,33 @@ async function main() {
 
   function sendMessagesV2(key, messages, delays, replyToMessageId, atUserId = null) {
     const outbound=bindQuotedReplyContext(key,outboundContext(key),replyToMessageId);
-    messages=messages.flatMap(m=>splitLongSegment(m,outbound.plan?.maxMessageChars||500)).slice(0,pluginHost.callService('replyPlan','remaining',{key,plan:outbound.plan})??0);
-    if(!messages.length)return Promise.reject(Object.assign(new Error('本轮发送额度已用完'),{statusCode:429}));
+    const parts=messages.flatMap(message=>splitLongSegment(message,outbound.plan?.maxMessageChars||500));
     const assertSendAllowed = captureSendGuard(key,{...(outbound.agent?{wakeOrigin:outbound.envelope,taskContentExempt:outbound.plan?.taskExempt===true}:{}),replyContext:outbound});
     const [kind, id] = key.split(':');
-    let sendChain = sendChains.get(key) || Promise.resolve();
-    const sent = [];
-    const failed = [];
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i];
-      const useReply = i === 0 ? replyToMessageId : null;
-      const useAt = i === 0 ? atUserId : null;
-      sendChain = sendChain
-        .then(async () => {
-          if(failed.some(error=>error?.nextAt||error?.deliveryUnknown))return;
+    const batch = (sendChains.get(key) || Promise.resolve()).then(async () => {
+      // A preceding request can spend the same content allowance while this
+      // group waits. Check the entire group before its first gateway write.
+      const remaining=pluginHost.callService('replyPlan','remaining',{key,plan:outbound.plan})??0;
+      if (!parts.length || parts.length>remaining) {
+        throw Object.assign(new Error('发送计划拒绝：content_limit（整组未发送）'),{statusCode:429});
+      }
+      const sent=[];
+      for (const [i, message] of parts.entries()) {
+        try {
           assertSendAllowed();
-          await onebotSend(kind, id, msg, useReply, useAt, {...outbound,requestedDelay:delays?.[i]});
-          sent.push(msg);
-        })
-        .catch((error) => {
-          log(`QQ 发送失败 (${key}):`, error?.message ?? error);
-          failed.push(error);
-        });
-    }
-    rememberSendChain(key, sendChain);
-    return sendChain.then(() => {
-      if (failed.length > 0) {
-        const firstError=failed[0];
-        const err = new Error(`QQ 发送失败 ${messages.length-sent.length}/${messages.length} 条：${firstError?.message ?? '未知错误'}`);
-        err.sent = sent.slice();
-        err.nextAt=firstError?.nextAt;
-        throw err;
+          await onebotSend(kind,id,message,i===0?replyToMessageId:null,i===0?atUserId:null,{...outbound,requestedDelay:delays?.[i]});
+          sent.push(message);
+        } catch (error) {
+          log(`QQ 发送失败 (${key}):`,error?.message??error);
+          throw Object.assign(new Error(`QQ 发送失败 ${parts.length-sent.length}/${parts.length} 条：${error?.message??'未知错误'}`),{
+            sent,statusCode:error?.statusCode,nextAt:error?.nextAt,deliveryUnknown:error?.deliveryUnknown===true
+          });
+        }
       }
       return sent;
     });
+    rememberSendChain(key,batch.catch(()=>{}));
+    return batch;
   }
 
   // 审计范围：owner 私聊一律跳过（owner 有权看本机路径/凭据/令牌）；其余模式/会话一律审计

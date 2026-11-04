@@ -98,6 +98,12 @@ function splitTarget(rest, resolve, weak, preferLongest) {
   return { name, content: rest.slice(token.length).replace(LEAD_SEP_RE, ''), weak: weak === true };
 }
 
+export function parseGameInvitation(text) {
+  const match = /^(?:邀请|约)\s*([^\s，,。！？!?；;：:]{1,24}?)\s*(?:一起玩|玩一局|玩一场|玩一把)\s*([^，,。！？!?；;\n]{1,60})[。！!？?]?$/.exec(stripRelayPrefix(text));
+  const name = match && cleanName(match[1]);
+  return name && validName(name) && match[2].trim() ? {name} : null;
+}
+
 /**
  * 解析一句用户消息里的传话意图。
  * @param {string} text 用户原话

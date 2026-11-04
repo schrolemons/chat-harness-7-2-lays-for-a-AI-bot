@@ -46,6 +46,27 @@ test('quoted multipart reply sends both bubbles for one credit, and a new group 
  assert.equal(preview.minute,1);
  assert.equal(preview.hour,1);
 });
+test('concurrent multipart requests sharing content never send a truncated second group',async t=>{
+ let startSend, finishSend;
+ const started=new Promise(resolve=>{startSend=resolve;});
+ const held=new Promise(resolve=>{finishSend=resolve;});
+ let sends=0;
+ const {key,messages,request}=await open(t,{globals:{fetch:async url=>{
+  if(/send_private_msg$/.test(String(url))&&++sends===1){startSend();await held;}
+  return {ok:true,status:200,json:async()=>({status:'ok',retcode:0,data:{}})};
+ }}});
+ const declaration=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'chat'}]});
+ const id=declaration.body.contents[0].id;
+ const send=messages=>request('/api/socialV2/send-message',{key,messages},id);
+ const first=send(['第一组甲','第一组乙']);
+ await started;
+ const second=send(['第二组甲','第二组乙']);
+ try{await new Promise(resolve=>setTimeout(resolve,100));}finally{finishSend();}
+ assert.equal((await first).body.sent,2);
+ const rejected=await second;
+ assert.equal(rejected.status,429,JSON.stringify(rejected.body));
+ assert.equal(sends,2);
+});
 test('bridge lets the admitted reply group finish across its local hard cap while new groups stay silent',async t=>{
  const key='private:123';
  const {h,sid,messages,request}=await open(t,{extraFiles:{'state/plugins/config/life-token-budget.json':{sessions:{[key]:{hardLimitYuan:0.1}}}}});
@@ -128,6 +149,18 @@ test('a newer unread message does not block a bound reply to an earlier complete
  h.appendSocialV2Message(key,'甲','之后的未读消息','之后的未读消息',false,true,'999',[],'123',[],undefined,false,{bodyComplete:true});
  const sent=await request('/api/socialV2/send-message',{key,messages:'回答上一条'},content.id);
  assert.equal(sent.body.sent,1,JSON.stringify(sent.body));
+});
+
+test('an explicit game invitation is a task scoped to its named recipient',async t=>{
+ const {h,key,st,messages,request}=await open(t,{texts:['请邀请测试朋友一起玩猜谜'],extraConfig:{allow:{private:['123','12001','12002']},socialV2:{relayAliases:{测试朋友:'private:12001',另一个人:'private:12002'}}}});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'task'}]});
+ const content=declared.body.contents?.[0];
+ assert.equal(content?.taskExempt,true,JSON.stringify(declared.body));
+ const send=target=>request('/api/send/private',{userId:target,token:st.agentToken,message:'要一起玩猜谜吗？'},content.id);
+ const wrong=await send('12002');
+ assert.equal(wrong.body.code,'CROSS_SESSION_TARGET_MISMATCH',JSON.stringify(wrong));
+ assert.equal((await send('12001')).body.sent,1);
+ assert.equal(h.calls.http.filter(c=>/send_private_msg$/.test(c.url)).length,1);
 });
 
 test('separate paid source tasks may send text and a private poke in one turn',async t=>{
