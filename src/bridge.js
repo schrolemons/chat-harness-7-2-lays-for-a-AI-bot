@@ -2,7 +2,7 @@ import {createRuntimeIpcClient} from './instance-runtime-ipc.mjs';
 import {bindInstanceSnowConfig} from './instance-snow-connection.mjs';
 import {bindInstanceDshConfig} from './instance-dsh-target.mjs';
 import {loadInstanceSessionPolicy} from './instance-session-policy.mjs';
-import {parseGameInvitation, parseRelayCommand, stripRelayPrefix} from './relay-intent.js';
+import {parseGameInvitation, parseRelayCommand, parseScheduledRelay, stripRelayPrefix} from './relay-intent.js';
 import { presetBindings, summarizePreset } from './console/preset-overview.js';
 import {buildDshBundle} from '../scripts/build-dsh-bundle.mjs';
 import { openSetupViewer } from '../scripts/windows-setup-viewer.mjs';
@@ -7724,13 +7724,14 @@ async function main() {
           const action = String(body.action ?? 'add').trim();
           const key = String(body.key ?? '').trim();
           const agentCall = req.headers['x-agent-token'] !== undefined;
+          let taskPlan;
           const validKey = /^(private|group):\d+$/.test(key);
           if (agentCall) {
             if (!validKey) { sendJson({ ok: false, error: '日程操作需要 key（private:QQ号 / group:群号）' }, 400); return; }
             if (!memoryTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: '日程工具仅接受当前会话令牌' }, 403); return; }
             if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
             if (!v2ToolEnabled('schedule')) { sendJson({ ok: false, error: '工具未启用：qq_schedule' }, 403); return; }
-            if (['add', 'cancel', 'update', 'complete'].includes(action)) assertAcceptedTaskOperation(requestOutbound);
+            if (['add', 'cancel', 'update', 'complete'].includes(action)) taskPlan=assertAcceptedTaskOperation(requestOutbound);
           }
           // 控制台跨会话汇总（不带 key）。
           if (action === 'list' && !validKey) {
@@ -7753,6 +7754,16 @@ async function main() {
             sendJson({ ok: true, conversations });
             return;
           }
+          let scheduledTask;
+          if (body.targetKey !== undefined || body.message !== undefined) {
+            if (action!=='add' || !agentCall || key!==sourceKey || !key.startsWith('private:')) {
+              sendJson({ok:false,error:'跨会话定时发送须在发起私聊中创建并绑定原任务'},409);return;
+            }
+            scheduledTask = authorizeScheduledQQ(key,taskPlan,sourceEnvelope,body);
+            if (!scheduledTask) {
+              sendJson({ok:false,error:'SCHEDULE_TARGET_NOT_AUTHORIZED：请核实原指令中的具体日期、HH:mm 和唯一白名单目标'},409);return;
+            }
+          }
           // appendIfAbsent is console-only and never evicts existing schedule records.
           if (action === 'appendIfAbsent' && agentCall) { sendJson({ ok: false, error: '示例追加仅控制台可用' }, 403); return; }
           const method = action === 'appendIfAbsent' ? 'appendIfAbsent' : action === 'add' ? 'add' : action === 'cancel' ? 'cancel' : action === 'list' ? 'list' : action === 'update' ? 'update' : action === 'complete' ? 'complete' : '';
@@ -7766,6 +7777,8 @@ async function main() {
             out = await pluginHost.callService('schedules', method, {
               key, title: body.title, when: body.when, dueAt: body.dueAt,
               ...(method === 'appendIfAbsent' ? { exampleId: body.exampleId } : {}),
+              ...(taskPlan && !scheduledTask ? { authorization:scheduleAuthorization(key,key,taskPlan,sourceEnvelope) } : {}),
+              ...scheduledTask,
               place: body.place, detail: body.detail, repeat: body.repeat,
               leadMinutes: body.leadMinutes ?? body.remindBeforeMinutes,
               intervalMinutes: body.intervalMinutes
@@ -8569,6 +8582,51 @@ async function main() {
     for(const message of [...view.unread,...view.recentMessages])if(!message.isSelf && messageAdmitted(envelope,message))bySeq.set(message.seq,message);
     return [...bySeq.values()];
   }
+  function resolveAuthorizedRelayTarget(name) {
+    const alias = cfg.socialV2?.relayAliases?.[name];
+    if (alias) return resolveRelayTargetV2(String(alias));
+    const confirmed = pluginHost.callService('aliases','lookupConfirmed',{alias:name});
+    return resolveRelayTargetV2(confirmed?.ok ? 'private:'+confirmed.qq :
+      /^(?:(?:private|group):)?[1-9]\d{4,19}$/.test(name) ? name : '');
+  }
+
+  function scheduleAuthorization(sourceKey,targetKey,plan,envelope) {
+    const content=plan?.contentId&&pluginHost.callService('replyPlan','getContent',{key:sourceKey,contentId:plan.contentId});
+    if (!content?.seqs?.length || !plan.taskGroupId) return null;
+    const originals=content.seqs.map(seq=>findV2MessageBySeq(getSocialV2State(sourceKey),seq));
+    if (!originals.every(message=>messageAdmitted(envelope,message))) return null;
+    return {taskId:plan.taskGroupId,sourceKey,targetKey,instructions:originals.map(message=>({
+      text:String(message.text??message.plain??''),receivedAt:stampMsV2(message.time)
+    }))};
+  }
+
+  function authorizeScheduledQQ(sourceKey,plan,envelope,body) {
+    const targetKey=String(body.targetKey||''),message=String(body.message||'').trim();
+    if (sourceKey===targetKey || !isSessionAllowedInCurrentMode(targetKey) || !message || /[\r\n]/.test(message)
+        || (body.repeat && body.repeat!=='none') || (body.leadMinutes!=null && Number(body.leadMinutes)!==0)
+        || body.intervalMinutes!=null || body.remindBeforeMinutes!=null) return null;
+    const max=pluginHost.callService('replyPlan','policy')?.maxMessageChars||500;
+    if (message.length>max || isSensitiveText(message,cfg.security?.extraSensitiveTerms,cfg.security?.sensitiveRules)) return null;
+    const authorization=scheduleAuthorization(sourceKey,targetKey,plan,envelope);
+    if (!authorization) return null;
+    const appointments=new Map();
+    for (const {text,receivedAt} of authorization.instructions) {
+      const parsed=parseScheduledRelay(text,{resolve:name=>!!resolveAuthorizedRelayTarget(name),preferLongest:true});
+      if (!parsed || !receivedAt) continue;
+      const key=resolveAuthorizedRelayTarget(parsed.name);
+      const time=new Date(receivedAt);
+      time.setDate(time.getDate()+parsed.dayOffset);
+      time.setHours(parsed.hour,parsed.minute,0,0);
+      appointments.set(key+':'+time.getTime(),{key,dueAt:time.getTime()});
+    }
+    if (appointments.size!==1) return null;
+    const [allowed]=appointments.values();
+    const proposed=body.when===undefined ? Number(body.dueAt) : Date.parse(body.when);
+    if (allowed.key!==targetKey || !Number.isFinite(proposed) || proposed<=Date.now()
+        || proposed!==allowed.dueAt) return null;
+    return {authorization,scheduledMessage:message,leadMinutes:0};
+  }
+
   function crossSessionTaskError(targetKey, context, {kind = "text", targetUserId, replyTo} = {}) {
     if (!['text','poke'].includes(kind) || replyTo || kind==='text' && targetUserId) {
       return 'CROSS_SESSION_ACTION_UNSUPPORTED：跨会话任务只支持已授权的独立文字或明确要求的拍一拍。';
@@ -8586,13 +8644,7 @@ async function main() {
     if (source.some(message=>!messageAdmitted(envelope,message))) {
       return 'CROSS_SESSION_TASK_REQUIRED：原任务来源已变化，请重读发起会话的完整指令并重新声明。';
     }
-    const resolve = name => {
-      const alias = cfg.socialV2?.relayAliases?.[name];
-      if (alias) return resolveRelayTargetV2(String(alias));
-      const confirmed = pluginHost.callService('aliases','lookupConfirmed',{alias:name});
-      return resolveRelayTargetV2(confirmed?.ok ? 'private:'+confirmed.qq :
-        /^(?:(?:private|group):)?[1-9]\d{4,11}$/.test(name) ? name : '');
-    };
+    const resolve = resolveAuthorizedRelayTarget;
     const targets = new Set();
     for (const message of source) {
       const plain = stripRelayPrefix(message.plain ?? message.text);
@@ -10194,15 +10246,15 @@ async function main() {
     return {ok:result?.ok===true&&!result.skipped,reason:result?.skipped?'dispatch_blocked':result?.error};
   };
   taskCaps.deliveryStatus=(id)=>pluginHost.callService('scheduler','deliveryStatus',{id:String(id||'')})||{ok:false,reason:'ledger_unavailable'};
-  taskCaps.sendNotificationDetailed=async(key,body,meta={})=>{
+  taskCaps.sendNotificationDetailed=async(key,body,meta={},authorize=()=>true)=>{
     const blocked=automaticNotificationBlockReason(key);
-    if(blocked)return {ok:false,reason:blocked};
+    if(blocked||!authorize())return {ok:false,reason:blocked||'authorization_unavailable'};
     const claimed=pluginHost.callService('scheduler','claimDelivery',meta);
     if(!claimed?.ok){
       const reason=claimed?.reason||'ledger_unavailable';
       return {ok:false,reason:reason==='sent'?'already_sent':reason==='claimed'||reason==='uncertain'?'delivery_unconfirmed':'receipt_'+reason,receiptStatus:reason};
     }
-    let sent=false;try{sent=await sendToQQ(key,body,{budgetMechanical:true,conversationReply:false,wakeOrigin:null,origin:'purpose',originReason:String(meta?.reason||'notification'),scheduledNotifications:[{...meta,key,claimed:true}],allow:()=>automaticNotificationAllowed(key)&&Number.isFinite(meta.expiresAt)&&Date.now()<=meta.expiresAt});}catch{}
+    let sent=false;try{sent=await sendToQQ(key,body,{budgetMechanical:true,conversationReply:false,wakeOrigin:null,origin:'purpose',originReason:String(meta?.reason||'notification'),scheduledNotifications:[{...meta,key,claimed:true}],allow:()=>authorize()&&automaticNotificationAllowed(key)&&Number.isFinite(meta.expiresAt)&&Date.now()<=meta.expiresAt});}catch{}
     const finished=pluginHost.callService('scheduler','finishDelivery',{id:meta.id,sent});
     if(!finished?.ok){
       log('[notification] 发送结果已记录前发生回执写入错误 '+String(meta.id||''));
@@ -10212,6 +10264,12 @@ async function main() {
     try { appendNotificationReceiptV2(key,'通知已发：'+meta.id+'｜'+new Date().toISOString()+'｜'+String(body).slice(0,80)); }
     catch(error){log('[notification] 已发送，但通知任务记录写入失败 '+String(meta.id||'')+'：'+(error?.message??error));}
     return {ok:true,receiptStatus:'sent'};
+  };
+  taskCaps.sendScheduledQQ = (key,body,{sourceKey,id,sourceAt,expiresAt,stillScheduled}) => {
+    const authorize=()=>pluginHost.isEnabled('life-schedule-reminder')&&isSessionAllowedInCurrentMode(sourceKey)
+      &&groupChatAllowed(key,'scheduledContact',false)&&stillScheduled()
+      &&splitLongSegment(body,pluginHost.callService('replyPlan','policy')?.maxMessageChars||500).length===1;
+    return taskCaps.sendNotificationDetailed(key,body,{id,sourceAt,expiresAt},authorize);
   };
   // Diary messages share the physical send queue and use their own durable receipt.
   // This capability is scoped to ctx-memory-store.

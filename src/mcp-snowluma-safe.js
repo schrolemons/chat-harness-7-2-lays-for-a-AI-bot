@@ -1228,11 +1228,13 @@ server.tool(
   '日程工具（明确提醒的讲座/考试/课程/活动/截止日期/约定/回访）。随口安排先写当前事务qq_task_note，小事不必建日程；确认需要提醒且时间具体时才action=add。leadMinutes控制提前量（默认30），intervalMinutes控制提醒间隔（默认30），完成或取消需明确依据。'
   + 'action=add 必填 title + when：when 用 ISO（带时区，如 2026-11-22T23:59:00+08:00）或「YYYY-MM-DD HH:MM」；只知道日期就省略时刻（按当天 09:00）。时间含糊（“下周”“过几天”“回头”）先补问，不要猜。'
   + 'action=list 查看当前会话未完成日程（含 id、提醒开始时刻 remindAt、间歇周期和下次提醒时间）；action=update 用 id/match 修改标题、时间、地点、描述、重复、leadMinutes、intervalMinutes；只有用户明确说“我已经去做这事了”后，才用 action=complete 确认；action=cancel 取消。不要把沉默、“知道了”或“谢谢”当作完成。'
-  + '只有确实需要到点提醒的事才登记，普通话题不要记成日程。',
+  + '只有确实需要到点提醒的事才登记，普通话题不要记成日程。用户明确要求到点给另一 QQ 会话发送时，用本工具 add 携带当前发起会话的任务 contentId、targetKey 和 message。原话需给出日期或当天的 HH:mm 及唯一对象；仅到点发送一次，不用 DSH 原生 schedule_create 代替。key 和 token 仍是发起会话的。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
     action: z.enum(['add', 'list', 'cancel', 'update', 'complete']).optional().describe('默认 add'),
+    targetKey: z.string().optional().describe('跨会话定时发送才填，原始 QQ 指令中唯一明确的白名单目标'),
+    message: z.string().optional().describe('跨会话定时发送才填，到点向 targetKey 发送的一条文字'),
     title: z.string().optional().describe('add 时必填：事情本身，如「计算机系统大作业截止」'),
     when: z.string().optional().describe('add 时必填：ISO 时间（带时区）或 YYYY-MM-DD HH:MM；只有日期按当天 09:00'),
     place: z.string().optional().describe('地点/平台，如「bb 平台」「3A 楼 101」'),
@@ -1245,11 +1247,11 @@ server.tool(
     includePast: z.boolean().optional().describe('list 时是否包含已提醒过的条目'),
     limit: z.number().optional().describe('list 最多返回几条，默认 50')
   },
-  async ({ key, token, action, title, when, place, detail, repeat, leadMinutes, intervalMinutes, id, match, includePast, limit }) => {
+  async ({ key, token, action, targetKey, message, title, when, place, detail, repeat, leadMinutes, intervalMinutes, id, match, includePast, limit }) => {
     try {
       const data = await agentApi('/api/socialV2/schedules', {
         method: 'POST',
-        body: JSON.stringify({ key, action: action || 'add', title, when, place, detail, repeat, leadMinutes, intervalMinutes, id, match, includePast, limit }),
+        body: JSON.stringify({ key, action: action || 'add', targetKey, message, title, when, place, detail, repeat, leadMinutes, intervalMinutes, id, match, includePast, limit }),
         headers: { 'x-agent-token': token }
       });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };

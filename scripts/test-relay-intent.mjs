@@ -1,5 +1,13 @@
 // 传话意图解析回归测试：node scripts/test-relay-intent.mjs
-import { parseRelayCommand, stripRelayPrefix } from '../src/relay-intent.js';
+import assert from 'node:assert/strict';
+import { parseRelayCommand, parseScheduledRelay, stripRelayPrefix } from '../src/relay-intent.js';
+
+{
+  const options = { resolve: name => ['测试朋友','12001'].includes(name), preferLongest:true };
+  assert.equal(parseScheduledRelay('今晚22:30去私聊测试朋友说声晚安', options)?.name, '测试朋友');
+  assert.equal(parseScheduledRelay('今晚22:30去私聊测试朋友甲说声晚安', options), null);
+  assert.equal(parseScheduledRelay('今晚22:30去私聊120011说声晚安', options)?.name, '120011');
+}
 
 // 模拟桥接的白名单解析：十二 / 管理员 / 老板 可解析，其它不行
 const KNOWN = new Set(['十二', '管理员', '老板', '阿狸']);

@@ -155,6 +155,7 @@ function view(item, cfgObj) {
       : Math.max(remindAt, Date.now());
   return {
     id: item.id,
+    ...(item.scheduledMessage ? {targetKey:item.authorization?.targetKey,deliveryStatus:item.deliveryStatus||'pending'} : {}),
     ...(item.exampleId ? { exampleId: item.exampleId } : {}),
     key: item.key,
     title: item.title,
@@ -165,8 +166,8 @@ function view(item, cfgObj) {
     leadIsDefault: !hasExplicitLead(item),
     remindAt,
     remindISO: hasDue ? new Date(remindAt).toISOString() : '',
-    intervalMinutes: intervalMinutes ?? defaultIntervalMinutes(cfgObj),
-    intervalIsDefault: intervalMinutes === null,
+    intervalMinutes: item.scheduledMessage ? null : intervalMinutes ?? defaultIntervalMinutes(cfgObj),
+    intervalIsDefault: !item.scheduledMessage && intervalMinutes === null,
     nextReminderAt,
     nextReminderISO: hasDue ? new Date(nextReminderAt).toISOString() : '',
     reminderStartedAt: item.reminderStartedAt || 0,
@@ -225,7 +226,8 @@ export function createPlugin(ctx) {
     if (!title) return { ok: false, error: 'title 不能为空（写清是什么事，例如「计算机系统大作业截止」）' };
     const lead = resolveLeadMinutes(payload.leadMinutes ?? payload.remindBeforeMinutes, cfg());
     if (lead.error) return { ok: false, error: lead.error };
-    const interval = resolveIntervalMinutes(payload.intervalMinutes, cfg());
+    const directed = !!payload.scheduledMessage;
+    const interval = directed ? {minutes:null} : resolveIntervalMinutes(payload.intervalMinutes, cfg());
     if (interval.error) return { ok: false, error: interval.error };
     const numericDue = Number(payload.dueAt);
     const dueAt = payload.when === undefined && Number.isFinite(numericDue) && numericDue > 0
@@ -236,8 +238,13 @@ export function createPlugin(ctx) {
     }
     if (dueAt < Date.now() - 60 * 1000) return { ok: false, error: 'when 已经过期：' + fmtLocal(dueAt) + '；如果要提醒未来的事，请给未来时间。' };
     const st = state();
-    const duplicated = st.items.find((it) => it.key === key && String(it.title || '') === title && Math.abs(Number(it.dueAt) - dueAt) < 60 * 1000);
+    const duplicated = st.items.find(it=>it.key===key&&(directed&&it.scheduledMessage&&it.authorization?.taskId===payload.authorization?.taskId
+      || String(it.title||'')===title&&Math.abs(Number(it.dueAt)-dueAt)<60000));
+    if (duplicated && (directed || duplicated.scheduledMessage) &&
+        (duplicated.authorization?.taskId!==payload.authorization?.taskId || duplicated.authorization?.targetKey!==payload.authorization?.targetKey
+          || duplicated.scheduledMessage!==payload.scheduledMessage || duplicated.dueAt!==dueAt)) return {ok:false,error:'SCHEDULE_DUPLICATE_CONFLICT'};
     if (duplicated) return { ok: true, duplicated: true, item: viewOf(duplicated), message: '已有同一条日程，未重复添加' };
+    if (directed && st.items.length >= maxItems()) return {ok:false,error:'SCHEDULE_CAPACITY'};
     const item = {
       id: newId(),
       key,
@@ -249,6 +256,8 @@ export function createPlugin(ctx) {
       intervalMinutes: interval.minutes,
       createdAt: Date.now()
     };
+    if (payload.authorization) item.authorization = payload.authorization;
+    if (directed) item.scheduledMessage = payload.scheduledMessage;
     if (exampleId) item.exampleId = exampleId;
     // 只在调用方明确给了提前量时才落盘：未指定 = 跟随全局默认，旧数据/新数据都不多写字段。
     if (lead.explicit) item.leadMinutes = lead.minutes;
@@ -263,7 +272,8 @@ export function createPlugin(ctx) {
       item: viewOf(item),
       leadMinutes: lead.minutes,
       leadClamped: !!lead.clamped,
-      message: '已登记，' + fmtLocal(dueAt) + ' 的事，从提前 ' + lead.minutes + ' 分钟开始，每 ' + interval.minutes + ' 分钟提醒一次，直到你明确说“我已经去做这事了”' + note
+      message: directed ? '已登记，' + fmtLocal(dueAt) + ' 向已授权会话发送一次。'
+        : '已登记，' + fmtLocal(dueAt) + ' 的事，从提前 ' + lead.minutes + ' 分钟开始，每 ' + interval.minutes + ' 分钟提醒一次，直到你明确说“我已经去做这事了”' + note
     };
   }
 
@@ -300,6 +310,7 @@ export function createPlugin(ctx) {
     const found = findItem(st, key, id, match);
     if (!found) return { ok: false, error: '找不到这条日程（可能已提醒过或被取消）；用 list 看看当前有哪些' };
     const item = found.item;
+    if (item.scheduledMessage) return {ok:false,error:'跨会话定时发送需要原指令授权。请取消旧条目，再按新指令登记。'};
     if (item.completedAt) return { ok: false, error: '这条日程已完成；如需再次提醒，请新增一条日程' };
     let changedStart = false;
     if (Object.hasOwn(payload, 'title')) {
@@ -433,7 +444,7 @@ export function createPlugin(ctx) {
     const lateMs = clamp(c.lateMinutes, 1, 1440, 120) * 60 * 1000;
     const groups = new Map();
     for (const it of st.items) {
-      if (it.completedAt) continue;
+      if (it.completedAt || it.scheduledMessage) continue;
       const dueAt = Number(it.dueAt);
       if (!Number.isFinite(dueAt)) { it.firedAt = now; it.expired = true; changed = true; continue; }
       // 到点唤醒时刻 = when - leadMinutes（每条日程自己的提前量，缺字段用全局默认）。
@@ -498,6 +509,28 @@ export function createPlugin(ctx) {
     if (changed) save({ items: prune(st.items, now) });
   }
 
+  async function deliverScheduledQQ(now) {
+    if (cfg().enabled===false || typeof cap().sendScheduledQQ!=='function') return;
+    for (const item of state().items) {
+      const {id,key,dueAt,authorization,scheduledMessage}=item;
+      if (!scheduledMessage || item.firedAt || item.completedAt || !Number.isFinite(dueAt) || dueAt>now
+          || authorization?.sourceKey!==key || !authorization.taskId || !authorization.targetKey || authorization.targetKey===key) continue;
+      const expiresAt=dueAt+clamp(cfg().lateMinutes,1,1440,120)*60*1000;
+      const stillScheduled=()=>!ctx.signal?.aborted&&cfg().enabled!==false&&state().items.some(current=>
+        current.id===id&&!current.firedAt&&!current.completedAt&&current.dueAt===dueAt&&current.scheduledMessage===scheduledMessage
+        &&current.authorization?.taskId===authorization.taskId&&current.authorization?.targetKey===authorization.targetKey);
+      const result=now>=expiresAt ? {reason:'expired'} : await cap().sendScheduledQQ(authorization.targetKey,scheduledMessage,{
+        sourceKey:key,id:'qq-scheduled:'+id,sourceAt:dueAt,expiresAt,stillScheduled
+      });
+      const status=result?.ok||result?.reason==='already_sent' ? 'sent'
+        : result?.reason==='expired' ? 'expired'
+          : result?.receiptStatus==='uncertain'||result?.reason==='receipt_finalize_failed' ? 'uncertain' : '';
+      if (!status || !stillScheduled()) continue;
+      const latest=state();
+      save({items:latest.items.map(current=>current.id===id ? {...current,firedAt:now,deliveryStatus:status,expired:status==='expired'} : current)});
+    }
+  }
+
   function prune(items, now) {
     const kept = [];
     for (const it of items) {
@@ -523,6 +556,7 @@ export function createPlugin(ctx) {
     hooks: {
       onTick({ now = Date.now() } = {}) {
         fireDue(now);
+        return deliverScheduledQQ(now);
       },
       beforePrompt(payload = {}) {
         if (/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview|slangLearn)$/.test(String(payload?.reason || ''))) return '';

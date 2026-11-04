@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
 async function open(t,{texts=['这幅画很好看','今天天气不错','这首歌很有趣'],rate=0,extraFiles={},extraConfig={},globals,groupMembers}={}){
  const h=await bridgeHarness({config:{sendDelayMs:0,...extraConfig},globals,groupMembers,files:{'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:3,maxMessagesCasual:3,maxMessagesSerious:3,maxSendPerMinute:rate,maxSendPerHour:rate,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},...extraFiles}});
@@ -140,6 +142,43 @@ test('an admitted private relay carries the source task to its one named destina
  const sent=await send('12001',content.id);assert.equal(sent.body.sent,1,JSON.stringify(sent.body));
  assert.match((await send('12001',content.id)).body.error,/duplicate_delivery/);
  assert.equal(h.calls.http.filter(c=>/send_private_msg$/.test(c.url)).length,1);
+});
+
+test('a scheduled QQ task persists its original authority and sends only to its named target',async t=>{
+ const now=new Date(), dueAt=Math.floor(now.getTime()/60000)*60000+120000;
+ const due=new Date(dueAt);
+ const instruction='请'+(now.getDate()===due.getDate()?'今天':'明天')+String(due.getHours()).padStart(2,'0')+':'+String(due.getMinutes()).padStart(2,'0')+'去私聊测试朋友说声晚安';
+ const {h,key,messages,request}=await open(t,{texts:[instruction],extraConfig:{allow:{private:['123','12001','12002']},socialV2:{relayAliases:{测试朋友:'private:12001'}}}});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'task'}]});
+ const content=declared.body.contents?.[0];
+ assert.equal(content?.taskExempt,true,JSON.stringify(declared.body));
+ const add=(targetKey,when=dueAt)=>request('/api/socialV2/schedules',{action:'add',key,targetKey,message:'晚安，早点休息',title:'验收一次性联系',dueAt:when},content.id);
+ const denied=await add('private:12002');
+ assert.equal(denied.status,409,JSON.stringify(denied.body));
+ assert.equal((await add('private:12001',dueAt+60000)).status,409);
+ const added=await add('private:12001');
+ assert.equal(added.body.ok,true,JSON.stringify(added.body));
+ assert.equal(added.body.item.targetKey,'private:12001');
+ assert.equal((await add('private:12001')).body.item.id,added.body.item.id,'retry preserves one scheduled item');
+ assert.doesNotMatch(JSON.stringify(added.body),new RegExp(instruction));
+ const filename=path.join(h.temp,'state','plugins','life-schedule-reminder.json');
+ const saved=JSON.parse(await fs.readFile(filename,'utf8')).items.find(item=>item.id===added.body.item.id);
+ assert.deepEqual(saved.authorization,{taskId:content.id,sourceKey:key,targetKey:'private:12001',instructions:[{text:instruction,receivedAt:messages[0].time}]});
+ const sent=()=>h.calls.sent.filter(x=>x.text.includes('晚安，早点休息'));
+ assert.equal(sent().length,0);
+ await h.pluginHost.reload('life-schedule-reminder');
+ await h.pluginHost.tick(dueAt-1);
+ assert.equal(sent().length,0);
+ h.cfg.allow.private=['123','12002'];
+ await h.pluginHost.tick(dueAt);
+ assert.equal(sent().length,0,'revoked whitelist blocks the due send');
+ h.cfg.allow.private=['123','12001','12002'];
+ await h.pluginHost.tick(dueAt+1);
+ await h.pluginHost.tick(dueAt+2);
+ assert.equal(sent().length,1);
+ assert.equal(sent()[0].id,12001);
+ const listed=await request('/api/socialV2/schedules',{action:'list',key,includePast:true});
+ assert.equal(listed.body.items.find(item=>item.id===added.body.item.id)?.deliveryStatus,'sent');
 });
 
 test('a newer unread message does not block a bound reply to an earlier complete source',async t=>{

@@ -104,6 +104,21 @@ export function parseGameInvitation(text) {
   return name && validName(name) && match[2].trim() ? {name} : null;
 }
 
+export function parseScheduledRelay(text, options = {}) {
+  const match = /^(?:(今天|今晚|明天|明晚|后天)\s*)?([01]?\d|2[0-3])[:：]([0-5]\d)\s*[，,]?\s*(?:去)?(?:私聊(?:里)?|群聊(?:里)?|联系|问候|安慰|哄(?:一下)?|通知|转告|转达)\s*(.+)$/.exec(stripRelayPrefix(text));
+  if (!match) return null;
+  const target = match[4].trim();
+  const address = /^((?:(?:private|group):)?[1-9]\d{4,19})(?!\d)/.exec(target);
+  const relay = address ? {name:address[1]} : typeof options.resolve==='function'
+    ? parseRelayCommand('告诉'+target, options) : {name:target};
+  if (!relay) return null;
+  const rest = target.slice(relay.name.length);
+  if (typeof options.resolve==='function' && (!target.startsWith(relay.name)
+      || rest && !/^(?:[\s，,：:。！!]|说|发|带|传|问|道|打招呼|提醒|哄)/.test(rest))) return null;
+  const dayOffset = match[1]?.startsWith('明') ? 1 : match[1]==='后天' ? 2 : 0;
+  return {name:relay.name,hour:Number(match[2]),minute:Number(match[3]),dayOffset};
+}
+
 /**
  * 解析一句用户消息里的传话意图。
  * @param {string} text 用户原话
