@@ -21,12 +21,29 @@ export function initialize() {
     document.getElementById('aliasModalConfirm').textContent=entry.status==='candidate'?'确认映射':'保存修改';
     document.getElementById('aliasModalReject').style.display=entry.status==='candidate'?'':'none';document.getElementById('aliasModalOverlay').classList.add('open');
   }
+  // Review can reveal the original identifiers, while the default candidate list
+  // also hides numbers embedded in a name, note or evidence snippet.
+  const redactCandidateIds = value => String(value ?? '').replace(/\d{5,}/g, '••••');
+  function candidatePreview(entry) {
+    return {
+      ...entry,
+      alias: redactCandidateIds(entry.alias),
+      targetName: redactCandidateIds(entry.targetName),
+      qq: entry.qq ? '已绑定，审核时可查看' : '',
+      note: redactCandidateIds(entry.note),
+      reason: redactCandidateIds(entry.reason),
+      sourceKeys: (entry.sourceKeys || []).map(redactCandidateIds),
+      evidence: (entry.evidence || []).map(item => ({
+        ...item, key: redactCandidateIds(item.key), text: redactCandidateIds(item.text)
+      }))
+    };
+  }
   function render(){
     const suffix=active==='candidate'?'Cand':active[0].toUpperCase()+active.slice(1),target=document.getElementById('alias'+active[0].toUpperCase()+active.slice(1)+'List'),q=search(),limit=Number(document.getElementById('aliasLimit'+suffix).value)||100;
     const list=rows.filter(x=>x.status===active),filtered=list.filter(x=>!q||[x.alias,x.qq,x.note,x.reason,x.targetName,(x.sourceKeys||[]).join(' '),...(x.evidence||[]).map(y=>y.text)].join(' ').toLowerCase().includes(q)),shown=filtered.slice(0,limit);
     if(!shown.length){target.innerHTML='<div class="meta" style="padding:8px">'+(list.length?'没有符合条件的绰号':active==='candidate'?'暂无候选；可刷新近期群消息或手动添加':'暂无'+statusLabel[active]+'绰号')+'</div>';return;}
     let html='<div class="meta" style="padding:6px 8px">共 '+filtered.length+' 条，显示 '+shown.length+' 条</div><table><tr><th>选择</th><th>绰号</th><th>被称呼者</th><th>对应 QQ</th><th>适用会话 / 语境证据</th><th>备注</th><th>操作</th></tr>';
-    for(const e of shown){const actions=active==='candidate'?'<button class="small" data-alias-edit="'+esc(e.id)+'">查看 / 编辑</button><button class="small primary" data-alias-confirm="'+esc(e.id)+'">确认</button><details class="compact-actions"><summary>更多</summary><div class="compact-actions-menu"><button class="small" data-alias-reject="'+esc(e.id)+'">拒绝</button></div></details>':active==='confirmed'?'<button class="small" data-alias-edit="'+esc(e.id)+'">编辑</button><button class="small danger" data-alias-delete="'+esc(e.id)+'">删除</button>':'<span class="meta">已记入拒绝记录</span>';
+    for(const row of shown){const e=active==='candidate'?candidatePreview(row):row;const actions=active==='candidate'?'<button class="small" data-alias-edit="'+esc(e.id)+'">查看 / 编辑</button><button class="small primary" data-alias-confirm="'+esc(e.id)+'">确认</button><details class="compact-actions"><summary>更多</summary><div class="compact-actions-menu"><button class="small" data-alias-reject="'+esc(e.id)+'">拒绝</button></div></details>':active==='confirmed'?'<button class="small" data-alias-edit="'+esc(e.id)+'">编辑</button><button class="small danger" data-alias-delete="'+esc(e.id)+'">删除</button>':'<span class="meta">已记入拒绝记录</span>';
       html+='<tr data-alias-id="'+esc(e.id)+'"><td>'+(active!=='rejected'?'<input type="checkbox" data-alias-select="'+esc(e.id)+'" '+(selected.has(e.id)?'checked':'')+'>':'—')+'</td><td><b>'+esc(e.alias)+'</b><br><span class="'+(active==='candidate'?'pill b':active==='confirmed'?'pill g':'pill r')+'">'+statusLabel[active]+'</span></td><td>'+esc(e.targetName||'—')+'</td><td>'+esc(e.qq||'未绑定')+'</td><td>'+sourceKeysMarkup(e)+(e.evidence?.length?'<br>'+learningEvidence(e.evidence):'')+'</td><td>'+esc(e.note||e.reason||'—')+'</td><td class="row">'+actions+'</td></tr>';
     }target.innerHTML=html+'</table>';
     target.querySelectorAll('[data-alias-select]').forEach(cb=>cb.addEventListener('change',()=>{cb.checked?selected.add(cb.dataset.aliasSelect):selected.delete(cb.dataset.aliasSelect);}));

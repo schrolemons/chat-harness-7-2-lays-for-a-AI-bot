@@ -394,7 +394,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
   refreshCore();
   const quotaService = createKnowledgeQuota(quotaContext).services.knowledgeQuota;
   componentFixtures.get('life-user-availability').state = { plans: { 'private:10001': {kind:'quiet',start:Date.now(),end:Date.now()+3600000} } };
-  const scriptsFixture=componentFixtures.get('life-campus-watch');
+  const scriptsFixture=componentFixtures.get('life-web-watch');
   scriptsFixture.config.scriptPaths=[{value:'scripts/example-watch.mjs',enabled:true},{value:'scripts/example-summary.mjs',enabled:false}];
   scriptsFixture.config.scriptDescriptions={'scripts/example-watch.mjs':'按约定检查指定网页，发现更新后通知','scripts/example-summary.mjs':'整理已有结果，不主动搜索或发送'};
   const server = http.createServer(async (req, res) => {
@@ -438,7 +438,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
           await routeMemoryManagement({ req, url, readBody: async () => body, sendJson: json,
             pluginHost: { callService: (_, action, input) => affairsStore[action](input) }, agentTokenOk: () => false, affairsMaxChars: componentFixtures.get('ctx-memory-context').config.affairsMaxChars }); return;
         }
-        if (path === '/api/plugins/call' && (['worklog_history', 'diary_history', 'diary_read', 'profile_snapshot', 'image_generation_status', 'campus_watch_status'].includes(body.tool)
+        if (path === '/api/plugins/call' && (['worklog_history', 'diary_history', 'diary_read', 'profile_snapshot', 'image_generation_status', 'web_watch_status'].includes(body.tool)
           || body.tool === 'image_generation_secret' && body.input?.op === 'status')) readToolCalls.push(body);
         else if (!(path === '/api/socialV2/schedules' && body.action === 'list')
           && !(path === '/api/socialV2/daily-diary' && body.action === 'catchUpAll')) requests.push({ method, path, body });
@@ -677,7 +677,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
             if(body.tool==='profile_snapshot')return json({ok:true,plugin:'ctx-memory-profile-store',result:{ok:true,version:1,updatedAt:Date.now(),profiles:{'10001':{hobbies:'离线档案兴趣'}},people:{'10001':{name:'演示用户',keys:['private:10001']}}}});
             if(body.tool==='image_generation_secret'&&body.input?.op==='status')return json({ok:true,plugin:'exec-image-generation',result:{ok:true,configured:false}});
             if(body.tool==='image_generation_status')return json({ok:true,plugin:'exec-image-generation',result:{ok:true,day:'2026-10-29',globalUsed:0,globalLimit:10,sessionLimit:3,quotaMode:'requests'}});
-            if(body.tool==='campus_watch_status')return json({ok:true,plugin:'life-campus-watch',result:{ok:true,enabled:true,watchUrls:[],sites:[{name:'课程公告',url:'https://example.invalid/course?course_id=100&content_id=200&context='+('long-address-'.repeat(18)),health:{checkedAt:Date.now(),fetch:'green',auth:'green',diff:'stable',delivery:'none',hint:'页面可读取'}}],scripts:(scriptsFixture.config.scriptPaths||[]).map(item=>({path:typeof item==='string'?item:item.value,health:item.enabled===false?'paused':'green',description:scriptsFixture.config.scriptDescriptions?.[typeof item==='string'?item:item.value]||''})),running:[],lastRun:null}});
+            if(body.tool==='web_watch_status')return json({ok:true,plugin:'life-web-watch',result:{ok:true,enabled:true,watchUrls:[],sites:[{name:'站点公告',url:'https://example.invalid/notice?context='+('long-address-'.repeat(18)),health:{checkedAt:Date.now(),fetch:'green',auth:'green',diff:'stable',delivery:'none',hint:'页面可读取'}}],scripts:(scriptsFixture.config.scriptPaths||[]).map(item=>({path:typeof item==='string'?item:item.value,health:item.enabled===false?'paused':'green',description:scriptsFixture.config.scriptDescriptions?.[typeof item==='string'?item:item.value]||''})),running:[],lastRun:null}});
             if (body.tool === 'diary_read') {
               return json({ ok: true, plugin: 'ctx-memory-store', result: { ok: true, date: body.input?.date, text: '自动加载的日记预览' } });
             }

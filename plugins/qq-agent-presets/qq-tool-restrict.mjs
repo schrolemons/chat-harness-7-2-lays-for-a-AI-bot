@@ -227,7 +227,6 @@ const PLAYWRIGHT_MCP_TOOLS = [
 
 const SAFE_PREFIXES = [
   'mcp__snowluma__',
-  'mcp__snowluma-host__',
   'mcp__web-search-safe__',
   'mcp__games__',
 ]

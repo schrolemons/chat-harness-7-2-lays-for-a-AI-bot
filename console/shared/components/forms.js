@@ -8,7 +8,6 @@ import form3 from '../../layers/L/components/ctx-chat-reply-shape.js';
 import form4 from '../../layers/L/components/ctx-chat-topic-drive.js';
 import form5 from '../../layers/E/components/exec-browser-manager.js';
 import form6 from '../../layers/E/components/exec-image-generation.js';
-import form7 from '../../layers/L/components/life-campus-watch.js';
 import form8 from '../../layers/C/components/ctx-media-sticker-pick.js';
 import form9 from '../../layers/C/components/ctx-memory-update.js';
 import form10 from '../../layers/C/components/ctx-memory-profile-facts.js';
@@ -30,6 +29,8 @@ import form25 from '../../layers/L/components/life-daily-worklog.js';
 import form26 from '../../layers/S/components/personal-core.js';
 import recoveryForm from '../../layers/O/components/obs-session-recovery.js';
 import selfReviewForm from '../../layers/O/components/obs-self-review.js';
+import webWatchForm from '../../layers/L/components/life-web-watch.js';
+
 export const COMPONENT_FORMS = {
   'obs-self-review':selfReviewForm,
   'obs-session-recovery':recoveryForm,
@@ -41,9 +42,9 @@ export const COMPONENT_FORMS = {
   'ctx-knowledge-quota': form2,
   'ctx-chat-reply-shape': form3,
   'ctx-chat-topic-drive': form4,
+  'life-web-watch': webWatchForm,
   'exec-browser-manager': form5,
   'exec-image-generation': form6,
-  'life-campus-watch': form7,
   'ctx-media-sticker-pick': form8,
   'ctx-memory-update': form9,
   'ctx-memory-profile-facts': form10,

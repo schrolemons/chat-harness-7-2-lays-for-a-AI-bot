@@ -6,7 +6,7 @@ import {compileModules} from '../plugins/qq-components/obs-context-assembly/poli
 import {prioritizeChatExpression} from '../plugins/qq-components/obs-context-assembly/chat-expression.mjs';
 import {createPlugin} from '../plugins/qq-components/obs-context-assembly/index.js';
 import {encodePacket,decodePacket} from '../plugins/qq-components/obs-context-assembly/packet.mjs';
-import {secretFor,readEvidence} from '../plugins/qq-components/obs-context-assembly/store.mjs';
+import {secretFor,readEvidence,recordEvidence} from '../plugins/qq-components/obs-context-assembly/store.mjs';
 import {contextParts,retireDialogueTasks} from '../plugins/qq-components/obs-context-assembly/refill.mjs';
 import {orderProjectedDialogue} from '../plugins/qq-components/obs-context-assembly/dialogue-order.mjs';
 import {qqDialogueBlocks} from '../console/layers/O/context-qq-blocks.js';
@@ -56,15 +56,46 @@ function fixture(refresh){
  const agent={id:'a1',session};apply({on(n,fn){hooks[n]=fn;}},{root,refresh});hooks['agent/created']({agent});
  const envelope=(modules=rows(),nonce='n1')=>encodePacket({version:1,key:'private:1',sessionId:'s1',nonce,scene:'message',issuedAt:Date.now(),modules},secretFor(root));
  const messages=()=>nodes.map(n=>session.eventAt(n)).flatMap(e=>e.type==='user/message'?[e.data]:[]);
- const admit=async packet=>{
+ const admit=async (packet,turn=1)=>{
   const input=packet?[{id:'u'+step,role:'user',content:[{type:'text',text:packet}]}]:[];
   for(const message of input)hooks['agent/inbox/claimed']({agent,message});
-  const out=await hooks['agent/pre-step']({agent,turn:1,step},async()=>({kind:'enter',messages:input}));
-  session.append('step/start',{turn:1,step});await hooks['agent/request']({agent,turn:1,step},async()=>({}));
+  const out=await hooks['agent/pre-step']({agent,turn,step},async()=>({kind:'enter',messages:input}));
+  session.append('step/start',{turn,step});await hooks['agent/request']({agent,turn,step},async()=>({}));
   for(const m of out.messages)session.append('user/message',m,{surfaceOp:'append'});step++;return out;
  };
  return {root,hooks,agent,session,envelope,messages,admit,close:()=>fs.rmSync(root,{recursive:true,force:true})};
 }
+
+test('a resumed plain-text turn retires a previously signed task without deleting history',async()=>{
+ const f=fixture(async()=>({modules:rows()}));try{
+  await f.admit(f.envelope());
+  f.hooks['agent/disposed']({agent:f.agent});
+  f.hooks['agent/created']({agent:f.agent,source:'resume'});
+  await f.admit('本轮普通文本',2);
+  assert(!f.messages().some(message=>message.source?.kind==='qq-context-task'));
+  assert(f.messages().some(message=>message.content.some(block=>block.text==='本轮普通文本')));
+  assert(f.session.snapshotEvents().some(event=>event.data.source?.kind==='qq-context-task'));
+ }finally{f.close();}
+});
+
+test('managed native readiness checks the exact host without a signal probe',t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'qq-context-ready-'));
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const vars={QQ_BRIDGE_RUNTIME_GENERATION:'fixture',QQ_BRIDGE_DSH_TARGET:JSON.stringify({mode:'native'})};
+ for(const [key,value] of Object.entries(vars)){
+  const previous=process.env[key];process.env[key]=value;
+  t.after(()=>{if(previous===undefined)delete process.env[key];else process.env[key]=previous;});
+ }
+ t.mock.method(process,'kill',()=>{throw Object.assign(Error('probe denied'),{code:'EPERM'});});
+ const owner=createPlugin({root,config:{}}).services.contextAssembly;
+ const input={key:'private:1',sessionId:'s1',scene:'private',modules:rows(),fallback:'fallback'};
+ recordEvidence(root,'s1','consumer',{sessionId:'s1',pid:process.pid});
+ assert.equal(owner.compose(input),'fallback');
+ assert.equal(readEvidence(root,'private:1').readiness,'different-host');
+ recordEvidence(root,'s1','consumer',{sessionId:'s1',pid:process.ppid});
+ assert.equal(decodePacket(owner.compose(input),secretFor(root),'s1').scene,'private');
+ assert.equal(process.kill.mock.callCount(),0);
+});
 
 test('malformed old voice projection is withdrawn rather than revived; stable user data remains stable',()=>{
  const old=[{id:'role-card',text:'原始角色卡\n\n当前声音',chatExpressionBaseText:'原始角色卡'},

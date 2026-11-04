@@ -2,6 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {clientFixture} from './instance-launcher-client-fixture.mjs';
 
+test('titlebar keeps a short label and shows server startup progress while a start is pending', async t => {
+  const p = await clientFixture(t);
+  p.add('a', 4199);
+  p.mount('a');
+  await p.flush();
+  let finish;
+  const identity = { instanceId: 'a', ...p.registry.a };
+  p.pending.set('http://127.0.0.1:4199/start', () => new Promise(resolve => { finish = resolve; }));
+  const start = p.click('a', 'button');
+  await p.flush();
+  p.pending.set('http://127.0.0.1:4199/status', async () => ({
+    ok: true, json: async () => ({ ...identity, runtime: { state: 'starting', phase: 'starting-snow' } }),
+  }));
+  try {
+    await p.tick();
+    const button = p.nodes.get('qq-launcher-a-button');
+    assert.equal(button.children[1].textContent, 'Synthetic a');
+    assert.match(button.title, /正在启动 SnowLuma/);
+  } finally {
+    finish({ ok: true, json: async () => ({ ...identity, runtime: { state: 'running' } }) });
+    await start;
+  }
+});
+
 test('A/B/external DOM, requests, settings and disposal are independently owned', async t => {
   const p = await clientFixture(t); p.add('a', 4199); p.add('b', 5199);
   const external = { isConnected: true }; p.body.children.push(external);

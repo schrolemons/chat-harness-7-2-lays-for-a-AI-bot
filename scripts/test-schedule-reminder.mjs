@@ -249,6 +249,7 @@ ctx.promptBlocks = [];
 S.add({ key: 'group:1', title: '注入用的讲座', when: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), place: '3A101' });
 plugin.hooks.beforePrompt({ key: 'group:1', reason: 'message' });
 check('beforePrompt：注入未来日程', ctx.promptBlocks.join('\n').includes('【日程安排') && ctx.promptBlocks.join('\n').includes('注入用的讲座'));
+check('beforePrompt：卡片标明来源、状态、到期和相对时间', /到期 .*约 .* 分钟后[\s\S]*桥接日程 · 待提醒/.test(ctx.promptBlocks.join('\n')));
 ctx.promptBlocks = [];
 plugin.hooks.beforePrompt({ key: 'private:9', reason: 'message' });
 check('beforePrompt：别的会话不注入', ctx.promptBlocks.length === 0);

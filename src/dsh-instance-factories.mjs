@@ -4,6 +4,7 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createInstanceRuntime, verifyManagedSnow } from './instance-runtime.mjs';
 import { createLauncher } from '../plugins/qq-launcher/lib/index.js';
+import { readBridgeHealth } from '../plugins/qq-components/obs-bridge-health/health.mjs';
 
 const required = () => Object.assign(Error('NODE_RUNTIME_REQUIRED: configure verified Node >=24 (Windows >=24.20.0) or owned managed Snow'),{code:'NODE_RUNTIME_REQUIRED'});
 export function isSupportedInstanceNode(version,platform=process.platform) {
@@ -33,7 +34,7 @@ export async function resolveInstanceNode({ descriptor, config = {}, host = proc
 /** Keep gateway startup/credential diagnostics locally, including before health is ready. */
 function loggedSpawn(root) {
   return (file,args,options) => {
-    const kind=args.some(value=>String(value).endsWith('index.mjs'))?'snow':args.some(value=>String(value).endsWith('campus-watch.mjs'))?'campus-watch':args.some(value=>String(value).endsWith('login-window.mjs'))?'login-window':'bridge';
+    const kind=args.some(value=>String(value).endsWith('index.mjs'))?'snow':'bridge';
     let directory=root;
     for(const segment of ['state','runtime-logs']) {
       directory=path.join(directory,segment);fs.mkdirSync(directory,{recursive:true,mode:0o700});
@@ -51,6 +52,8 @@ export function createProductionFactories({ nodePath }) {
   return {
     createRuntime:({ctx,descriptor,config,presetMap,recordCreatedSession})=>createInstanceRuntime({descriptor,snowHome:config.snowHome||undefined,nodePath,presetMap,getDshOrigin:()=>ctx.root.get('webServer').getOrigin(),
       recordCreatedSession,spawnProcess:loggedSpawn(descriptor.root)}),
-    mountLauncher:({ctx,descriptor,controller,runtime})=>createLauncher(ctx,{descriptor,getDshOrigin:()=>ctx.root.get('webServer').getOrigin(),runtime:{start:()=>controller.start(),stop:()=>controller.stop(),status:()=>runtime.status()}}),
+    mountLauncher:({ctx,descriptor,controller,runtime})=>createLauncher(ctx,{descriptor,getDshOrigin:()=>ctx.root.get('webServer').getOrigin(),
+      readHealth:consolePort=>readBridgeHealth({root:descriptor.root,consolePort,timeoutMs:900}),
+      runtime:{start:()=>controller.start(),stop:()=>controller.stop(),status:()=>runtime.status()}}),
   };
 }

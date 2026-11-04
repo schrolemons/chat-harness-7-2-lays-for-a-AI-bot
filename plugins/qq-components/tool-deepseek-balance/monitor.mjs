@@ -64,16 +64,17 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
     write({lastResult:result,lastError:{at:now,message:result?.error||'余额查询失败'},failures,pendingAlert:pending,scheduledNotice:diagnostic?null:current.scheduledNotice,nextCheckAt:now+Math.min(30,c.checkIntervalMin*2**Math.min(3,failures-1))*60000});return result;
    }
    const previous=current.lastSuccess,stock=selectedStock(result,c),change=stockChange(previous,{...result,stock},c)||(current.failures>=3&&stock.stage!=='unknown'?{kind:'query_restored',urgent:true,stock}:null);
-   const event=change?{...change,id:'milk:'+randomUUID(),at:now}:null;
-   const sample={is_available:result.is_available,balance_infos:result.balance_infos,at:now,stock};
-   const out={...result,milk:{...milkPresentation(result),checkedAt:now,stock,change:event?{id:event.id,at:now,kind:event.kind,before:event.before,after:stock,delta:event.delta,relativeChange:event.relativeChange,summary:stockNotice(event)}:null}};
+   const checkedAt=Math.max(now,clock(),Number(previous?.at)||0);
+   const event=change?{...change,id:'milk:'+randomUUID(),at:checkedAt}:null;
+   const sample={is_available:result.is_available,balance_infos:result.balance_infos,at:checkedAt,stock};
+   const out={...result,milk:{...milkPresentation(result),checkedAt,stock,change:event?{id:event.id,at:checkedAt,kind:event.kind,before:event.before,after:stock,delta:event.delta,relativeChange:event.relativeChange,summary:stockNotice(event)}:null}};
    out.milk.responseGuidance+='\n'+milkChangeGuidance;
    let pending=current.pendingAlert;
    if(pending&&pending.stage!==stock.stage)pending=null;
-   if(c.monitorEnabled&&event)pending={id:'milk-stock:'+randomUUID(),eventId:event.id,kind:event.kind,stage:stock.stage,text:stockNotice(event),sourceAt:now,expiresAt:now+2*3600000,notBefore:event.urgent?now:Math.max(now,(current.lastNoticeAt||0)+c.notificationCooldownMin*60000)};
+   if(c.monitorEnabled&&event)pending={id:'milk-stock:'+randomUUID(),eventId:event.id,kind:event.kind,stage:stock.stage,text:stockNotice(event),sourceAt:checkedAt,expiresAt:checkedAt+2*3600000,notBefore:event.urgent?checkedAt:Math.max(checkedAt,(current.lastNoticeAt||0)+c.notificationCooldownMin*60000)};
    const scheduledNotice=current.scheduledNotice?.stage===stock.stage&&!event?current.scheduledNotice:null;
-   write({lastResult:out,lastSuccess:sample,lastError:null,failures:0,nextCheckAt:now+c.checkIntervalMin*60000,pendingAlert:pending,scheduledNotice});
-   social.observe(event,now);
+   write({lastResult:out,lastSuccess:sample,lastError:null,failures:0,nextCheckAt:checkedAt+c.checkIntervalMin*60000,pendingAlert:pending,scheduledNotice});
+   social.observe(event,checkedAt);
    return out;
   })().finally(()=>{inflight=null;});const result=await inflight;if(notify)await deliver(now);return result;
  }
@@ -90,7 +91,8 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
   wakeTail({key,reason,scheduledEvent}={}){
    const n=read().scheduledNotice;
    if(reason!=='milkStock'||!alive()||n?.status==='covered'||key!=='private:'+String(ctx.capabilities?.getOwnerQQ?.()||'')||n?.id!==scheduledEvent?.id||scheduledEvent.expiresAt<clock())return '';
-   return '【定时主动会话：API预算告警】这次由API预算定时核对事件触发，不是用户来信，也不抽主动概率。已核实的事件事实：'+n.text+'\n'+milkVoice+'\n'+milkChangeGuidance+'\n沿用当前人设卡、对话示范和心情，用发送工具只发一条短句，像自己惦记API预算那样说，不照读技术通知。查询失败只说未核实，不说归零。无需再查余额，不额外发图片、表情或追问，不处理或标记无关的待处理消息；核实本条实际发送结果后直接结束。成功发送才算一次主动会话并刷新主动概率模型；接收请求不等于已送达。';
+   const style=String(milkPolicy(ctx.config).alertStyle || '').trim();
+   return '【定时主动会话：API预算告警】这次由API预算定时核对事件触发，不是用户来信，也不抽主动概率。已核实的事件事实：'+n.text+'\n'+(style?'【已配置的预警语义】'+style:milkVoice)+'\n'+milkChangeGuidance+'\n'+'沿用当前人设卡、对话示范和心情，用发送工具只发一条短句，不照读技术通知，不反复讨要或夸大后果。查询失败只说未核实，不说归零。无需再查余额，不额外发图片、表情或追问，不处理或标记无关的待处理消息；核实本条实际发送结果后直接结束。成功发送才算一次主动会话并刷新主动概率模型；接收请求不等于已送达。';
   },
   status(){const st=read(),maxAge=Math.max(15,milkPolicy(ctx.config).checkIntervalMin*3)*60000;return {...st,lastSuccess:st.lastSuccess?{...st.lastSuccess,stock:selectedStock(st.lastSuccess,milkPolicy(ctx.config))}:undefined,fresh:!!st.lastSuccess&&!st.lastError&&clock()-st.lastSuccess.at<=maxAge};},
   context({key}={}){

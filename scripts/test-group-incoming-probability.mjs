@@ -28,7 +28,7 @@ test('probability one accepts without a roll and no matching trigger never accep
 const {createProactive}=await import('../plugins/qq-components/life-wake-reasons/proactive.mjs');
 test('service captures opening stage and caches its one lottery across reset and reload',()=>{
  let state={proactiveByKey:{'group:1':{stage:3,willingness:100}}},calls=0;
- const ctx={config:{...policy,initialProbability:.2,probabilityStep:.1,probabilityMax:.9},state:{get:()=>state,set:p=>state={...state,...p}},capabilities:{getProactiveFacts:()=>({mood:{frequencyFactor:1}})}};
+ const ctx={config:{...policy,curfewEnabled:false,initialProbability:.2,probabilityStep:.1,probabilityMax:.9},state:{get:()=>state,set:p=>state={...state,...p}},capabilities:{getProactiveFacts:()=>({mood:{frequencyFactor:1}})}};
  const service=createProactive(ctx);const args={key:'group:1',eventId:'one',event:{atMention:true},random:()=>{calls++;return .8;}};
  const before=service.incoming(args);assert.equal(before.baseProbability,.5);assert.equal(before.probability,1);assert.equal(before.accepted,true);
  service.observe({key:'group:1',kind:'incoming',hasText:true,eventId:'one',at:Date.now()});
@@ -39,7 +39,7 @@ test('service captures opening stage and caches its one lottery across reset and
 
 test('directed question matching uses configured names, @ facts and directed phrasing, not a hardcoded old persona',()=>{
  const decide=text=>model.evaluateGroupIncoming({key:'group:1',p:0,policy:{...policy,groupNameBonus:0,groupQuestionBonus:.8},event:{text},random:()=>.1});
- assert.equal(decide('AI助手午饭吃了吗？').extraProbability,.8);assert.equal(decide('你能解释一下吗').extraProbability,.8);assert.equal(decide('小明午饭吃了吗？').extraProbability,0);assert.equal(decide('AI助手吃了吗？').extraProbability,0);
+ assert.equal(decide('AI助手午饭吃了吗？').extraProbability,.8);assert.equal(decide('你能解释一下吗').extraProbability,.8);assert.equal(decide('小明午饭吃了吗？').extraProbability,0);assert.equal(decide('其他机器人吃了吗？').extraProbability,0);
 });
 
 test('bounded incoming audit retains most recent events even when numeric message IDs are out of order',()=>{

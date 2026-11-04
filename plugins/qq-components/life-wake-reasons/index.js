@@ -8,7 +8,7 @@
 // 再调 `pluginHost.collectWakeTails(payload)`；本组件按 reason 产出一段尾巴。
 // 组件缺失/禁用 → 桥接退回通用尾巴，唤醒流程不中断。
 //
-// 数据由桥接提供（payload）：key / reason / preSleepMs / triggeredLine / history /
+// 数据由桥接提供（payload）：key / reason / triggeredLine / history /
 // taskReport / reminderItems / peer / maxItems / maxChars / unreadCount。
 
 // The host versions entry URLs; carry that query through every owned dependency.
@@ -35,7 +35,6 @@ export function createPlugin(ctx) {
   function tail(payload) {
     const reason = String(payload.reason || '');
     const key = String(payload.key || '');
-    const preSleepMs = Math.max(0, Number(payload.preSleepMs) || 300000);
     const triggeredLine = String(payload.triggeredLine || '');
     if (disabled.has(reason)) return '';
 
@@ -47,7 +46,7 @@ export function createPlugin(ctx) {
       case 'timeout':
         return `【唤醒】${key}\n原因：你明确约定的到时唤醒时间已到。\n核对本次约定，查看需要处理的消息；群聊来信仍服从全局概率策略，不另设触发条件。`;
       case 'replyCheck':
-        return `【回复检查】${key}\n原因：你刚刚发送过消息，现在回来检查是否有人回复。\n已有回复时先读消息，对方分条输入或连续补充时调用 qq_wait_for_quiet 合并后再回应。完成实际回复和回执后，用 qq_wait_for_messages 等待人类的下一步响应；等待超时按返回的 endRound、action 和 guidance 执行继续等待、结束本轮、延续旧话题或开启新话题。没人回应时不自行追加发言，不重抽后台判定。`;
+        return `【回复检查】${key}\n原因：你刚刚发送过消息，现在回来检查是否有人回复。\n已有回复时先读消息，对方分条输入或连续补充时调用 qq_wait_for_quiet 合并后再回应。回复和回执完成、对方可能还想聊但此刻未接话时，才按需用 qq_wait_for_messages 等下一步响应；等待超时按返回的 endRound、action 和 guidance 执行继续等待、结束本轮、延续旧话题或开启新话题。没人回应时不自行追加发言，不重抽后台判定。`;
       case 'careCheck':
         return '【主动关心】\n（主动开口，不是回复谁）已经有一阵子没聊了。用 1 条短句关心一下对方（在干嘛/吃饭没/今天怎么样），语气自然、别像客服；对方不回复也没关系，不要连发。可以配 1 张表情。';
       case 'newsShare': {

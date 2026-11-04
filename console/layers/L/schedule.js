@@ -1,7 +1,6 @@
 
 import { api, esc } from '../../shared/api.js';
-import { loadV2FollowupSessionLimits, appendExampleTimeBubbleRows } from './time-bubbles.js';
-import { initializeProactiveExamples, updateExampleConversations } from './proactive-examples-ui.js';
+import { loadV2FollowupSessionLimits } from './time-bubbles.js';
 // layers/L/schedule: explicit imports; initialize is called in the application startup order.
 
 
@@ -16,7 +15,6 @@ async function refreshV2Schedule({ preserveDrafts = false } = {}) {
       api('/api/socialV2/schedules', 'POST', { action: 'list' })
     ]);
     const convs = r.conversations || [];
-    updateExampleConversations(convs);
     const schMap = new Map();
     for (const c of (sch && sch.conversations) || []) schMap.set(c.key, c);
     // 填充各自功能的会话下拉；跟进覆盖值仅适用于私聊。
@@ -165,11 +163,6 @@ async function refreshV2Schedule({ preserveDrafts = false } = {}) {
 }
 
 export function initialize() {
-initializeProactiveExamples(async ({ key, template, result }) => {
-  if (template.kind === 'bubbles') appendExampleTimeBubbleRows(key, result.slots);
-  await refreshV2Schedule({ preserveDrafts: true });
-});
-
 document.getElementById('v2ScheduleRefresh').addEventListener('click', refreshV2Schedule);
 document.getElementById('v2ReminderAdd').addEventListener('click', async () => {
   const key = document.getElementById('v2ReminderKey').value;

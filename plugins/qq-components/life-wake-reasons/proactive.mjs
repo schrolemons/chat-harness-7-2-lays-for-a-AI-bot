@@ -4,6 +4,7 @@ const policyUrl = new URL('./proactive-policy.mjs', import.meta.url);
 policyUrl.search = new URL(import.meta.url).search;
 const { normalizeProactivePolicy, validateProactivePolicy, effectiveProactiveStage, isProactiveCurfew } = await import(policyUrl.href);
 const MINUTE = 60000;
+const GROUP_CHAT_WAKE = /^(message|private|probability|atMention|nameMention|question|poke|keyword|reply|replyCheck|timeout|anyMessage|speaker|bootstrap|thinkingAck|budgetWeak)$/;
 const evidenceUrl=new URL('./availability-evidence.mjs',import.meta.url);evidenceUrl.search=new URL(import.meta.url).search;
 const {resolveSleepAvailability,validAssessment}=await import(evidenceUrl.href);
 const mechanical = /^(thinking|thinkingAck|ack|messageAck|replyCheck)$/;
@@ -20,6 +21,10 @@ export function createProactive(ctx) {
   const cancel = key => ctx.scheduler?.cancel(jobId(key));
   const factsFor = key => ctx.capabilities?.getProactiveFacts?.(key);
   const available=(key,now)=>resolveSleepAvailability({key,state:get(key),now,baseline:p.initialWillingness,callService:ctx.callService});
+  function allowsGroupChat({key, reason='message', direct=false, now=Date.now()}={}) {
+    return !String(key).startsWith('group:') || !GROUP_CHAT_WAKE.test(String(reason).split(':')[0])
+      || !p.curfewDirectOnlyInGroups || !isProactiveCurfew(p,now) || direct === true;
+  }
   function blocked(facts, now) {
     if (!valid.ok) return 'invalid_policy';
     if (!p.proactiveEnabled || p.disabledReasons.includes('proactiveCheck')) return 'disabled';
@@ -109,7 +114,7 @@ export function createProactive(ctx) {
       lifecycleHistory: [...(s.lifecycleHistory || []), { at: now, reason }].slice(-100) }); cancel(key);
     return { ok: true, released: true };
   }
-  return { policy: () => ({ ...p }), plan, refresh, observe, finished,
+  return { policy: () => ({ ...p }), plan, refresh, observe, finished, allowsGroupChat,
     availability({key,now=Date.now()}={}) { const s=available(key,now);return {willingness:s.willingness,source:s.source,lastAI:s.lastAI||null,review:s.review||null,recovery:s.availabilityRecovery||null}; },
     incoming({key,eventId,at=Date.now(),event={},blockedReason='',random=Math.random}={}){
       if(/^private:[1-9]\d*$/.test(String(key||'')))return evaluateGroupIncoming({key});
@@ -118,7 +123,11 @@ export function createProactive(ctx) {
       const state=available(key,at),cached=Object.hasOwn(state.incomingDecisions||{},eventId)?state.incomingDecisions[eventId]:null;if(cached)return {...cached,duplicate:true};
       const facts=factsFor(key),awake=facts?.conversationAwake===true;
       const base=awake?null:effectiveProactiveStage(p,state.stage,state.willingness,facts?.mood);
-      const result={...evaluateGroupIncoming({key,p:base?.effectiveProbability||0,awake,policy:p,event,random}),eventId,at,...(!awake?{stage:state.stage||0}:{})};
+      const direct = event.atMention === true || (event.poke === true && event.targetIsSelf === true);
+      const decision = allowsGroupChat({key,direct,now:at})
+        ? evaluateGroupIncoming({key,p:base?.effectiveProbability||0,awake,policy:p,event,random})
+        : {accepted:false,reason:'group_curfew',probability:0,matched:[]};
+      const result={...decision,eventId,at,...(!awake?{stage:state.stage||0}:{})};
       const decisions={...(state.incomingDecisions||{}),[eventId]:result};const ids=Object.keys(decisions).sort((a,b)=>(decisions[a].at||0)-(decisions[b].at||0));for(const id of ids.slice(0,Math.max(0,ids.length-128)))delete decisions[id];
       put(key,{...state,incomingDecisions:decisions,lastIncomingDecision:result});return result;
     },

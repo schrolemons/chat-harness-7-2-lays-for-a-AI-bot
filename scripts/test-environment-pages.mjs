@@ -13,9 +13,9 @@ test('E component bodies stay visible; parameter panels are framed, expanded and
  assert.equal(await admin.locator('details,summary').count(),0,'component panels have no expand/collapse controls');
  assert.equal(await page.locator('#v2AdminDevPreset').isVisible(),true,'settings are visible on entry');
  await admin.locator('.env-card-heading').click();assert.equal(await page.locator('#v2AdminDevPreset').isVisible(),true,'clicking a heading cannot hide its settings');
- await page.locator('#v2AdminDevPreset').waitFor();await page.locator('#v2AdminDevEnabled').setChecked(true);await page.locator('#v2AdminDevPreset').fill('qq-chat-dev');
+ await page.locator('#v2AdminDevPreset').waitFor();await page.locator('#v2AdminDevEnabled').setChecked(true);await page.locator('#v2AdminDevPreset').selectOption('qq-chat-dev');
  for(const id of ['v2AdminDevEnabled','v2AdminDevPreset'])assert.ok(await page.locator('#'+id).evaluate(e=>{const example=e.closest('.env-admin-field').querySelector('.parameter-example');return example.getBoundingClientRect().top>=e.getBoundingClientRect().bottom;}),'examples stay below '+id);
- const response=page.waitForResponse(r=>r.url().endsWith('/api/socialV2/config')&&r.request().method()==='POST');await admin.getByRole('button',{name:'保存管理员开发设置',exact:true}).click();await response;
+ const response=page.waitForResponse(r=>r.url().endsWith('/api/socialV2/config')&&r.request().method()==='POST');await admin.getByRole('button',{name:'保存管理员环境',exact:true}).click();await response;
  const saved=fixture.requests.filter(r=>r.path==='/api/socialV2/config').at(-1);assert.deepEqual(saved.body,{adminDev:{enabled:true,preset:'qq-chat-dev'}});
  const visit=async id=>{await page.locator('#mainNav [data-view="'+id+'"]').click();await page.locator('section[data-page="'+id+'"]').first().waitFor();};
  await visit('environment-web');await page.locator('#envCompBrowserDom .comp-save').waitFor({state:'attached'});
@@ -35,18 +35,6 @@ test('E component bodies stay visible; parameter panels are framed, expanded and
  assert.ok(!(await page.locator('#envCompImageGeneration').textContent()).includes('火山方舟'));
  assert.equal(await page.locator('#envCompImageGeneration [data-config-key="provider"]').count(),0);
  await visit('video');assert.equal(await page.locator('section[data-page="video"] input,section[data-page="video"] button').count(),0);
- await visit('environment-scripts');await page.locator('#envCompScript .script-brief').first().waitFor();
- assert.deepEqual(await page.locator('#envCompScript .comp-field').evaluateAll(rows=>rows.map(e=>e.dataset.configKey)),['scriptPaths']);
- assert.equal((await page.locator('#section-environment-scripts').textContent()).includes('高新'),false);
- assert.equal(await page.locator('#envCompScript .script-brief').count(),2);assert.ok((await page.locator('#envCompScript .script-brief').first().textContent()).includes('按约定检查指定网页'));
- const scriptSave=page.locator('#envCompScript .comp-save');
- await page.locator('#envCompScript .comp-item-on').first().setChecked(false);
- const scriptSaved=page.waitForResponse(r=>r.url().endsWith('/api/plugins/config')&&r.request().method()==='POST');await scriptSave.click();await scriptSaved;
- await page.waitForFunction(()=>document.querySelectorAll('#envCompScript .script-brief').length===2&&[...document.querySelectorAll('#envCompScript .script-brief')].every(el=>el.textContent.startsWith('已暂停')));
- const scriptConfig=fixture.requests.filter(r=>r.path==='/api/plugins/config'&&r.body?.id==='life-campus-watch').at(-1).body.config;
- assert.equal(scriptConfig.scriptCollabEnabled,false,'pausing every item pauses collaboration without a second switch');
- assert.equal(scriptConfig.scriptDescriptions['scripts/example-watch.mjs'],'按约定检查指定网页，发现更新后通知','saving paths preserves developer agreements');
- assert.ok(Array.isArray(scriptConfig.watchUrls),'saving scripts retains website settings');
  const artifacts=process.argv.find(x=>x.startsWith('--artifacts='))?.slice(12);if(artifacts)fs.mkdirSync(artifacts,{recursive:true});
  for(const id of Object.keys(pages)){await visit(id);const section=page.locator('section[data-page="'+id+'"]');for(const save of await section.locator('.env-comp-root .comp-save').all())await save.waitFor({state:'visible'});assert.equal(await section.locator(':scope > details.env-card').count(),0,id+' has no component collapse control');assert.equal(await section.locator('details:not([open])').count(),0,id+' defaults every parameter group to expanded');for(const width of [390,768,1440]){await page.setViewportSize({width,height:950});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),id+' fits '+width);}if(artifacts)await page.screenshot({path:path.join(artifacts,id+'.png'),fullPage:true,animations:'disabled'});}
  assert.deepEqual(errors,[]);assert.deepEqual(fixture.unknownRequests,[]);

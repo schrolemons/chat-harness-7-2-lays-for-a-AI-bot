@@ -19,6 +19,34 @@ test('ordinary use stays quiet; real changes request one scheduled owner convers
  const count=f.notices.length;f.next(account('20'));await f.monitor.tick();assert.equal(f.notices.length,count);
 });
 
+test('custom alert semantics reach the scheduled owner prompt only, keeping delivery limits', async () => {
+ const config={alertStyle:'把余额比作油量，简单提醒余量'};
+ const f=fixture(config);
+ await f.monitor.tick();
+ f.next(account('0.50'));await f.monitor.tick();
+ const {key,meta:scheduledEvent}=f.notices.at(-1);
+ const payload={key,reason:'milkStock',scheduledEvent};
+ assert.match(f.monitor.wakeTail(payload),/把余额比作油量，简单提醒余量/);
+ assert.match(f.monitor.wakeTail(payload),/只发一条短句/);
+ assert.equal(f.monitor.wakeTail({...payload,key:'group:456'}),'');
+ assert.doesNotMatch(f.monitor.context({key}),/把余额比作油量/);
+ config.alertStyle='   ';
+ assert.doesNotMatch(f.monitor.wakeTail(payload),/已配置的预警语义/);
+ assert.equal(validateMilkPolicy({alertStyle:'x'.repeat(501)}).ok,false);
+});
+
+test('the next unchanged sample is newer and does not re-label the previous event as a fresh change',async()=>{
+ const f=fixture();await f.monitor.tick();
+ f.next(account('0.50'));const changed=await f.monitor.queryFor({key:'group:456'});
+ assert.ok(changed.milk.change?.id);
+ f.next(account('0.50'));const unchanged=await f.monitor.queryFor({key:'group:456'});
+ assert.ok(unchanged.milk.checkedAt>changed.milk.checkedAt);
+ assert.equal(unchanged.milk.change,null);
+ assert.equal(unchanged.milk.recentEvent.id,changed.milk.change.id);
+ assert.equal(f.state().milk.socialEvent.id,changed.milk.change.id);
+ assert.equal(f.monitor.status().lastSuccess.at,unchanged.milk.checkedAt);
+});
+
 test('manual balance samples immediately dispatch meaningful changes without waiting for the periodic tick',async()=>{
  const f=fixture();await f.monitor.query();assert.equal(f.notices.length,0);
  f.next(account('0.50'),1);await Promise.all([f.monitor.query(),f.monitor.query()]);

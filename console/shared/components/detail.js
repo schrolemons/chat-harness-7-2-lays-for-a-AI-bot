@@ -26,7 +26,7 @@ export async function loadComponentDetail(id, el) {
       const toggleLabel = id === 'tool-user-checking' ? '启用自查与桌面便签' : (el.dataset.toggleLabel || '启用此功能');
       const enabled = el.dataset.hideToggle === '1' || id === 'exec-image-generation' || form?.ownsEnabled ? '' : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? ' checked' : '') + '> <span>' + esc(toggleLabel) + '</span></label><span class="meta comp-toggle-msg"></span>';
       if (form) {
-        const saveLabel=el.dataset.saveLabel || (id==='life-campus-watch' ? (el.closest('#envCompScript')?'保存脚本协同参数':'保存网页监控参数') : (form.saveLabel||'保存'+p.name));
+        const saveLabel = el.dataset.saveLabel || form.saveLabel || '保存' + p.name;
         const scope = componentScope(id, saveLabel);
 
         body.innerHTML = (form.empty || el.dataset.hideScope === '1' ? '' : '<p class="parameter-scope" data-config-scope="'+esc(scope.label)+'"><b>'+esc(scope.label)+'</b> · '+esc(scope.description)+'</p>') + enabled + form.html + (form.empty || el.dataset.deferSave === '1' ? '' : '<div class="row" style="gap:8px;margin-top:8px"><button class="small primary comp-save" data-save-action>' + esc(scope.saveLabel) + '</button><span class="meta comp-msg"></span></div>');
@@ -64,16 +64,11 @@ export async function loadComponentDetail(id, el) {
             const latest = await api('/api/plugins/detail?id=' + encodeURIComponent(id));
             next = { ...((latest.plugin || latest).config || {}), ...cfg2 };
           }
-          if (id === 'life-campus-watch' && el.closest('#envCompBrowserWatch')) {
-            next.watchUrlsConfigured = true;
-            next.bbCoursesConfigured = true;
-            next.bbCourses = [];
-
-            next.enabledScripts = String(next.enabledScripts || '').split('|').filter(script => script && script !== 'blackboard').join('|');
+          if (id === 'life-web-watch' && el.closest('#envCompBrowserWatch')) {
             const activeUrls = (next.watchUrls || []).filter((e) => (typeof e === 'string' ? true : e.enabled !== false));
             if (next.webWatchEnabled && !activeUrls.length) throw Error('请先勾选并填写至少一个监控网址');
           }
-          if (id === 'life-campus-watch' && el.closest('#envCompScript')) {
+          if (id === 'life-web-watch' && el.closest('#envCompScript')) {
             const activeScripts = (next.scriptPaths || []).filter((e) => (typeof e === 'string' ? true : e.enabled !== false));
             next.scriptCollabEnabled=activeScripts.length>0;
           }

@@ -92,8 +92,8 @@
       1. 【合并连续输入】先读取快照。对方分条输入、连续补充或明显没说完时，调用 qq_wait_for_quiet 合并同一轮连续输入，再按完整意思回复；同义碎片合并，不同问题或对象分别处理。quietMs 与 timeoutMs 按后台推荐值和当前语境选择。
       2. 【短静默判定】qq_wait_for_quiet 从最后一条来信开始计时；读取和思考花掉的时间也算，已安静足够就立即返回，新消息到达则重新计时。quiet=false 不等于对方说完；结合现有内容判断继续确认静默，或在确有需要时自然询问缺少的信息。
       3. 【热闹群聊】近五分钟超过十条消息或三人以上活跃时，优先查看最后 5～10 条，只接最相关的话题。
-      4. 【等待下一步响应】完成一波实际回复和逐条回执后，调用 qq_wait_for_messages 等待人类的下一步响应；timeoutMs 按后台上下限和当前语境选择。收到新消息即返回，需要合并对方的连续输入时转用 qq_wait_for_quiet；回复完成后再等待下一步响应。
-      5. 【等待超时】qq_wait_for_messages 等待时间到时，服从后台已有的继续等待／结束／旧话题／新话题判定：endRound=true 时结束本轮，不再等待或追加发言；endRound=false 时按 action 执行，action=wait 时继续调用 qq_wait_for_messages，action=followup 时按返回引导延续旧话题，action=newTopic 时按返回引导开启新话题。话题分支沿用工具给出的 conversationIntent、topicId、冷却和发送限制，成功发送并处理回执后再等待；未返回行动建议时按返回 hint 或 guidance 处理，不自行重抽分支。
+      4. 【等待下一步响应】先处理已有来信、回复并逐条提交回执。只有你判断对方还想聊、只是暂时没接话时，才按需调用 qq_wait_for_messages。对方还在说当前内容时，只用 qq_wait_for_quiet 合并连续输入。明确结束或没有继续的理由时，可以自然收尾。
+      5. 【等待超时】qq_wait_for_messages 等待时间到时，服从后台已有的继续等待／结束／旧话题／新话题判定：endRound=true 时结束本轮，不再等待或追加发言；endRound=false 时按 action 执行，action=wait 时继续调用 qq_wait_for_messages，action=followup 时按返回引导延续旧话题，action=newTopic 时按返回引导开启新话题。话题分支沿用工具给出的 conversationIntent、topicId、冷却和发送限制，成功发送并处理回执后，再按对方是否还有交谈意愿决定要不要等待；未返回行动建议时按返回 hint 或 guidance 处理，不自行重抽分支。
       6. 【收尾】对方明确“不聊了/晚安/下了/拜拜”等结束语时自然收尾，尊重免打扰。仅提交实际已读和已处理的消息回执，保留未回应的待处理消息；下一次唤醒配置按实际需要调整。
 
       【分条与节奏】

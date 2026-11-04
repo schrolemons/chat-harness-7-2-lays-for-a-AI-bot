@@ -58,7 +58,8 @@ export function createPlugin(ctx) {
           ctx.addPromptBlock('【会话令牌】' + String(payload.agentToken) + '（调用二代状态工具时请在参数中带上此令牌）');
         }
         if (on('status')) {
-          const milk = ctx.callService?.('milkStock','context',{key:payload.key});
+          // The scheduled alert supplies its own verified balance facts and configured wording.
+          const milk = payload.reason === 'milkStock' ? '' : ctx.callService?.('milkStock','context',{key:payload.key});
           if (typeof milk === 'string' && milk) ctx.addPromptBlock(milk);
           const status = buildStatus(st);
           if (status) ctx.addPromptBlock(status);

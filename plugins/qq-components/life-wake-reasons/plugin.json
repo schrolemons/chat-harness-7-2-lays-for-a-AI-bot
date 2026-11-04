@@ -36,6 +36,7 @@
     "maxSilenceMinutes": 180,
     "initialWillingness": 60,
     "curfewEnabled": true,
+    "curfewDirectOnlyInGroups": false,
     "curfewStartHour": 23,
     "curfewEndHour": 8,
     "groupAtBonus": 0.6,
@@ -136,6 +137,11 @@
       "type": "boolean",
       "label": "启用宵禁",
       "example": "开启23至8点宵禁：这段时间不安排闲聊主动；日程提醒保留独立投递规则。"
+    },
+    "curfewDirectOnlyInGroups": {
+      "type": "boolean",
+      "label": "群聊宵禁仅接受明确呼叫",
+      "example": "群聊宵禁期间，只允许直接@机器人、引用机器人本人消息或戳机器人触发聊天；私聊保持原设置。"
     },
     "curfewStartHour": {
       "type": "number",

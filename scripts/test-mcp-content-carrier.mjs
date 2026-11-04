@@ -20,7 +20,8 @@ test('send tools expose one semantic content id and concurrent calls carry indep
  await Promise.all([decorated[2]({contentId:'content:a',delay:10}),decorated[2]({contentId:'content:b',delay:0})]);
  assert.deepEqual(observed,['content:b','content:a']);assert.equal(carrier.headers({}).get('x-reply-content-id'),null);
  assert.equal(carrier.decorate('qq_get_recent_messages',original),original);
- for(const name of ['qq_schedule','qq_diary','qq_task_spawn','qq_task_input','qq_task_result'])assert(carrier.decorate(name,original)[1].contentId);
+ for(const name of ['qq_schedule','qq_task_spawn','qq_task_input','qq_task_cancel'])assert(carrier.decorate(name,original)[1].contentId);
+ for(const name of ['qq_diary','qq_task_list','qq_task_result','worklog_history','diary_history','diary_read'])assert.equal(carrier.decorate(name,original),original);
 });
 test('a new send without a content id cannot inherit a previous call id',async()=>{
  const {createReplyContentCarrier}=await import('../src/mcp-content-carrier.mjs');

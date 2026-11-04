@@ -27,8 +27,8 @@ export function initialize() {
     if(statusRequest){if(!force)return statusRequest;await statusRequest;}
     const status = document.getElementById('envMonitorStatus');
     const scriptStatus = document.getElementById('envScriptStatus');
-    if (!status) return;
-    statusRequest=api('/api/plugins/call', 'POST', { tool: 'campus_watch_status', input: {} }).then(response => {
+    if (!status || !scriptStatus) return;
+    statusRequest=api('/api/plugins/call', 'POST', { tool: 'web_watch_status', input: {} }).then(response => {
       const result = response.result || {};
       if(response.ok!==true||result.ok!==true)throw Error(result.error||'状态读取失败');
       lastSites=result.sites||[];lastStatusAt=Date.now();
@@ -49,7 +49,7 @@ export function initialize() {
     const button=event.target.closest('[data-watch-retry]');if(!button)return;
     button.disabled=true;
       button.textContent='正在请求重新监管…';
-      try{const response=await api('/api/plugins/config','POST',{id:'life-campus-watch',config:{manualRetry:{url:button.dataset.watchRetry,nonce:crypto.randomUUID()}}});if(response.ok!==true)throw Error(response.error||'重新监管失败');await loadStatus({force:true});}
+      try{const response=await api('/api/plugins/config','POST',{id:'life-web-watch',config:{manualRetry:{url:button.dataset.watchRetry,nonce:crypto.randomUUID()}}});if(response.ok!==true)throw Error(response.error||'重新监管失败');await loadStatus({force:true});}
       catch(error){button.disabled=false;button.textContent='重新监管';let note=button.closest('.watch-site').querySelector('[data-watch-retry-error]');if(!note){note=document.createElement('p');note.dataset.watchRetryError='';note.className='watch-note';button.closest('.watch-site').append(note);}note.textContent=error.message;}
   });
   document.getElementById('envCompScript').addEventListener('input',()=>fillScriptDescriptions(document.getElementById('envCompScript'),lastScripts));

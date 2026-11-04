@@ -39,6 +39,13 @@ try{
  const original=agent.session.snapshotEvents().filter(e=>e.type==='agent/inbox/spliced'&&e.data.inserted?.some(m=>JSON.stringify(m).includes('signature')));assert.equal(original.length,3,'all raw signed inputs remain in original log');
  assert.equal(readEvidence(root,agent.id,'request').nonce,'n3');
  assert.equal(reconstructed,3);
+ agent.followup(createUserMessage({content:[{type:'text',text:'新一轮普通来信'}],source:{kind:'user'}}));await agent.whenIdle();
+ const fallbackRequest=adapter.requests.at(-1);
+ assert.equal(reconstructed,4);
+ assert(fallbackRequest.messages.some(message=>message.content?.some(block=>block.text==='新一轮普通来信')));
+ assert(!fallbackRequest.messages.some(message=>message.source?.kind==='qq-context-task'));
+ assert(!JSON.stringify(fallbackRequest.messages).includes('第 3 次主动开口'));
+ assert.equal(JSON.stringify(fallbackRequest.messages).split('不应重复的真实用户消息').length-1,1);
  ctx.tools.register(defineContentToolFixture({name:'fixture_update_context',description:'隔离测试：更新心情并撤回日程',parameters:{},async execute(){dynamicModules=dynamicModules.map(row=>row.id==='ctx-context-dynamics'?{...row,text:'当前心情=80，完整形态示范'}:row.id==='life-schedule-reminder'?{...row,text:''}:row.id==='ctx-context-session'?{...row,text:'【你的身份】QQ助手\n\n【会话令牌】rotated-test-token'}:row);return [{type:'text',text:'已更新心情并取消日程'}];}}));
  let cacheKey='';ctx.tools.register(defineContentToolFixture({name:'mcp__snowluma__qq_get_message_detail',description:'隔离本地历史补读',parameters:{},async execute(){return [{type:'text',text:JSON.stringify({ok:true,key:cacheKey,info:{seq:5,dialogueSeq:50,messageId:'historical-5',text:'仅在缓存里的旧消息',bodyComplete:true,needsReply:false}})}];}}));
  for(const kind of ['private','group']){
@@ -76,5 +83,5 @@ try{
   assert.deepEqual(replayed,subject.session.deriveMessages(),'sorted QQ projection survives durable replay');
   assertReleasedV4Relationships({header:subject.session.header,events:subject.session.snapshotEvents(),inheritedEventCount:0},KNOWN_SESSION_EVENT_TYPES);
  }
- console.log('PASS real DSH admission: 21 requests across private/group, late historical dialogue sorted ascending, native tool pairs intact, latest-only tail, no duplicate QQ text; durable replay and native compressed log reopen identical; zero network calls');
+ console.log('PASS real DSH admission: 22 requests across private/group, plain-text task isolation, ordered dialogue, native tool pairs intact, durable replay and compressed log reopen identical; zero network calls');
 }finally{await ctx.fiber.dispose();await persistenceCtx.fiber.dispose();fs.rmSync(root,{recursive:true,force:true});}

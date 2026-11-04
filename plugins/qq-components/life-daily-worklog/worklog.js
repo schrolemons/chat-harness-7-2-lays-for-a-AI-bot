@@ -268,8 +268,8 @@ export function buildDailyWorklog({ root, dateKey }) {
 
   if(optimization.length){
     lines.push('## 三、自我更新发现与统一修复摘要');
-    for(const entry of optimization){
-      lines.push(`### ${entry.section} · ${entry.heading}`);
+    for(const [i,entry] of optimization.entries()){
+      lines.push(`### 【更新${i+1}】${entry.section} · ${entry.heading}`);
       for(const row of entry.body.split(/\r?\n/).filter(Boolean))lines.push(row);
     }
     lines.push('');
@@ -277,9 +277,9 @@ export function buildDailyWorklog({ root, dateKey }) {
 
   if (tasks.length) {
     lines.push('## 四、任务会话');
-    for (const t of tasks) {
+    for (const [i,t] of tasks.entries()) {
       const statusText = { done: '完成', failed: '失败', running: '进行中' }[t.status] || t.status;
-      lines.push(`- [${statusText}] ${t.title}（${t.at} 创建）`);
+      lines.push(`- 【任务${i+1}】[${statusText}] ${t.title}（${t.at} 创建）`);
       if (t.result) lines.push(`  - 结果：${t.result.replace(/\s+/g, ' ')}`);
     }
     lines.push('');
@@ -287,10 +287,10 @@ export function buildDailyWorklog({ root, dateKey }) {
 
   if (notes.length) {
     lines.push('## 五、当日进度记录');
-    for (const group of notes) {
+    for (const [g,group] of notes.entries()) {
       lines.push(`### ${group.key}`);
-      for (const e of group.entries) {
-        lines.push(`- ${e.time} ${e.body.replace(/\s+/g, ' ').trim()}`);
+      for (const [i,e] of group.entries.entries()) {
+        lines.push(`- 【进度${g+1}-${i+1}】${e.time} ${e.body.replace(/\s+/g, ' ').trim()}`);
       }
       lines.push('');
     }

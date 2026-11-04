@@ -164,8 +164,8 @@ export function createPlugin(ctx) {
           fs.writeFileSync(file, markdown, 'utf8');
           if (dueToday) ctx.state.set({ lastGeneratedDate: today });
           ctx.log('已生成每日工作总结 state/memory/worklog/' + target + '.md（' + markdown.length + ' 字）');
-          if (sendToOwner && target===today && typeof ctx.capabilities?.notifyOwnerOnce === 'function') {
-            await ctx.capabilities.notifyOwnerOnce('【每日工作总结】\n' + summary(target),{id:'worklog:'+target,sourceAt:now,expiresAt:now+2*3600000});
+          if (sendToOwner && target===today && typeof capabilities.deliverWorklog === 'function') {
+            await capabilities.deliverWorklog(summary(target),{id:'worklog:'+target,sourceAt:now,expiresAt:now+2*3600000});
           }
         } catch (error) {
           ctx.warn('生成每日工作总结失败：' + (error?.message ?? error));

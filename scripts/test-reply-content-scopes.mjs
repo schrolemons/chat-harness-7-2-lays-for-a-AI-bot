@@ -30,10 +30,12 @@ test('three grounded semantic contents each send three physical parts in one wak
 });
 
 test('mood and availability scale rolling rates while reference and mood ceilings preserve part caps',()=>{
- const f=fixture({maxSendPerMinute:10,maxSendPerHour:100}),plan=f.resolve({messages:[message(1)],referenceMode:'knowledge',mood:{enabled:true,score:0,replyCeiling:1},willingness:0});
+ const f=fixture({maxSendPerMinute:10,maxSendPerHour:100}),factors={referenceMode:'knowledge',mood:{enabled:true,score:0,replyCeiling:1},willingness:0};
+ const plan=f.resolve({...factors,messages:[message(1)]});
  assert.equal(plan.maxMessages,3);assert.equal(plan.maxParts,3);
  assert.equal(plan.maxSendPerMinute,1);assert.equal(plan.maxSendPerHour,4);
- assert.equal(send(f,plan,'first').ok,true);assert.equal(send(f,plan,'second').reason,'minute_limit');
+ assert.equal(send(f,plan,'first').ok,true);assert.equal(send(f,plan,'second part').ok,true);
+ assert.equal(send(f,f.resolve({...factors,messages:[message(2)]}),'new content').reason,'minute_limit');
 });
 
 test('rereads and declarations in later model calls never renew one content, including after reload',()=>{
@@ -89,7 +91,8 @@ test('admitted tasks spend one group credit then bypass physical rate and part c
  for(let n=0;n<7;n++)assert.equal(send(f,task,'task'+n,{inputSeq:2}).ok,true);
  assert.equal(send(f,task,'task0',{inputSeq:2}).reason,'duplicate_delivery');
  assert.equal(f.svc.preview({key,now}).minute,2);assert.equal(f.svc.preview({key,plan:task,now}).allowed,true);
- assert.equal(send(f,chat,'chat2').reason,'minute_limit');assert.equal(f.svc.remaining({plan:chat}),2);
+ assert.equal(send(f,chat,'chat2').ok,true);assert.equal(f.svc.remaining({plan:chat}),1);
+ assert.equal(send(f,f.resolve({messages:[message(3)]}),'new chat').reason,'minute_limit');
  assert.equal(f.svc.declareContents({key,plan,messages,groups:[{seqs:[1],kind:'task'}],taskEligible:{1:true}}).reason,'content_already_started');
  const direct={...f.resolve({turnId:'trusted-task',taskExempt:true}),taskGroupId:declared.contents[1].id};assert.equal(send(f,direct,'direct').ok,true);
 });
@@ -133,7 +136,8 @@ test('task exemption cannot leak from another selected scope onto an ordinary co
  const f=fixture({maxSendPerMinute:1}),messages=[message(1)],plan=f.resolve({messages});
  const bound=f.svc.bindContent({key,plan:{...plan,taskExempt:true},contentId:plan.contentId,taskExempt:true});assert.equal(bound.ok,true);assert.equal(bound.plan.taskExempt,false);
  assert.equal(send(f,bound.plan,'first').ok,true);
- assert.equal(send(f,{...bound.plan,taskExempt:true},'should-not-bypass').reason,'minute_limit');
+ const separate=f.resolve({messages:[message(2)]});
+ assert.equal(send(f,{...separate,taskExempt:true},'should-not-bypass').reason,'minute_limit');
 });
 
 test('new reads retain the scope identity and part policy rather than creating a batch ceiling',()=>{

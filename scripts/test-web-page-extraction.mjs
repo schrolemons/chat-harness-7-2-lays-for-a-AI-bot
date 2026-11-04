@@ -4,8 +4,8 @@ import puppeteer from 'puppeteer-core';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { restoreCookies, classifySnapshot } from './campus-browser-session.mjs';
-import { extractPageSnapshot } from '../plugins/qq-components/life-campus-watch/web-changes.mjs';
+import { restoreCookies, classifySnapshot } from './web-watch-browser-session.mjs';
+import { extractPageSnapshot } from '../plugins/qq-components/life-web-watch/web-changes.mjs';
 import { apply as restrictSummaryTools } from '../plugins/qq-agent-presets/summary-tool-restrict.mjs';
 
 test('real rendered HTML: keep course content and URLs, excluding header/navigation/footer', async () => {

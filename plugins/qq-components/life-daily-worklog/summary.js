@@ -11,9 +11,11 @@ function brief(value, limit) {
   // 部署/验证限制可能位于长结果末尾，压缩时优先保留，不能仅截取成功描述。
   const caveats = [...new Set(text.match(/(?:尚未|暂未|还未|未)(?:上线|部署|验证|核实|确认|应用到运行环境)/g) || [])].join('、');
   const suffix = caveats ? '；' + caveats : '';
-  const head = text.slice(0, Math.max(10, limit - suffix.length - 1));
-  const boundary = Math.max(head.lastIndexOf('。'), head.lastIndexOf('；'));
-  return (boundary >= head.length / 2 ? head.slice(0, boundary + 1) : head) + '…' + suffix;
+  const detail = '（完整条目见归档）';
+  const width = limit - suffix.length - detail.length;
+  const boundary = Math.max(text.lastIndexOf('。', width - 1), text.lastIndexOf('；', width - 1), text.lastIndexOf('：', width - 1));
+  const heading = boundary >= 0 ? text.slice(0, boundary).replace(/[；：]$/, '') : (text.match(/^【[^】]+】/)?.[0] || '详细统计见归档');
+  return heading + suffix + detail;
 }
 function readable(root, file, json = false) {
   try {
@@ -26,7 +28,7 @@ const number = n => n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e4 ? Math.roun
 
 export function buildDailyWorklogSummary({ root, dateKey, maxChars = 880, isExcluded = () => false }) {
   const tasks = collectTaskSessions(root, dateKey);
-  const notes = collectTaskNotes(root, dateKey).filter(group => !isExcluded(group.key));
+  const notes = collectTaskNotes(root, dateKey);
   const tools = collectToolStats(root, dateKey);
   const tokens = collectTokenStats(root, dateKey);
   const tokenKeys = tokens.keys.filter(item => !isExcluded(item.name));
@@ -34,27 +36,30 @@ export function buildDailyWorklogSummary({ root, dateKey, maxChars = 880, isExcl
   const updates = collectOptimizationSummary(root, dateKey);
   const available = stem => readable(root, stem + '.jsonl') || readable(root, stem + '.jsonl.1');
   const outcomes = new Map(), pending = new Map();
-  for (const task of tasks) {
+  for (const [i, task] of tasks.entries()) {
     const result = task.result || '缺少结果记录，具体交付与部署状态未核实。';
     const status = { done: '会话已完成', running: '进行中', failed: '会话失败' }[task.status] || '状态待核实';
-    (task.status === 'done' ? outcomes : pending).set(flat(task.title), `${task.title}：${status}；${result}`);
+    (task.status === 'done' ? outcomes : pending).set(flat(task.title), `【任务${i+1}】${task.title}：${status}；${result}`);
   }
   // 同一事务的多次修改只保留当日最后状态，不把历史完成状态当作最终结果。
   const affairs = new Map();
-  for (const group of notes) for (const entry of group.entries) {
-    if (/^通知已发[：:]/.test(entry.body)) continue;
-    affairs.set(group.key + ':' + (entry.id || flat(entry.body)), entry);
+  for (const [g, group] of notes.entries()) {
+    if (isExcluded(group.key)) continue;
+    for (const [i, entry] of group.entries.entries()) {
+      if (/^通知已发[：:]/.test(entry.body)) continue;
+      affairs.set(group.key + ':' + (entry.id || flat(entry.body)), {entry, label:'进度'+(g+1)+'-'+(i+1)});
+    }
   }
-  for (const entry of affairs.values()) {
+  for (const {entry,label} of affairs.values()) {
     if (['cancelled', 'canceled', 'deleted', 'superseded'].includes(entry.status)) continue;
     const title = flat(entry.title || entry.body.replace(/^\[[^\]]+\]\s*/, ''));
     if (outcomes.has(title) || pending.has(title)) continue;
     const line = entry.title ? `${entry.title}：${entry.detail || '见完整进度记录'}${entry.nextAction ? '；下一步：' + entry.nextAction : ''}` : '进展记录：' + title;
-    (entry.status && !['done', 'completed', 'resolved'].includes(entry.status) ? pending : outcomes).set(title, line);
+    (entry.status && !['done', 'completed', 'resolved'].includes(entry.status) ? pending : outcomes).set(title, '【'+label+'】'+line);
   }
-  for (const update of updates) {
+  for (const [i, update] of updates.entries()) {
     if (!outcomes.has(flat(update.heading)) && !pending.has(flat(update.heading)))
-      outcomes.set(flat(update.heading), `更新记录｜${update.heading}：${update.body}`);
+      outcomes.set(flat(update.heading), `【更新${i+1}】${update.heading}：${update.body}`);
   }
 
   const overview = [

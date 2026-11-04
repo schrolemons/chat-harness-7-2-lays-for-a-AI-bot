@@ -9,6 +9,8 @@ import { readLauncherSettings } from '../scripts/launcher-settings.mjs';
 import { readInstanceSessionPolicy } from './instance-session-policy.mjs';
 import { bindOwnedRuntimeIpc } from './instance-runtime-ipc.mjs';
 import { createOwnedMonitorBrowser } from './owned-monitor-browser.mjs';
+import { migrateOutboundMood } from './migrations/outbound-mood.mjs';
+import { migrateGroupWake } from './migrations/group-wake.mjs';
 import { runtimeConfigFingerprint } from './instance-runtime-config.mjs';
 import { selectInstanceDshTarget, instanceDshEnvironment } from './instance-dsh-target.mjs';
 import {readManifest,appendInstallationEvidence} from './instance-manifest.mjs';
@@ -66,12 +68,40 @@ export async function verifyManagedSnow(root, snowHome, instanceId) {
       await regular(file);
       if (digest(await fs.readFile(file)) !== expected) throw fail('MANAGED_DEPENDENCY_INVALID', 'Managed SnowLuma file verification failed');
     }
-    return { home: snowHome, entry: path.join(snowHome, manifest.entry), runtime: path.join(snowHome, manifest.runtime), configNamespace:manifest.createdDirectories?.length===1&&manifest.createdDirectories[0]==='config' };
+    return { home: snowHome, entry: path.join(snowHome, manifest.entry), runtime: path.join(snowHome, manifest.runtime),
+      runtimeDigest: manifest.files[manifest.runtime], configNamespace:manifest.createdDirectories?.length===1&&manifest.createdDirectories[0]==='config' };
   } catch (error) {
     if (error.code === 'ENOENT') throw fail('MANAGED_DEPENDENCY_REQUIRED', '未安装或未完整验证本实例专属 SnowLuma 依赖');
     if (error.code?.startsWith('MANAGED_')) throw error;
     throw fail('MANAGED_DEPENDENCY_INVALID', 'Managed SnowLuma manifest cannot be verified');
   }
+}
+
+async function resolveSnowNode(snow, executable) {
+  if (executable === undefined || executable === '') return snow.runtime;
+  if (typeof executable !== 'string' || !path.isAbsolute(executable) || !/^node\.exe$/i.test(path.basename(executable))) {
+    throw fail('SNOW_NODE_PATH_INVALID', 'SnowLuma Node 必须指定 node.exe 的绝对路径');
+  }
+  await regular(executable);
+  const physical = await fs.realpath(executable);
+  if (digest(await fs.readFile(physical)) !== snow.runtimeDigest) {
+    throw fail('SNOW_NODE_DIGEST_MISMATCH', '所选 Node 与当前 SnowLuma 安装包校验值不同');
+  }
+  return physical;
+}
+
+async function snowSetupPending(snowHome) {
+  const config = name => fs.readFile(path.join(snowHome, 'config', name), 'utf8').then(JSON.parse);
+  try {
+    const auth = await config('webui.json');
+    if (auth.mustChangePassword !== false || !/^[a-f\d]{128}$/i.test(auth.passwordHash)
+      || !/^[a-f\d]{32}$/i.test(auth.passwordSalt)) return true;
+    const consent = await config('consent.json');
+    const eula = await fs.readFile(path.join(snowHome, 'EULA.md'), 'utf8');
+    const privacy = await fs.readFile(path.join(snowHome, 'PRIVACY.md'), 'utf8');
+    const version = digest('eula\0' + eula + '\0privacy\0' + privacy + '\0').slice(0, 16);
+    return consent.version !== version || typeof consent.acceptedAt !== 'string';
+  } catch { return true; }
 }
 
 function portInUse(port) {
@@ -161,12 +191,13 @@ export function createInstanceRuntime(options = {}) {
   let state = 'stopped', disposed = false, uncertain = false, lastError = null;
   let lease = null, starting = null, stopping = null, cleaning = null, disposing = null, generation = 0;
   let configRevision = null, selected = null, invocation = null, childEnv = null;
+  let phase = null, firstRunConsole = false;
   let admission = false, monitor = null;
   let children = [];
-  const status = () => ({ instanceId, state, disposed, uncertain, leaseHeld: !!lease, readiness: 'unverified',
+  const status = () => ({ instanceId, state, phase, firstRunConsole, disposed, uncertain, leaseHeld: !!lease, readiness: 'unverified',
     botUin: selected?.botUin || '', ports: selected ? { ...selected.ports } : null, configRevision, lastError,
     children: [...children.map(entry => ({ kind: entry.kind, pid: entry.child.pid || null,
-      registered: !!entry.record, running: !!running(entry.child) })),...(monitor?.status().children||[])] });
+      registered: !!entry.record, running: !!running(entry.child) })), ...(monitor?.status().children || [])] });
   const load = async () => {
     let cfg;
     try { cfg = JSON.parse((await fs.readFile(path.join(root, 'config.json'), 'utf8')).replace(/^\uFEFF/, '')); }
@@ -180,16 +211,17 @@ export function createInstanceRuntime(options = {}) {
   async function terminate(entry) {
     const child = entry.child;
     if (!running(child)) return;
-    if (child.connected) {
+    const gateway = entry.kind === 'snow' || entry.kind === 'bridge';
+    if (!gateway && child.connected) {
       const exit = exited(child, stopTimeout);
-      child.send(entry.kind === 'snow' ? 'shutdown' : {type:'qq-bridge:shutdown',version:1,instanceId,generation:invocation}, () => {});
+      child.send({type:'qq-bridge:shutdown',version:1,instanceId,generation:invocation}, () => {});
       // Windows kill does not run JS shutdown handlers. A missed graceful ACK
       // must retain uncertainty rather than silently abandoning state/workers.
       await exit;
       return;
     }
     const exit = exited(child, stopTimeout);
-    if (!child.kill()) { await exit; return; }
+    child.kill(gateway ? 'SIGKILL' : 'SIGTERM');
     await exit;
   }
 
@@ -206,7 +238,7 @@ export function createInstanceRuntime(options = {}) {
         if(!entry.record&&running(entry.child))throw fail('OWNERSHIP_UNCERTAIN');
         await entry.ownership.stop(); await entry.ipc?.drain(); entry.ipc?.detach();
       }
-      const dirty=children.find(e=>['campus-watch','login-window'].includes(e.kind)&&e.cleanupResult?.clean!==true);
+      const dirty=children.find(e=>['web-watch','login-window'].includes(e.kind)&&e.cleanupResult?.clean!==true);
       if(dirty)throw fail(dirty.cleanupResult?'WORKER_CLEANUP_FAILED':'WORKER_CLEANUP_UNKNOWN',dirty.cleanupResult?.error||`${dirty.kind} exited without confirmed cleanup`);
       if (lease) { await lease.release(); lease = null; }
       children = [];
@@ -229,16 +261,16 @@ export function createInstanceRuntime(options = {}) {
     if(kind!=='snow')entry.ipc=bindOwnedRuntimeIpc({child,instanceId,generation:invocation,
       isActive:()=>admission&&!entry.cleanupResult&&children.includes(entry)&&running(child),
       isOwned:()=>children.includes(entry)&&running(child),
-      reportCleanup:['campus-watch','login-window'].includes(kind)?async result=>{
+      reportCleanup:['web-watch','login-window'].includes(kind)?async result=>{
         await ready;
         if(entry.cleanupResult)throw fail('WORKER_CLEANUP_ALREADY_REPORTED');
         entry.cleanupResult=result;
         if(!result.clean){uncertain=true;admission=false;state='failed';remember(fail('WORKER_CLEANUP_FAILED',result.error));}
         return {accepted:true};
       }:undefined,
-      recordCreatedSession:['bridge','campus-watch'].includes(kind)?async record=>{await ready;if(!admission)throw fail('RUNTIME_CLOSING');if(typeof options.recordCreatedSession!=='function')throw fail('OWNERSHIP_UNSUPPORTED');return options.recordCreatedSession(record,kind==='campus-watch'?{preset:'campus-summary'}:undefined);}:undefined,
+      recordCreatedSession:['bridge','web-watch'].includes(kind)?async record=>{await ready;if(!admission)throw fail('RUNTIME_CLOSING');if(typeof options.recordCreatedSession!=='function')throw fail('OWNERSHIP_UNSUPPORTED');return options.recordCreatedSession(record,kind==='web-watch'?{preset:'campus-summary'}:undefined);}:undefined,
       spawnWorker:async(workerKind,workerArgs)=>{await ready;return spawnWorker(entry,workerKind,workerArgs);},
-      openMonitor:['campus-watch','login-window'].includes(kind)?async headless=>{
+      openMonitor:['web-watch','login-window'].includes(kind)?async headless=>{
         await ready;if(!admission)throw fail('RUNTIME_CLOSING');
         try{return await monitor.open(headless);}catch(error){uncertain=true;admission=false;state='failed';remember(error);throw error;}
       }:undefined});
@@ -249,7 +281,7 @@ export function createInstanceRuntime(options = {}) {
     });
     child.on('error', () => {});
     child.once('exit', () => {
-      if(['campus-watch','login-window'].includes(kind)&&entry.cleanupResult?.clean!==true){uncertain=true;admission=false;if(state!=='stopping')state='failed';remember(fail(entry.cleanupResult?'WORKER_CLEANUP_FAILED':'WORKER_CLEANUP_UNKNOWN',entry.cleanupResult?.error||`${kind} exited without confirmed cleanup`));}
+      if(['web-watch','login-window'].includes(kind)&&entry.cleanupResult?.clean!==true){uncertain=true;admission=false;if(state!=='stopping')state='failed';remember(fail(entry.cleanupResult?'WORKER_CLEANUP_FAILED':'WORKER_CLEANUP_UNKNOWN',entry.cleanupResult?.error||`${kind} exited without confirmed cleanup`));}
       if (state === 'running' && ['snow','bridge'].includes(kind)) { admission=false; state = 'failed'; remember(fail('INSTANCE_CHILD_EXITED', `${kind} process exited; stop this instance before retrying`)); }
     });
     try {
@@ -262,11 +294,11 @@ export function createInstanceRuntime(options = {}) {
 
   async function spawnWorker(requester, kind, args) {
     if(!admission||disposed||!['starting','running'].includes(state))throw fail('RUNTIME_CLOSING');
-    const allowed=requester.kind==='bridge'?['campus-watch']:requester.kind==='campus-watch'?['login-window']:requester.kind==='login-window'?['campus-watch']:[];
+    const allowed=requester.kind==='bridge'?['web-watch']:requester.kind==='web-watch'?['login-window']:requester.kind==='login-window'?['web-watch']:[];
     if(!allowed.includes(kind)||!Array.isArray(args)||args.length>3||args.some(a=>typeof a!=='string'))throw fail('WORKER_UNSUPPORTED');
     if(kind==='login-window'&&args.length)throw fail('WORKER_ARGUMENT_INVALID');
-    if(kind==='campus-watch'){
-      const valid=args.length===0||args.length===1&&['--force','--lectures-only'].includes(args[0])||args.length===3&&args[0]==='--force'&&args[1]==='--retry-url'&&/^https?:\/\//.test(args[2]);
+    if(kind==='web-watch'){
+      const valid=args.length===0||args.length===1&&args[0]==='--force'||args.length===3&&args[0]==='--force'&&args[1]==='--retry-url'&&/^https?:\/\//.test(args[2]);
       if(!valid)throw fail('WORKER_ARGUMENT_INVALID');
     }
     const script=path.join(root,'scripts',`${kind}.mjs`);await regular(script);
@@ -286,15 +318,17 @@ export function createInstanceRuntime(options = {}) {
       return status();
     });
     if (lease || children.length) return Promise.reject(fail('INSTANCE_STOP_REQUIRED', 'Owned runtime cleanup must succeed before another start'));
-    state = 'starting'; lastError = null;
+    state = 'starting'; phase = 'checking-config'; lastError = null; firstRunConsole = false;
     invocation = crypto.randomUUID(); admission = true;
     const attempt = ++generation;
     starting = (async () => {
       try {
-        const loaded = await load();
+        let loaded = await load();
         selected = loaded.selected;
         if (!selected.botUin) throw fail('BOT_QQ_REQUIRED', '请先明确配置本实例机器人 QQ；不会自动启动 QQ 客户端');
         const snow = await verifyManagedSnow(root, snowHome, instanceId);
+        const snowNode = await resolveSnowNode(snow, loaded.cfg.snowluma?.nodePath);
+        firstRunConsole = process.platform === 'win32' && await snowSetupPending(snow.home);
         const bridge = path.join(root, 'src', 'bridge.js');
         const bootstrap = path.join(root, 'scripts', 'snow-bootstrap.mjs');
         await regular(bridge); await regular(bootstrap); await fs.access(nodePath);
@@ -302,10 +336,17 @@ export function createInstanceRuntime(options = {}) {
           if (await probePort(selected.ports[key])) throw fail('INSTANCE_PORT_IN_USE', `${key} port ${selected.ports[key]} is already in use; existing services were left untouched`);
           guard(attempt);
         }
+        phase = 'claiming-account';
         const owner = await probe(process.pid);
         if (!owner) throw fail('OWNERSHIP_UNCERTAIN', 'Cannot verify the runtime owner process');
         guard(attempt);
         lease = await acquireAccountLease({ registryDir, botUin: selected.botUin, instanceId, owner, probeProcess: probe });
+        guard(attempt);
+        if ((await load()).revision !== loaded.revision) throw fail('INSTANCE_CONFIG_CHANGED', 'Configuration changed before startup');
+        guard(attempt);
+        migrateOutboundMood(root);
+        migrateGroupWake(root);
+        loaded = await load();
         guard(attempt);
         await writeSnowAccount(snow, loaded.cfg, selected.botUin, selected.ports,descriptor);
         guard(attempt);
@@ -318,19 +359,22 @@ export function createInstanceRuntime(options = {}) {
         monitor=createOwnedMonitorBrowser({root,instanceId,nonce:lease.nonce,env:childEnv,probeProcess:probe,
           executablePath:options.monitorBrowserPath || path.join(process.env['ProgramFiles(x86)'] || 'C:/Program Files (x86)','Microsoft','Edge','Application','msedge.exe'),
           updateProcess:record=>lease.updateProcesses([record]),timeoutMs:stopTimeout});
-        await launch('snow', snow.runtime, ['--import', pathToFileURL(bootstrap).href, snow.entry], {
+        phase = 'starting-snow';
+        await launch('snow', snowNode, ['--import', pathToFileURL(bootstrap).href, snow.entry], {
           cwd: snow.home, windowsHide: true, detached: false, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
           env: { ...env, QQL_BOT_UIN: selected.botUin, SNOWLUMA_HOOK_AUTOLOAD: '0', SNOWLUMA_BRIDGE_UIN: selected.botUin,
+            SNOWLUMA_BRIDGE_CONSOLE: firstRunConsole ? '1' : '0',
             SNOWLUMA_BRIDGE_ENTRY: snow.entry, SNOWLUMA_UPDATE_ROOT: snow.home,
             SNOWLUMA_ONEBOT_HTTP_PORT: String(selected.ports.snowHttp), SNOWLUMA_ONEBOT_WS_PORT: String(selected.ports.snowWs),
             SNOWLUMA_WEBUI_PORT: String(selected.ports.snowWebui), SNOWLUMA_WEBUI_HOST: '127.0.0.1', SNOWLUMA_WEBUI_TLS: '0' } });
         guard(attempt);
+        phase = 'starting-bridge';
         await launch('bridge', nodePath, [bridge], { cwd: root, windowsHide: true, detached: false, stdio: ['ignore','ignore','ignore','ipc'], env: childEnv });
         guard(attempt);
         if (children.some(entry => !running(entry.child))) throw fail('INSTANCE_CHILD_EXITED', 'An owned child exited during startup');
         if ((await load()).revision !== loaded.revision) throw fail('INSTANCE_CONFIG_CHANGED', 'Configuration changed during startup; owned children are being stopped');
         configRevision = loaded.revision;
-        state = 'running';
+        state = 'running'; phase = 'waiting-connection';
         return status();
       } catch (error) {
         remember(error);
@@ -347,7 +391,6 @@ export function createInstanceRuntime(options = {}) {
     if (stopping) return stopping;
     ++generation;
     admission = false;
-    monitor?.closeAdmission();
     state = 'stopping';
     stopping = (async () => {
       await starting?.catch(() => {});

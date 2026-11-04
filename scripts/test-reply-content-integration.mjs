@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
-async function open(t,{texts=['这幅画很好看','今天天气不错','这首歌很有趣'],rate=0}={}){
- const h=await bridgeHarness({config:{sendDelayMs:0},files:{'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:3,maxMessagesCasual:3,maxMessagesSerious:3,maxSendPerMinute:rate,maxSendPerHour:rate,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0}}});
+async function open(t,{texts=['这幅画很好看','今天天气不错','这首歌很有趣'],rate=0,extraFiles={},globals}={}){
+ const h=await bridgeHarness({config:{sendDelayMs:0},globals,files:{'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:3,maxMessagesCasual:3,maxMessagesSerious:3,maxSendPerMinute:rate,maxSendPerHour:rate,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},...extraFiles}});
  h.setMode('reserved2');const key='private:123',st=h.getSocialV2State(key);st.bootstrapSent=true;
  const messages=texts.map((text,i)=>h.appendSocialV2Message(key,'甲',text,text,false,true,String(101+i),[],'123',[],undefined,false,{bodyComplete:true}));
  const sid=await h.ensureSession(key);await h.deliverPrompt(key,'',{wakeReason:'private'});await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:1}}}});
@@ -30,16 +30,65 @@ test('declaration cannot grant foreign, unread, or forged task content',async t=
   const r=await request('/api/socialV2/reply-contents',body);assert.equal(r.body.ok,false);
  }
 });
+test('quoted multipart reply sends both bubbles for one credit, and a new group defers intact',async t=>{
+ const {h,key,messages,request}=await open(t,{rate:1});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:messages.map(m=>({seqs:[m.seq],kind:'chat'}))});
+ assert.equal(declared.status,200,JSON.stringify(declared.body));
+ const sent=await request('/api/socialV2/send-message',{key,replyToMessageId:'101',messages:['这幅画的色彩很舒服','构图也很好看']});
+ assert.equal(sent.body.sent,2,JSON.stringify(sent.body));
+ const next=await request('/api/socialV2/send-message',{key,messages:['另一个回答','这一条也应暂缓']},declared.body.contents[1].id);
+ assert.equal(next.status,429,JSON.stringify(next.body));
+ assert.equal(typeof next.body.nextAt,'number');
+ assert.match(next.body.error,/minute_limit|hour_limit/);
+ assert.equal(h.calls.http.filter(c=>/send_private_msg$/.test(c.url)).length,2);
+ const preview=h.pluginHost.callService('replyPlan','preview',{key});
+ assert.equal(preview.successful,2);
+ assert.equal(preview.minute,1);
+ assert.equal(preview.hour,1);
+});
+test('bridge lets the admitted reply group finish across its local hard cap while new groups stay silent',async t=>{
+ const key='private:123';
+ const {h,sid,messages,request}=await open(t,{extraFiles:{'state/plugins/config/life-token-budget.json':{sessions:{[key]:{hardLimitYuan:0.1}}}}});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:messages.map(m=>({seqs:[m.seq],kind:'chat'}))});
+ assert.equal(declared.status,200,JSON.stringify(declared.body));
+ const send=(i,message)=>request('/api/socialV2/send-message',{key,messages:message},declared.body.contents[i].id);
+ assert.equal((await send(0,'第一条内容')).body.sent,1);
+ h.tokenLedger.ingestEvent({sessionId:sid,at:Date.now(),model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1000000,outputTokens:100}}}});
+ assert.equal(h.tokenBudgetOf(key).stage,'silent');
+ const continuation=await send(0,'同组第二条内容');
+ assert.equal(continuation.body.sent,1,JSON.stringify(continuation.body));
+ assert.equal((await send(1,'这个新组应拦截')).status,403);
+ assert.equal(h.calls.http.filter(c=>/send_private_msg$/.test(c.url)).length,2);
+});
+test('an uncertain first bubble is retained and stops automatic delivery of later bubbles',async t=>{
+ let attempts=0;
+ const {h,key,messages,request}=await open(t,{globals:{fetch:async url=>{
+  if(/send_private_msg$/.test(String(url))){attempts++;throw Error('fixture transport timeout');}
+  return {ok:true,status:200,json:async()=>({status:'ok',retcode:0,data:{}})};
+ }}});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:messages.map(m=>({seqs:[m.seq],kind:'chat'}))});
+ const contentId=declared.body.contents[0].id;
+ const send=payload=>request('/api/socialV2/send-message',{key,messages:payload},contentId);
+ assert.match((await send(['first bubble','later bubble'])).body.error,/fixture transport timeout/);
+ assert.match((await send('first bubble')).body.error,/duplicate_delivery/);
+ assert.equal(attempts,1);
+ const preview=h.pluginHost.callService('replyPlan','preview',{key});
+ assert.equal(preview.successful,0);
+ assert.equal(preview.inflight,1);
+ assert.equal(preview.minute,1);
+});
 test('mixed task operations require a selected paid group and cannot consume a second credit for its report',async t=>{
  const {h,key,messages,request}=await open(t,{texts:['帮我查看任务报告','帮我整理工作记录','今天很开心'],rate:1});
- const denied=await request('/api/socialV2/schedules',{key,action:'list'});assert.equal(denied.body.ok,false);
+ const read=await request('/api/socialV2/schedules',{key,action:'list'});assert.equal(read.body.ok,true);
+ const write={key,action:'add',title:'隔离测试日程',dueAt:Date.now()+3600000};
+ const denied=await request('/api/socialV2/schedules',write);assert.equal(denied.status,409);assert.match(denied.body.error,/task_group_not_admitted/);
  const undeclaredReceipt=await request('/api/socialV2/receipt-report',{key,receipts:[{seq:messages[1].seq,status:'replied'}]});assert.equal(undeclaredReceipt.status,409);assert.equal(undeclaredReceipt.body.error,'task_group_pending');
  const declared=await request('/api/socialV2/reply-contents',{key,groups:messages.map((m,i)=>({seqs:[m.seq],kind:i<2?'task':'chat'}))});
  assert.equal(declared.body.ok,true,JSON.stringify(declared.body));assert.equal(declared.body.deferred.length,1);
  const [paid,waiting,chat]=declared.body.contents;assert.equal(paid.taskExempt,true);assert.equal(waiting.taskPending,true);
  const repeated=await request('/api/socialV2/reply-contents',{key,groups:messages.map((m,i)=>({seqs:[m.seq],kind:i<2?'task':'chat'}))});assert.equal(repeated.body.ok,true);
- assert.equal((await request('/api/socialV2/schedules',{key,action:'list'},paid.id)).body.ok,true);
- for(const id of [waiting.id,chat.id,'content:forged'])assert.equal((await request('/api/socialV2/schedules',{key,action:'list'},id)).body.ok,false);
+ for(const id of [waiting.id,chat.id,'content:forged'])assert.equal((await request('/api/socialV2/schedules',write,id)).status,409);
+ const allowed=await request('/api/socialV2/schedules',write,paid.id);assert.equal(allowed.body.ok,true,JSON.stringify(allowed.body));
  const sent=await request('/api/socialV2/send-message',{key,messages:['任务进度','任务结果','完成汇报','结果附件说明']},paid.id);assert.equal(sent.body.sent,4,JSON.stringify(sent.body));
  const rejectedReceipt=await request('/api/socialV2/receipt-report',{key,receipts:[{seq:messages[1].seq,status:'replied'}]});assert.equal(rejectedReceipt.status,409);assert.equal(rejectedReceipt.body.error,'task_group_pending');
  const preview=h.pluginHost.callService('replyPlan','preview',{key});assert.equal(preview.minute,1);assert.equal(preview.hour,1);

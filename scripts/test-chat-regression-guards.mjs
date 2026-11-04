@@ -34,7 +34,7 @@ test('only genuine exhausted send limits become non-retryable; partial allowance
  const {describeSendRejection}=await import(rejectionURL);
  for(const message of ['最多发送 0 条','本轮发送额度已用完','发送计划拒绝：turn_limit']){
   const result=describeSendRejection(message);assert.equal(result.code,'TURN_SEND_LIMIT');assert.equal(result.retryable,false);assert.equal(result.remaining,0);
-  assert.match(result.hint,/等待.*新.*消息/);assert.match(result.hint,/不.*(?:重试|换.*工具)/);
+  assert.match(result.hint,/结束当前发送批次.*后续来信/);assert.match(result.hint,/不.*(?:重试|换.*工具)/);
  }
  for(const message of ['最多发送 2 条','单条消息不能超过500字','agent token 无效','Insufficient Balance','网络超时'])assert.equal(describeSendRejection(message),null);
 });

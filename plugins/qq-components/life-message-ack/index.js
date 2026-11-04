@@ -2,8 +2,8 @@
 // 话术和激活参数由组件配置；bridge 只负责计时、校验投递条件和发送。
 
 const GROUPS = {
-  privateWait: { delayMs: 8000, lines: [] },
-  privateApology: { delayMs: 8300, lines: [] },
+  privateWait: { delayMs: 10000, lines: [] },
+  privateApology: { delayMs: 30000, lines: [] },
   groupWait: { delayMs: 8000, lines: [] },
   groupApology: { delayMs: 8300, lines: [] }
 };

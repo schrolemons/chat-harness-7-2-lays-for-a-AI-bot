@@ -29,7 +29,7 @@ function fixture(t, { missingStats = false } = {}) {
   const state = {}, sent = [];
   const plugin = createPlugin({ root, config: { hour: 0, sendToOwner: true, maxChars: 1000 },
     state: { get: () => state, set: patch => Object.assign(state, patch) },
-    capabilities: { notifyOwnerOnce: async text => { sent.push(text); return true; } },
+    capabilities: { deliverWorklog: async text => { sent.push(text); return true; } },
     registerTool() {}, log() {}, warn(message) { throw Error(message); }
   });
   return { root, date, plugin, sent, write, at };
@@ -112,4 +112,15 @@ test('仅热载日报入口时会执行新版辅助模板', async t => {
   fs.writeFileSync(helper, fs.readFileSync(helper, 'utf8').replace('今日主要成果', '最新成果已热载'));
   const fresh = await import(url + '?generation=after');
   assert.match(fresh.createPlugin(ctx).services.worklog.generateNow().sendText, /最新成果已热载/);
+});
+
+test('a long result is summarized at a complete sentence and keeps the archive entry number', t => {
+  const { plugin, write, at } = fixture(t);
+  write('tasks.json', { tasks: { one: { id: 'one', title: '更新发送限制', status: 'done', createdAt: at,
+    result: '已完成源码修复。' + '无分隔正文'.repeat(60) + '尚未部署。' } } });
+  const { sendText, markdown } = plugin.services.worklog.generateNow();
+  assert.match(sendText, /任务1.*更新发送限制.*已完成源码修复.*尚未部署/);
+  assert.doesNotMatch(sendText, /无分隔正文|…/);
+  assert.match(markdown, /任务1.*更新发送限制/);
+  assert.equal((sendText.match(/完整记录：/g)||[]).length, 1);
 });

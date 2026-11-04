@@ -34,7 +34,7 @@ export function createOwnedMonitorClient({root,kind,onShutdown}={}){
       browsers.add(browser);return browser;
     },
     spawn:(worker,args=[])=>{admitting();return client.spawnWorker(worker,args);},
-    recordCreatedSession:kind==='campus-watch'?record=>{admitting();return client.recordCreatedSession(record);}:undefined,
+    recordCreatedSession:kind==='web-watch'?record=>{admitting();return client.recordCreatedSession(record);}:undefined,
     cleanup,noteCleanupFailure,dispose:finish
   });
 }

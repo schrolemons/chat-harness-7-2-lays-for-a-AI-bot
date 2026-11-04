@@ -67,7 +67,7 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
     };
     assertContext();
     if(c.agent&&!c.plan?.scheduledGrant){
-      const bound=call('replyPlan','bindContent',{key,sourceKey:c.sourceKey,plan:c.plan,contentId:c.contentId||c.plan?.contentId,replyToMessageId,...contentFacts(c.sourceKey,c.envelope)});
+      const bound=call('replyPlan','bindContent',{key,sourceKey:c.sourceKey,plan:c.plan,contentId:c.contentId||c.plan?.contentId,replyToMessageId,...contentFacts(c.sourceKey,c.envelope,{targetKey:key,context:c})});
       if(bound?.ok!==true){const error=Error('发送内容范围拒绝：'+(bound?.reason||'content_scope_unavailable'));error.knownFailed=true;error.statusCode=409;throw error;}
       c=Object.freeze({...c,plan:bound.plan,contentId:bound.content?.id||c.contentId});
       assertContext();
@@ -87,14 +87,19 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
     const plan=topicLease?.timeoutAction ? call('replyPlan','resolve',{key,turnId:topicLease.episodeId,incomingText:'',mood:call('mood','read',{key})||c.envelope?.mood,agent:c.agent})||c.plan : c.plan;
     if(plan && String(text).length>plan.maxMessageChars){call('conversationDrive','release',{lease:topicLease});const e=Error('发送计划拒绝：message_length');e.knownFailed=true;throw e;}
     const policyGuard=guard(key,c);
-    const assertGuard=()=>{assertAllowed?.();policyGuard();};
+    const assertGuard=()=>{assertAllowed?.();return policyGuard();};
     const metered=!(c.agent===false&&c.origin==='mechanical'&&['thinkingAck','budgetExceeded'].includes(c.reason));
     const reservation=metered?call('replyPlan','reserve',{key,plan,operationId,kind,text,inputSeq:c.envelope?.replyGrantThroughSeq,deduplicate:c.origin==='conversation'||!!c.conversationIntent,requestedDelay,now:clock()}):{ok:true,waitMs:0};
-    if(!reservation?.ok){call('conversationDrive','release',{lease:topicLease});const e=Error('发送计划拒绝：'+(reservation?.reason||'service_unavailable')+(reservation?.hint?'；'+reservation.hint:''));e.statusCode=429;e.knownFailed=true;throw e;}
-    let started=false,result;
+    if(!reservation?.ok){
+      call('conversationDrive','release',{lease:topicLease});
+      const {reason='service_unavailable',hint,nextAt}=reservation||{};
+      const detail=[reason,hint,Number.isFinite(nextAt)?'nextAt='+new Date(nextAt).toISOString():null].filter(Boolean).join('；');
+      throw Object.assign(Error('发送计划拒绝：'+detail),{statusCode:429,nextAt,knownFailed:true});
+    }
+    let started=false,result,replyBudget;
     try {
       if(reservation.waitMs>0)await sleep(reservation.waitMs);
-      assertGuard();
+      replyBudget=assertGuard();
       assertContext();
       const authorization=metered?call('replyPlan','authorize',{key,operationId,now:clock()}):null;
       if(metered&&authorization?.ok!==true){const error=Error('发送计划拒绝：'+(authorization?.reason||'authorization_unavailable'));error.knownFailed=true;throw error;}
@@ -106,11 +111,12 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
     }catch(error){
       if(metered)call('replyPlan','release',{key,operationId,knownFailed:!started||error?.knownFailed===true});
       call('conversationDrive','release',{lease:topicLease});
+      if(started&&error?.knownFailed!==true)throw Object.assign(Error(error?.message||String(error),{cause:error}),{deliveryUnknown:true});
       throw error;
     }
     const sentAt=clock(),gatewayMessageId=result?.data?.message_id??result?.message_id??result?.messageId;
     const deliveryId=gatewayMessageId!=null?key+':gateway:'+gatewayMessageId:key+':attempt:'+operationId;
-    try{if(metered)call('replyPlan','commit',{key,operationId,sentAt,deliveryId});}catch(error){log('outbound commit: '+error.message);}
+    try{if(metered)call('replyPlan','commit',{key,operationId,sentAt,deliveryId,replyBudget});}catch(error){log('outbound commit: '+error.message);}
     const conversational=['proactiveCheck','timeBubble','startupGreeting','privateFollowup','milkStock'].includes(c.reason);
     const ordinary=c.origin==='conversation'&&!conversational;
     const wakeReason=ordinary?'message':c.reason;

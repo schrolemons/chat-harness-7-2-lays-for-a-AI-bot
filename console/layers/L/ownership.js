@@ -2,7 +2,7 @@
 export default {
   "life-history-context": {"page":"setting-l-0","selector":"[data-component-slot=\"life-history-context\"]"},
   "life-conversation-wait": {"page":"setting-l-1","selector":"[data-component-slot=\"life-conversation-wait\"]"},
-  "life-campus-watch": {
+  "life-web-watch": {
     "page": "environment-watch"
   },
   "life-daily-worklog": {

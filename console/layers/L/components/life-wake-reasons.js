@@ -12,6 +12,7 @@ export default {saveLabel:"保存静默主动规则",title:'来信与静默主�
 {key:'maxSilenceMinutes',label:'最大静默兜底（分钟）',type:'number'},
 {key:'initialWillingness',label:'默认聊天意愿：用户忙闲（0–100）',type:'number',group:'聊天意愿'},
 {key:'curfewEnabled',label:'启用宵禁',type:'boolean',group:'宵禁（上海时间）'},
+{key:'curfewDirectOnlyInGroups',label:'宵禁时群聊只回应明确呼叫',type:'boolean'},
 {key:'curfewStartHour',label:'开始（小时）',type:'number'},
 {key:'curfewEndHour',label:'结束（小时）',type:'number'}
 ]};

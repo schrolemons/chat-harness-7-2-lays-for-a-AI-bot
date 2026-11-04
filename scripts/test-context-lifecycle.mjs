@@ -50,7 +50,7 @@ const seg = bridge.slice(fn, nextFn > fn ? nextFn : fn + 12000);
 for (const marker of ['let mutedClearLine', 'let pendingReminderLine', 'const replyLine =', 'const preSleepLine', 'const proactiveReplyLine', 'wakeLineNow']) {
   check('bridge 主唤醒组装已移除 ' + marker, !seg.includes(marker));
 }
-check('bridge payload 带 lifecycle 事实', ['preSleepMs,', 'replyTiming,', 'autonomousNow:', 'hasUnreadNow,', 'mutedJustClearedNow,', 'pendingRemindersNow,'].every((k) => seg.includes(k)));
+check('bridge payload 带 lifecycle 事实', ['replyTiming,', 'autonomousNow:', 'hasUnreadNow,', 'mutedJustClearedNow,', 'pendingRemindersNow,'].every((k) => seg.includes(k)));
 
 if (failed) { console.error(`\n${failed} 项失败`); process.exit(1); }
 console.log('\n唤醒/节奏/收尾组件测试通过');

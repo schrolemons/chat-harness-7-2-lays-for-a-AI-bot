@@ -1,4 +1,5 @@
 import './hidden-process-preload.mjs';
+import { openSetupViewer } from './windows-setup-viewer.mjs';
 import { registerHooks } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
@@ -37,7 +38,28 @@ export function scopeSnowSource(source, uin, helperUrl) {
     `__qqAccountAdapter.startTargetAccount(hookManager, ${account});\n\t` + anchor);
 }
 
+export function showSetupConsole(port) {
+  const title = 'SnowLuma WebUI setup: http://127.0.0.1:' + port;
+  const writer = openSetupViewer(title, [
+    title + '/',
+    'The initial WebUI credentials, if required, appear below.',
+  ], () => process.stderr.write('SnowLuma: startup console unavailable.\n'));
+  const write = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (chunk, ...args) => {
+    // SnowLuma emits initial credentials only to stdout. Relay them to the
+    // separate viewer through an anonymous pipe, without persisting another copy.
+    if (String(chunk).includes('initial credentials:') && writer.stdin.writable) {
+      writer.stdin.write(String(chunk).replace(/[\r\n]+$/, '') + '\n');
+    }
+    return write(chunk, ...args);
+  };
+  return writer;
+}
+
 if (process.env.SNOWLUMA_BRIDGE_ENTRY) {
+  if (process.platform === 'win32' && process.env.SNOWLUMA_BRIDGE_CONSOLE === '1') {
+    showSetupConsole(process.env.SNOWLUMA_WEBUI_PORT);
+  }
   const entry = pathToFileURL(process.env.SNOWLUMA_BRIDGE_ENTRY).href;
   const helper = new URL('./snow-target-account.mjs', import.meta.url).href;
   registerHooks({ load(url, context, nextLoad) {

@@ -13,7 +13,7 @@ import { COMPONENT_OWNERS, componentPage } from '../console/shared/components/ow
 
 const args = process.argv.slice(2);
 const artifacts = args.find(x => x.startsWith('--artifacts='))?.slice('--artifacts='.length);
-const views = ['overview','sessions','persona','social-v1','slang','alias','terms','usage','context-visual','access','operations','reference','games','codex-peer','injection-lab','v2-t','v2-e','setting-c-0','setting-c-1','setting-c-2','setting-l-0','setting-l-1','setting-l-2','setting-o-0','setting-o-1','setting-o-2','environment-chat','environment-admin','environment-presets','environment-web','environment-watch','environment-scripts','images','video','layer-v','human','layer-s','registry'];
+const views = ['overview','sessions','persona','social-v1','slang','alias','terms','usage','context-visual','access','operations','reference','games','codex-peer','injection-lab','v2-t','v2-e','setting-c-0','setting-c-1','setting-c-2','setting-l-0','setting-l-1','setting-l-2','setting-o-0','setting-o-1','setting-o-2','environment-chat','environment-admin','environment-presets','environment-web','images','video','layer-v','human','layer-s','registry'];
 if (args.some(arg=>['--original','--record-baseline'].includes(arg))) throw new Error('Legacy baseline modes have been retired; tests exercise the current modular console.');
 
 async function loadPlaywright() {

@@ -22,10 +22,10 @@ export async function loadToolCatalog() {
   try {
     const catalog=await api('/api/tools/catalog');
     if(!catalog.ok)throw Error(catalog.error||'注册表读取失败');
-    const visible=catalog.tools.filter(tool=>tool.audience==='qq' && tool.registered && tool.botInjectedSessions>0);
-    const pending=catalog.tools.filter(tool=>tool.audience==='qq' && (!tool.registered || !tool.botInjectedSessions));
+    const visible=catalog.tools.filter(tool=>tool.audience==='qq' && tool.registered);
+    const pending=catalog.tools.filter(tool=>tool.audience==='qq' && !tool.registered);
     const admin=catalog.tools.filter(tool=>tool.audience==='admin');
-    root.innerHTML=toolRows(visible)||'<p class="meta">尚无真实请求的注入证据。</p>';
+    root.innerHTML=toolRows(visible)||'<p class="meta">尚无已核验的聊天工具注册。</p>';
     document.getElementById('toolPendingRoot').innerHTML=toolRows(pending)||'<p class="meta">无待注入工具。</p>';
     document.getElementById('toolAdminRoot').innerHTML=toolRows(admin);
     root.dataset.loaded='1';

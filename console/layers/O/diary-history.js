@@ -1,8 +1,9 @@
 
 import { api, esc } from '../../shared/api.js';
-import { diaryWindowForDay } from './diary.js';
+import { diaryAttemptLabel, diaryWindowForDay } from './diary.js';
 let v2DiaryHistorySection;
 let diaryConfig;
+let deliveryByDate = new Map();
 const windowLabel=date=>diaryConfig?diaryWindowForDay(date,diaryConfig):'窗口分界配置暂不可用';
 // layers/O/diary-history: explicit imports; initialize is called in the application startup order.
 
@@ -20,7 +21,9 @@ async function loadV2DiaryArchive(date) {
     const res = await api('/api/plugins/call', 'POST', { tool: 'diary_read', input: { date } });
     const result = (res && res.result) || {};
     if (result.ok !== true) { pre.textContent = result.error || V2_DA_EMPTY; return; }
-    pre.textContent = result.text || '（这一天没有内容）';
+    const audit=(deliveryByDate.get(date) || []).flatMap(item =>
+      (item.attempts || []).map(attempt=>item.key+' · '+diaryAttemptLabel(attempt)));
+    pre.textContent = (result.text || '（这一天没有内容）') + (audit.length ? '\n\n【投递记录】\n'+audit.join('\n') : '');
     setV2DaMsg('已读取 ' + date + ' 日日记 · ' + windowLabel(date));
   } catch (e) {
     pre.textContent = '读取失败：' + (e && e.message ? e.message : e);
@@ -41,6 +44,7 @@ async function refreshV2DiaryHistory() {
     diaryConfig=settings?.config;
     const result = (res && res.result) || {};
     const dates = Array.isArray(result.dates) ? result.dates : [];
+    deliveryByDate = new Map(dates.map(entry=>[entry.date,entry.deliveries]));
     if (result.ok !== true || !dates.length) {
       listEl.innerHTML = '<div class="meta">' + V2_DA_EMPTY + '</div>';
       if (pre) pre.textContent = '（还没有归档）';

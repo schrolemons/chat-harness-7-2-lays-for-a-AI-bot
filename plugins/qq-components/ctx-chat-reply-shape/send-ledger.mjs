@@ -1,4 +1,4 @@
-// Persistent reservations cover every physical transport, not HTTP request batches.
+// Physical reservations retain receipts and dedupe; grounded chat groups share one rate credit.
 import {createHash} from 'node:crypto';
 const grantsURL=new URL('./scheduled-grants.mjs',import.meta.url);grantsURL.search=new URL(import.meta.url).search;
 const {scheduledSources,availableScheduled,overflowAvailable}=await import(grantsURL.href);
@@ -7,13 +7,36 @@ export function createSendLedger(ctx,policy) {
   const load=()=>({conversations:{},turns:{},...structuredClone(ctx.state.get().sendLedger||{})});
   const save=s=>ctx.state.set({sendLedger:s});
   const entry=(s,key)=>s.conversations[key]||={receipts:[],reservations:{},turns:{},initialized:true,nextAt:0};
-  const rateTimes=e=>[...e.receipts,...Object.values(e.reservations)].filter(r=>!r.taskExempt).map(r=>r.at).concat((e.taskCredits||[]).map(r=>r.at));
+  const deliveries=e=>[...e.receipts,...Object.values(e.reservations)];
+  const rateGroup=(plan,content)=>plan?.agent&&!plan.scheduledGrant&&content?.kind==='chat'?content.id:null;
+  const rateTimes=e=>{
+    const groups=new Map(),times=(e.taskCredits||[]).map(r=>r.at);
+    for(const r of deliveries(e)){
+      if(r.taskExempt)continue;
+      if(r.rateGroupId)groups.set(r.rateGroupId,Math.min(groups.get(r.rateGroupId)??r.at,r.at));
+      else times.push(r.at); // Imported and pre-group receipts retain their original charge.
+    }
+    return times.concat([...groups.values()]);
+  };
   const counts=(e,now)=>{
     const times=rateTimes(e);
     return {minute:times.filter(t=>now-t<60000).length,hour:times.filter(t=>now-t<3600000).length};
   };
+  const nextRateAt=(times,now,period,limit)=>{
+    const active=times.filter(at=>now-at<period).sort((a,b)=>a-b);
+    return active[active.length-limit]+period+1;
+  };
   return {
     policy,
+    canContinueReply({key,plan,contentId=plan?.contentId,budget}={}){
+      if(!validKey(key)||plan?.key!==key||!plan.turnId||budget?.stage!=='silent')return false;
+      const groupId=rateGroup(plan,this.getContent?.({key,contentId}));
+      if(!groupId)return false;
+      const admission=load().conversations[key]?.receipts.find(r=>r.rateGroupId===groupId&&r.turnId===plan.turnId&&r.replyBudget)?.replyBudget;
+      if(!admission||admission.periodStart!==budget.periodStart||admission.hardLimitYuan!==budget.hardLimitYuan||admission.globalHardLimitYuan!==budget.globalHardLimitYuan)return false;
+      if(budget.globalHardLimitYuan>0&&budget.globalCost>=budget.globalHardLimitYuan)return budget.cost+admission.outsideCost>=budget.globalHardLimitYuan;
+      return budget.hardLimitYuan>0&&budget.cost>=budget.hardLimitYuan;
+    },
     getTaskGroup({key,groupId}={}){return load().conversations[key]?.taskAdmissions?.[groupId]||null;},
     claimTaskGroup({key,groupId,plan,now=Date.now()}={}){
       if(!validKey(key)||!plan||plan.key!==key||typeof groupId!=='string'||!groupId)return {ok:false,reason:'invalid_task_group'};
@@ -25,8 +48,7 @@ export function createSendLedger(ctx,policy) {
       if(existing)return {ok:true,admission:existing,reused:true};
       const c=counts(e,now),times=rateTimes(e);
       const minute=plan.maxSendPerMinute>0&&c.minute>=plan.maxSendPerMinute,hour=plan.maxSendPerHour>0&&c.hour>=plan.maxSendPerHour;
-      const frees=(period,limit)=>{const active=times.filter(at=>now-at<period).sort((a,b)=>a-b);return active[active.length-limit]+period+1;};
-      if(minute||hour)return {ok:false,reason:hour?'hour_limit':'minute_limit',nextAt:Math.max(minute?frees(60000,plan.maxSendPerMinute):now,hour?frees(3600000,plan.maxSendPerHour):now)};
+      if(minute||hour)return {ok:false,reason:hour?'hour_limit':'minute_limit',nextAt:Math.max(minute?nextRateAt(times,now,60000,plan.maxSendPerMinute):now,hour?nextRateAt(times,now,3600000,plan.maxSendPerHour):now)};
       const admission={key,groupId,at:now,id:'task-credit:'+createHash('sha256').update(JSON.stringify([key,groupId])).digest('hex').slice(0,32)};
       e.taskAdmissions||={};e.taskAdmissions[groupId]=admission;e.taskCredits||=[];e.taskCredits.push(admission);
       if(content&&s.contents?.[content.id])s.contents[content.id].taskGroupAdmission=admission;
@@ -54,7 +76,9 @@ export function createSendLedger(ctx,policy) {
       const ordinary=(!p.maxSendPerMinute||c.minute<p.maxSendPerMinute)&&(!p.maxSendPerHour||c.hour<p.maxSendPerHour);
       const burstAllowed=!ordinary&&!!availableScheduled(load(),grant,key,now)&&overflowAvailable(e,now);
       const admittedTask=plan?.contentId?this.getContent?.({key:plan.sourceKey||plan.key,contentId:plan.contentId})?.taskExempt:!!this.getTaskGroup({key:plan?.sourceKey||plan?.key||key,groupId:plan?.taskGroupId});
-      return {...c,successful:e.receipts.length,inflight:Object.keys(e.reservations).length,allowed:admittedTask||ordinary||burstAllowed,burstAllowed,nextAt:e.nextAt,taskCredits:(e.taskCredits||[]).length};
+      const groupId=rateGroup(plan,plan?.contentId&&this.getContent?.({key:plan.sourceKey||plan.key,contentId:plan.contentId}));
+      const admittedReply=!!groupId&&deliveries(e).some(r=>r.rateGroupId===groupId);
+      return {...c,successful:e.receipts.length,inflight:Object.keys(e.reservations).length,allowed:admittedTask||admittedReply||ordinary||burstAllowed,burstAllowed,nextAt:e.nextAt,taskCredits:(e.taskCredits||[]).length};
     },
     remaining({key,plan,contentId=plan?.contentId}={}) {
       if(!plan)return 0;
@@ -94,15 +118,21 @@ export function createSendLedger(ctx,policy) {
       const textKey=deduplicate&&plan.agent&&kind==='text'&&textScope&&String(text).trim()?createHash('sha256').update(textScope+'\n'+String(text).replace(/\s+/g,' ').trim()).digest('hex'):null;
       if(textKey&&[...e.receipts,...Object.values(e.reservations)].some(r=>r.textKey===textKey))return {ok:false,reason:'duplicate_delivery',hint:'这批来信已发送或正在发送相同内容。核对真实发送与回执，不要因回执报错再次发送；等待新来信。'};
       if(e.reservations[operationId]||e.receipts.some(r=>r.operationId===operationId))return {ok:false,reason:'duplicate_attempt'};
+      const rateGroupId=taskExempt?null:rateGroup(plan,content);
+      const needsRate=!taskExempt&&(!rateGroupId||!deliveries(e).some(r=>r.rateGroupId===rateGroupId));
       let rateAt=now;
-      const overMinute=!taskExempt&&plan.maxSendPerMinute>0&&c.minute>=plan.maxSendPerMinute,overHour=!taskExempt&&plan.maxSendPerHour>0&&c.hour>=plan.maxSendPerHour;
+      const overMinute=needsRate&&plan.maxSendPerMinute>0&&c.minute>=plan.maxSendPerMinute,overHour=needsRate&&plan.maxSendPerHour>0&&c.hour>=plan.maxSendPerHour;
       const scheduledOverflow=!!activeScheduledId&&(overMinute||overHour)&&overflowAvailable(e,now);
-      if(overMinute&&!scheduledOverflow){if(plan.budgetStage!=='weak')return {ok:false,reason:'minute_limit'};const times=rateTimes(e).filter(t=>now-t<60000).sort((a,b)=>a-b);rateAt=times[times.length-plan.maxSendPerMinute]+60001;}
-      if(overHour&&!scheduledOverflow)return {ok:false,reason:'hour_limit'};
+      if(!scheduledOverflow&&(overMinute||overHour)){
+        const times=rateTimes(e);
+        if(overMinute)rateAt=nextRateAt(times,now,60000,plan.maxSendPerMinute);
+        const blockedMinute=overMinute&&plan.budgetStage!=='weak';
+        if(blockedMinute||overHour)return {ok:false,reason:blockedMinute?'minute_limit':'hour_limit',nextAt:Math.max(rateAt,overHour?nextRateAt(times,now,3600000,plan.maxSendPerHour):now)};
+      }
       if(!taskExempt&&content&&this.remaining({key,plan,contentId:content.id})<=0)return {ok:false,reason:'content_limit'};
       const at=taskExempt?now:Math.max(rateAt,e.nextAt||0),delay=taskExempt?0:this.delay({plan,requested:requestedDelay});
       if(scheduledId)s.scheduled[scheduledId].operationId=operationId;
-      e.reservations[operationId]={at:now,scheduledAt:at,turnId:plan.agent?plan.turnId:null,contentId:content?.id,taskExempt,kind,delay,textKey,scheduledId,scheduledOverflow};if(!taskExempt)e.nextAt=at+delay;
+      e.reservations[operationId]={at:now,scheduledAt:at,turnId:plan.agent?plan.turnId:null,contentId:content?.id,rateGroupId,taskExempt,kind,delay,textKey,scheduledId,scheduledOverflow};if(!taskExempt)e.nextAt=at+delay;
       save(s);return {ok:true,waitMs:Math.max(0,at-now),operationId};
     },
     authorize({key,operationId,now=Date.now()}={}){
@@ -111,11 +141,16 @@ export function createSendLedger(ctx,policy) {
       if((r.scheduledOverflow||r.scheduledTurnExtra)&&!(now<s.scheduled?.[r.scheduledId]?.expiresAt))return {ok:false,reason:'scheduled_grant_expired'};
       return {ok:true};
     },
-    commit({key,operationId,sentAt=Date.now(),deliveryId}={}) {
+    commit({key,operationId,sentAt=Date.now(),deliveryId,replyBudget}={}) {
       const s=load(),e=s.conversations[key],r=e?.reservations?.[operationId];
       if(!r)return {ok:false,reason:'reservation_missing'};
       delete e.reservations[operationId];
-      e.receipts.push({at:sentAt,deliveryId,operationId,contentId:r.contentId,taskExempt:r.taskExempt,...(r.textKey?{textKey:r.textKey}:{}),...(r.scheduledOverflow?{scheduledOverflow:true}:{})});
+      const receipt={at:sentAt,deliveryId,operationId,contentId:r.contentId,taskExempt:r.taskExempt,...(r.rateGroupId?{rateGroupId:r.rateGroupId,turnId:r.turnId}:{}),...(r.textKey?{textKey:r.textKey}:{}),...(r.scheduledOverflow?{scheduledOverflow:true}:{})};
+      if(r.rateGroupId&&replyBudget&&['normal','weak'].includes(replyBudget.stage)){
+        const {periodStart,hardLimitYuan,globalHardLimitYuan,cost,globalCost}=replyBudget;
+        receipt.replyBudget={periodStart,hardLimitYuan,globalHardLimitYuan,outsideCost:globalCost-cost};
+      }
+      e.receipts.push(receipt);
       if(r.contentId){s.contentCounts||={};s.contentCounts[r.contentId]=(s.contentCounts[r.contentId]||0)+1;}
       if(r.turnId)s.turns[r.turnId]=(s.turns[r.turnId]||0)+1;
       e.nextAt=Math.max(e.nextAt||0,sentAt+(r.delay||0));

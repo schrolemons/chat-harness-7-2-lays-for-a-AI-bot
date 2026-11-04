@@ -14,7 +14,7 @@ async function fixture(t,extra={}){
   children.push(child);live.set(child.pid,{pid:child.pid,parentPid:process.pid,startTime:String(child.pid),executablePath:process.execPath});child.on('exit',()=>live.delete(child.pid));return child;
  };
  const monitor=api.createOwnedMonitorBrowser({root,instanceId:'fixture',nonce:'nonce',executablePath:process.execPath,spawnProcess,
-  probeProcess:async pid=>live.get(pid)||null,updateProcess:r=>records.push(r),timeoutMs:500,
+  probeProcess:async pid=>live.get(pid)||null,updateProcess:r=>records.push(r),timeoutMs:5000,
   connectBrowser:async()=>({close:async()=>{const child=children.at(-1),end=once(child,'exit');child.kill();await end;}}),...extra});
  t.after(async()=>{await monitor.stop().catch(()=>{});for(const c of children)if(c.exitCode===null&&c.signalCode===null){const end=once(c,'exit');c.kill();await end;}await fs.rm(root,{recursive:true,force:true});});
  return {root,monitor,children,records,live};

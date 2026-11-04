@@ -28,7 +28,8 @@
     "criticalBalance": 1,
     "reminderScope": "all",
     "dropAlertAmount": 5,
-    "notificationCooldownMin": 30
+    "notificationCooldownMin": 30,
+    "alertStyle": ""
   },
   "configSchema": {
     "monitorEnabled": {
@@ -69,6 +70,7 @@
       "max": 1000000,
       "label": "单次明显消耗提醒金额"
     },
+    "alertStyle": { "type": "string", "label": "余额预警语义", "maxLength": 500 },
     "notificationCooldownMin": {
       "type": "number",
       "min": 1,

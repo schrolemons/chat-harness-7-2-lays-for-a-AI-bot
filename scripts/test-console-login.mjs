@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { bridgeHarness } from './audit-bridge-harness.mjs';
 import { renderConsoleDocument } from '../src/console/document.js';
+import { loadInstanceSessionPolicy } from '../src/instance-session-policy.mjs';
 import { fileURLToPath } from 'node:url';
 
 const loginHtml = fs.readFileSync(new URL('../public/console-login.html', import.meta.url), 'utf8');
@@ -29,6 +30,39 @@ function storage(initial) {
   return { getItem: key => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
 }
+
+test('Windows managed Bridge shows its current token until the console homepage is authenticated', { skip: process.platform !== 'win32' }, async () => {
+  let shown;
+  let closed = false;
+  const h = await bridgeHarness({
+    files: { 'public/console-login.html': loginHtml, 'public/console.html': consoleHtml },
+    globals: {
+      loadInstanceSessionPolicy: () => ({ ...loadInstanceSessionPolicy(), active: true }),
+      bindInstanceSnowConfig: cfg => cfg,
+      bindInstanceDshConfig: cfg => cfg,
+      createRuntimeIpcClient: () => ({}),
+      openSetupViewer: (title, lines) => {
+        shown = { title, lines };
+        return { stdin: { end: () => { closed = true; } } };
+      },
+    },
+  });
+  const server = h.startConsoleServer();
+  try {
+    if (!server.listening) await new Promise(resolve => server.once('listening', resolve));
+    const origin = 'http://127.0.0.1:' + server.address().port;
+    assert.ok(shown.title.includes(origin));
+    assert.ok(shown.lines.includes('访问令牌：fixture-console-token'));
+    assert.equal((await fetch(origin + '/?token=wrong')).status, 401);
+    assert.equal((await fetch(origin + '/api/status', { headers: { 'x-console-token': 'fixture-console-token' } })).status, 200);
+    assert.equal(closed, false);
+    assert.equal((await fetch(origin + '/?token=fixture-console-token')).status, 200);
+    assert.equal(closed, true);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    await h.close();
+  }
+});
 
 test('刷新入口自动复用保存的令牌，保留页面 hash，不弹框', () => {
   const result = run(loginScript, 'http://127.0.0.1:3100/#usage', storage('saved-token'));

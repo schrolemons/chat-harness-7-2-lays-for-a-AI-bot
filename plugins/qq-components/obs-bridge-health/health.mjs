@@ -27,9 +27,9 @@ export function classifyBridge({reachable,status,data}={}){
  else if(sl.accountOnline===true&&sl.good===true){result.verdict='ready';result.healthy=true;result.reason='控制台、DSH、QQ 连接、账号与上游心跳均正常。没有新聊天或 DSH 事件流空闲不等于断线；模型额度或业务任务报错应单独排查。';result.nextAction='none';}
  return result;
 }
-export async function readBridgeHealth({root=ROOT,fetchFn=fetch,timeoutMs=3000}={}){
+export async function readBridgeHealth({root=ROOT,fetchFn=fetch,timeoutMs=3000,consolePort}={}){
  let cfg;try{cfg=JSON.parse(fs.readFileSync(path.join(root,'config.json'),'utf8').replace(/^\uFEFF/,''));}catch{return {...classifyBridge({}),reason:'本地配置无法读取或解析；先检查文件权限和 JSON。',nextAction:'check_config_permissions'};}
- const port=Number(cfg.consolePort)||3100;if(!Number.isInteger(port)||port<1||port>65535)throw Error('INVALID_CONSOLE_PORT');
+ const port=consolePort??(Number(cfg.consolePort)||3100);if(!Number.isInteger(port)||port<1||port>65535)throw Error('INVALID_CONSOLE_PORT');
  const token=resolveConsoleToken(root,cfg);let r;
  try{r=await fetchFn('http://127.0.0.1:'+port+'/api/status',{headers:token?{'x-console-token':token}:{},signal:AbortSignal.timeout(timeoutMs),redirect:'manual'});}
  catch(error){return {...classifyBridge({reachable:false,status:0}),errorCode:error.cause?.code||error.name||'NETWORK_ERROR'};}

@@ -28,7 +28,10 @@ test('existing whisper tool and automatic incident notes use the same append-onl
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'whale-notes-'));fs.mkdirSync(path.join(home,'Desktop'));const stub=mock.method(os,'homedir',()=>home);
  try{let tool,state={};const blocks=[];const p=createPlugin({config:{noteFileName:'fixture.txt',maxNoteChars:500},signal:new AbortController().signal,state:{get:()=>state,set:patch=>state={...state,...patch}},log:()=>{},registerTool:(_name,spec)=>tool=spec,addPromptBlock:t=>blocks.push(t)});
   assert.equal(tool.handler({action:'note',text:'悄悄话原文'}).ok,true);assert.equal(p.services.desktopNotes.reportIssue(issue).ok,true);
-  const text=fs.readFileSync(path.join(home,'Desktop/fixture.txt'),'utf8');assert(text.includes('悄悄话原文'));assert(text.includes('HTTP400'));assert.equal((text.match(/悄悄话原文/g)||[]).length,1);
+  const file=path.join(home,'Desktop/fixture.txt');
+  const text=fs.readFileSync(file,'utf8');assert(text.includes('悄悄话原文'));assert(text.includes('HTTP400'));assert.equal((text.match(/悄悄话原文/g)||[]).length,1);
+  p.hooks.onTick();
+  assert.equal(fs.readFileSync(file,'utf8'),text,'periodic startup checks must not append to the desktop note');
   assert.equal(p.hooks.beforePrompt(),'', 'local desktop notes must not be injected into ordinary sessions');
   assert.equal(p.hooks.beforePrompt({isOwnerKey:true}),'','owner identity alone does not grant the admin environment');
   assert(p.hooks.beforePrompt({isAdminEnvironment:true}).includes('限额'));assert(p.hooks.beforePrompt({isAdminEnvironment:true}).includes('难缠'));assert(!JSON.stringify(tool.schema).includes(home));

@@ -26,6 +26,8 @@ test('two owned roots share current native host, retain history and isolate leas
   await fs.writeFile(path.join(root,'src','bridge.js'),"import fs from 'node:fs';fs.writeFileSync('observed.json',JSON.stringify({home:process.env.DSH_HOME,token:process.env.DSH_LAUNCH_TOKEN,target:JSON.parse(process.env.QQ_BRIDGE_DSH_TARGET)}));process.on('message',m=>{if(m.type==='qq-bridge:shutdown')process.exit(0)});setInterval(()=>{},1000);");
   const ports=Object.fromEntries(await Promise.all(['console','snowHttp','snowWs','launcher','snowWebui'].map(async k=>[k,await port()])));ports.dsh=target?Number(new URL(target).port):'';
   await fs.writeFile(path.join(root,'config.json'),JSON.stringify({launcher:{ports},dsh:{baseUrl:target||'http://127.0.0.1:3080'},snowluma:{botUin:uin},consolePort:ports.console}));
+  await fs.mkdir(path.join(root, 'state', 'migrations'), { recursive: true });
+  await fs.writeFile(path.join(root, 'state', 'migrations', 'outbound-mood-v1.json'), '{"version":1,"phase":"complete"}');
   return {descriptor:await readInstanceDescriptor(root),config:{snowHome,nodePath:process.execPath},root};
  }
  async function mount(inst){let c;await f.ctx.plugin({inject:['loader','tools','agentPresets'],async apply(ctx){c=await mountInstanceController(ctx,inst.descriptor,{...createProductionFactories({nodePath:process.execPath}),config:inst.config,hostImport,loadDefinitions:async()=>OWNED_PRESET_SOURCES.map(id=>({id,plugins:[]})),mountTitles:async()=>{},mountMcp:async(scope,o)=>{assert.equal(o.env.DSH_HOME,inst.descriptor.dshHome);assert.equal(o.env.DSH_LAUNCH_TOKEN,'');await connect(scope,inst.descriptor.instanceId,o.serverName);}});return ()=>c.dispose();}});handles.push(c);await c.ready;return c;}

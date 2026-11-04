@@ -1,5 +1,5 @@
 {
-  "build": "3837e3ec8af8dae9",
+  "build": "27abecaa9dab9b4c",
   "inputs": [
     "console/app.js",
     "console/layers/C/affairs-budget.js",
@@ -62,7 +62,6 @@
     "console/layers/L/availability.js",
     "console/layers/L/components/ctx-chat-reply-shape.js",
     "console/layers/L/components/ctx-chat-topic-drive.js",
-    "console/layers/L/components/life-campus-watch.js",
     "console/layers/L/components/life-conversation-wait.js",
     "console/layers/L/components/life-daily-worklog.js",
     "console/layers/L/components/life-history-context.js",
@@ -75,12 +74,11 @@
     "console/layers/L/components/life-task-session.js",
     "console/layers/L/components/life-user-availability.js",
     "console/layers/L/components/life-wake-reasons.js",
+    "console/layers/L/components/life-web-watch.js",
     "console/layers/L/config-load.js",
     "console/layers/L/config-save.js",
     "console/layers/L/ownership.js",
     "console/layers/L/parameter-examples.js",
-    "console/layers/L/proactive-examples-ui.js",
-    "console/layers/L/proactive-examples.js",
     "console/layers/L/proactive-preview.js",
     "console/layers/L/receipts.js",
     "console/layers/L/schedule.js",

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import zlib from 'node:zlib';
+import { loadInstanceSessionPolicy } from '../instance-session-policy.mjs';
 
 // Only tool names and request timestamps leave this reader. Messages, arguments and prompts are discarded.
 export function toolHeaderFromFrames(bytes) {
@@ -25,23 +26,43 @@ export function toolHeaderFromFrames(bytes) {
 }
 const cache=new Map();
 export function readSessionToolEvidence(root) {
-  const workspace=JSON.parse(fs.readFileSync(path.join(root,'workspace.local.json'),'utf8'));
-  const home=workspace.dshHome || path.join(os.homedir(),'.dsh');
   const mapping=JSON.parse(fs.readFileSync(path.join(root,'state/sessions.json'),'utf8')).sessions||{};
-  const sessionRoot=path.join(home,'sessions');
-  const workspaces=fs.readdirSync(sessionRoot,{withFileTypes:true}).filter(x=>x.isDirectory()).map(x=>x.name);
+  const policy=loadInstanceSessionPolicy({root,env:{}});
+  let locate;
+  if (policy.active) {
+    const descriptor=JSON.parse(fs.readFileSync(path.join(root,'.qq-bridge-instance.json'),'utf8'));
+    const receipt=JSON.parse(fs.readFileSync(path.join(root,'.qq-bridge-instance-manifest.json'),'utf8'));
+    const normalize=value=>process.platform==='win32'?path.resolve(value).toLowerCase():path.resolve(value);
+    if(receipt.instanceId!==descriptor.instanceId||normalize(receipt.root)!==normalize(root)
+      ||normalize(receipt.dshHome)!==normalize(descriptor.dshHome))throw Error('工具审计实例归属不匹配');
+    const base=normalize(fs.realpathSync(path.join(descriptor.dshHome,'sessions')));
+    const owned=new Map(receipt.sessions.filter(row=>['created','verified-legacy'].includes(row.source)&&row.headerFingerprint&&row.workspaceId)
+      .map(row=>[row.sessionId,row.path]));
+    locate=id=>{
+      const candidate=owned.get(id);
+      if(!candidate||!path.isAbsolute(candidate)||path.basename(candidate)!=='session.v4.jsonl.zstd'||path.basename(path.dirname(candidate))!==id)return;
+      let real;try{real=fs.realpathSync(candidate);}catch(error){if(error.code==='ENOENT')return;throw error;}
+      const relative=path.relative(base,normalize(real));
+      if(relative&&!path.isAbsolute(relative)&&!relative.startsWith('..'+path.sep)&&relative!=='..'&&normalize(candidate)===normalize(real))return real;
+    };
+  } else {
+    const workspace=JSON.parse(fs.readFileSync(path.join(root,'workspace.local.json'),'utf8'));
+    const sessionRoot=path.join(workspace.dshHome||path.join(os.homedir(),'.dsh'),'sessions');
+    const workspaces=fs.readdirSync(sessionRoot,{withFileTypes:true}).filter(entry=>entry.isDirectory()).map(entry=>entry.name);
+    locate=id=>workspaces.map(folder=>path.join(sessionRoot,folder,id,'session.v4.jsonl.zstd')).find(file=>fs.existsSync(file));
+  }
   const result=[];
   for(const sessionId of new Set(Object.values(mapping))) {
     if(typeof sessionId!=='string'||!/^session-[a-f0-9-]{36}$/i.test(sessionId))continue;
-    const folder=workspaces.find(x=>fs.existsSync(path.join(sessionRoot,x,sessionId,'session.v4.jsonl.zstd')));
-    if(!folder)continue;
-    const file=path.join(sessionRoot,folder,sessionId,'session.v4.jsonl.zstd');
+    const file=locate(sessionId);
+    if(!file)continue;
     const stat=fs.statSync(file);
     if(stat.size>32*1024*1024) {result.push({sessionId,error:'会话日志超过只读审计大小限制'});continue;}
     const key=stat.size+':'+stat.mtimeMs;
     try {
       if(cache.get(file)?.key!==key)cache.set(file,{key,value:toolHeaderFromFrames(fs.readFileSync(file))});
-      result.push({sessionId,...cache.get(file).value});
+      const evidence=cache.get(file).value;
+      result.push({sessionId,...evidence,preset:policy.canonicalPreset(evidence.preset)});
     }catch{result.push({sessionId,error:'当前日志正在写入或无法解码；不推断已注入'});}
   }
   return result;

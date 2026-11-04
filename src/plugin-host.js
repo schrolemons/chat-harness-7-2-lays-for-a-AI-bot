@@ -162,7 +162,11 @@ export function createPluginHost(opts = {}) {
       const factory = mod.createPlugin || mod.default;
       if (typeof factory !== 'function') { warnings.push('插件未导出 createPlugin：' + id); return; }
       const state = makeState(id);
-      const scopedCapabilities = new Proxy({}, { get(_,name) { const value=capabilities[name]; if(typeof value!=='function')return value;return (...args)=>life.active ? value(...args) : false; } });
+      const ownCapabilities = opts.pluginCapabilities?.[id];
+      const scopedCapabilities = new Proxy({}, { get(_,name) {
+        const value = ownCapabilities && Object.hasOwn(ownCapabilities, name) ? ownCapabilities[name] : capabilities[name];
+        return typeof value === 'function' ? (...args) => life.active ? value(...args) : false : value;
+      } });
       const ctx = {
         id,
         dir,

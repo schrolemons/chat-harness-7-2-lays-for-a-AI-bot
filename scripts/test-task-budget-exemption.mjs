@@ -97,3 +97,11 @@ test('relay task provenance requires an explicit third-party destination, while 
 });
 
 test('complete admitted reminder fragments combine into a calendar task',()=>{const api=createPlugin({config:{},state:{get:()=>({}),set(){}}}).services.tokenBudget;assert.equal(api.taskExemption({text:'帮我设个提醒\n明天8点',reason:'private'}).kind,'calendar');});
+
+test('a direct time-qualified instruction is a calendar task, personal plans and ordinary chat are not',()=>{
+ const api=createPlugin({config:{},state:{get:()=>({}),set(){}}}).services.tokenBudget;
+ for(const text of ['同事今天有点难过，十点半后去安慰一下','明天 22:30 去提醒同事'])
+  assert.equal(api.taskExemption({text,reason:'private'}).kind,'calendar',text);
+ for(const text of ['我十点半后去安慰同事','我想，十点半后我去问候他','今晚十点再聊吧'])
+  assert.equal(api.taskExemption({text,reason:'private'}).eligible,false,text);
+});

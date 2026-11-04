@@ -26,7 +26,7 @@ const TOOLS = [
   { name: 'qq_send_poke', category: 'send', level: 'write', desc: '拍一拍' },
   { name: 'qq_send_file', category: 'send', level: 'write', desc: '发文件（仅管理员私聊）' },
   // 等待/收尾
-  { name: 'qq_wait_for_messages', category: 'wait', level: 'read', desc: '首答静默/沉睡前观察/等下文' },
+  { name: 'qq_wait_for_messages', category: 'wait', level: 'read', desc: '回复和回执完成后，按需等待暂未接话且可能还想聊的人；到期按结果收尾、继续等待或处理话题' },
   { name: 'qq_mark_read', category: 'wait', level: 'write', desc: '标记已读（带水位）' },
   { name: 'qq_set_wake_config', category: 'wait', level: 'write', desc: '设置下一次唤醒条件' },
   // 记忆

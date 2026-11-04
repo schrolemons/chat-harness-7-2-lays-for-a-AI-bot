@@ -20,7 +20,7 @@ export function diaryPreviousDay(now,config){return shift(diaryTargetDay(now,con
 const escape=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 export function diaryReceiptIds({key,day,notes='',indexed=[]}){
   const pattern=new RegExp('diary:'+escape(key)+':\\d{4}-\\d{2}-\\d{2}(?::manual:[a-zA-Z0-9-]{8,80}|:scheduled|:catchup)?','g');
-  const ids=[...(datePattern.test(String(day))?['diary:'+key+':'+day,'diary:'+key+':'+day+':scheduled']:[]),...indexed,...String(notes).matchAll(pattern)].map(id=>Array.isArray(id)?id[0]:id);
+  const ids=[...(datePattern.test(String(day))?['diary:'+key+':'+day,'diary:'+key+':'+day+':scheduled','diary:'+key+':'+day+':catchup']:[]),...indexed,...String(notes).matchAll(pattern)].map(id=>Array.isArray(id)?id[0]:id);
   const exact=new RegExp('^diary:'+escape(key)+':'+(day?escape(day):'\\d{4}-\\d{2}-\\d{2}')+'(?::manual:[a-zA-Z0-9-]{8,80}|:scheduled|:catchup)?$');
   return [...new Set(ids.filter(id=>typeof id==='string'&&exact.test(id)))];
 }

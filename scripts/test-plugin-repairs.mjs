@@ -1,6 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
 import {createPlugin as memory} from '../plugins/qq-components/ctx-memory-store/index.js';
-import {createPlugin as campus} from '../plugins/qq-components/life-campus-watch/index.js';
 import {createPlugin as facts} from '../plugins/qq-components/ctx-memory-profile-facts/index.js';
 import {createPlugin as evaluation} from '../plugins/qq-components/eval-regression/index.js';
 import {createPlugin as monitor} from '../plugins/qq-components/obs-health-monitor/index.js';
@@ -59,7 +58,6 @@ test('starting after the midnight boundary does not manufacture a scheduled catc
  const f=diaryFixture(t,{startedAfterBoundary:true});f.accept();await f.tick(f.now);
  assert.equal(f.requests.length,0);assert.equal(f.sent.length,0);assert.equal(f.state.forceWriteAt?.[f.key],undefined);
 });
-test('campus configured fast interval works and reload preserves full-check cooldown',()=>{let state={},runs=[];const ctx={root:fs.mkdtempSync(path.join(os.tmpdir(),"campus-contract-")),registerTool(){},config:{fastCheckMinutes:5,fullCheckMinutes:30,enabledScripts:['lectures'],lecturesEnabled:true},state:{get:()=>state,set:p=>state={...state,...p}},capabilities:{spawnCampusWatch:a=>{runs.push(a);return true}}};const p=campus(ctx),now=1800000000000;p.hooks.onTick({now});p.hooks.onTick({now:now+60000});assert.equal(runs.length,1);campus(ctx).hooks.onTick({now:now+120000});assert.equal(runs.length,1);p.hooks.onTick({now:now+300000});assert.equal(runs.length,2);assert.deepEqual(runs[1],['--lectures-only']);});
 test('profile facts use admitted evidence, isolate session cooldowns and preserve candidates during maintenance',()=>{
  let state={};const blocks=[];
  const p=facts({config:{cooldownMs:600000},state:{get:()=>state,set:patch=>state={...state,...patch}},

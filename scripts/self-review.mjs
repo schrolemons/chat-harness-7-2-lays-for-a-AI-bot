@@ -79,7 +79,6 @@ const busyQueued = bridgeLines.filter((l) => /会话繁忙，暂存唤醒原因/
 const skippedWake = bridgeLines.filter((l) => /繁忙期间唤醒.*跳过补发/.test(l)).length;
 
 // 3.5) 工具调用 / 上下文 / 环境执行评估
-import { execSync } from 'node:child_process';
 const toolSendLines = bridgeLines.filter((l) => /工具统一发送/.test(l));
 let toolOk = 0, toolTotal = 0;
 for (const l of toolSendLines) {
@@ -92,17 +91,6 @@ let bridgeHealth;
 try { bridgeHealth = await readBridgeHealth({ root: ROOT }); }
 catch { bridgeHealth = { observedAt: new Date().toISOString(), verdict: 'unknown', healthy: false, needsRestart: false, reason: '本地健康检查未完成；整链状态待管理端核实。' }; }
 const envChecks = [{ name: '桥接整链', ok: bridgeHealth.healthy === true, verdict: bridgeHealth.verdict }];
-let taskChecks = [];
-try {
-  const out = execSync('schtasks /Query /TN "CampusWatch30m" /FO LIST', { encoding: 'utf8', timeout: 5000 });
-  taskChecks.push({ name: 'CampusWatch30m', status: (/Status:\s*(\S+)/.exec(out) || [])[1] || '?' });
-} catch { taskChecks.push({ name: 'CampusWatch30m', status: 'missing' }); }
-try {
-  const out = execSync('schtasks /Query /TN "LectureFastCheck1m" /FO LIST', { encoding: 'utf8', timeout: 5000 });
-  taskChecks.push({ name: 'LectureFastCheck1m', status: (/Status:\s*(\S+)/.exec(out) || [])[1] || '?' });
-} catch { taskChecks.push({ name: 'LectureFastCheck1m', status: 'missing' }); }
-let fastLogAgeMin = -1;
-try { fastLogAgeMin = Math.round((now - fs.statSync(path.join(ROOT, 'state', 'campus-watch-fast.log')).mtimeMs) / 60000); } catch {}
 let bridgeLogMB = 0;
 try { bridgeLogMB = Math.round(fs.statSync(path.join(ROOT, 'state', 'bridge.log')).size / 1048576 * 10) / 10; } catch {}
 
@@ -117,8 +105,6 @@ if (complaintHits.length) {
 if (errors.length) suggestions.push('处理 bridge.log 里最近的错误/异常（见下方样本）');
 if (toolTotal > 0 && toolOk < toolTotal) suggestions.push('工具发送有失败：' + (toolTotal - toolOk) + '/' + toolTotal + '，检查 QQ 发送/白名单/敏感信息拦截');
 if (!bridgeHealth.healthy) suggestions.push('桥接健康检查：' + bridgeHealth.verdict + '；' + bridgeHealth.reason);
-if (taskChecks.some((t) => t.status === 'missing' || t.status === 'Disabled')) suggestions.push('计划任务未就绪：' + taskChecks.filter((t) => t.status === 'missing' || t.status === 'Disabled').map((t) => t.name).join('、'));
-if (fastLogAgeMin > 5) suggestions.push('讲座快检超过 ' + fastLogAgeMin + ' 分钟没跑，检查计划任务/隐藏启动');
 if (bridgeLogMB > 20) suggestions.push('bridge.log 已 ' + bridgeLogMB + 'MB，考虑轮转');
 if (busyQueued > 10) suggestions.push('频繁“会话繁忙”说明回合耗时偏长或卡住，考虑轮询/超时策略');
 if (skippedWake > 3) suggestions.push('多发“跳过补发”，确认是否有新消息被误判为已处理');
@@ -136,7 +122,7 @@ lines.push(`- 运行异常：${errors.length} 条，桥接重启 ${restarts} 次
 lines.push('- 工具调用：发送 ' + toolOk + '/' + toolTotal + ' 成功，失败/拒绝样本 ' + toolFailLines.length + ' 条');
 lines.push('- 上下文：会话重置/切换相关事件 ' + contextResets + ' 次');
 lines.push('- 【扫描健康摘要】' + JSON.stringify(bridgeHealth));
-lines.push('- 计划任务：' + taskChecks.map((t) => t.name + ' ' + t.status).join('；') + '；快检日志 ' + (fastLogAgeMin < 0 ? '缺失' : fastLogAgeMin + ' 分钟前') + '；bridge.log ' + bridgeLogMB + 'MB');
+lines.push('- bridge.log ' + bridgeLogMB + 'MB');
 if (toolFailLines.length) {
   lines.push('');
   lines.push('**工具/权限失败样本**');
@@ -172,7 +158,6 @@ console.log(JSON.stringify({
   contextResets,
   envChecks,
   bridgeHealth,
-  taskChecks,
   suggestions,
   summary: section
 }));

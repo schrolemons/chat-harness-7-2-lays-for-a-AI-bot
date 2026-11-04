@@ -34,8 +34,9 @@ test('admin MCP schemas stay excluded when a late server registers its tools', a
   const { installWhaleToolVisibility } = await import('../plugins/qq-agent-presets/tool-visibility.mjs');
   const names=['mcp__snowluma__qq_send_message','mcp__codex-peer__codex_chat_send'];
   const denied=[];let changed;
-  installWhaleToolVisibility({tools:{schemas:()=>names.map(name=>({name})),restrict:({deny})=>denied.push(...deny)},on:(event,handler)=>{assert.equal(event,'tools/change');changed=handler;}});
+  installWhaleToolVisibility({tools:{schemas:()=>names.map(name=>({name})),restrict:({deny})=>{if(!deny.every(name=>names.includes(name)))throw Error('unknown global tool');denied.push(...deny);}},on:(event,handler)=>{assert.equal(event,'tools/change');changed=handler;}});
   assert.deepEqual(denied,['mcp__codex-peer__codex_chat_send']);
-  names.push('mcp__bridge-health__bridge_health'); changed(); changed();
-  assert.deepEqual(denied,['mcp__codex-peer__codex_chat_send','mcp__bridge-health__bridge_health']);
+  names.push('mcp__bridge-health__bridge_health','mcp__snowluma-host__snowluma_status'); changed(); changed();
+  assert.deepEqual(new Set(denied),new Set(['mcp__codex-peer__codex_chat_send','mcp__bridge-health__bridge_health','mcp__snowluma-host__snowluma_status']));
+  assert.equal(denied.length,3);
 });

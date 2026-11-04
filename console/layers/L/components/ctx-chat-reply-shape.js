@@ -8,7 +8,7 @@ export default {saveLabel:"保存内容拆分与发送节奏",title:'唯一发�
 {key:'longGapProbability',label:'长间隔概率（0–1）',type:'number'},
 {key:'longGapMinMs',label:'长间隔下限（毫秒）',type:'number'},
 {key:'longGapMaxMs',label:'长间隔上限（毫秒）',type:'number'},
-{key:'maxSendPerMinute',label:'每分钟基础额度（点）',type:'number',group:'动态发送与任务接手额度',help:'有效额度 = 向上取整（基础额度 × 心情与聊天意愿系数F）；基础值大于0时最低1点，0表示此窗口不限。普通聊天每条实际发送1点；接手同一任务及完成汇报整组只占1点，组内发送不重复扣点。'},
+{key:'maxSendPerMinute',label:'每分钟基础额度（点）',type:'number',group:'动态发送与任务接手额度',help:'有效额度 = 向上取整（基础额度 × 心情与聊天意愿系数F）。基础值大于0时最低1点，0表示此窗口不限。每份普通聊天语义组共1点，同一任务的接手及完成汇报共1点。'},
 {key:'maxSendPerHour',label:'每小时基础额度（点）',type:'number',help:'与分钟窗口分别计算；文字和媒体共用计数。任务无点时保留已读未处理，额度恢复后复查条件自动接手；同组不重复扣点，组内不限拆分条数。开始仍检查费用与弱限频，已准入原任务可跨费用阈值继续并及时汇报，实际花费仍记账。权限、免打扰、防重与真实回执仍有效。'},
 {key:'maxMessageChars',label:'单条最大长度（字符）',type:'number'}
 ]};

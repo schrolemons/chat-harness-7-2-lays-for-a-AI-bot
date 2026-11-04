@@ -10,3 +10,5 @@
 #balanceToolControl .balance-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:14px 0 8px}
 #balanceToolControl .balance-actions button{width:auto;min-height:38px;white-space:nowrap}
 @media(max-width:600px){#balanceToolControl .balance-config-grid{grid-template-columns:1fr}}
+#balanceToolControl .balance-config-grid>.balance-alert-text{grid-column:1/-1}
+#balanceToolControl .balance-alert-text textarea{box-sizing:border-box;width:100%;min-height:72px;resize:vertical}

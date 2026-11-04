@@ -44,7 +44,7 @@ test('any number of manual sends leaves the scheduled refresh and delivery intac
 });
 
 test('an uncertain scheduled delivery is not retried or displayed as sent',async t=>{
- const f=scheduledFixture(t);f.ctx.capabilities.sendNotificationDetailed=async(_key,_body,meta)=>{f.requests.push(meta.id);return {ok:false,receiptStatus:'uncertain'};};
+ const f=scheduledFixture(t);f.ctx.capabilities.sendDiaryDelivery=async(_key,_body,meta)=>{f.requests.push(meta.id);return {ok:false,receiptStatus:'uncertain'};};
  f.ctx.capabilities.deliveryStatus=id=>({ok:true,status:id.endsWith(':scheduled')?'uncertain':'absent'});
  const plugin=createPlugin(f.ctx);await plugin.hooks.onTick({now:f.now});assert.equal(f.requests.length,0);
  const status=await plugin.services.memory.diaryStatus({key,day});assert.equal(status.scheduledDeliveryStatus,'uncertain');assert.equal(status.scheduledSentAt,0);
@@ -58,7 +58,7 @@ test('scheduled capture survives midnight before the next configured boundary',a
 });
 
 test('a success-shaped sender response without central confirmation cannot mark a diary sent',async t=>{
- const f=fixture(t);f.ctx.capabilities.sendNotificationDetailed=async()=>({ok:true});
+ const f=fixture(t);f.ctx.capabilities.sendDiaryDelivery=async()=>({ok:true});
  f.plugin.services.memory.write({key,text:'【日记】\nNOT_CONFIRMED'});
  const result=await f.plugin.services.memory.sendDiaryDetailed({key,day,manualRequestId:'manual-false-success'});
  assert.equal(result.reason,'delivery_unconfirmed');assert.equal(f.state.lastDiaryDate?.[key],undefined);
@@ -86,15 +86,15 @@ test('scheduled diary remains in permanent memory through transport and retires 
  memory.updateDiary({key,day,text:'BEFORE_SCHEDULE',now:f.now-1000});
  await f.plugin.hooks.onTick({now:f.now});assert.equal(memory.diaryText({key}),'BEFORE_SCHEDULE');
  memory.capture({key,text:'<MEMORY>【日记】\nFRESH_BEFORE_RECEIPT</MEMORY>',now:f.now});
- const send=f.ctx.capabilities.sendNotificationDetailed;
- f.ctx.capabilities.sendNotificationDetailed=async(...args)=>{assert.equal(memory.diaryText({key}),'FRESH_BEFORE_RECEIPT');return send(...args);};
+ const send=f.ctx.capabilities.sendDiaryDelivery;
+ f.ctx.capabilities.sendDiaryDelivery=async(...args)=>{assert.equal(memory.diaryText({key}),'FRESH_BEFORE_RECEIPT');return send(...args);};
  await f.plugin.hooks.onTick({now:f.now+1000});assert.equal(f.sent.length,1);assert.equal(memory.diaryText({key}),'');
 });
 
 test('unconfirmed scheduled transport keeps the ended diary and cannot silently erase it',async t=>{
  const f=scheduledFixture(t);await f.plugin.hooks.onTick({now:f.now});
  f.plugin.services.memory.capture({key,text:'<MEMORY>【日记】\nKEEP_UNCONFIRMED_BODY</MEMORY>',now:f.now});
- f.ctx.capabilities.sendNotificationDetailed=async()=>({ok:false,reason:'send_unconfirmed',receiptStatus:'uncertain'});
+ f.ctx.capabilities.sendDiaryDelivery=async()=>({ok:false,reason:'send_unconfirmed',receiptStatus:'uncertain'});
  await f.plugin.hooks.onTick({now:f.now+1000});assert.equal(f.plugin.services.memory.diaryText({key}),'KEEP_UNCONFIRMED_BODY');
 });
 

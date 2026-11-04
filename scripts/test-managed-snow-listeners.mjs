@@ -43,6 +43,8 @@ test('real official vendor network factories bind configured ports with every QQ
  await appendInstallationEvidence(root,{profileEntries:[],links:[],paths:[{path:installed.snowHome,kind:'dependency',source:'created',cleanup:'owned',createdByTransaction:crypto.randomUUID(),manifestPath:installed.manifestPath,sha256:crypto.createHash('sha256').update(await fs.readFile(installed.manifestPath)).digest('hex')}]});
  const ports=await freePorts();await fs.writeFile(path.join(root,'config.json'),JSON.stringify({launcher:{ports},snowluma:{botUin:'123456789',accessToken:'fixture-owned-token'}}));
  await fs.mkdir(path.join(root,'src'));await fs.mkdir(path.join(root,'scripts'));await fs.writeFile(path.join(root,'src','bridge.js'),'');await fs.writeFile(path.join(root,'scripts','snow-bootstrap.mjs'),'');
+  await fs.mkdir(path.join(root, 'state', 'migrations'), { recursive: true });
+  await fs.writeFile(path.join(root, 'state', 'migrations', 'outbound-mood-v1.json'), '{"version":1,"phase":"complete"}');
  const identities=new Map([[process.pid,{pid:process.pid,parentPid:1,startTime:'test-owner',executablePath:process.execPath}]]);let snowOptions;const sleepers=[];
  const runtime=createInstanceRuntime({descriptor,snowHome:installed.snowHome,probePort:async()=>false,probeProcess:async pid=>identities.get(pid)||null,spawnProcess:(file,args,options)=>{
    snowOptions??=options;const child=spawn(process.execPath,['-e',"process.on('message',m=>{if(m==='shutdown'||m.type==='qq-bridge:shutdown')process.exit(0)});setInterval(()=>{},1000)",'--',...args],options);sleepers.push(child);identities.set(child.pid,{pid:child.pid,parentPid:process.pid,startTime:String(child.pid),executablePath:process.execPath});child.on('exit',()=>identities.delete(child.pid));return child;

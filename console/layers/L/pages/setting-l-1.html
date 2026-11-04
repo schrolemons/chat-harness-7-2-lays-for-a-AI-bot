@@ -8,12 +8,12 @@
 <div id="proactivePreview" class="runtime-preview-grid" aria-live="polite">读取中…</div>
 </div></details>
 <details open class="settings-group"><summary>发多少与多快</summary><div class="settings-content">
-<div class="meta">按完整语义划分每份来信内容，可合并多条碎片；每份内容分别累计拆分条数，没有请求批次总条数上限。例如三份独立含义各最多3条，可合计3+3+3条。普通聊天每条实际发送占1点分钟/小时额度；接手同一任务及完成汇报整组共占1点，组内发送不重复扣点、不限拆分条数。</div>
+<div class="meta">按完整语义划分每份来信内容，可合并多条碎片。每份内容分别累计拆分条数，例如三份独立含义各最多3条，可合计3+3+3条。每份普通聊天语义组共占1点分钟/小时额度，保留配置的拆分上限。同一任务的接手及完成汇报共占1点，任务组内不限拆分条数。</div>
 <div class="meta">任务无可用额度时保留已读未处理，额度恢复后复查费用、唤醒、弱限频等条件，自动扣1点接手，同组不重复扣点。已准入任务执行中跨费用软/硬阈值，可凭原任务权限继续并及时汇报；所有实际花费记账，不能据此无限开启新任务。接手凭据不等于QQ送达回执；权限、免打扰、时效、防重与真实回执仍有效。关闭此组件将停止发送。</div>
 <div data-component-slot="ctx-chat-reply-shape"></div>
 <details class="parameter-block"><summary>等新消息与等对方说完</summary>
-      <h3>无人回复时收尾</h3>
-      <p class="meta">超时无人回复时按 p 判定结束，未结束则增加 q；新来信重置。私聊、群聊共用。</p>
+      <h3>等新消息超时后的两步判定</h3>
+      <p class="meta">私聊、群聊共用。qq_wait_for_messages 到期且没有新来信时，先按本次结束概率判定是否收尾。首次概率为 p，后续每次加 q，最高 100%，新来信会重置。若本轮未结束，再按「话题发起与跟进」里的旧话题、新话题和继续等待权重选择下一步。qq_wait_for_quiet 只判断对方是否说完，不参与这两步判定。</p>
       <div data-component-slot="life-conversation-wait" data-hide-toggle="1"></div>
       <p class="meta">1000 毫秒 = 1 秒。</p>
       <h3>等新消息</h3>

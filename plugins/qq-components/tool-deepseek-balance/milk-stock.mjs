@@ -6,7 +6,7 @@ export function decimal(value){
 }
 export function compare(a,b){const x=decimal(a),y=decimal(b);if(!x||!y)return null;const scale=Math.max(x.scale,y.scale),left=x.units*10n**BigInt(scale-x.scale),right=y.units*10n**BigInt(scale-y.scale);return left<right?-1:left>right?1:0;}
 export function difference(a,b){const x=decimal(a),y=decimal(b);if(!x||!y)return null;const scale=Math.max(x.scale,y.scale),units=x.units*10n**BigInt(scale-x.scale)-y.units*10n**BigInt(scale-y.scale),absolute=(units<0n?-units:units).toString().padStart(scale+1,'0');return (units<0n?'-':'')+(scale?absolute.slice(0,-scale)+'.'+absolute.slice(-scale):absolute);}
-export const DEFAULTS=Object.freeze({monitorEnabled:true,checkIntervalMin:5,currency:'CNY',abundantBalance:20,lowBalance:5,criticalBalance:1,reminderScope:'all',dropAlertAmount:5,notificationCooldownMin:30});
+export const DEFAULTS=Object.freeze({monitorEnabled:true,checkIntervalMin:5,currency:'CNY',abundantBalance:20,lowBalance:5,criticalBalance:1,reminderScope:'all',dropAlertAmount:5,notificationCooldownMin:30,alertStyle:''});
 export function milkPolicy(config={}){return {...DEFAULTS,...config};}
 export function validateMilkPolicy(config){
  const c=milkPolicy(config),errors=[];
@@ -17,6 +17,7 @@ export function validateMilkPolicy(config){
  if(c.abundantBalance<=c.lowBalance)errors.push('富足阈值必须高于偏少阈值');
  if(!['admin','private','all'].includes(c.reminderScope))errors.push('提醒范围必须是仅管理员、仅私聊或全部');
  if(!['CNY','USD'].includes(c.currency))errors.push('提醒币种必须为CNY或USD');
+ if(typeof c.alertStyle!=='string'||c.alertStyle.length>500)errors.push('余额预警语义限500字');
  return {ok:!errors.length,errors};
 }
 export function selectedStock(account,config={}){

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {bridgeHarness,fixtureTaskTurn} from './audit-bridge-harness.mjs';
 import {isAdminPluginTool} from '../src/tools/admin-policy.js';
 
-const management=['task_spawn','task_list','task_result','task_input','task_cancel','campus_watch_status','bridge_health_help','worklog_history','diary_history','user_checking','exec_backends','browser_policy','eval_list_cases','integration_howto','gov_policy_rules','image_generation_status'];
+const management=['task_spawn','task_list','task_result','task_input','task_cancel','web_watch_status','bridge_health_help','worklog_history','diary_history','user_checking','exec_backends','browser_policy','eval_list_cases','integration_howto','gov_policy_rules','image_generation_status'];
 async function fixture(t,{enabled=false,preset='qq-admin',mode='reserved2'}={}){
  const h=await bridgeHarness({config:{allow:{private:['123','789'],groups:['456']},socialV2:{adminDev:{enabled,preset,autoApprove:false},taskSession:{enabled:true}}}});
  t.after(()=>h.close());h.setMode(mode);h.setPresets(['standard','qq-chat','qq-chat-v2','qq-admin','qq-task-worker','qq-learning','campus-summary']);
@@ -22,6 +22,15 @@ for(const mode of ['reserved2','closed-agent'])test(mode+': owner identity with 
  assert.equal(f.h.calls.prompts.length,0);assert.equal(f.h.calls.sent.length,0);
 });
 
+test('administrator can query diary archives, worklogs and tasks without opening a paid task group',async t=>{
+ const f=await fixture(t,{enabled:true});
+ for(const tool of ['task_list','diary_history','worklog_history']){
+  const r=await f.call(tool);assert.equal(r.status,200,tool);const data=await r.json();assert.equal(data.ok,true,tool);
+  const denied=await f.call(tool,f.other.agentToken);assert.equal(denied.status,403,tool);await denied.json();
+ }
+ const mutation=await f.call('task_spawn');assert.equal(mutation.status,409);await mutation.json();
+});
+
 test('ordinary selected preset, stale loaded preset and disabled switch cannot authorize management',async t=>{
  const f=await fixture(t,{enabled:true,preset:'qq-chat-v2'});
  assert.equal((await f.call('task_list')).status,403);
@@ -32,7 +41,7 @@ test('ordinary selected preset, stale loaded preset and disabled switch cannot a
 test('active admin environment authorizes management only for its private session and revokes on disable',async t=>{
  const f=await fixture(t,{enabled:true});
  await fixtureTaskTurn(f.h,'private:123');
- for(const tool of ['task_list','campus_watch_status','exec_backends']){const r=await f.call(tool);assert.equal(r.status,200,tool);await r.json();}
+ for(const tool of ['task_list','web_watch_status','exec_backends']){const r=await f.call(tool);assert.equal(r.status,200,tool);await r.json();}
  for(const state of [f.other,f.group])for(const tool of management){const r=await f.call(tool,state.agentToken,{isOwnerKey:true,key:'private:123'});assert.equal(r.status,403,tool);await r.json();}
  f.h.cfg.socialV2.adminDev.enabled=false;
  for(const tool of management){const r=await f.call(tool);assert.equal(r.status,403,tool);await r.json();}

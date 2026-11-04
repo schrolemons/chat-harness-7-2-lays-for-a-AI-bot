@@ -242,6 +242,7 @@ export function createPlugin(ctx) {
       forceWriteAt: s.forceWriteAt && typeof s.forceWriteAt === 'object' ? s.forceWriteAt : {},
       lastIncomingAt: s.lastIncomingAt && typeof s.lastIncomingAt === 'object' ? s.lastIncomingAt : {},
       diaryReceiptIds: s.diaryReceiptIds || {},
+      diaryAttempts: s.diaryAttempts || {},
       lastDiaryDelivery: s.lastDiaryDelivery || {},
       diaryContentDates: s.diaryContentDates || {},
       scheduledDiaryRefresh: s.scheduledDiaryRefresh || {},
@@ -293,6 +294,35 @@ export function createPlugin(ctx) {
     if(mem.updatedAt>0)fs.utimesSync(memoryFile(root,key),new Date(mem.updatedAt),new Date(mem.updatedAt));
     saveState({diaryContentDates:{...st.diaryContentDates,[key]:{day:diaryTargetDay(now,cfg().dailyDiary),hash:diaryDigest('')}}});
   }
+  function rememberDiaryAttempt({key,day,id,kind,stage,now=Date.now(),outcome={}}) {
+    const st = state();
+    const previous = (st.diaryAttempts[key] || []).find(item => item.id === id);
+    const attempt = {
+      id, day, kind, stage, startedAt: previous?.startedAt || now, updatedAt: now,
+      reason: String(outcome.reason || ''), receiptStatus: String(outcome.receiptStatus || ''),
+      partsSent: Number(outcome.partsSent) || 0, partsTotal: Number(outcome.partsTotal) || 0
+    };
+    const recent = (st.diaryAttempts[key] || []).filter(item => item.id !== id);
+    saveState({diaryAttempts:{...st.diaryAttempts,[key]:[attempt,...recent].slice(0,40)}});
+  }
+  function diaryAttempts(key, day, now) {
+    return (state().diaryAttempts[key] || []).filter(item => item.day === day).map(item => (
+      item.stage === 'refreshing' && now - item.startedAt > 30 * 60000
+        ? {...item, stage:'finished', reason:'refresh_expired'} : item
+    ));
+  }
+  async function diaryAttemptAudit(key, day, now) {
+    return Promise.all(diaryAttempts(key,day,now).map(async attempt => {
+      if (attempt.stage !== 'sending' && attempt.receiptStatus !== 'claimed') return attempt;
+      let receipt;
+      try { receipt = await cap.deliveryStatus?.(attempt.id); } catch {}
+      if (receipt?.ok === true && receipt.status === 'sent') return {...attempt, stage:'finished', reason:'', receiptStatus:'sent', updatedAt:receipt.finishedAt || attempt.updatedAt};
+      if (receipt?.ok === true && receipt.status === 'uncertain') return {...attempt, stage:'finished', reason:'delivery_unconfirmed', receiptStatus:'uncertain'};
+      if (now - attempt.updatedAt <= 30 * 60000) return attempt;
+      if (receipt?.ok === true && receipt.status === 'absent') return {...attempt, stage:'finished', reason:'delivery_not_started'};
+      return {...attempt, stage:'finished', reason:'delivery_unconfirmed', receiptStatus:receipt?.status || 'unavailable'};
+    }));
+  }
   async function finalDeliveryForDay(key,day){
     if(typeof cap.deliveryStatus!=='function')return {sentForDay:false,deliveryStatus:'unavailable',sentAt:0};
     const prefix='diary:'+key+':'+day,endAt=Date.parse(diaryWindow(day,cfg().dailyDiary).end.replace(' ','T')+':00+08:00');
@@ -304,7 +334,7 @@ export function createPlugin(ctx) {
   }
   async function deliveryForDay(key,day){
     const st=state(),notes=receiptNotes(key);
-    return resolveDiaryDelivery({key,day,notes,indexed:[st.diaryReceiptIds[key]?.[day]].filter(Boolean),recorded:diaryDateRecorded({key,day,st,notes}),archiveOnly:diaryArchiveHasDay(key,day),lookup:typeof cap.deliveryStatus==='function'?id=>cap.deliveryStatus(id):undefined});
+    return resolveDiaryDelivery({key,day,notes,indexed:[st.diaryReceiptIds[key]?.[day],...diaryAttempts(key,day,Date.now()).map(attempt=>attempt.id)].filter(Boolean),recorded:diaryDateRecorded({key,day,st,notes}),archiveOnly:diaryArchiveHasDay(key,day),lookup:typeof cap.deliveryStatus==='function'?id=>cap.deliveryStatus(id):undefined});
   }
   function rememberDelivery(key,day,id,sentAt){
     const st=state(),days={...(st.diaryReceiptIds[key]||{}),[day]:id};
@@ -319,9 +349,14 @@ export function createPlugin(ctx) {
     const scheduled=purpose==='scheduled'&&!manualId;
     const catchup=purpose==='catchup'&&!manualId;
     const receiptId='diary:'+targetKey+':'+day+(manualId?':manual:'+manualId:scheduled?':scheduled':catchup?':catchup':'');
-    if(typeof cap.deliveryStatus!=='function'||typeof cap.sendNotificationDetailed!=='function')return {ok:false,reason:'receipt_unavailable',day};
-    let receipt;try{receipt=await cap.deliveryStatus(receiptId);}catch{return {ok:false,reason:'receipt_unavailable',day};}
-    if(receipt?.ok!==true)return {ok:false,reason:'receipt_unavailable',day};
+    const attempt = {key:targetKey, day, id:receiptId, kind:manualId?'manual':scheduled?'scheduled':catchup?'catchup':'on_demand', now};
+    const finish = outcome => {
+      rememberDiaryAttempt({...attempt, stage:'finished', now:Math.max(now, Date.now()), outcome});
+      return {day, ...outcome};
+    };
+    if(typeof cap.deliveryStatus!=='function'||typeof cap.sendDiaryDelivery!=='function')return finish({ok:false,reason:'receipt_unavailable'});
+    let receipt;try{receipt=await cap.deliveryStatus(receiptId);}catch{}
+    if(receipt?.ok!==true)return finish({ok:false,reason:receipt?.reason?'receipt_'+receipt.reason:'receipt_unavailable'});
     const existing=manualId||scheduled?{deliveryStatus:receipt.status,sentForDay:receipt.status==='sent',sentAt:Number(receipt.finishedAt)||0,deliveryId:receiptId}:catchup?await finalDeliveryForDay(targetKey,day):await deliveryForDay(targetKey,day);
     if(existing.sentForDay){rememberDelivery(targetKey,day,existing.deliveryId,existing.sentAt);return {ok:false,reason:'already_sent',day,lastDiaryDate:day,receiptStatus:'sent',reconciled:true};}
     if(['claimed','uncertain'].includes(existing.deliveryStatus)||(existing.deliveryStatus==='legacy_unconfirmed'&&confirmLegacyUnsent!==true))return {ok:false,reason:'delivery_unconfirmed',day,receiptStatus:existing.deliveryStatus};
@@ -337,21 +372,21 @@ export function createPlugin(ctx) {
       ? {text:refreshed.diary||'',source:'scheduled_refresh',updatedAt:refreshed.completedAt}
       : contentForDay(targetKey, day);
     const { text: diary } = availability;
-    if(!diary)return { ok: false, reason: 'missing_diary', day };
-    const diaryText=diary.slice(0,Math.max(50,Math.min(2000,Number(cfg().dailyDiary?.maxChars)||500)));
-    const body='【'+day+' 日日记】\n时间窗：'+diaryWindowLabel(day,cfg().dailyDiary)+'\n'+diaryText;
+    if(!diary)return finish({ok:false,reason:'missing_diary'});
+    const body='【'+day+' 日日记】\n时间窗：'+diaryWindowLabel(day,cfg().dailyDiary)+'\n'+diary;
     let sourceAt = availability.updatedAt;
     if (availability.source === 'archive') { try { sourceAt = fs.statSync(diaryArchiveFile(root, day)).mtimeMs; } catch { sourceAt = Date.parse(day + 'T00:00:00'); } }
-    const meta={id:receiptId,sourceAt,expiresAt:new Date(new Date(now).getFullYear(),new Date(now).getMonth(),new Date(now).getDate()+1).getTime()};
-    let outcome;try{outcome=await cap.sendNotificationDetailed(targetKey,body,meta);}catch{outcome={ok:false,reason:'send_unconfirmed'};}
-    if(outcome?.ok!==true)return {ok:false,reason:outcome?.reason||'send_unconfirmed',day,receiptStatus:outcome?.receiptStatus||''};
+    const meta={id:receiptId,sourceAt,partMaxChars:Number(cfg().dailyDiary?.maxChars)||500,expiresAt:new Date(new Date(now).getFullYear(),new Date(now).getMonth(),new Date(now).getDate()+1).getTime()};
+    rememberDiaryAttempt({...attempt, stage:'sending'});
+    let outcome;try{outcome=await cap.sendDiaryDelivery(targetKey,body,meta);}catch{outcome={ok:false,reason:'send_unconfirmed'};}
+    if(outcome?.ok!==true)return finish({ok:false,reason:outcome?.reason||'send_unconfirmed',receiptStatus:outcome?.receiptStatus||'',partsSent:outcome?.partsSent,partsTotal:outcome?.partsTotal});
     let confirmed;try{confirmed=await cap.deliveryStatus(receiptId);}catch{}
-    if(confirmed?.ok!==true||confirmed.status!=='sent')return {ok:false,reason:'delivery_unconfirmed',day,receiptStatus:confirmed?.status||'unavailable'};
+    if(confirmed?.ok!==true||confirmed.status!=='sent')return finish({...outcome,ok:false,reason:'delivery_unconfirmed',receiptStatus:confirmed?.status||'unavailable'});
     {
       rememberDelivery(targetKey,day,receiptId,Number(confirmed.finishedAt)||0);
       try{affairsService.appendReceipt({key:targetKey,text:'日记已发：'+day+'｜凭据：'+receiptId});}catch(e){ctx.warn('日记收据索引写入失败：'+e.message);}
       // 归档失败绝不能影响发送：独立 try/catch，只告警。
-      // 归档存完整日记（diary），不是发给 QQ 的截断版（diaryText）：历史留档要完整。
+      // 归档保存完整正文。
       let archived=false;
       try{archived=writeDiaryArchive({root,key:targetKey,day,text:diary,now,maxChars:diaryArchiveMaxChars(cfg()),replaceExisting:!!manualId||scheduled||catchup}).ok===true;}
       catch(e){ctx.warn('日记归档写入失败（'+targetKey+' '+day+'）：'+(e?.message??e));}
@@ -359,7 +394,7 @@ export function createPlugin(ctx) {
       catch (e) { ctx.warn('日记归档发送时间记录失败（' + targetKey + ' ' + day + '）：' + (e?.message ?? e)); }
       if(archived)retireConfirmedDiary(targetKey,day,now);
     }
-    return { ok: true, day, source: availability.source, chars: diary.length, receiptStatus: 'sent', deliveryId: receiptId };
+    return finish({...outcome,ok:true,source:availability.source,chars:diary.length,receiptStatus:'sent',deliveryId:receiptId});
   }
   const sendDiary = async (payload = {}) => (await sendDiaryDetailed(payload)).ok === true;
   async function catchUpDiaries({ key, now = Date.now(), confirmLegacyUnsent=false } = {}) {
@@ -454,7 +489,7 @@ export function createPlugin(ctx) {
       const deliveries = [];
       for (const key of keys) {
         const delivery=entry.date<diaryTargetDay(Date.now(),cfg().dailyDiary)?await finalDeliveryForDay(key,entry.date):await deliveryForDay(key,entry.date);
-        deliveries.push({key,status:delivery.deliveryStatus,...(delivery.sentAt?{sentAt:delivery.sentAt}:{})});
+        deliveries.push({key,status:delivery.deliveryStatus,attempts:await diaryAttemptAudit(key,entry.date,Date.now()),...(delivery.sentAt?{sentAt:delivery.sentAt}:{})});
       }
       dates.push({ date: entry.date, count: keys.length, keys, chars: visibleText.length, deliveries });
     }
@@ -482,6 +517,10 @@ export function createPlugin(ctx) {
       memory: {
         sendDiary,
         sendDiaryDetailed,
+        noteManualDiaryRefresh({key,day,requestId,reason='',now=Date.now()}={}) {
+          if (!/^(?:group|private):\d+$/.test(key) || !ARCHIVE_DATE_RE.test(day) || !/^[a-zA-Z0-9-]{8,80}$/.test(requestId)) return;
+          rememberDiaryAttempt({key,day,id:'diary:'+key+':'+day+':manual:'+requestId,kind:'manual',stage:reason?'finished':'refreshing',now,outcome:{reason}});
+        },
         catchUpDiaries,
         diaryTargetDay({now=Date.now()}={}){const day=diaryTargetDay(now,cfg().dailyDiary);return {ok:true,...diaryWindow(day,cfg().dailyDiary)};},
         diaryDraftContext({key,now=Date.now()}={}){
@@ -518,6 +557,7 @@ export function createPlugin(ctx) {
           const scheduledDeliveryStatus=scheduledReceipt?.ok===true?scheduledReceipt.status:'unavailable';
           const previousDay=diaryPreviousDay(now,cfg().dailyDiary),previous=await finalDeliveryForDay(key,previousDay);
           return {ok:true,key,day,...diaryWindow(day,cfg().dailyDiary),lastDiaryDate,noteDiaryDate:noteDate,...delivery,
+            attempts:await diaryAttemptAudit(key,day,now),previousAttempts:await diaryAttemptAudit(key,previousDay,now),
             previousDay,previousDiaryMissing:!previous.sentForDay,previousDiaryStatus:previous.deliveryStatus,previousDiaryAvailable:!!contentForDay(key,previousDay).text,previousSentAt:previous.sentAt,
             scheduledDeliveryStatus,scheduledSentAt:scheduledDeliveryStatus==='sent'?Number(scheduledReceipt.finishedAt)||0:0,
             scheduledRefreshing:st.scheduledDiaryRefresh[key]?.day===day&&!st.scheduledDiaryRefresh[key]?.completedAt,
@@ -618,8 +658,6 @@ export function createPlugin(ctx) {
 
             // 只发送本次强制刷新捕获的快照；后续手动或小时刷新不能替换此份待发送内容。
             if(!refresh?.completedAt)continue;
-
-            if (!refresh.diary) continue;
 
             await sendDiary({key,now,day:dueDay,purpose:'scheduled'});
           }

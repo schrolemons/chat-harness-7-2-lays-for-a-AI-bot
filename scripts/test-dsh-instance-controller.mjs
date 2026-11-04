@@ -323,6 +323,8 @@ test('native root default factories own real synthetic services, seven MCPs, log
   for(const server of sockets.slice(1))await new Promise(resolve=>server.close(resolve));
   t.after(()=>new Promise(resolve=>sockets[0].close(resolve)));
   const config={launcher:{ports},snowluma:{botUin:'123456789'},consolePort:ports.console};
+  await fs.mkdir(path.join(value.root, 'state', 'migrations'), { recursive: true });
+  await fs.writeFile(path.join(value.root, 'state', 'migrations', 'outbound-mood-v1.json'), '{"version":1,"phase":"complete"}');
   await fs.writeFile(path.join(value.root,'config.json'),JSON.stringify(config));
   await fs.writeFile(path.join(value.root,'preserved-history'),'synthetic existing history');
   let controller;

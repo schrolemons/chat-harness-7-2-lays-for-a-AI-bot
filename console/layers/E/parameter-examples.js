@@ -26,19 +26,12 @@ export default {
     "allowedSessions": "只填private:10001：仅该会话在此允许列表范围内；其他权限与额度仍需满足。",
     "assetRetentionDays": "设为7：本地生图资产按7天保留策略清理，不等于删除已经发到QQ的消息。"
   },
-  "life-campus-watch": {
+  "life-web-watch": {
     "fastCheckMinutes": "设为1：每分钟检查任务是否到期，不代表每分钟导航全部网页。",
     "fullCheckMinutes": "设为5：普通网页完整抓取约每5分钟进行一次。",
     "webWatchEnabled": "关闭后停止普通网址检查，保留已填写网址以便恢复。",
-    "watchUrls": "填“公告 | https://example.invalid/notices”：监控该页变化；取消该行勾选则暂停这一个网址。",
+    "watchUrls": "填“名称 | 网址”：监控该页变化；取消该行勾选则暂停这一个网址。",
     "scriptCollabEnabled": "开启后可以展示协同脚本心跳；只填路径不等于自动执行脚本。",
-    "scriptPaths": "填scripts/example.mjs：只有脚本按约定回传心跳后才显示运行状态，路径本身不是执行授权。",
-    "bbCourses": "登记课程和页面标识后，按页面读取规则检查内容；删除条目会停止该页面的监控配置。",
-    "enabledScripts": "填已支持的脚本标识才会参与调度，不会将任意字符串作为系统命令执行。",
-    "lecturesEnabled": "开启后，讲座任务按独立周期检查；普通网页开关和周期不代替它。",
-    "lecturesLocation": "填“高新”：按该地点关键词筛选符合要求的讲座。",
-    "lecturesIntervalMinutes": "设为10：讲座实际查询周期约10分钟，不跟随每分钟到期轮询重复全查。",
-    "lecturesPortalUrl": "填你的讲座门户地址：登录与查询在这一服务对应的会话内进行。",
-    "lecturesApi": "配置该服务的查询入口后供讲座流程使用，不会把普通网页监控当成抢课接口。"
+    "scriptPaths": "填脚本的本地路径：只有脚本按约定回传心跳后才显示运行状态，路径本身不是执行授权。"
   }
 };

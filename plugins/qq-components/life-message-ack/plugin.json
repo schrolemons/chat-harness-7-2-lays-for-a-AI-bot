@@ -11,7 +11,7 @@
   "config": {
     "privateWait": {
       "enabled": true,
-      "delayMs": 8000,
+      "delayMs": 10000,
       "lines": [
         "唔……我看到啦，正在想怎么回答你。",
         "等、等我一下下，我脑袋转一转……",
@@ -57,7 +57,7 @@
     },
     "privateApology": {
       "enabled": true,
-      "delayMs": 8300,
+      "delayMs": 30000,
       "lines": [
         "对不起让你等啦，我马上就好。",
         "抱歉抱歉，我脑子转得有点慢……",

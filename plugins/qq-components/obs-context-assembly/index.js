@@ -8,6 +8,15 @@ import {encodePacket,decodePacket} from './packet.mjs';
 import {REFRESH_MODULE_IDS} from './refill.mjs';
 const owned=file=>{const url=new URL(file,import.meta.url);url.search=new URL(import.meta.url).search;return import(url.href);};
 const [{prioritizeChatExpression},{moduleCatalog,completeModuleSlots},{compileModules,normalizePolicy},{readPolicy,secretFor,recordEvidence,readEvidence,listAssemblies},{enrichRequestProvenance},{frameModules},{refreshReceiptIndex}]=await Promise.all(['./chat-expression.mjs','./catalog.mjs','./policy.mjs','./store.mjs','./provenance.mjs','./frame.mjs','./message-snapshot.mjs'].map(owned));
+function consumerReadiness(consumer, sessionId) {
+ if(consumer?.sessionId!==sessionId||!Number.isSafeInteger(consumer.pid)||consumer.pid<=0)return 'missing-consumer';
+ let nativeOwner=false;
+ try{nativeOwner=Boolean(process.env.QQ_BRIDGE_RUNTIME_GENERATION)&&JSON.parse(process.env.QQ_BRIDGE_DSH_TARGET).mode==='native';}catch{}
+ // A managed native bridge is a direct child of the DSH host. Windows may
+ // deny signal-based process probes even when that exact parent is alive.
+ if(nativeOwner)return consumer.pid===process.ppid?'ready':'different-host';
+ try{process.kill(consumer.pid,0);return 'ready';}catch(error){return error.code||'probe-failed';}
+}
 export function createPlugin(ctx){
  const secret=secretFor(ctx.root),catalog=moduleCatalog(ctx.root);
  const runtime=ctx.runtime||{},seeds=runtime.contextSeeds||(runtime.contextSeeds=new Map());
@@ -37,11 +46,10 @@ export function createPlugin(ctx){
     modules=knowledgeModules(completeModuleSlots(modules,catalog),inspectKnowledge(ctx,key),true);
     const nonce=randomUUID(),policy=readPolicy(ctx.root);modules=prioritizeChatExpression(modules,policy);const compiled=compileModules(modules,policy,scene);
     const consumer=readEvidence(ctx.root,sessionId,'consumer');
-    let ready=false;
-    if(consumer?.pid&&consumer?.sessionId===sessionId)try{process.kill(consumer.pid,0);ready=true;}catch{}
+    const readiness=consumerReadiness(consumer,sessionId);
     // Until the receiving preset has acknowledged this session, preserve the working transport.
-    const active=policy.enabled&&Boolean(ready);
-    recordEvidence(ctx.root,key,'assembly',{key,sessionId,scene,nonce,at:Date.now(),active,modules:compiled.modules,beforeChars:compiled.beforeChars,afterChars:compiled.afterChars});
+    const active=policy.enabled&&readiness==='ready';
+    recordEvidence(ctx.root,key,'assembly',{key,sessionId,scene,nonce,at:Date.now(),active,readiness,modules:compiled.modules,beforeChars:compiled.beforeChars,afterChars:compiled.afterChars});
     if(!active)return fallback;
     return encodePacket({version:1,key,sessionId,scene,modules,nonce,issuedAt:Date.now()},secret);
    },

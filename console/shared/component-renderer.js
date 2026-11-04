@@ -67,7 +67,7 @@ export function initialize() {
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return;
     const items = compCache.filter((p) => !isInternalPromptComponent(p) && (ids || []).includes(p.id));
-    root.innerHTML = items.length ? items.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${root.dataset.hideToggle === '1' || ['ctx-memory-profile-store', 'life-campus-watch', 'exec-image-generation'].includes(p.id) ? '1' : '0'}" data-save-label="${esc(root.dataset.saveLabel || '')}" data-toggle-label="${p.id === 'exec-browser-manager' ? '启用 DOM 操作' : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || '')}"><div class="comp-body">加载设置…</div></div>`).join('') : '';
+    root.innerHTML = items.length ? items.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${root.dataset.hideToggle === '1' || ['ctx-memory-profile-store', 'life-web-watch', 'exec-image-generation'].includes(p.id) ? '1' : '0'}" data-save-label="${esc(root.dataset.saveLabel || '')}" data-toggle-label="${p.id === 'exec-browser-manager' ? '启用 DOM 操作' : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || '')}"><div class="comp-body">加载设置…</div></div>`).join('') : '';
     await Promise.all([...root.querySelectorAll('.comp-card')].map((d) => loadComponentDetail(d.dataset.id, d)));
   };
 

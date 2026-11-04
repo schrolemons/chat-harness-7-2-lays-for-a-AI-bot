@@ -28,7 +28,7 @@ window.__ModuleLoader__.load({
       if (window[sharedKey]) return window[sharedKey];
       const el = document.createElement('div'); el.dataset.qqBotLaunchers = 'shared';
       Object.assign(el.style, { position: 'fixed', zIndex: '1201', display: 'flex', flexWrap: 'nowrap', gap: '4px',
-        maxWidth: 'calc(100vw - 24px)', alignItems: 'center', fontFamily: '"Segoe UI", system-ui, sans-serif', WebkitAppRegion: 'no-drag' });
+        maxWidth: 'calc(100vw - 24px)', alignItems: 'center', fontFamily: 'var(--dsw-font-family, "Segoe UI", system-ui, sans-serif)', WebkitAppRegion: 'no-drag' });
       document.body.append(el);
       const state = { el, mounts: new Map(), layouts: new Set() };
       state.place = () => {
@@ -56,17 +56,20 @@ window.__ModuleLoader__.load({
       let settingsRevision = '', settingsRequest = 0, settingsSaving = false, pendingAction = null, consoleUrl = '';
       const abort = new AbortController(), inflight = new Set();
       const el = document.createElement('div'); el.dataset.qqLauncherInstance = instanceId;
-      Object.assign(el.style, { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '3px', borderRadius: '7px',
-        padding: '2px 4px', background: 'var(--dsw-alias-background-primary, #fff)', color: 'var(--dsw-alias-label-primary, #20252c)' });
+      Object.assign(el.style, { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px',
+        padding: '2px 4px', color: 'var(--dsw-alias-label-secondary, #3f4753)' });
       const button = (name, text, click, parent = el) => {
         const b = document.createElement('button'); b.id = prefix + name; b.type = 'button'; b.textContent = text;
         b.dataset.qqLauncherInstance = instanceId;
-        Object.assign(b.style, { padding: '5px 7px', font: 'inherit', fontSize: '12px', background: 'transparent', color: 'inherit',
-          border: '1px solid #d7dce3', borderRadius: '5px', cursor: 'pointer', whiteSpace: 'nowrap', WebkitAppRegion: 'no-drag' });
+        Object.assign(b.style, { padding: '5px 7px', font: 'inherit', fontSize: '13px', background: 'transparent', color: 'inherit',
+          border: '0', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap', WebkitAppRegion: 'no-drag' });
+        b.addEventListener('pointerenter', () => { b.style.background = 'var(--dsw-alias-background-secondary, #80808018)'; });
+        b.addEventListener('pointerleave', () => { b.style.background = 'transparent'; });
         if (click) b.addEventListener('click', click); parent.append(b); return b;
       };
       const main = button('button', descriptor.label || instanceId, onClick);
-      const dot = document.createElement('span'); dot.textContent = '●'; dot.style.marginRight = '5px';
+      const dot = document.createElement('span'); dot.setAttribute('aria-hidden', 'true');
+      Object.assign(dot.style, { width: '7px', height: '7px', margin: '0 7px 0 2px', flexShrink: '0', borderRadius: '50%' });
       const label = document.createElement('span'); main.textContent = ''; main.append(dot, label);
       const restart = button('restart', '重启', () => runControl('restart'));
       const stop = button('stop', '停止', () => runControl('stop'));
@@ -101,8 +104,10 @@ window.__ModuleLoader__.load({
       el.append(panel); shared.el.append(el);
       function paint(text, color = '#9ca3af') {
         if (disposed) return;
-        dot.style.color = color; label.textContent = (current?.label || descriptor.label || instanceId) + ' · ' + text;
-        main.title = (current?.label || descriptor.label || instanceId) + ' · ' + text;
+        dot.style.background = color;
+        dot.style.boxShadow = '0 0 0 2px ' + color + '2e';
+        label.textContent = current?.label || descriptor.label || instanceId;
+        main.title = label.textContent + ' · ' + text;
         main.setAttribute('aria-label', main.title); restart.disabled = stop.disabled = controlBusy || !current;
       }
       function invalidate(text) {
@@ -152,17 +157,43 @@ window.__ModuleLoader__.load({
       }
       function renderStatus(data) {
         state = data.runtime?.state || 'unknown';
-        const running = ['running', 'starting'].includes(state);
-        paint(state === 'running' ? '已启动，连接状态待确认' : state === 'starting' ? '启动中' : state === 'stopped' ? '已停止' : state === 'stopping' ? '停止中' : '状态未知',
-          running ? '#d97706' : state === 'stopped' ? '#ef4444' : '#9ca3af');
-        if (data.needsRestart) main.title += '；配置需重启后应用';
+        const steps = {
+          'checking-config': '正在检查配置与端口',
+          'claiming-account': '正在取得 QQ 账号的运行权限',
+          'starting-snow': '正在启动 SnowLuma',
+          'starting-bridge': 'SnowLuma 进程已启动，正在启动桥接',
+        };
+        let text = '状态未知', color = '#9ca3af';
+        if (state === 'starting') { text = steps[data.runtime.phase] || '正在启动'; color = '#f59e0b'; }
+        if (state === 'stopping') { text = '正在停止服务'; color = '#f59e0b'; }
+        if (state === 'running') {
+          const ready = data.readiness === 'ready';
+          text = ready ? 'QQ 与 DSH 已连接' : (data.connectionHint || '进程已启动，正在等待 QQ 与 DSH 连接');
+          if (!ready && data.runtime.firstRunConsole) text += '\n首次设置请查看 SnowLuma 命令窗口';
+          color = ready ? '#22c55e' : '#f59e0b';
+        }
+        if (state === 'stopped') { text = '已停止'; color = '#ef4444'; }
+        if (state === 'failed' || data.runtime?.lastError) {
+          text = data.runtime.lastError?.message || '服务运行失败';
+          color = '#ef4444';
+        }
+        if (data.needsRestart) text += '\n配置需重启后应用';
+        paint(text, color);
       }
       async function poll() {
         if (disposed) return;
         // Preload may append or reposition the native menu after client mount.
         // Reuse UI polling, including while requests/settings are busy.
         shared.place();
-        if (controlBusy || settingsSaving) return;
+        if (settingsSaving) return;
+        if (controlBusy) {
+          if (!current) return;
+          try {
+            const data = await request('/status');
+            if (controlBusy && ['starting', 'stopping'].includes(data.runtime?.state)) renderStatus(data);
+          } catch { /* The control request owns action errors. */ }
+          return;
+        }
         if (!await refresh()) return;
         try { renderStatus(await request('/status')); }
         catch (error) { if (!disposed && current && !error.stale) paint('状态不可用'); }
@@ -229,7 +260,9 @@ window.__ModuleLoader__.load({
             const data = await request('/config'); if (!data.configured || !data.botUin) return openSettings(action);
           }
           ++epoch; paint(action === 'stop' ? '停止中' : '启动中', '#d97706');
-          renderStatus(await request('/' + action, {}));
+          const result = await request('/' + action, {});
+          ++epoch;
+          renderStatus(result);
         }
         catch (error) { if (!disposed && !error.stale) paint('操作失败：' + error.message); }
         finally { controlBusy = false; if (!disposed) { restart.disabled = stop.disabled = !current; } }

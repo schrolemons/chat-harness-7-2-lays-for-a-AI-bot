@@ -1,0 +1,61 @@
+{
+  "id": "life-web-watch",
+  "name": "网站监督与脚本协同",
+  "version": "0.4.0",
+  "description": "检查已配置网站的内容变化与登录状态，展示协同脚本的运行心跳。",
+  "category": "生命周期与编排",
+  "layer": "L",
+  "order": 31,
+  "tags": [
+    "定时",
+    "网页",
+    "协同"
+  ],
+  "main": "index.js",
+  "enabled": true,
+  "hooks": [
+    "onTick"
+  ],
+  "schedule": {
+    "everyMs": 60000
+  },
+  "config": {
+    "fastCheckMinutes": 1,
+    "fullCheckMinutes": 30,
+    "loginMaxAttempts": 3,
+    "loginRetryMinutes": 5,
+    "manualRetry": {
+      "url": "",
+      "nonce": ""
+    },
+    "webWatchEnabled": true,
+    "watchUrls": [],
+    "scriptCollabEnabled": false,
+    "scriptPaths": [],
+    "scriptDescriptions": {}
+  },
+  "configSchema": {
+    "manualRetry": {
+      "editable": false,
+      "description": "管理员重新监管按钮的单次请求；nonce已消费后，普通保存或热加载不会重新执行。"
+    },
+    "loginMaxAttempts": {
+      "type": "number",
+      "min": 1,
+      "max": 20,
+      "label": "登录尝试／通知上限（次）",
+      "example": "设3：同一网站第3次登录验证失败时通知并暂停；手动重新监管或桥接重启后获得新的3次机会。"
+    },
+    "loginRetryMinutes": {
+      "type": "number",
+      "min": 1,
+      "max": 1440,
+      "label": "登录尝试／提醒间隔（分钟）",
+      "example": "设5：首次失败立即QQ通知，之后每隔5分钟检查一次；每次失败立即通知，不叠加另一套提醒间隔。"
+    },
+    "scriptDescriptions": {
+      "editable": false,
+      "description": "开发者与 AI 维护的逐脚本执行/搜索约定，只读一行显示，不直接执行脚本"
+    }
+  }
+}

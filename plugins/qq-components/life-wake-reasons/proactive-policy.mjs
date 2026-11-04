@@ -7,7 +7,7 @@ export const DEFAULT_PROACTIVE_POLICY = Object.freeze({
   probabilityMax: .85, checkMinMinutes: 15, checkMaxMinutes: 30, intervalStepMinutes: -1,
   checkFloorMinutes: 1, minActiveGapMinutes: 30, maxSilenceMinutes: 180,
   initialWillingness: 60,
-  curfewEnabled: true, curfewStartHour: 23, curfewEndHour: 8
+  curfewEnabled: true, curfewDirectOnlyInGroups: false, curfewStartHour: 23, curfewEndHour: 8
 });
 const ranges = {
   silenceMinutes: [0, 10080], initialProbability: [0, 1], probabilityStep: [0, 1], probabilityMax: [0, 1],
@@ -21,7 +21,7 @@ export function validateProactivePolicy(raw = {}) {
   for (const [key, [min, max]] of Object.entries(ranges)) {
     if (typeof p[key] !== 'number' || !Number.isFinite(p[key]) || p[key] < min || p[key] > max) errors.push(`${key} must be ${min}..${max}`);
   }
-  for (const key of ['proactiveEnabled', 'curfewEnabled']) if (typeof p[key] !== 'boolean') errors.push(`${key} must be boolean`);
+  for (const key of ['proactiveEnabled', 'curfewEnabled', 'curfewDirectOnlyInGroups']) if (typeof p[key] !== 'boolean') errors.push(`${key} must be boolean`);
   for (const key of ['curfewStartHour', 'curfewEndHour']) if (!Number.isInteger(p[key])) errors.push(`${key} must be integer`);
   if (p.checkMinMinutes > p.checkMaxMinutes) errors.push('checkMinMinutes must not exceed checkMaxMinutes');
   if (p.checkFloorMinutes > p.checkMinMinutes) errors.push('checkFloorMinutes must not exceed checkMinMinutes');

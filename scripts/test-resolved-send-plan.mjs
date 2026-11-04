@@ -35,12 +35,12 @@ test('serious and reference contexts retain configured parts despite mood ceilin
 });
 test('reservations serialize concurrent media and release only known failure',()=>{
   const {svc}=fixture({maxSendPerMinute:2,maxSendPerHour:3});assert.ok(svc);
-  const plan=svc.resolve({key,turnId:'a',incomingText:'你好',messages:[message(1)],mood,now});
-  assert.equal(svc.reserve({key,plan,operationId:'a',now}).ok,true);
-  assert.equal(svc.reserve({key,plan,operationId:'b',now}).ok,true);
-  assert.equal(svc.reserve({key,plan,operationId:'c',now}).reason,'minute_limit');
+  const plans=[1,2,3].map(seq=>svc.resolve({key,turnId:'a',incomingText:'你好',messages:[message(seq)],mood,now}));
+  assert.equal(svc.reserve({key,plan:plans[0],operationId:'a',now}).ok,true);
+  assert.equal(svc.reserve({key,plan:plans[1],operationId:'b',now}).ok,true);
+  assert.equal(svc.reserve({key,plan:plans[2],operationId:'c',now}).reason,'minute_limit');
   assert.equal(svc.release({key,operationId:'a',knownFailed:true}).ok,true);
-  assert.equal(svc.reserve({key,plan,operationId:'c',now}).ok,true);
+  assert.equal(svc.reserve({key,plan:plans[2],operationId:'c',now}).ok,true);
   assert.equal(svc.release({key,operationId:'b',knownFailed:false}).ok,false);
 });
 test('migration and restart preserve real rates and uncertain reservations',()=>{
@@ -50,7 +50,8 @@ test('migration and restart preserve real rates and uncertain reservations',()=>
   const plan=f.svc.resolve({key,turnId:'a',incomingText:'你好',messages:[message(1)],mood,now});
   f.svc.reserve({key,plan,operationId:'unknown',now});
   const restarted=fixture({maxSendPerHour:2},f.state());
-  assert.equal(restarted.svc.reserve({key,plan,operationId:'next',now}).reason,'hour_limit');
+  const next=restarted.svc.resolve({key,turnId:'b',messages:[message(2)],mood,now});
+  assert.equal(restarted.svc.reserve({key,plan:next,operationId:'next',now}).reason,'hour_limit');
   assert.equal(restarted.svc.preview({key,now}).successful,1);
 });
 test('requested delays use the same bounds; no-turn agents fail closed',()=>{

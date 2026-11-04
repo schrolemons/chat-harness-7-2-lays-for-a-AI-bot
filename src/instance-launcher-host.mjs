@@ -55,7 +55,7 @@ const localOrigin = value => {
 
 /** HTTP capability for one controller generation. Health never starts/adopts a service.
  * The root controller owns runtime disposal; this handle owns only admission/listeners. */
-export function createInstanceLauncher(ctx, { descriptor, runtime, getDshOrigin }, deps = {}) {
+export function createInstanceLauncher(ctx, { descriptor, runtime, getDshOrigin, readHealth }, deps = {}) {
   if (!descriptor?.instanceId || !path.isAbsolute(descriptor.root || '') || !runtime?.start || !runtime?.stop || typeof runtime.status !== 'function') throw failure('INSTANCE_LAUNCHER_REQUIRED');
   let generation = crypto.randomUUID();
   const servers = new Set(), bindings = new Map(), closings = new WeakMap();
@@ -155,7 +155,18 @@ export function createInstanceLauncher(ctx, { descriptor, runtime, getDshOrigin 
     if(req.method==='OPTIONS') { send(res,204,{}); return; }
     if(req.method==='GET' && ['/', '/status','/config'].includes(route)) {
       const selected=route==='/config'?settings():undefined;
-      send(res,200,{...(selected?{...selected,configured:!!selected.botUin,live:false,...(getDshOrigin?{dshTarget:selectInstanceDshTarget(readConfig(descriptor.root),getDshOrigin)}:{})}:{}),...view()}); return;
+      let snapshot = view();
+      const bridge = snapshot.runtime.children?.find(child => child.kind === 'bridge' && child.running && child.registered);
+      if (route === '/status' && snapshot.runtime.state === 'running' && bridge && readHealth) {
+        const health = await readHealth(snapshot.runtime.ports?.console).catch(() => null);
+        snapshot = view();
+        if (snapshot.runtime.state === 'running' && snapshot.runtime.children?.some(child =>
+          child.kind === 'bridge' && child.pid === bridge.pid && child.running && child.registered)) {
+          snapshot.readiness = health?.verdict === 'ready' ? 'ready' : 'unverified';
+          snapshot.connectionHint = health?.reason;
+        }
+      }
+      send(res,200,{...(selected?{...selected,configured:!!selected.botUin,live:false,...(getDshOrigin?{dshTarget:selectInstanceDshTarget(readConfig(descriptor.root),getDshOrigin)}:{})}:{}),...snapshot}); return;
     }
     if(req.method!=='POST'||!['/start','/stop','/restart','/config'].includes(route)) { send(res,404,{ok:false,error:'not found'}); return; }
     const body=await readBody(req); admit();

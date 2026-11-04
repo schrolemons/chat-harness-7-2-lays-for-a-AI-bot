@@ -82,4 +82,6 @@ L0只编辑 groupAtBonus/groupNameBonus/groupQuestionBonus/groupPokeBonus/groupN
 
 聊天意愿W表示用户客观可用的时间和精力；心情M表示bot主观上是否喜欢与对方交流，只有M决定语言风格。共享ctx-chat-reply-shape/engagement.mjs：F=(0.2+0.8M/100)×(0.2+0.8W/100)。心情组件停用时心情因子为1。随机主动的阶段概率为min(Pmax,P0+nΔP)×F；未唤醒的群聊来信可在此阶段概率上叠加最大触发加成，已经醒着时不再抽签，最大静默兜底仍不绕公共闸门。条数采用max(1,ceil(基础上限×F))再收紧至心情/正式模式上限。深度在F≥0.75、≥0.45、≥0.2、其余分别为expanded、balanced、concise、brief；内容完整性优先。
 
-等待工具分工（2026-11-03）：`qq_wait_for_quiet` 合并用户同一轮连续输入；`qq_wait_for_messages` 在 bot 回复与回执后等待人类下一步响应。等待超时沿用后台 `endRound` / `action` / `guidance` 的继续等待、结束、旧话题、新话题分支；二代预设与派生管理员预设共享同一说明。
+等待工具分工（2026-11-03）：`qq_wait_for_quiet` 合并用户同一轮连续输入；`qq_wait_for_messages` 在 bot 回复并提交回执后，按需等待暂未接话、仍可能想聊的人。等待超时沿用后台 `endRound` / `action` / `guidance` 的继续等待、结束、旧话题、新话题分支；二代预设与派生管理员预设共享同一说明。
+
+群聊严格宵禁可用 curfewDirectOnlyInGroups 开关。开启后，上海时段内普通群消息仅作上文；只有 QQ 协议证实的直接 @、引用机器人自己的消息或戳机器人可以参与常规唤醒判定。排队和实际发送均重新检查；私聊、独立日程和维护回合沿用各自边界。

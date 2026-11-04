@@ -20,8 +20,7 @@
       </div>
       <div id="aliasRoot" hidden></div>
       <div class="divider"></div><div class="meta" style="margin-bottom:6px">手动添加成员绰号</div>
-      <div class="row"><input id="aliasName" type="text" placeholder="绰号（如 十二）" style="flex:1"><input id="aliasQq" type="text" placeholder="QQ号" style="flex:1"></div><div class="row" style="margin-top:6px"><input id="aliasNote" type="text" placeholder="备注（可选）" style="flex:1"></div><div class="setting-field"><label for="aliasManualSourceKeys">适用来源（可选多个群聊或私聊）</label><textarea id="aliasManualSourceKeys" rows="2" placeholder="group:10001
-private:10002"></textarea><small class="parameter-example">例：分别选择群聊和私聊：已确认资料在这些会话优先注入；留空仅供查询。</small></div><div class="row" style="margin-top:8px"><button id="aliasAdd" class="small primary">添加入库（确认）</button></div>
+      <div class="row"><input id="aliasName" type="text" placeholder="输入绰号" style="flex:1"><input id="aliasQq" type="text" placeholder="QQ号" style="flex:1"></div><div class="row" style="margin-top:6px"><input id="aliasNote" type="text" placeholder="备注（可选）" style="flex:1"></div><div class="setting-field"><label for="aliasManualSourceKeys">适用来源（可选多个群聊或私聊）</label><textarea id="aliasManualSourceKeys" rows="2" placeholder="group:群号&#10;private:QQ号"></textarea><small class="parameter-example">例：分别选择群聊和私聊：已确认资料在这些会话优先注入；留空仅供查询。</small></div><div class="row" style="margin-top:8px"><button id="aliasAdd" class="small primary">添加入库（确认）</button></div>
       <details style="margin-top:10px"><summary class="meta">绰号学习与注入设置</summary>
         <label class="row"><input type="checkbox" id="aliasAutoExtract" style="width:auto"> 自动收集明确与疑似绰号 <span id="aliasAutoExtractMsg" class="meta"></span></label>
         <label class="row"><input type="checkbox" id="aliasAutoSemantic" style="width:auto"> 自动分析群消息中的绰号候选</label>
@@ -34,10 +33,9 @@ private:10002"></textarea><small class="parameter-example">例：分别选择群
       <div class="modal-overlay" id="aliasModalOverlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="aliasModalTitle" tabindex="-1">
         <h3 id="aliasModalTitle">编辑成员绰号</h3><div class="meta" id="aliasModalContent"></div><input type="hidden" id="aliasEditId">
         <div class="setting-field"><label for="aliasModalName">绰号</label><input type="text" id="aliasModalName" maxlength="50" placeholder="成员的称呼"><small class="parameter-example" data-example-for="aliasModalName">例：填“阿明”：保存这个称呼本身，不把它当作QQ账号。</small></div>
-        <div class="setting-field"><label for="aliasModalQq">对应 QQ（不确定可留空，不能确认）</label><input type="text" id="aliasModalQq" placeholder="5 到 12 位 QQ 号"><small class="parameter-example" data-example-for="aliasModalQq">例：填10001：将绰号对应到该QQ；留空时作为待确认线索。</small></div>
+        <div class="setting-field"><label for="aliasModalQq">对应 QQ（不确定可留空，不能确认）</label><input type="text" id="aliasModalQq" placeholder="5 到 12 位 QQ 号"><small class="parameter-example" data-example-for="aliasModalQq">填写该成员的 QQ 号。留空时保留为待确认线索。</small></div>
         <div class="setting-field"><label for="aliasModalNote">备注 / 目标线索</label><input type="text" id="aliasModalNote" maxlength="400" placeholder="补充群内语境或目标线索"><small class="parameter-example" data-example-for="aliasModalNote">例：填“周五在群里这样自称”：保留判断依据，不能代替目标QQ确认。</small></div>
-        <div class="setting-field"><label for="aliasSourceKeys">适用来源（可选多个群聊或私聊）</label><textarea id="aliasSourceKeys" rows="2" placeholder="group:10001
-private:10002"></textarea><small class="parameter-example">例：分别选择群聊和私聊：已确认资料在这些会话优先注入；留空仅供查询。</small></div>
+        <div class="setting-field"><label for="aliasSourceKeys">适用来源（可选多个群聊或私聊）</label><textarea id="aliasSourceKeys" rows="2" placeholder="group:群号&#10;private:QQ号"></textarea><small class="parameter-example">例：分别选择群聊和私聊：已确认资料在这些会话优先注入；留空仅供查询。</small></div>
         <div id="aliasModalEvidence" class="meta"></div>
         <div class="row"><button id="aliasModalConfirm" class="small primary">确认映射</button><button id="aliasModalReject" class="small">拒绝候选</button><button id="aliasModalCancel" class="small">取消</button></div>
       </div></div>

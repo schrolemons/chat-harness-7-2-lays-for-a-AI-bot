@@ -6,6 +6,26 @@ import {diaryWindow} from '../../../plugins/qq-components/ctx-memory-store/diary
 function diaryWindowForDay(day,config) {return diaryWindow(day,config)?.label || '时间窗未知';}
 const sentTime=value=>new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(Number(value))+'（北京时间）';
 
+const attemptKinds = { manual:'手动刷新', scheduled:'定时投递', catchup:'补发', on_demand:'点播' };
+const attemptReasons = {
+  quiet:'会话处于免打扰时段', legacy_muted:'会话当前静音', paused:'二代会话已暂停',
+  transport:'QQ 网关尚未就绪', expired:'排队期间已超过投递时限', send_guard_blocked:'发送权限或会话状态发生变化',
+  send_unconfirmed:'QQ 网关未确认全部分段，请先核对会话', delivery_unconfirmed:'中央回执尚未确认，请先核对 QQ 会话',
+  receipt_finalize_failed:'回执写入失败，请先核对 QQ 会话', receipt_unavailable:'中央回执不可用，稍后查询',
+  receipt_ledger_busy:'回执账本忙，稍后查询', receipt_ledger_invalid:'回执账本无法读取，请检查桥接日志',
+  receipt_ledger_unavailable:'回执账本不可用，请检查桥接日志', session_not_allowed:'会话不在当前白名单',
+  refresh_failed:'记忆刷新失败，请检查桥接日志', refresh_empty:'记忆刷新未返回可保存正文',
+  refresh_expired:'记忆刷新超时，可重新请求', delivery_not_started:'投递未开始，可重新请求', missing_diary:'当前窗口没有可发送的日记正文',
+  sensitive_content:'正文触发出站内容保护，请核对日记', memory_plugin_unavailable:'日记组件未启用', report_plugin_unavailable:'日记组件未启用'
+};
+function diaryAttemptLabel(attempt) {
+  const detail = attemptReasons[attempt.reason] || attempt.reason || (
+    attempt.stage === 'refreshing' ? '刷新记忆中' : attempt.stage === 'sending' ? '等待 QQ 确认'
+      : attempt.receiptStatus === 'sent' ? '已确认发送' : '回执未确认');
+  const parts = attempt.partsTotal > 0 ? ' · 分段 '+attempt.partsSent+'/'+attempt.partsTotal : '';
+  return [attempt.day, attemptKinds[attempt.kind] || '投递', sentTime(attempt.updatedAt), detail + parts].join(' · ');
+}
+
 async function refreshV2Diary() {
   const listEl = document.getElementById('v2DdList');
   const msg = document.getElementById('v2DdMsg');
@@ -38,8 +58,9 @@ async function refreshV2Diary() {
       const confirmed=c.deliveryStatus==='sent'&&c.targetSent===true&&Number(c.sentAt)>0;
       const deliveryStatus=c.deliveryStatus==='sent'&&!confirmed?'legacy_unconfirmed':c.deliveryStatus;
       const alreadySent = confirmed;
-      const unresolved = ['claimed', 'uncertain', 'unavailable', 'legacy_unconfirmed'].includes(deliveryStatus);
-      const blocked = c.diaryPending || ['claimed','unavailable'].includes(deliveryStatus);
+      const needsVerification = ['uncertain','legacy_unconfirmed'].includes(deliveryStatus) || (c.attempts || []).some(attempt=>attempt.receiptStatus==='uncertain');
+      const unresolved = needsVerification || ['claimed', 'unavailable'].includes(deliveryStatus);
+      const blocked = c.diaryPending || ['claimed','unavailable'].includes(deliveryStatus) || (c.attempts || []).some(attempt=>attempt.receiptStatus==='claimed');
       const blockReason = !c.hasDiary ? '目标日期没有日记内容' : unresolved ? '发送凭据尚未确认，请先检查 QQ 会话和记录' : '';
       const previousUnknown=['claimed','uncertain','unavailable'].includes(c.previousDiaryStatus);
       const statusLabel = c.previousDiaryMissing ? (previousUnknown?'昨日日记发送未确认':'昨日日记未发送') : c.diaryPending ? '刷新或发送处理中' : '当前窗口进行中';
@@ -50,11 +71,14 @@ async function refreshV2Diary() {
       const sendDateLabel=confirmedAt?'最近确认发送：'+sentTime(confirmedAt)+' · 所属日记：'+confirmedDay:(c.lastDiaryDate?'旧日期记录：'+last+'（没有确认回执，不代表已发送）':'尚无确认发送记录');
       const windowLabel=c.windowStart&&c.windowEnd?c.windowStart+' 至 '+c.windowEnd:diaryWindowForDay(c.targetDate,r.config);
       const scheduledLabel=c.previousDiaryMissing?'上一窗口：'+c.previousDay+' 日记 · '+(c.previousDiaryAvailable?'可直接补发已有正文，不调用模型':'暂无可补发正文'):c.previousSentAt?'上一窗口已发送：'+sentTime(c.previousSentAt):'手动发送不抵扣本窗口结束时的定时发送';
+      const attempts=[...(c.attempts || []),...(c.previousAttempts || [])];
+      const audit=attempts.length ? '<details class="diary-session-detail"><summary>投递记录（'+attempts.length+'）</summary>'
+        + attempts.map(attempt=>'<div title="'+esc(attempt.id)+'">'+esc(diaryAttemptLabel(attempt))+'</div>').join('')+'</details>' : '';
       return '<article class="diary-session-card" title="' + esc(title) + '"><div class="diary-session-head"><b class="diary-session-key">' + esc(c.key) + '</b><span class="diary-session-state ' + statusClass + '">' + esc(statusLabel) + '</span></div>'
         + '<div class="diary-session-window">' + esc(c.targetDate || '目标日期') + ' 日记时间窗 · ' + esc(windowLabel) + '</div>'
         + '<div class="diary-session-detail">' + esc(state) + ' · ' + esc(sendDateLabel) + '</div>'
-        + '<div class="diary-session-detail">' + esc(scheduledLabel) + '</div>'
-        + '<div class="diary-session-actions"><button class="small" title="重新总结并发送此窗口日记；窗口分界读取已配置的时、分" ' + (blocked ? 'disabled' : '') + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-day="' + esc(c.targetDate || '') + '" data-dd-confirm="' + (['legacy_unconfirmed','uncertain'].includes(deliveryStatus)?'1':'0') + '" data-dd-action="sendNow">刷新并发送 ' + esc(c.targetDate || '当前窗口') + ' 日记</button>'
+        + '<div class="diary-session-detail">' + esc(scheduledLabel) + '</div>' + audit
+        + '<div class="diary-session-actions"><button class="small" title="重新总结并发送此窗口日记；窗口分界读取已配置的时、分" ' + (blocked ? 'disabled' : '') + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-day="' + esc(c.targetDate || '') + '" data-dd-confirm="' + (needsVerification?'1':'0') + '" data-dd-action="sendNow">刷新并发送 ' + esc(c.targetDate || '当前窗口') + ' 日记</button>'
         + '<button class="small" title="只补发当前窗口之前的归档日记；旧日期记录需先核对QQ" ' + (c.diaryPending || !catchUpAvailable ? 'disabled' : '') + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-action="catchUpAll">补发未发送日记</button></div></article>';
     });
     if (catchUpButton) catchUpButton.disabled = !convs.some((c) => !c.diaryPending && ((c.previousDiaryMissing&&c.previousDiaryAvailable&&!['claimed','uncertain','unavailable'].includes(c.previousDiaryStatus))||hasCatchUpFor(c.key, c.targetDate)));
@@ -69,7 +93,7 @@ async function refreshV2Diary() {
       let finalMessage = action === 'sendNow' ? ('正在重新总结 ' + key + ' 当前窗口记忆；完成后发送 ' + btn.dataset.ddDay + ' 日记…') : ('正在逐日补发 ' + key + ' 的历史日记…');
       if (msg) msg.textContent = finalMessage;
       try {
-        const rr = await api('/api/socialV2/daily-diary', 'POST', { action, key, day: btn.dataset.ddDay, ...(action==='catchUpAll'?{confirmLegacyUnsent:true}:{}) });
+        const rr = await api('/api/socialV2/daily-diary', 'POST', { action, key, day: btn.dataset.ddDay, ...(action==='catchUpAll'||btn.dataset.ddConfirm==='1'?{confirmLegacyUnsent:true}:{}) });
         finalMessage = rr.pending === true
           ? ('⏳ ' + (rr.message || '已请求刷新此窗口记忆，发送完成后状态会更新。'))
           : action === 'catchUpAll'
@@ -120,4 +144,4 @@ document.getElementById('v2DdCatchUp').addEventListener('click', async () => {
   finally { await refreshV2Diary(); if (msg) msg.textContent = finalMessage; }
 });
 }
-export { diaryWindowForDay, refreshV2Diary };
+export { diaryAttemptLabel, diaryWindowForDay, refreshV2Diary };

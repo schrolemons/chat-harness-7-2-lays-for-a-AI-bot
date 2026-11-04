@@ -63,9 +63,15 @@ test('Codex installer creates only fresh local settings and a new workspace, nev
   assert.deepEqual(yaml.load(fs.readFileSync(path.join(profile,'cordis.patch.yml'),'utf8')),[]);
  }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });
-test('empty/default monitor stays idle; enabling a user target activates the generic scheduler',async()=>{
- const {createPlugin}=await import('../plugins/qq-components/life-campus-watch/index.js');
- for(const [config,expected] of [[{webWatchEnabled:false,watchUrls:[]},0],[{webWatchEnabled:true,watchUrls:['示例 | https://example.invalid/']},1]]){
-  let count=0,state={};const plugin=createPlugin({root,config,state:{get:()=>state,set:value=>state={...state,...value}},registerTool(){},capabilities:{spawnCampusWatch(){count++;return true;}}});const now=Date.now();plugin.hooks.onTick({now});assert.equal(count,expected);plugin.hooks.onTick({now:now+60000});assert.equal(count,expected);plugin.hooks.onTick({now:now+1800000});assert.equal(count,expected*2);
- }
+test('public edition excludes personal course monitoring entry points',()=>{for(const rel of ['scripts/campus-watch.mjs','scripts/lecture-enroll.mjs','plugins/qq-components/life-campus-watch/plugin.json'])assert.equal(fs.existsSync(path.join(root,rel)),false,rel);});
+
+test('public website supervision and script collaboration ship with empty target lists', () => {
+  const files = JSON.parse(fs.readFileSync(path.join(root, 'release-files.json'), 'utf8'));
+  for (const name of ['console/layers/E/pages/environment-watch.html', 'console/layers/E/pages/environment-scripts.html', 'scripts/web-watch.mjs', 'scripts/login-window.mjs', 'src/owned-monitor-browser.mjs', 'plugins/qq-components/life-web-watch/plugin.json']) {
+    assert.ok(files.includes(name) && fs.existsSync(path.join(root, name)), name);
+  }
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'plugins/qq-components/life-web-watch/plugin.json'), 'utf8'));
+  assert.deepEqual(manifest.config.watchUrls, []);
+  assert.deepEqual(manifest.config.scriptPaths, []);
+  assert.deepEqual(manifest.config.scriptDescriptions, {});
 });

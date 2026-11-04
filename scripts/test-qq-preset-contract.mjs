@@ -59,7 +59,7 @@ test('quiet merges consecutive input while messages waits for the next human res
   assert.match(prefix, /【合并连续输入】[^\n]*qq_wait_for_quiet/);
   assert.match(prefix, /读取和思考花掉的时间也算，已安静足够就立即返回/);
   assert.match(prefix, /quiet=false 不等于对方说完/);
-  assert.match(prefix, /【等待下一步响应】[^\n]*qq_wait_for_messages[^\n]*人类/);
+  assert.match(prefix, /【等待下一步响应】[^\n]*回执[^\n]*还想聊[^\n]*暂时没接话[^\n]*按需调用 qq_wait_for_messages/);
   for(const value of ['endRound=true','endRound=false','action=wait','action=followup','action=newTopic'])assert(prefix.includes(value),value);
   assert.doesNotMatch(prefix, /qq_wait_for_messages\(purpose="reply"|不要再重开一次普通长等待/);
 });

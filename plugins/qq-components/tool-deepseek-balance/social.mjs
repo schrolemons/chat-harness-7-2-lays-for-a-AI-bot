@@ -13,7 +13,7 @@ export function createMilkSocial({read,write,clock=Date.now,currentStock}){
   context(key,{fresh,stock,isOwner=false}={}){
    const s=read(),e=fresh?current():null;
    let text='【API预算状态】'+(fresh?(labels[stock?.stage]||labels.unknown):labels.unknown)+'。群聊和普通私聊只说API预算档位与变化，不披露账号金额、币种余额或本机信息。';
-   if(e&&s.spokenMilk?.[key]!==e.id){text+='\n【这次可说的API预算变化】'+kinds[e.kind]+'；事件 '+e.id+'；当前档位 '+(labels[e.stage]||e.stage)+'；相对变化 '+JSON.stringify(e.relativeChange||{baseline:'unknown',percent:null})+'。'+(isOwner&&e.before?.amount!==undefined?' 上次 '+e.before.currency+' '+e.before.amount+' → 当前 '+e.after.currency+' '+e.after.amount+'；净变动 '+e.delta+'。':'')+'在下一次相关聊天或已允许的主动机会中自然提起一次；这段状态本身不额外启动模型，不绕过限额或宵禁。管理员定时告警由独立事件触发，不再重复转告其他会话。';
+   if(e&&s.spokenMilk?.[key]!==e.id){text+='\n【这次可说的API预算变化】'+kinds[e.kind]+'；事件 '+e.id+'；发生于 '+new Date(e.at).toISOString()+'；变化时档位 '+(labels[e.stage]||e.stage)+'；相对变化 '+JSON.stringify(e.relativeChange||{baseline:'unknown',percent:null})+'。'+(isOwner&&e.before?.amount!==undefined?' 上次 '+e.before.currency+' '+e.before.amount+' → 变化后当时 '+e.after.currency+' '+e.after.amount+'；净变动 '+e.delta+'。':'')+'在下一次相关聊天或已允许的主动机会中自然提起一次；这段状态本身不额外启动模型，不绕过限额或宵禁。管理员定时告警由独立事件触发，不再重复转告其他会话。';
     if(!s.notedMilk?.[e.id])text+=' 建议用user_checking(action="note", milkEventId="'+e.id+'", text="自己对此次API预算变化想说的话")追加桌面便签；用自己的感受，不抄通知，不写聊天原文，同一事件只写一次。';
    }
    return text;
@@ -21,7 +21,10 @@ export function createMilkSocial({read,write,clock=Date.now,currentStock}){
   publicResult(result,key){
    if(result?.ok!==true)return {ok:false,error:'暂时无法核实API预算余额；未知不等于没有API预算。'};
    const e=current();if(e)write({milkQueries:limitMap({...read().milkQueries,[key]:{id:e.id,at:clock()}})});
-   return {ok:true,milk:{perspective:'当前API预算余额',stock:{stage:result.milk?.stock?.stage||'unknown'},checkedAt:result.milk?.checkedAt,change:e?{id:e.id,at:e.at,kind:e.kind,stage:e.stage,relativeChange:e.relativeChange}:null,responseGuidance:milkVoice+'\n'+milkChangeGuidance,desktopNote:e&&!read().notedMilk?.[e.id]?{milkEventId:e.id,hint:'建议用user_checking(action="note")记录这次变化和自己的感受；以此新事件ID为准，旧事件不再使用。'}:null}};
+   const project=event=>event?{id:event.id,at:event.at,kind:event.kind,stage:event.stage||event.after?.stage,relativeChange:event.relativeChange}:null;
+   const change=project(result.milk?.change);
+   const recentEvent=e&&e.id!==change?.id?project(e):null;
+   return {ok:true,milk:{perspective:'当前API预算余额',stock:{stage:result.milk?.stock?.stage||'unknown'},checkedAt:result.milk?.checkedAt,change,recentEvent,responseGuidance:milkVoice+'\n'+milkChangeGuidance,desktopNote:e&&!read().notedMilk?.[e.id]?{milkEventId:e.id,hint:'建议用user_checking(action="note")记录这次变化和自己的感受；以此新事件ID为准，旧事件不再使用。'}:null}};
   },
   sent({key,success,messages=[]}={}){
    const s=read(),e=current(),q=s.milkQueries?.[key];if(!success||!e||!validMilkKey(key))return;

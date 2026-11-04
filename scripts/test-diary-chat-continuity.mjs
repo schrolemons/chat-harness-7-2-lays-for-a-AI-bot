@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
+import {diaryPreviousDay,diaryWindow} from '../plugins/qq-components/ctx-memory-store/diary-delivery.mjs';
 
 test('private/group read history survives reconnect, diary completion and bridge-state reload',async()=>{
  const now=Date.now(),keys=['private:123','group:456'];
@@ -16,9 +17,10 @@ test('private/group read history survives reconnect, diary completion and bridge
  try{
   h.setMode('reserved2');verify(h);await h.disconnectMux();verify(h);
   for(const key of keys){
-   const before=Date.parse('2026-11-01T18:29:59+08:00'),after=before+2000;
-   h.pluginHost.callService('memory','updateDiary',{key,day:'2026-11-01',now:before,text:'DIARY_BODY_ONLY'});
-   const delivered=await h.pluginHost.callService('memory','sendDiaryDetailed',{key,day:'2026-11-01',now:after,purpose:'catchup',allowArchiveRetry:true});assert.equal(delivered.ok,true);
+   const settings=config.socialV2.dailyDiary,day=diaryPreviousDay(now,settings);
+   const before=Date.parse(diaryWindow(day,settings).end.replace(' ','T')+':00+08:00')-1000;
+   h.pluginHost.callService('memory','updateDiary',{key,day,now:before,text:'DIARY_BODY_ONLY'});
+   const delivered=await h.pluginHost.callService('memory','sendDiaryDetailed',{key,day,now,purpose:'catchup',allowArchiveRetry:true});assert.equal(delivered.ok,true,JSON.stringify(delivered));
    assert.equal(h.pluginHost.callService('memory','diaryText',{key}),'');
   }
   verify(h);

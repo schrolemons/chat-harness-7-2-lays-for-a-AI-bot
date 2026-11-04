@@ -203,7 +203,7 @@ function agentHeaders(extra = {}) {
  * 长轮询专用 POST（`node:http`，不经过 undici）。
  *
  * 为什么必须单独一条：Node 的全局 `fetch` 是 undici，自带 300 秒 `headersTimeout`。
- * 而 `qq_wait_for_messages` 的常规用法就是 `timeoutMs=300000` 的沉睡前观察 ——
+ * qq_wait_for_messages 可等待用户的下一步行动。
  * 客户端会在第 301 秒以 `fetch failed / Headers Timeout Error` 断掉，桥接侧的
  * 长轮询却还在跑满自己的预算：AI 拿不到结果只能重试，而 `activeWaits` 仍占着会话
  * （重新等待被 429），于是空转烧 token（见 issue #24）。`node:http` 没有默认响应超时，
@@ -607,7 +607,7 @@ server.tool(
 
 server.tool(
   'qq_mark_read',
-  '将指定会话已查看的未读消息标记为已读。双戳回查启用时，此工具只确认 seenAt，不能代替逐条 JSON 回复回执；完成回复后必须调用 qq_report_message_receipts 报 replied，消息才会闭合。throughSeq 使用最近读取结果的 readThroughSeq，避免清除读取后才到达的新消息；双戳关闭时保留旧版收尾语义。每次完成一波实际回复和回执后，用 qq_wait_for_messages 等新互动；无人回复时后台按递增概率结束当前回合，不能以 mark_read 代替等待或绕过已结束状态。',
+  '将指定会话已查看的未读消息标记为已读。双戳回查启用时，此工具只确认 seenAt，不能代替逐条 JSON 回复回执；完成回复后必须调用 qq_report_message_receipts 报 replied，消息才会闭合。throughSeq 使用最近读取结果的 readThroughSeq，避免清除读取后才到达的新消息；双戳关闭时保留旧版收尾语义。完成实际回复和回执后，若对方可能还想聊但暂时没接话，可按需用 qq_wait_for_messages；无人回复时后台按递增概率结束当前回合，不能以 mark_read 代替等待或绕过已结束状态。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -744,7 +744,7 @@ server.tool(
     topicId: z.string().max(120).optional().describe('实际新话题的简短标识，不填秘密或个人信息'),
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    messages: z.union([z.string(), z.array(z.string()).min(1)]).describe('要发送的内容：字符串=一条；数组=分多条'),
+    messages: z.union([z.string(), z.array(z.string()).min(1)]).describe('单条用带双引号的 JSON 字符串，多条用字符串数组。纯文本、链接和 Markdown 都必须写在字符串内；字符串内的双引号和换行按 JSON 转义。'),
     replyToMessageId: z.union([z.number(), z.string()]).optional().describe('要引用/回复的消息 id（非零整数，可为负数，可选）'),
     atUserId: z.union([z.number(), z.string()]).optional().describe('要 @ 的群成员 QQ 号（群聊中用于点名某个人；与引用二选一即可，不要滥用）'),
     gapMode: z.enum(['auto', 'fixed']).optional().describe('auto=本轮计划随机；fixed=请求间隔，仍受本轮计划范围约束'),
@@ -921,10 +921,10 @@ async function callConversationWait({ key, token, purpose, timeoutMs, quietMs })
   } catch (error) { return { content: [{ type: 'text', text: '等待失败：' + (error?.message ?? error) }], isError: true }; }
 }
 server.tool('qq_wait_for_messages',
-  '私聊与群聊共用：每完成一波实际回复并处理回执后，调用本工具等用户新消息，自选 timeoutMs。收到新消息即返回，按需要再调用 qq_wait_for_quiet 等对方说完。没有新消息且超时，由后台按可编辑 p、q 递增概率判定 endRound：true 时后台停止本轮，不能继续等待或追发；false 时再调用一次本工具。新来信重置概率。不能有待处理来信时用本工具拖延回复；旧的固定沉睡前观察已退役。',
+  '私聊与群聊共用。处理完已有来信、实际回复并提交回执后，只有判断对方还想聊但暂时没接话时，才按需等待下一条消息。自选受后台上下限约束的 timeoutMs。有新消息就读取 newMessages，需要等对方说完时另用 qq_wait_for_quiet。到期且没有新消息时，按后台的 endRound、action 和 guidance 行动：endRound=true 时收尾并停止本轮；否则 action=wait 可继续等，action=followup 可延续旧话题，action=newTopic 可开启新话题。话题发送遵守返回的会话意图、话题 ID 与发送限制；有待处理来信时先处理，不自行重抽判定。',
   { key:z.string().describe('private:QQ号 或 group:群号'), token:z.string().describe('当前会话令牌'),
     timeoutMs:z.number().optional().describe('本次等新消息的时长，受后台上下限限制；未指定用后台默认值'),
-    purpose:z.enum(['messages','reply']).optional().describe('兼容旧调用；等新消息用 messages；需要静默时改用 qq_wait_for_quiet'),
+    purpose:z.enum(['messages','reply']).optional().describe('旧调用兼容字段，新调用省略；确认对方是否说完请调用 qq_wait_for_quiet'),
     quietMs:z.number().optional().describe('仅兼容旧 reply 用途；新调用用 qq_wait_for_quiet'),
     minNewMessages:z.number().optional().describe('兼容字段；新消息一到就返回，不要求凑够多条') },
   args=>callConversationWait({...args,purpose:args.purpose||'messages'})
@@ -1326,7 +1326,7 @@ server.tool(
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().min(1).describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    alias: z.string().describe('绰号（如 十二）'),
+    alias: z.string().describe('成员的绰号'),
     qq: z.string().optional().describe('有证据的对应 QQ；不确定可省略或留空，不能默认填发言者'),
     note: z.string().optional().describe('疑似称呼的原话语境与被称呼者线索')
   },

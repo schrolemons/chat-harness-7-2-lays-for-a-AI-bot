@@ -91,3 +91,61 @@ test('quiet interval suppresses automatic notification and stale item never send
 });
 test('automatic notifications obey global pause and legacy muted state',async()=>{const h=await bridgeHarness();try{h.setMode('reserved2');const now=Date.now(),meta={id:'paused',sourceAt:now,expiresAt:now+10000};h.socialV2.paused=true;assert.equal(await h.taskCaps.sendNotification('private:123','DO_NOT_SEND',meta),false);h.socialV2.paused=false;h.getSocialV2State('private:123').mutedUntilReengaged={at:now};assert.equal(await h.taskCaps.sendNotification('private:123','DO_NOT_SEND',meta),false);assert.equal(h.calls.sent.length,0);}finally{await h.close();}});
 test('notification expiring while queued is blocked at real outgoing boundary',async()=>{const h=await bridgeHarness();try{h.setMode('reserved2');let entered,release;const ready=new Promise(r=>entered=r);h.bot.sendPrivateMessage=async(_id,text)=>{if(text==='BLOCK'){entered();await new Promise(r=>release=r);}else h.calls.sent.push({text});};const first=h.sendToQQ('private:123','BLOCK');await ready;const now=Date.now(),pending=h.taskCaps.sendNotification('private:123','EXPIRED_QUEUED_NOTIFICATION',{id:'queued-expiry',sourceAt:now,expiresAt:now+20});await new Promise(r=>setTimeout(r,40));release();await first;assert.equal(await pending,false);assert.equal(h.calls.sent.length,0);}finally{await h.close();}});
+
+test('diary bypasses conversational length and frequency limits and sends its entire saved body',async()=>{
+ const h=await bridgeHarness({config:{socialV2:{dailyDiary:{maxChars:300}}}});try{
+  h.setMode('reserved2');const now=Date.now(),key='private:123',day=h.pluginHost.callService('memory','diaryTargetDay',{now}).day;
+  const diary='第一段'+ '甲'.repeat(315)+'\n第二段'+ '乙'.repeat(315)+'🙂结尾';
+  assert.equal(h.pluginHost.callService('memory','updateDiary',{key,day,now,text:diary}).ok,true);
+  const call=h.pluginHost.callService.bind(h.pluginHost);
+  h.pluginHost.callService=(service,method,payload)=>service==='replyPlan'&&method==='remaining'?0:call(service,method,payload);
+  assert.equal(await h.sendToQQ(key,'ordinary blocked'),false);
+  const result=await call('memory','sendDiaryDetailed',{key,now,day,manualRequestId:'quota-exempt-test'});
+  assert.equal(result.ok,true,JSON.stringify(result));
+  assert(h.calls.sent.length>1);
+  assert(h.calls.sent.map(item=>item.text).join('').endsWith(diary));
+  assert.equal(h.taskCaps.deliveryStatus(result.deliveryId).status,'sent');
+ }finally{await h.close();}
+});
+test('a partial diary transport is audited with progress and cannot be marked sent or retried',async()=>{
+ const h=await bridgeHarness({config:{socialV2:{dailyDiary:{maxChars:300}}}});try{
+  h.setMode('reserved2');const now=Date.now(),key='private:123',day=h.pluginHost.callService('memory','diaryTargetDay',{now}).day;
+  const diary='正文'+ '甲'.repeat(700),manualRequestId='partial-transport';
+  assert.equal(h.pluginHost.callService('memory','updateDiary',{key,day,now,text:diary}).ok,true);
+  let count=0;h.bot.sendPrivateMessage=async()=>{if(++count>1)return {status:'failed',retcode:1,wording:'fixture error contains NO_AUDIT_SECRET'};};
+  const input={key,now,day,manualRequestId};
+  const outcome=await h.pluginHost.callService('memory','sendDiaryDetailed',input);
+  assert.equal(outcome.ok,false);assert.equal(outcome.reason,'send_unconfirmed');
+  assert.equal(count,2,'stop after first uncertain part');
+  await h.pluginHost.reload('ctx-memory-store');
+  const status=await h.pluginHost.callService('memory','diaryStatus',{key,day,now});
+  assert.equal(status.deliveryStatus,'uncertain');
+  assert.equal(status.attempts[0].reason,'send_unconfirmed');
+  assert.equal(status.attempts[0].partsSent,1);
+  assert(status.attempts[0].partsTotal>1);
+  assert.doesNotMatch(JSON.stringify(status.attempts),/NO_AUDIT_SECRET|甲/);
+  assert.equal((await h.pluginHost.callService('memory','sendDiaryDetailed',input)).reason,'delivery_unconfirmed');
+  assert.equal(count,2);
+ }finally{await h.close();}
+});
+
+test('owner worklog route delivers whole summary entries with a single relative archive hint',async()=>{
+ const now=Date.now(),long='工作总结条目。'.repeat(35),tasks=Object.fromEntries([1,2,3].map(i=>['task'+i,{id:'task'+i,title:'检查回执'+i,status:'done',createdAt:now+i,updatedAt:now+i,result:long}]));
+ const h=await bridgeHarness({files:{'state/tasks.json':{tasks}}});let server;
+ try{
+  h.setMode('reserved2');
+  const call=h.pluginHost.callService.bind(h.pluginHost);
+  h.pluginHost.callService=(service,method,payload)=>service==='replyPlan'&&method==='remaining'?0:call(service,method,payload);
+  server=h.startConsoleServer();if(!server.listening)await new Promise(resolve=>server.once('listening',resolve));
+  const response=await fetch('http://127.0.0.1:'+server.address().port+'/api/socialV2/worklog/generate-send?token=fixture-console-token',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+  const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));assert(result.generated&&result.sent);
+  assert(h.calls.sent.length>=2);
+  assert(h.calls.sent.every(item=>item.kind==='private'&&item.id===123&&item.text.length<=500));
+  assert(h.calls.sent.slice(0,-1).every(item=>item.text.endsWith('\n')));
+  const whole=h.calls.sent.map(item=>item.text).join('');
+  assert.match(whole,/【任务1】检查回执1/);assert.match(whole,/【任务2】检查回执2/);
+  assert.equal((whole.match(/完整记录：/g)||[]).length,1);
+  assert.match(whole,/完整记录：state\/memory\/worklog\/\d{4}-\d{2}-\d{2}\.md$/);
+  assert.doesNotMatch(whole,/[a-z]:\\|fixture-console-token/i);
+ }finally{server?.closeAllConnections?.();if(server?.listening)await new Promise(resolve=>server.close(resolve));await h.close();}
+});

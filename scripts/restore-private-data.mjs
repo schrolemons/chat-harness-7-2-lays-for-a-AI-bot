@@ -20,7 +20,7 @@ export function restorePrivateData(root,{dshHome=process.env.DSH_HOME||path.join
   }else if(kind==='dsh-attachment'){
    if(!/^dsh\/attachments\/v1\/objects\/[a-f0-9]{2}\/[a-f0-9]{64}$/.test(item.path))throw Error('Unsafe attachment path');destination=inside(dshHome,item.path.slice(4));output=bytes;
   }else{
-   if(!/^(?:config\.json|campus-watch\.json|browser-sites\.json|state\/)/.test(item.path))throw Error('Unknown business data path');destination=inside(root,item.path);
+   if(!/^(?:config\.json|browser-sites\.json|state\/)/.test(item.path))throw Error('Unknown business data path');destination=inside(root,item.path);
    let current;if(fs.existsSync(destination)&&item.path.endsWith('.json'))current=JSON.parse(fs.readFileSync(destination,'utf8'));
    if(item.path.endsWith('.json'))output=Buffer.from(JSON.stringify(hydrate(JSON.parse(bytes),current),null,2)+'\n');
    else if(item.path.endsWith('.jsonl'))output=Buffer.from(bytes.toString('utf8').split('\n').filter(l=>l.trim()).map(l=>JSON.stringify(hydrate(JSON.parse(l)))).join('\n')+'\n');

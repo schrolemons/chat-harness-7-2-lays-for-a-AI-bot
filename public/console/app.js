@@ -1474,7 +1474,7 @@
     const stages = data.requestStages || data.request?.requestStages || [{ kind: "initial", label: "本轮初始请求", request: null }, { kind: "previous", label: "上一次请求", request: null }, { kind: "current", label: "当前请求（旧记录）", request: data.request }];
     const options = requestStageOptions(stages), selected3 = options.find((option) => option.aliases.includes(selectedRequestId)) || options.find((option) => option.kind === "current") || options.at(-1);
     selectedRequestId = selected3?.kind || "";
-    const request = selected3?.request, preview2 = data.preview;
+    const request = selected3?.request, preview = data.preview;
     $("contextRequestPicker").hidden = !actual;
     $("contextRequestSelect").replaceChildren(...options.length ? options.map((option) => new Option(option.label, option.kind)) : [new Option("尚无模型调用记录", "")]);
     $("contextRequestSelect").value = selectedRequestId;
@@ -1493,13 +1493,13 @@
       renderInspector();
       return;
     }
-    if (!preview2) {
+    if (!preview) {
       $("contextMetrics").textContent = "这个会话还没有可预览的记录。下一次正常聊天或定时冒泡后会自动记录，再点“刷新已有记录”查看。";
       $("contextModules").replaceChildren();
       return;
     }
-    $("contextMetrics").innerHTML = metric("采集场景", sceneName(data.capture.scene)) + metric("全部组件原文", preview2.beforeChars + " 字符") + metric("当前设置保留", preview2.afterChars + " 字符 / 约 " + Math.ceil(preview2.afterChars / 2) + " token") + '<p class="context-metrics-note">采集于 ' + esc(new Date(data.capture.at).toLocaleString()) + " · 资料统计按当前策略，正文保留采集时内容。</p>";
-    const groups = visualGroups(preview2.modules, data.catalog || preview2.modules);
+    $("contextMetrics").innerHTML = metric("采集场景", sceneName(data.capture.scene)) + metric("全部组件原文", preview.beforeChars + " 字符") + metric("当前设置保留", preview.afterChars + " 字符 / 约 " + Math.ceil(preview.afterChars / 2) + " token") + '<p class="context-metrics-note">采集于 ' + esc(new Date(data.capture.at).toLocaleString()) + " · 资料统计按当前策略，正文保留采集时内容。</p>";
+    const groups = visualGroups(preview.modules, data.catalog || preview.modules);
     $("contextModules").innerHTML = contextLayerGuide() + groups.map((group) => section(group.id, group.name, '<p class="context-section-note">' + esc(group.description) + "</p>" + group.rows.map((m) => card(m, true)).join(""))).join("");
   }
   function renderInspector({ keepPosition = false, keepSearch = false } = {}) {
@@ -2130,9 +2130,9 @@
   var simPromptOriginal;
   var simPromptPreset;
   function setSimMsg(text, ok) {
-    const el4 = document.getElementById("simPromptMsg");
-    el4.textContent = text;
-    el4.className = ok === void 0 ? "meta" : ok ? "meta ok" : "meta err";
+    const el3 = document.getElementById("simPromptMsg");
+    el3.textContent = text;
+    el3.className = ok === void 0 ? "meta" : ok ? "meta ok" : "meta err";
   }
   function setSimEditing(editing) {
     const area = document.getElementById("simPromptText");
@@ -2203,12 +2203,12 @@
     return Math.round(n / 864e5) + " 天";
   }
   function renderSnowlumaHealth(sl) {
-    const el4 = document.getElementById("snowlumaWarn");
+    const el3 = document.getElementById("snowlumaWarn");
     const strong = document.getElementById("metricSnowluma");
     const hint = document.getElementById("metricSnowlumaHint");
-    if (!el4 || !strong || !hint) return;
+    if (!el3 || !strong || !hint) return;
     if (!sl || typeof sl !== "object") {
-      el4.style.display = "none";
+      el3.style.display = "none";
       strong.textContent = "未知";
       strong.className = "";
       hint.textContent = "桥接未上报上游健康（旧版桥接）";
@@ -2233,13 +2233,13 @@
       hint.textContent = (receiving ? "最近一份上游事件包在 " + fmtAgoMs(ago) + "前 · " : "") + (sl.good === false ? "good=false" : sl.good === true ? "good=true" : "good 未上报");
     }
     if (!degraded) {
-      el4.style.display = "none";
+      el3.style.display = "none";
       return;
     }
     document.getElementById("snowlumaWarnHint").textContent = sl.hint || "桥接与 QQ 网关的 WebSocket 连着，但一直收不到 QQ 侧的数据。";
     document.getElementById("snowlumaWarnPkt").textContent = (receiving ? fmtAgoMs(ago) + "前" : "从未收到") + (sl.lastPacketKind ? "（" + sl.lastPacketKind + "）" : "");
     document.getElementById("snowlumaWarnGood").textContent = goodText;
-    el4.style.display = "";
+    el3.style.display = "";
   }
   async function refresh2() {
     try {
@@ -2282,9 +2282,9 @@
   var roleCache;
   var roleInjectMax;
   function setRoleMsg(text, ok) {
-    const el4 = document.getElementById("roleCreateMsg");
-    el4.textContent = text;
-    el4.className = ok === void 0 ? "meta" : ok ? "meta ok" : "meta err";
+    const el3 = document.getElementById("roleCreateMsg");
+    el3.textContent = text;
+    el3.className = ok === void 0 ? "meta" : ok ? "meta ok" : "meta err";
   }
   function renderRoleEditor() {
     const editing = roleEditorState.mode === "edit";
@@ -2523,9 +2523,9 @@
   async function refreshV2Activity() {
     try {
       const r = await api("/api/socialV2/activity");
-      const el4 = document.getElementById("v2ActivityStatus");
-      el4.textContent = r.paused ? "二代 bot：已暂停" : "二代 bot：运行中";
-      el4.className = r.paused ? "meta err" : "meta ok";
+      const el3 = document.getElementById("v2ActivityStatus");
+      el3.textContent = r.paused ? "二代 bot：已暂停" : "二代 bot：运行中";
+      el3.className = r.paused ? "meta err" : "meta ok";
     } catch {
     }
   }
@@ -2733,13 +2733,13 @@
   }
   function updateSlangSelectAll(status) {
     const id = status === "candidate" ? "slangCandidateSelectAll" : status === "confirmed" ? "slangConfirmedSelectAll" : "slangRejectedSelectAll";
-    const el4 = document.getElementById(id);
-    if (!el4) return;
+    const el3 = document.getElementById(id);
+    if (!el3) return;
     const list = slangEntriesCache.filter((e) => e.status === status);
     const q = getSlangSearch();
     const filtered = q ? list.filter((e) => slangSearchFields(e).includes(q)) : list;
-    el4.checked = filtered.length > 0 && filtered.every((e) => slangSelected.has(e.id));
-    el4.indeterminate = filtered.some((e) => slangSelected.has(e.id)) && !el4.checked;
+    el3.checked = filtered.length > 0 && filtered.every((e) => slangSelected.has(e.id));
+    el3.indeterminate = filtered.some((e) => slangSelected.has(e.id)) && !el3.checked;
   }
   function renderSlangPanel() {
     const status = slangActiveTab;
@@ -2761,7 +2761,7 @@
     for (const e of shown) {
       const researchLabel = status === "candidate" ? Number(e.lastInferenceCount) > 0 ? Number(e.lastInferenceCount) < Number(e.count) ? "有新语境，待复核" : e.meaning ? "已研究，待审核" : "已研究，仍不确定" : e.meaning ? "已有解释，待审核" : String(e.risk || "").startsWith("研究未确定：") ? "已研究，仍不确定" : "待研究" : "";
       const meaning = e.meaning ? esc(e.meaning) + (status === "candidate" ? '<br><span class="meta">' + researchLabel + "</span>" : "") : status === "candidate" ? '<span class="meta">' + researchLabel + "</span>" : '<span class="meta">无</span>';
-      const checked2 = slangSelected.has(e.id) ? " checked" : "";
+      const checked = slangSelected.has(e.id) ? " checked" : "";
       const actions = [];
       if (status === "candidate") {
         actions.push(`<button class="small" data-slang-edit="${esc(e.id)}">查看 / 编辑</button>`);
@@ -2775,7 +2775,7 @@
         actions.push(`<button class="small danger" data-slang-del="${esc(e.id)}">删除</button>`);
       }
       html += `<tr>
-      <td><input type="checkbox" data-slang-select="${esc(e.id)}"${checked2}></td>
+      <td><input type="checkbox" data-slang-select="${esc(e.id)}"${checked}></td>
       <td><b>${esc(e.content)}</b><br><span class="${slangStatusClass(status)}">${slangStatusLabel(status)}</span></td>
       <td>${esc(e.count)}</td>
       <td>${esc(slangSourceLabel(e))}<br>${sourceKeysMarkup(e)}</td>
@@ -3406,10 +3406,10 @@
     try {
       const catalog = await api("/api/tools/catalog");
       if (!catalog.ok) throw Error(catalog.error || "注册表读取失败");
-      const visible = catalog.tools.filter((tool) => tool.audience === "qq" && tool.registered && tool.botInjectedSessions > 0);
-      const pending = catalog.tools.filter((tool) => tool.audience === "qq" && (!tool.registered || !tool.botInjectedSessions));
+      const visible = catalog.tools.filter((tool) => tool.audience === "qq" && tool.registered);
+      const pending = catalog.tools.filter((tool) => tool.audience === "qq" && !tool.registered);
       const admin = catalog.tools.filter((tool) => tool.audience === "admin");
-      root.innerHTML = toolRows(visible) || '<p class="meta">尚无真实请求的注入证据。</p>';
+      root.innerHTML = toolRows(visible) || '<p class="meta">尚无已核验的聊天工具注册。</p>';
       document.getElementById("toolPendingRoot").innerHTML = toolRows(pending) || '<p class="meta">无待注入工具。</p>';
       document.getElementById("toolAdminRoot").innerHTML = toolRows(admin);
       root.dataset.loaded = "1";
@@ -3507,7 +3507,7 @@
     });
     primaryActions = ["roleSet", "roleCreate", "socialSave", "v2ConfigSaveTop", "wlSave", "secInterceptNotifySave", "secInterceptTextSave", "consoleTokenSave", "tsSend", "aiNotifySend", "slangAdd", "slangConfigSave", "slangModalDirectConfirm"];
     primaryActions.forEach((id) => document.getElementById(id)?.classList.add("primary"));
-    document.querySelectorAll('.meta[id$="Msg"], .meta[id$="Msg2"]').forEach((el4) => el4.setAttribute("role", "status"));
+    document.querySelectorAll('.meta[id$="Msg"], .meta[id$="Msg2"]').forEach((el3) => el3.setAttribute("role", "status"));
     document.getElementById("section-mode").querySelector("h2").dataset.note = "选择后即时生效";
     document.getElementById("section-activity").querySelector("h2").dataset.note = "每 3 秒自动同步";
     searchInput = document.getElementById("consoleSearch");
@@ -3516,9 +3516,9 @@
     document.querySelectorAll("section[data-page]").forEach((section2) => {
       const page = section2.dataset.page;
       featureIndex.push({ page, label: section2.querySelector("h2")?.textContent || "", target: section2 });
-      section2.querySelectorAll("details.settings-group>summary,input,textarea,select").forEach((el4) => {
-        let label2 = el4.tagName === "SUMMARY" ? el4.textContent : el4.getAttribute("aria-label") || el4.labels?.[0]?.textContent || el4.placeholder;
-        if (label2) featureIndex.push({ page, label: label2.trim(), target: el4 });
+      section2.querySelectorAll("details.settings-group>summary,input,textarea,select").forEach((el3) => {
+        let label2 = el3.tagName === "SUMMARY" ? el3.textContent : el3.getAttribute("aria-label") || el3.labels?.[0]?.textContent || el3.placeholder;
+        if (label2) featureIndex.push({ page, label: label2.trim(), target: el3 });
       });
     });
     const renderSearch = () => {
@@ -3612,7 +3612,7 @@
         closeSlangModal();
       }
       if (event.key === "Tab") {
-        const controls = [...slangOverlay.querySelectorAll("button,input,textarea,select")].filter((el4) => !el4.disabled && el4.getClientRects().length);
+        const controls = [...slangOverlay.querySelectorAll("button,input,textarea,select")].filter((el3) => !el3.disabled && el3.getClientRects().length);
         const first = controls[0], last = controls.at(-1);
         if (event.shiftKey && document.activeElement === first) {
           event.preventDefault();
@@ -3655,8 +3655,8 @@
   function setConsolePage(page, { updateHash = true, focus = false, target = "" } = {}) {
     if (!Object.hasOwn(consolePages, page)) page = "overview";
     currentConsolePage = page;
-    document.querySelectorAll("[data-page]").forEach((el4) => {
-      el4.hidden = el4.dataset.page !== page;
+    document.querySelectorAll("[data-page]").forEach((el3) => {
+      el3.hidden = el3.dataset.page !== page;
     });
     document.querySelectorAll("#mainNav [data-view]").forEach((button) => {
       const selected3 = button.dataset.view === page;
@@ -5182,134 +5182,6 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     });
   }
 
-  // console/layers/L/proactive-examples.js
-  function createProactiveExamples(now = Date.now()) {
-    const today = new Date(now);
-    if (!Number.isFinite(today.getTime())) throw Error("示例日期无效");
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    const sunday = new Date(today);
-    sunday.setDate(today.getDate() + (7 - today.getDay()) % 7);
-    sunday.setHours(20, 30, 0, 0);
-    if (sunday.getTime() - 10 * 6e4 <= now) sunday.setDate(sunday.getDate() + 7);
-    return [
-      {
-        id: "daily-bubbles",
-        kind: "bubbles",
-        title: "时间冒泡 / 定时主动会话",
-        description: "每天 09:00、12:30、20:30；建议每日上限 3。到点由模型按当前人设自然开口，参考话题不直接照发。",
-        slots: [
-          { id: "example-daily-morning-v1", hour: 9, minute: 0, label: "示例·晨间计划", hint: "轻声问问今天想先做什么，不假定对方已经起床。", enabled: true, locked: false },
-          { id: "example-daily-noon-v1", hour: 12, minute: 30, label: "示例·午间休息", hint: "聊聊是否需要休息，不假定对方的饮食或作息。", enabled: true, locked: false },
-          { id: "example-daily-evening-v1", hour: 20, minute: 30, label: "示例·晚间回顾", hint: "邀请分享今天的一件小事，尊重对方现在是否方便。", enabled: true, locked: false }
-        ]
-      },
-      {
-        id: "tomorrow-reminder",
-        kind: "schedule",
-        title: "明日待办提醒",
-        description: "明天 09:00「示例：整理今日计划」；提前 10 分钟开始，每 30 分钟提醒；一次性，明确完成后停止。",
-        item: { title: "示例：整理今日计划", dueAt: tomorrow.getTime(), repeat: "none", leadMinutes: 10, intervalMinutes: 30, detail: "开发者示例 [example:tomorrow-reminder:v1]，可按实际需要编辑或删除。" }
-      },
-      {
-        id: "weekly-review",
-        kind: "schedule",
-        title: "每周回顾",
-        description: "下一个尚未开始提醒的周日 20:30「示例：每周回顾」；每周重复，提前 10 分钟，每 30 分钟提醒；完成本次后进入下周。",
-        item: { title: "示例：每周回顾", dueAt: sunday.getTime(), repeat: "weekly", leadMinutes: 10, intervalMinutes: 30, detail: "开发者示例 [example:weekly-review:v1]，回顾一件进展并选择下一步。" }
-      }
-    ];
-  }
-  function checked(response) {
-    if (!response || response.ok === false) throw Error(response?.error || "读取或保存示例失败");
-    return response;
-  }
-  async function applyProactiveExample({ templateId, key: key2, optIn, now = Date.now(), api: api2 }) {
-    if (optIn !== true) throw Error("请先明确同意为选中会话启用示例");
-    if (!/^(private|group):\d+$/.test(key2 || "")) throw Error("请明确选择真实会话");
-    const template = createProactiveExamples(now).find((x) => x.id === templateId);
-    if (!template) throw Error("未知示例");
-    const states2 = checked(await api2("/api/socialV2/states"));
-    if (!states2.conversations?.some((x) => x.key === key2)) throw Error("会话已不存在，请刷新并重新选择");
-    if (template.kind === "bubbles") {
-      const result2 = await api2("/api/socialV2/time-bubbles", "POST", { key: key2, appendSlots: template.slots });
-      if (result2?.error === "LOCKED_SCHEDULE") throw Error("此会话冒泡栏已锁定（LOCKED_SCHEDULE），请先在时段编辑器解锁");
-      if (result2?.error === "TIME_BUBBLE_CAPACITY") throw Error(`新增时段会超过每日上限 ${result2.limit ?? ""}；请先在时段编辑器调整。`);
-      checked(result2);
-      return { added: result2.added, slots: result2.addedSlots };
-    }
-    const result = await api2("/api/socialV2/schedules", "POST", { action: "appendIfAbsent", exampleId: template.id + ":v1", key: key2, ...template.item });
-    if (result?.error === "SCHEDULE_CAPACITY") throw Error(`日程已达到容量上限 ${result.limit ?? ""}；请先整理现有日程，示例未添加。`);
-    checked(result);
-    return { added: result.added };
-  }
-
-  // console/layers/L/proactive-examples-ui.js
-  var previewAt = 0;
-  var busy = false;
-  var el3 = (id) => document.getElementById(id);
-  function sync() {
-    el3("v2ExampleApply").disabled = busy || !el3("v2ExampleKey").value || !el3("v2ExampleConsent").checked;
-    for (const id of ["v2ExampleKey", "v2ExampleTemplate", "v2ExampleConsent"]) el3(id).disabled = busy;
-  }
-  function preview() {
-    previewAt = Date.now();
-    const template = createProactiveExamples(previewAt).find((x) => x.id === el3("v2ExampleTemplate").value);
-    el3("v2ExamplePreview").textContent = template.description + (template.item ? "\n本次首次发生：" + new Date(template.item.dueAt).toLocaleString("zh-CN", { hour12: false }) + "（浏览器本地时间；保存绝对时间）" : "\n保存后从下一个有效时段开始，每天重复；已错过时段不补发。");
-    el3("v2ExampleConsent").checked = false;
-    sync();
-  }
-  function updateExampleConversations(conversations) {
-    const select = el3("v2ExampleKey");
-    if (!select) return;
-    const previous = select.value;
-    select.replaceChildren(new Option("请选择要启用示例的真实会话", ""));
-    for (const conversation of conversations) {
-      if (/^(private|group):\d+$/.test(conversation.key || "")) select.add(new Option(conversation.key, conversation.key));
-    }
-    if ([...select.options].some((option) => option.value === previous)) select.value = previous;
-    if (select.value !== previous) el3("v2ExampleConsent").checked = false;
-    sync();
-  }
-  function initializeProactiveExamples(onApplied) {
-    const select = el3("v2ExampleTemplate");
-    if (!select) return;
-    for (const template of createProactiveExamples()) select.add(new Option(template.title, template.id));
-    preview();
-    select.addEventListener("change", preview);
-    el3("v2ExampleKey").addEventListener("change", () => {
-      el3("v2ExampleConsent").checked = false;
-      sync();
-    });
-    el3("v2ExampleConsent").addEventListener("change", sync);
-    el3("v2ExampleApply").addEventListener("click", async () => {
-      if (busy) return;
-      const key2 = el3("v2ExampleKey").value;
-      const templateId = select.value;
-      const optIn = el3("v2ExampleConsent").checked;
-      const template = createProactiveExamples(previewAt).find((x) => x.id === templateId);
-      if (new Date(previewAt).toDateString() !== (/* @__PURE__ */ new Date()).toDateString() || template?.item && template.item.dueAt - template.item.leadMinutes * 6e4 <= Date.now()) {
-        preview();
-        el3("v2ExampleMsg").textContent = "日期或提醒窗口已变化，已刷新预览；请重新确认。";
-        return;
-      }
-      busy = true;
-      sync();
-      try {
-        const result = await applyProactiveExample({ templateId, key: key2, optIn, now: previewAt, api });
-        el3("v2ExampleMsg").textContent = result.added ? `已添加 ${result.added} 项到 ${key2}；可在下方编辑或删除。到点是否发送仍遵守现有组件与会话规则。` : "示例已存在；保留现有内容、修改和锁定状态。";
-        el3("v2ExampleConsent").checked = false;
-        await onApplied?.({ key: key2, template, result });
-      } catch (error) {
-        el3("v2ExampleMsg").textContent = "添加失败：" + error.message;
-      } finally {
-        busy = false;
-        sync();
-      }
-    });
-  }
-
   // console/layers/L/schedule.js
   async function refreshV2Schedule({ preserveDrafts = false } = {}) {
     const msg = document.getElementById("v2ScheduleMsg");
@@ -5322,14 +5194,13 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         api("/api/socialV2/schedules", "POST", { action: "list" })
       ]);
       const convs = r.conversations || [];
-      updateExampleConversations(convs);
       const schMap = /* @__PURE__ */ new Map();
       for (const c of sch && sch.conversations || []) schMap.set(c.key, c);
-      const fillKeys = (el4) => {
-        if (!el4) return;
-        const prev = el4.value;
-        el4.innerHTML = convs.length ? convs.map((c) => '<option value="' + esc(c.key) + '">' + esc(c.key) + "</option>").join("") : '<option value="">（暂无会话）</option>';
-        if (prev && convs.some((c) => c.key === prev)) el4.value = prev;
+      const fillKeys = (el3) => {
+        if (!el3) return;
+        const prev = el3.value;
+        el3.innerHTML = convs.length ? convs.map((c) => '<option value="' + esc(c.key) + '">' + esc(c.key) + "</option>").join("") : '<option value="">（暂无会话）</option>';
+        if (prev && convs.some((c) => c.key === prev)) el3.value = prev;
       };
       const bubbleKey = document.getElementById("v2TbKey");
       const previousBubbleKey = bubbleKey?.value;
@@ -5440,10 +5311,6 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     }
   }
   function initialize29() {
-    initializeProactiveExamples(async ({ key: key2, template, result }) => {
-      if (template.kind === "bubbles") appendExampleTimeBubbleRows(key2, result.slots);
-      await refreshV2Schedule({ preserveDrafts: true });
-    });
     document.getElementById("v2ScheduleRefresh").addEventListener("click", refreshV2Schedule);
     document.getElementById("v2ReminderAdd").addEventListener("click", async () => {
       const key2 = document.getElementById("v2ReminderKey").value;
@@ -5525,8 +5392,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     const allLocked = !ready || document.getElementById("v2TbAllLocked")?.checked === true;
     document.querySelectorAll("#v2TimeBubbleRows [data-tb-row]").forEach((row) => {
       const rowLocked = row.querySelector('[data-tb="locked"]')?.checked === true;
-      row.querySelectorAll('[data-tb]:not([data-tb="locked"]),[data-tb-del]').forEach((el4) => {
-        el4.disabled = allLocked || rowLocked;
+      row.querySelectorAll('[data-tb]:not([data-tb="locked"]),[data-tb-del]').forEach((el3) => {
+        el3.disabled = allLocked || rowLocked;
       });
       row.querySelector('[data-tb="locked"]').disabled = allLocked;
     });
@@ -5581,20 +5448,9 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       hint: row.querySelector('[data-tb="hint"]').value.trim().slice(0, 120)
     }));
   }
-  function appendExampleTimeBubbleRows(key2, slots = []) {
-    if (!timeBubbleEditorReady(key2)) return;
-    const box = document.getElementById("v2TimeBubbleRows");
-    const current = collectV2TimeBubbles();
-    for (const slot of slots) {
-      if (current.some((row) => row.id === slot.id || row.hour === slot.hour && row.minute === slot.minute)) continue;
-      box.appendChild(buildV2TimeBubbleRow(slot));
-      current.push(slot);
-    }
-    applyV2TimeBubbleLocks();
-  }
   function setV2TbMsg(text) {
-    const el4 = document.getElementById("v2TbMsg");
-    if (el4) el4.textContent = text || "";
+    const el3 = document.getElementById("v2TbMsg");
+    if (el3) el3.textContent = text || "";
   }
   async function loadV2TimeBubblesFor(key2) {
     const version = ++timeBubbleLoadVersion;
@@ -5772,8 +5628,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
 
   // console/layers/C/persistent-memory.js
   function setV2PmMsg(text) {
-    const el4 = document.getElementById("v2PmMsg");
-    if (el4) el4.textContent = text || "";
+    const el3 = document.getElementById("v2PmMsg");
+    if (el3) el3.textContent = text || "";
   }
   async function loadV2PersistentMemory(key2) {
     const ta = document.getElementById("v2PmContent");
@@ -5853,6 +5709,36 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     return diaryWindow(day, config)?.label || "时间窗未知";
   }
   var sentTime = (value2) => new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(Number(value2)) + "（北京时间）";
+  var attemptKinds = { manual: "手动刷新", scheduled: "定时投递", catchup: "补发", on_demand: "点播" };
+  var attemptReasons = {
+    quiet: "会话处于免打扰时段",
+    legacy_muted: "会话当前静音",
+    paused: "二代会话已暂停",
+    transport: "QQ 网关尚未就绪",
+    expired: "排队期间已超过投递时限",
+    send_guard_blocked: "发送权限或会话状态发生变化",
+    send_unconfirmed: "QQ 网关未确认全部分段，请先核对会话",
+    delivery_unconfirmed: "中央回执尚未确认，请先核对 QQ 会话",
+    receipt_finalize_failed: "回执写入失败，请先核对 QQ 会话",
+    receipt_unavailable: "中央回执不可用，稍后查询",
+    receipt_ledger_busy: "回执账本忙，稍后查询",
+    receipt_ledger_invalid: "回执账本无法读取，请检查桥接日志",
+    receipt_ledger_unavailable: "回执账本不可用，请检查桥接日志",
+    session_not_allowed: "会话不在当前白名单",
+    refresh_failed: "记忆刷新失败，请检查桥接日志",
+    refresh_empty: "记忆刷新未返回可保存正文",
+    refresh_expired: "记忆刷新超时，可重新请求",
+    delivery_not_started: "投递未开始，可重新请求",
+    missing_diary: "当前窗口没有可发送的日记正文",
+    sensitive_content: "正文触发出站内容保护，请核对日记",
+    memory_plugin_unavailable: "日记组件未启用",
+    report_plugin_unavailable: "日记组件未启用"
+  };
+  function diaryAttemptLabel(attempt) {
+    const detail = attemptReasons[attempt.reason] || attempt.reason || (attempt.stage === "refreshing" ? "刷新记忆中" : attempt.stage === "sending" ? "等待 QQ 确认" : attempt.receiptStatus === "sent" ? "已确认发送" : "回执未确认");
+    const parts = attempt.partsTotal > 0 ? " · 分段 " + attempt.partsSent + "/" + attempt.partsTotal : "";
+    return [attempt.day, attemptKinds[attempt.kind] || "投递", sentTime(attempt.updatedAt), detail + parts].join(" · ");
+  }
   async function refreshV2Diary() {
     const listEl = document.getElementById("v2DdList");
     const msg = document.getElementById("v2DdMsg");
@@ -5885,8 +5771,9 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         const confirmed = c.deliveryStatus === "sent" && c.targetSent === true && Number(c.sentAt) > 0;
         const deliveryStatus = c.deliveryStatus === "sent" && !confirmed ? "legacy_unconfirmed" : c.deliveryStatus;
         const alreadySent = confirmed;
-        const unresolved = ["claimed", "uncertain", "unavailable", "legacy_unconfirmed"].includes(deliveryStatus);
-        const blocked = c.diaryPending || ["claimed", "unavailable"].includes(deliveryStatus);
+        const needsVerification = ["uncertain", "legacy_unconfirmed"].includes(deliveryStatus) || (c.attempts || []).some((attempt) => attempt.receiptStatus === "uncertain");
+        const unresolved = needsVerification || ["claimed", "unavailable"].includes(deliveryStatus);
+        const blocked = c.diaryPending || ["claimed", "unavailable"].includes(deliveryStatus) || (c.attempts || []).some((attempt) => attempt.receiptStatus === "claimed");
         const blockReason = !c.hasDiary ? "目标日期没有日记内容" : unresolved ? "发送凭据尚未确认，请先检查 QQ 会话和记录" : "";
         const previousUnknown = ["claimed", "uncertain", "unavailable"].includes(c.previousDiaryStatus);
         const statusLabel = c.previousDiaryMissing ? previousUnknown ? "昨日日记发送未确认" : "昨日日记未发送" : c.diaryPending ? "刷新或发送处理中" : "当前窗口进行中";
@@ -5897,7 +5784,9 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         const sendDateLabel = confirmedAt ? "最近确认发送：" + sentTime(confirmedAt) + " · 所属日记：" + confirmedDay : c.lastDiaryDate ? "旧日期记录：" + last + "（没有确认回执，不代表已发送）" : "尚无确认发送记录";
         const windowLabel2 = c.windowStart && c.windowEnd ? c.windowStart + " 至 " + c.windowEnd : diaryWindowForDay(c.targetDate, r.config);
         const scheduledLabel = c.previousDiaryMissing ? "上一窗口：" + c.previousDay + " 日记 · " + (c.previousDiaryAvailable ? "可直接补发已有正文，不调用模型" : "暂无可补发正文") : c.previousSentAt ? "上一窗口已发送：" + sentTime(c.previousSentAt) : "手动发送不抵扣本窗口结束时的定时发送";
-        return '<article class="diary-session-card" title="' + esc(title) + '"><div class="diary-session-head"><b class="diary-session-key">' + esc(c.key) + '</b><span class="diary-session-state ' + statusClass + '">' + esc(statusLabel) + '</span></div><div class="diary-session-window">' + esc(c.targetDate || "目标日期") + " 日记时间窗 · " + esc(windowLabel2) + '</div><div class="diary-session-detail">' + esc(state) + " · " + esc(sendDateLabel) + '</div><div class="diary-session-detail">' + esc(scheduledLabel) + '</div><div class="diary-session-actions"><button class="small" title="重新总结并发送此窗口日记；窗口分界读取已配置的时、分" ' + (blocked ? "disabled" : "") + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-day="' + esc(c.targetDate || "") + '" data-dd-confirm="' + (["legacy_unconfirmed", "uncertain"].includes(deliveryStatus) ? "1" : "0") + '" data-dd-action="sendNow">刷新并发送 ' + esc(c.targetDate || "当前窗口") + ' 日记</button><button class="small" title="只补发当前窗口之前的归档日记；旧日期记录需先核对QQ" ' + (c.diaryPending || !catchUpAvailable ? "disabled" : "") + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-action="catchUpAll">补发未发送日记</button></div></article>';
+        const attempts = [...c.attempts || [], ...c.previousAttempts || []];
+        const audit = attempts.length ? '<details class="diary-session-detail"><summary>投递记录（' + attempts.length + "）</summary>" + attempts.map((attempt) => '<div title="' + esc(attempt.id) + '">' + esc(diaryAttemptLabel(attempt)) + "</div>").join("") + "</details>" : "";
+        return '<article class="diary-session-card" title="' + esc(title) + '"><div class="diary-session-head"><b class="diary-session-key">' + esc(c.key) + '</b><span class="diary-session-state ' + statusClass + '">' + esc(statusLabel) + '</span></div><div class="diary-session-window">' + esc(c.targetDate || "目标日期") + " 日记时间窗 · " + esc(windowLabel2) + '</div><div class="diary-session-detail">' + esc(state) + " · " + esc(sendDateLabel) + '</div><div class="diary-session-detail">' + esc(scheduledLabel) + "</div>" + audit + '<div class="diary-session-actions"><button class="small" title="重新总结并发送此窗口日记；窗口分界读取已配置的时、分" ' + (blocked ? "disabled" : "") + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-day="' + esc(c.targetDate || "") + '" data-dd-confirm="' + (needsVerification ? "1" : "0") + '" data-dd-action="sendNow">刷新并发送 ' + esc(c.targetDate || "当前窗口") + ' 日记</button><button class="small" title="只补发当前窗口之前的归档日记；旧日期记录需先核对QQ" ' + (c.diaryPending || !catchUpAvailable ? "disabled" : "") + ' data-dd-key="' + encodeURIComponent(c.key) + '" data-dd-action="catchUpAll">补发未发送日记</button></div></article>';
       });
       if (catchUpButton) catchUpButton.disabled = !convs.some((c) => !c.diaryPending && (c.previousDiaryMissing && c.previousDiaryAvailable && !["claimed", "uncertain", "unavailable"].includes(c.previousDiaryStatus) || hasCatchUpFor(c.key, c.targetDate)));
       listEl.innerHTML = rows2.join("") || "（暂无会话）";
@@ -5913,7 +5802,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         let finalMessage = action === "sendNow" ? "正在重新总结 " + key2 + " 当前窗口记忆；完成后发送 " + btn.dataset.ddDay + " 日记…" : "正在逐日补发 " + key2 + " 的历史日记…";
         if (msg) msg.textContent = finalMessage;
         try {
-          const rr = await api("/api/socialV2/daily-diary", "POST", { action, key: key2, day: btn.dataset.ddDay, ...action === "catchUpAll" ? { confirmLegacyUnsent: true } : {} });
+          const rr = await api("/api/socialV2/daily-diary", "POST", { action, key: key2, day: btn.dataset.ddDay, ...action === "catchUpAll" || btn.dataset.ddConfirm === "1" ? { confirmLegacyUnsent: true } : {} });
           finalMessage = rr.pending === true ? "⏳ " + (rr.message || "已请求刷新此窗口记忆，发送完成后状态会更新。") : action === "catchUpAll" ? "补发完成：成功 " + (rr.sentCount || 0) + " 篇；" + (rr.results || []).filter((x) => !x.ok && x.reason !== "already_sent").length + " 篇跳过/失败。" + (rr.results || []).map((x) => x.day + " " + (x.ok ? "✅" : "· " + (x.reason || "未确认"))).join("；") : rr.sent === true ? "✅ 已发送 " + (rr.day || btn.dataset.ddDay) + " 日记：" + key2 : "❌ " + (rr.error || "发送未获确认");
         } catch (e) {
           finalMessage = "发送请求失败：" + (e && e.message ? e.message : e);
@@ -5968,11 +5857,12 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   // console/layers/O/diary-history.js
   var v2DiaryHistorySection;
   var diaryConfig;
+  var deliveryByDate = /* @__PURE__ */ new Map();
   var windowLabel = (date) => diaryConfig ? diaryWindowForDay(date, diaryConfig) : "窗口分界配置暂不可用";
   var V2_DA_EMPTY;
   function setV2DaMsg(text) {
-    const el4 = document.getElementById("v2DaMsg");
-    if (el4) el4.textContent = text || "";
+    const el3 = document.getElementById("v2DaMsg");
+    if (el3) el3.textContent = text || "";
   }
   async function loadV2DiaryArchive(date) {
     const pre = document.getElementById("v2DaContent");
@@ -5986,7 +5876,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         pre.textContent = result.error || V2_DA_EMPTY;
         return;
       }
-      pre.textContent = result.text || "（这一天没有内容）";
+      const audit = (deliveryByDate.get(date) || []).flatMap((item) => (item.attempts || []).map((attempt) => item.key + " · " + diaryAttemptLabel(attempt)));
+      pre.textContent = (result.text || "（这一天没有内容）") + (audit.length ? "\n\n【投递记录】\n" + audit.join("\n") : "");
       setV2DaMsg("已读取 " + date + " 日日记 · " + windowLabel(date));
     } catch (e) {
       pre.textContent = "读取失败：" + (e && e.message ? e.message : e);
@@ -6006,6 +5897,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       diaryConfig = settings?.config;
       const result = res && res.result || {};
       const dates = Array.isArray(result.dates) ? result.dates : [];
+      deliveryByDate = new Map(dates.map((entry) => [entry.date, entry.deliveries]));
       if (result.ok !== true || !dates.length) {
         listEl.innerHTML = '<div class="meta">' + V2_DA_EMPTY + "</div>";
         if (pre) pre.textContent = "（还没有归档）";
@@ -6047,14 +5939,14 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     return '<li class="mood-history-item' + (corrected ? " is-corrected" : "") + '"><div><b>' + esc(corrected ? "已核实回应，原未答判定已更正" : { "daily-recovery": "每日保底恢复", "daily-first": "历史首次发言恢复", "model-adjustment": "AI加减分", "unanswered": "主动未回应扣分" }[item.source] || item.source || "未知来源") + "</b><time>" + esc(time2(item.effectiveAt ?? item.at)) + "</time></div><p>" + esc(item.reason || "未提供原因") + "</p><span>" + esc(item.before ?? "—") + " → " + esc(item.after ?? "—") + "（变化 " + esc(item.delta ?? "—") + "）</span>" + (corrected ? "<small>原记录：" + esc(item.source) + "；原扣分 " + esc(item.originalPenalty ?? "—") + "；记录于 " + esc(time2(item.recordedAt)) + "<br>更正依据：" + esc(typeof item.correction === "string" ? item.correction : JSON.stringify(item.correction || {})) + "</small>" : "") + "</li>";
   }
   async function refreshV2Mood() {
-    const el4 = document.getElementById("v2MoodCurrent");
-    if (!el4) return;
+    const el3 = document.getElementById("v2MoodCurrent");
+    if (!el3) return;
     const stamp = document.getElementById("v2MoodUpdated");
-    el4.classList.add("is-loading");
+    el3.classList.add("is-loading");
     try {
       const response = await api("/api/socialV2/states");
       if (response.ok === false) throw Error(response.error || "读取失败");
-      el4.innerHTML = (response.conversations || []).map((conversation) => {
+      el3.innerHTML = (response.conversations || []).map((conversation) => {
         const state = conversation.moodState;
         if (!state) return '<div class="mood-card"><b>' + esc(conversation.key) + "</b><p>心情组件未启用或状态不可用</p></div>";
         const history2 = conversation.moodHistory || [];
@@ -6062,9 +5954,9 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       }).join("") || '<div class="mood-empty">暂无会话</div>';
       if (stamp) stamp.textContent = "更新于 " + (/* @__PURE__ */ new Date()).toLocaleTimeString("zh-CN", { hour12: false });
     } catch (error) {
-      el4.innerHTML = '<div class="mood-empty err">读取失败：' + esc(error.message) + "</div>";
+      el3.innerHTML = '<div class="mood-empty err">读取失败：' + esc(error.message) + "</div>";
     } finally {
-      el4.classList.remove("is-loading");
+      el3.classList.remove("is-loading");
     }
   }
   function initialize34() {
@@ -6109,17 +6001,17 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     document.getElementById("v2PmMaxChars").value = pmCfg.maxChars ?? 4e3;
     const ctx = normalizeContextLimits(c.context || {});
     for (const [key2, rule] of Object.entries(CONTEXT_LIMIT_FIELDS)) {
-      const el4 = document.getElementById("context-" + key2);
-      if (el4) {
-        el4.value = ctx[key2];
-        el4.min = rule.min;
-        el4.max = rule.max;
+      const el3 = document.getElementById("context-" + key2);
+      if (el3) {
+        el3.value = ctx[key2];
+        el3.min = rule.min;
+        el3.max = rule.max;
       }
     }
     for (const [id, key2] of [["v2ContextRecentLimit", "recentLimit"], ["v2ContextUnreadLimit", "unreadLimit"], ["v2ContextWindow", "contextWindow"]]) {
-      const el4 = document.getElementById(id);
-      el4.min = CONTEXT_LIMIT_FIELDS[key2].min;
-      el4.max = CONTEXT_LIMIT_FIELDS[key2].max;
+      const el3 = document.getElementById(id);
+      el3.min = CONTEXT_LIMIT_FIELDS[key2].min;
+      el3.max = CONTEXT_LIMIT_FIELDS[key2].max;
     }
     document.getElementById("contextReceiptRange").textContent = "此额度限制收件状态索引+QQ 消息正文（正文、发送者、时间）的容量。";
     document.getElementById("v2ContextRecentLimit").value = ctx.recentLimit ?? 100;
@@ -6129,8 +6021,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
 
   // console/layers/T/config-load.js
   function applyTConfig(c) {
-    document.querySelectorAll("[data-v2-tool]").forEach((el4) => {
-      el4.checked = c.tools && c.tools[el4.dataset.v2Tool] !== false;
+    document.querySelectorAll("[data-v2-tool]").forEach((el3) => {
+      el3.checked = c.tools && c.tools[el3.dataset.v2Tool] !== false;
     });
   }
 
@@ -6313,7 +6205,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   // console/layers/T/config-save.js
   function collectTConfig() {
     return {
-      tools: Object.fromEntries([...document.querySelectorAll("[data-v2-tool]")].map((el4) => [el4.dataset.v2Tool, el4.checked]))
+      tools: Object.fromEntries([...document.querySelectorAll("[data-v2-tool]")].map((el3) => [el3.dataset.v2Tool, el3.checked]))
     };
   }
 
@@ -6402,8 +6294,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         if (btn?.closest("section")?.dataset.page === "setting-c-1") {
           const detail = await api("/api/plugins/detail?id=ctx-memory-update");
           const plugin = detail.plugin || detail;
-          const sync2 = await api("/api/plugins/config", "POST", { id: "ctx-memory-update", config: { ...plugin.config || {}, maxChars: Number(document.getElementById("v2PmMaxChars").value) || 4e3 } });
-          if (sync2.ok === false) throw Error(sync2.error || "记忆写入上限同步失败");
+          const sync = await api("/api/plugins/config", "POST", { id: "ctx-memory-update", config: { ...plugin.config || {}, maxChars: Number(document.getElementById("v2PmMaxChars").value) || 4e3 } });
+          if (sync.ok === false) throw Error(sync.error || "记忆写入上限同步失败");
         }
         if (slots.length) msg.textContent = "✅ 页面设置与补充参数已保存";
       } catch (error) {
@@ -7333,7 +7225,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   var ownership_default6 = {
     "life-history-context": { "page": "setting-l-0", "selector": '[data-component-slot="life-history-context"]' },
     "life-conversation-wait": { "page": "setting-l-1", "selector": '[data-component-slot="life-conversation-wait"]' },
-    "life-campus-watch": {
+    "life-web-watch": {
       "page": "environment-watch"
     },
     "life-daily-worklog": {
@@ -7480,7 +7372,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   }
 
   // console/layers/E/editors/image-generation.js
-  async function mountImageGeneration({ id, body, p, el: el4, form }) {
+  async function mountImageGeneration({ id, body, p, el: el3, form }) {
     body.insertAdjacentHTML("beforeend", '<div class="quota-console image-generation-console"><div class="quota-console-head"><div><b>本地 API 密钥</b><div class="meta">密钥不会写入组件配置，状态查询也不会返回密钥内容。</div></div><span class="meta image-secret-state" role="status">正在读取保存状态…</span></div><div class="row" style="gap:8px;margin-top:10px"><input type="password" class="image-secret-input comp-form-text" autocomplete="new-password" aria-label="图片生成 API 密钥" placeholder="输入新密钥" style="flex:1;min-width:180px;max-width:420px"><button type="button" class="small primary image-secret-set" data-save-action>保存本机 API 密钥</button><button type="button" class="small danger image-secret-clear">清除密钥</button></div><div class="meta image-secret-message" aria-live="polite"></div><div class="quota-console-head" style="margin-top:18px"><div><b>今日图片生成用量</b><div class="meta">按上海时间统计请求次数。</div></div><button type="button" class="small image-usage-refresh">刷新用量</button></div><div class="meta image-usage-result" aria-live="polite">正在读取…</div></div>');
     const panel = body.querySelector(".image-generation-console");
     panel.querySelector(".quota-console-head b").textContent = "OpenAI API 密钥";
@@ -7633,7 +7525,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   }
 
   // console/layers/C/editors/person-profile.js
-  async function mountPersonProfile({ id, body, p, el: el4, form }) {
+  async function mountPersonProfile({ id, body, p, el: el3, form }) {
     body.insertAdjacentHTML("beforeend", '<section class="member-card-preview"><div class="quota-console-head"><div><b>按 QQ 管理人物档案</b><div class="meta">此 QQ 档案：按 QQ 号保存，同一人的资料可用于其相关会话。私聊自动注入本人档案；群聊不自动注入成员资料。可选择已有档案，也可输入尚未成为好友的 QQ 号。</div></div></div><div class="quota-console-actions"><select class="member-key" aria-label="选择 QQ 档案"><option value="">正在读取档案…</option></select><input class="profile-qq" inputmode="numeric" placeholder="或输入 QQ 号" aria-label="手动输入 QQ 号"><button class="small member-preview">读取档案</button></div><div class="profile-fields"></div><div class="quota-console-actions"><input class="profile-new-key" placeholder="新增 JSON 字段名" aria-label="新增档案字段名"><button class="small profile-add-key">增加字段</button><button class="small primary profile-save" data-save-action>保存此 QQ 档案</button><button class="small danger profile-delete-person">删除该 QQ 档案</button><span class="profile-status meta" aria-live="polite">固定字段可留空；新增字段会保留。</span></div></section>');
     const panel = body.querySelector(".member-card-preview"), select = panel.querySelector(".member-key"), qqInput = panel.querySelector(".profile-qq"), fieldsBox = panel.querySelector(".profile-fields"), status = panel.querySelector(".profile-status");
     const labels3 = { routine_food: "作息与饮食", hobbies: "兴趣与爱好", relationships: "人际关系", catchphrases: "口头禅" };
@@ -7641,19 +7533,19 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     const chosenId = () => (qqInput.value.trim() || select.value.trim()).replace(/^private:/, "");
     const syncEditor = () => {
       const ready = !!loadedId && loadedId === chosenId() && !reading && !writing2;
-      fieldsBox.querySelectorAll("textarea,button").forEach((el5) => {
-        el5.disabled = !ready;
+      fieldsBox.querySelectorAll("textarea,button").forEach((el4) => {
+        el4.disabled = !ready;
       });
-      panel.querySelectorAll(".profile-save,.profile-add-key,.profile-new-key,.profile-delete-person").forEach((el5) => {
-        el5.disabled = !ready;
+      panel.querySelectorAll(".profile-save,.profile-add-key,.profile-new-key,.profile-delete-person").forEach((el4) => {
+        el4.disabled = !ready;
       });
     };
     const render2 = (profile) => {
       current = profile && typeof profile === "object" ? profile : {};
       const keys = [.../* @__PURE__ */ new Set([...Object.keys(labels3), ...Object.keys(current)])];
       fieldsBox.innerHTML = keys.map((key2) => '<div class="profile-json-field"><label><span>' + esc(labels3[key2] || key2) + (labels3[key2] ? "" : " · 扩展字段") + '</span><textarea data-profile-key="' + esc(key2) + '" rows="3" placeholder="填写一段长句或短句">' + esc(current[key2] || "") + '</textarea></label><button type="button" class="small danger profile-delete-key" data-remove-key="' + esc(key2) + '">' + (labels3[key2] ? "清空" : "删除字段") + "</button></div>").join("");
-      fieldsBox.querySelectorAll("textarea[data-profile-key]").forEach((el5) => el5.addEventListener("input", () => {
-        current[el5.dataset.profileKey] = el5.value;
+      fieldsBox.querySelectorAll("textarea[data-profile-key]").forEach((el4) => el4.addEventListener("input", () => {
+        current[el4.dataset.profileKey] = el4.value;
       }));
       fieldsBox.querySelectorAll("[data-remove-key]").forEach((btn) => btn.addEventListener("click", () => {
         const key2 = btn.dataset.removeKey;
@@ -7796,8 +7688,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       writing2 = true;
       syncEditor();
       const patch = {};
-      fieldsBox.querySelectorAll("textarea[data-profile-key]").forEach((el5) => {
-        patch[el5.dataset.profileKey] = el5.value;
+      fieldsBox.querySelectorAll("textarea[data-profile-key]").forEach((el4) => {
+        patch[el4.dataset.profileKey] = el4.value;
       });
       status.textContent = "正在保存…";
       try {
@@ -7828,13 +7720,13 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   }
 
   // console/layers/O/editors/worklog.js
-  async function mountWorklog({ id, body, p, el: el4, form }) {
+  async function mountWorklog({ id, body, p, el: el3, form }) {
     body.insertAdjacentHTML("beforeend", '<section class="worklog-console" aria-label="运维日报与日报归档"><div class="worklog-console-head"><div><h3>日报归档与预览</h3><p class="meta">每天保留最新版；手动生成会立即私聊管理员。</p><div class="worklog-send-setting"></div></div><div class="row"><button class="small worklog-generate-send" type="button">立即生成与发送</button><button class="small worklog-refresh" type="button">刷新列表</button></div></div><details class="worklog-sources"><summary class="worklog-sources-title">日报扫描来源</summary><ul class="worklog-sources-list"><li class="worklog-source"><code>state/memory/tasks-*.md</code><span>提取当天的中期任务进度记录。</span></li><li class="worklog-source"><code>state/tasks.json</code><span>汇总当天创建或更新的独立任务及状态。</span></li><li class="worklog-source"><code>state/tool-calls.jsonl</code><span>统计当天的工具调用次数与失败次数。</span></li><li class="worklog-source"><code>state/tool-calls.jsonl.1</code><span>读取轮转的工具调用历史，补齐当天统计。</span></li><li class="worklog-source"><code>state/token-usage.jsonl</code><span>统计当天模型调用步数与输入、输出 token。</span></li><li class="worklog-source"><code>state/token-usage.jsonl.1</code><span>读取轮转的 token 历史，补齐当天统计。</span></li><li class="worklog-source"><code>state/plugins/obs-self-review.json</code><span>统计反馈队列当天的状态变更；不复制反馈正文。</span></li><li class="worklog-source"><code>state/memory/_optimization.md</code><span>提取当天的自我更新发现与统一修复摘要。</span></li></ul></details><div class="worklog-status" aria-live="polite"></div><div class="meta worklog-action-message" aria-live="polite"></div><div class="worklog-layout"><nav class="worklog-list" aria-label="日报日期列表"><div class="worklog-empty">读取日报列表中…</div></nav><article class="worklog-preview"><div class="worklog-preview-head"><b>内容预览</b><span class="meta worklog-preview-meta">选择一份日报</span></div><pre class="worklog-preview-text">日报内容会显示在这里。</pre></article></div></section>');
     const panel = body.querySelector(".worklog-console");
     const sendOption = body.querySelector('[data-config-key="sendToOwner"]');
     if (sendOption) panel.querySelector(".worklog-send-setting").append(sendOption);
     const list = panel.querySelector(".worklog-list");
-    const preview2 = panel.querySelector(".worklog-preview-text");
+    const preview = panel.querySelector(".worklog-preview-text");
     const previewMeta = panel.querySelector(".worklog-preview-meta");
     const status = panel.querySelector(".worklog-status");
     const actionMessage = panel.querySelector(".worklog-action-message");
@@ -7846,13 +7738,13 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     };
     const loadReport = async (date) => {
       panel.querySelectorAll(".worklog-date").forEach((button) => button.classList.toggle("active", button.dataset.date === date));
-      preview2.textContent = "正在读取日报…";
+      preview.textContent = "正在读取日报…";
       try {
         const report = await read({ date });
-        preview2.textContent = report.text || "（日报内容为空）";
+        preview.textContent = report.text || "（日报内容为空）";
         previewMeta.textContent = report.date + " · " + report.chars + " 字 · 更新于 " + new Date(report.updatedAt).toLocaleString();
       } catch (error) {
-        preview2.textContent = "读取失败：" + error.message;
+        preview.textContent = "读取失败：" + error.message;
         previewMeta.textContent = date;
       }
     };
@@ -7863,7 +7755,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       const mm = String(Number(config.minute ?? 0)).padStart(2, "0");
       status.innerHTML = '<span class="worklog-chip">每日生成 · ' + hh + ":" + mm + '</span><span class="worklog-chip">最近生成 · ' + esc(generated) + "</span>";
       list.innerHTML = '<div class="worklog-empty">正在读取…</div>';
-      preview2.textContent = "选择一份日报查看内容。";
+      preview.textContent = "选择一份日报查看内容。";
       previewMeta.textContent = "只读预览";
       try {
         const history2 = await read({ limit: 30 });
@@ -7980,20 +7872,13 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       "allowedSessions": "只填private:10001：仅该会话在此允许列表范围内；其他权限与额度仍需满足。",
       "assetRetentionDays": "设为7：本地生图资产按7天保留策略清理，不等于删除已经发到QQ的消息。"
     },
-    "life-campus-watch": {
+    "life-web-watch": {
       "fastCheckMinutes": "设为1：每分钟检查任务是否到期，不代表每分钟导航全部网页。",
       "fullCheckMinutes": "设为5：普通网页完整抓取约每5分钟进行一次。",
       "webWatchEnabled": "关闭后停止普通网址检查，保留已填写网址以便恢复。",
-      "watchUrls": "填“公告 | https://example.invalid/notices”：监控该页变化；取消该行勾选则暂停这一个网址。",
+      "watchUrls": "填“名称 | 网址”：监控该页变化；取消该行勾选则暂停这一个网址。",
       "scriptCollabEnabled": "开启后可以展示协同脚本心跳；只填路径不等于自动执行脚本。",
-      "scriptPaths": "填scripts/example.mjs：只有脚本按约定回传心跳后才显示运行状态，路径本身不是执行授权。",
-      "bbCourses": "登记课程和页面标识后，按页面读取规则检查内容；删除条目会停止该页面的监控配置。",
-      "enabledScripts": "填已支持的脚本标识才会参与调度，不会将任意字符串作为系统命令执行。",
-      "lecturesEnabled": "开启后，讲座任务按独立周期检查；普通网页开关和周期不代替它。",
-      "lecturesLocation": "填“高新”：按该地点关键词筛选符合要求的讲座。",
-      "lecturesIntervalMinutes": "设为10：讲座实际查询周期约10分钟，不跟随每分钟到期轮询重复全查。",
-      "lecturesPortalUrl": "填你的讲座门户地址：登录与查询在这一服务对应的会话内进行。",
-      "lecturesApi": "配置该服务的查询入口后供讲座流程使用，不会把普通网页监控当成抢课接口。"
+      "scriptPaths": "填脚本的本地路径：只有脚本按约定回传心跳后才显示运行状态，路径本身不是执行授权。"
     }
   };
 
@@ -8003,7 +7888,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       "maxMessagesNormal": "设为3：一份完整语义最多拆分3条；三份独立含义可各3条共9条，没有请求批次总条数上限，普通限频仍有效。",
       "maxMessagesCasual": "设为3：多条碎片若表达同一件事，可合并为一份内容；不是收到三条QQ消息就自动有三份额度。",
       "maxMessagesSerious": "设为3：同一内容跨模型请求、重读及换发送工具仍合计最多3条；心情和聊天意愿不缩减此上限。",
-      "maxSendPerMinute": "基础8、F为0.36：向上取整后每分钟3点。普通聊天每条1点；接手一个任务及完成汇报整组共1点，组内发送不重复扣点。基础值大于0时最低1点，0不限。",
+      "maxSendPerMinute": "基础8、F为0.36时向上取整为每分钟3点。每份普通聊天语义组共1点，同一任务的接手及完成汇报共1点。基础值大于0时最低1点，0不限。",
       "maxSendPerHour": "基础60、F为0.36：向上取整后每小时22点。任务无点时保持已读未处理，恢复后复查条件自动接手并扣1点；同组执行/汇报不再扣点、不限拆分，实际花费照常统计。"
     },
     "life-daily-worklog": {
@@ -8251,7 +8136,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     { key: "longGapProbability", label: "长间隔概率（0–1）", type: "number" },
     { key: "longGapMinMs", label: "长间隔下限（毫秒）", type: "number" },
     { key: "longGapMaxMs", label: "长间隔上限（毫秒）", type: "number" },
-    { key: "maxSendPerMinute", label: "每分钟基础额度（点）", type: "number", group: "动态发送与任务接手额度", help: "有效额度 = 向上取整（基础额度 × 心情与聊天意愿系数F）；基础值大于0时最低1点，0表示此窗口不限。普通聊天每条实际发送1点；接手同一任务及完成汇报整组只占1点，组内发送不重复扣点。" },
+    { key: "maxSendPerMinute", label: "每分钟基础额度（点）", type: "number", group: "动态发送与任务接手额度", help: "有效额度 = 向上取整（基础额度 × 心情与聊天意愿系数F）。基础值大于0时最低1点，0表示此窗口不限。每份普通聊天语义组共1点，同一任务的接手及完成汇报共1点。" },
     { key: "maxSendPerHour", label: "每小时基础额度（点）", type: "number", help: "与分钟窗口分别计算；文字和媒体共用计数。任务无点时保留已读未处理，额度恢复后复查条件自动接手；同组不重复扣点，组内不限拆分条数。开始仍检查费用与弱限频，已准入原任务可跨费用阈值继续并及时汇报，实际花费仍记账。权限、免打扰、防重与真实回执仍有效。" },
     { key: "maxMessageChars", label: "单条最大长度（字符）", type: "number" }
   ] };
@@ -8264,8 +8149,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     { key: "followUpCooldownMinutes", label: "同一话题跟进冷却（分钟）", help: "私聊、群聊共用规则；“还在吗”等催回复也算追问。", type: "number", min: 0, group: "当前会话的话题（私聊、群聊）" },
     { key: "newTopicCooldownMinutes", label: "新话题冷却（分钟）", help: "两次主动换题至少间隔多久，正常聊天也受限。", type: "number", min: 0 },
     { key: "newTopicMaxPerHour", label: "每小时最多新话题数", help: "按实际成功发送的话题波次计数，0 表示不主动起新话题。", type: "number", min: 0, max: 60 },
-    { key: "followupWeight", label: "旧话题追问权重 a", help: "全局内容选择。例：a=0.5、b=0.2，主动开聊约71%延续今天或上一段话题；等待超时且本轮继续时，50%追问。", type: "number", min: 0, max: 1, step: 0.01, group: "主动开聊与等待后的话题选择" },
-    { key: "newTopicWeight", label: "新话题权重 b", help: "例：a=0.5、b=0.2，主动开聊约29%换题，不抽终止；等待继续时20%换题、30%继续等。a+b≤1，冷却和上限仍有效；旧话题收束可改换题，最新问题须先答。", type: "number", min: 0, max: 1, step: 0.01 }
+    { key: "followupWeight", label: "旧话题追问权重 a", help: "qq_wait_for_messages 到期且 p/q 判定本轮继续后，按 a 的权重延续旧话题。独立的主动开聊按 a:b 分配旧话题和新话题。", type: "number", min: 0, max: 1, step: 0.01, group: "主动开聊与等待超时后的话题权重" },
+    { key: "newTopicWeight", label: "新话题权重 b", help: "qq_wait_for_messages 到期且本轮未结束时，按 b 的权重开启新话题，继续等待权重为 1−a−b。例如 a=0.5、b=0.2 时，三项权重为 50%、20%、30%。a+b≤1，话题受冷却、上限或发送限制拦下时可回到继续等待。", type: "number", min: 0, max: 1, step: 0.01 }
   ] };
 
   // console/layers/E/components/exec-browser-manager.js
@@ -8303,27 +8188,6 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       { key: "allowAutomatic", label: "允许按聊天语境自动生成图片", help: "开启后仍受会话权限、额度和冷却限制。", type: "boolean" },
       { key: "allowedSessions", label: "允许使用的会话（每行一个）", help: "例如 private:12345 或 group:67890。", type: "lines" },
       { key: "assetRetentionDays", label: "生成图片保留天数", type: "number", min: 1, max: 365 }
-    ]
-  };
-
-  // console/layers/L/components/life-campus-watch.js
-  var life_campus_watch_default = {
-    title: "监控设置",
-    fields: [
-      { key: "webWatchEnabled", label: "启用网页监控", help: "必须填写至少一个网址；页面变化时发送新增内容的 diff。", type: "boolean" },
-      { key: "fastCheckMinutes", label: "到期轮询间隔（分钟）", help: "只检查哪些网址到期，不表示每次都重新读取全部网页。", type: "number", min: 1, max: 1440 },
-      { key: "fullCheckMinutes", label: "网页完整检查间隔（分钟）", help: "按此间隔重新读取已启用的网址，并与上次内容比较。", type: "number", min: 1, max: 10080 },
-      { key: "loginMaxAttempts", label: "登录尝试／通知上限（次）", help: "全局上限、各网站独立计数。同域课程共用一次登录。例：设3，第3次失败时QQ通知并暂停，等待手动重新监管或桥接重启。", type: "number", min: 1, max: 20 },
-      { key: "loginRetryMinutes", label: "登录尝试／提醒间隔（分钟）", help: "尝试与提醒共用这一间隔。例：设5，首次失败立即通知，之后每5分钟验证一次；每次失败立即通知。", type: "number", min: 1, max: 1440 },
-      { key: "watchUrls", label: "监控网址（勾选=启用）", help: "所有网页都按普通网址监控处理，含 Blackboard 页面。可直接写 https://网址，也可写“名称 | https://网址”；取消勾选 = 暂停检测但保留。", type: "items", placeholder: "名称 | https://网址", addLabel: "添加网址" },
-      { key: "scriptCollabEnabled", label: "启用脚本协同", help: "添加脚本后，AI 可以按约定查询其状态并参与任务流程。", type: "boolean" },
-      { key: "scriptPaths", label: "协同脚本（勾选=启用）", help: "勾选参与协同，取消勾选暂停。登记地址不会自动执行脚本。", type: "items", placeholder: "scripts/campus-watch.mjs", addLabel: "添加脚本" },
-      { key: "enabledScripts", label: "内置协同任务标识（高级）", type: "text", group: "高级接口" },
-      { key: "lecturesApi", label: "讲座查询接口（高级）", type: "json" },
-      { key: "lecturesEnabled", label: "启用抢讲座", type: "boolean" },
-      { key: "lecturesLocation", label: "讲座地点关键词", help: "例如「高新」。", type: "text" },
-      { key: "lecturesIntervalMinutes", label: "讲座实际检查周期（分钟）", type: "number", min: 1, max: 120 },
-      { key: "lecturesPortalUrl", label: "讲座门户 URL", type: "text" }
     ]
   };
 
@@ -8438,6 +8302,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     { key: "maxSilenceMinutes", label: "最大静默兜底（分钟）", type: "number" },
     { key: "initialWillingness", label: "默认聊天意愿：用户忙闲（0–100）", type: "number", group: "聊天意愿" },
     { key: "curfewEnabled", label: "启用宵禁", type: "boolean", group: "宵禁（上海时间）" },
+    { key: "curfewDirectOnlyInGroups", label: "宵禁时群聊只回应明确呼叫", type: "boolean" },
     { key: "curfewStartHour", label: "开始（小时）", type: "number" },
     { key: "curfewEndHour", label: "结束（小时）", type: "number" }
   ] };
@@ -8509,6 +8374,21 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     fields: [{ key: "codexRepairEnabled", label: "启用 Codex 修正接口", type: "boolean", help: "勾选并保存后，Codex 可扫描反馈、协助修复并同步修复状态、统计和日志。取消后，Codex 必须停止并请求你开启，不能自行开启或绕过；Bot 自查、日记、日报及已有反馈记录不受影响。" }]
   };
 
+  // console/layers/L/components/life-web-watch.js
+  var life_web_watch_default = {
+    title: "监控设置",
+    fields: [
+      { key: "webWatchEnabled", label: "启用网页监控", help: "必须填写至少一个网址；页面变化时发送新增内容的 diff。", type: "boolean" },
+      { key: "fastCheckMinutes", label: "到期轮询间隔（分钟）", help: "只检查哪些网址到期，不表示每次都重新读取全部网页。", type: "number", min: 1, max: 1440 },
+      { key: "fullCheckMinutes", label: "网页完整检查间隔（分钟）", help: "按此间隔重新读取已启用的网址，并与上次内容比较。", type: "number", min: 1, max: 10080 },
+      { key: "loginMaxAttempts", label: "登录尝试／通知上限（次）", help: "全局上限、各网站独立计数。同一来源共用一次登录。例：设3，第3次失败时QQ通知并暂停，等待手动重新监管或桥接重启。", type: "number", min: 1, max: 20 },
+      { key: "loginRetryMinutes", label: "登录尝试／提醒间隔（分钟）", help: "尝试与提醒共用这一间隔。例：设5，首次失败立即通知，之后每5分钟验证一次；每次失败立即通知。", type: "number", min: 1, max: 1440 },
+      { key: "watchUrls", label: "监控网址（勾选=启用）", help: "所有网页都按普通网址监控处理。可直接写 https://网址，也可写“名称 | https://网址”；取消勾选 = 暂停检测但保留。", type: "items", placeholder: "名称 | https://网址", addLabel: "添加网址" },
+      { key: "scriptCollabEnabled", label: "启用脚本协同", help: "添加脚本后，AI 可以按约定查询其状态并参与任务流程。", type: "boolean" },
+      { key: "scriptPaths", label: "协同脚本（勾选=启用）", help: "勾选参与协同，取消勾选暂停。登记地址不会自动执行脚本。", type: "items", placeholder: "填写脚本路径", addLabel: "添加脚本" }
+    ]
+  };
+
   // console/layers/C/components/ctx-user-mood.js
   var ctx_user_mood_default = { ownsEnabled: true, saveLabel: "保存心情与双形态", title: "心情与双形态", fields: [
     { key: "enabled", label: "启用心情系统", help: "心情表示 bot 主观上是否喜欢与对方聊天，并决定风格；用户忙闲由聊天意愿单独评估。", type: "boolean", group: "结算规则" },
@@ -8557,9 +8437,9 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     "ctx-knowledge-quota": ctx_knowledge_quota_default,
     "ctx-chat-reply-shape": ctx_chat_reply_shape_default,
     "ctx-chat-topic-drive": ctx_chat_topic_drive_default,
+    "life-web-watch": life_web_watch_default,
     "exec-browser-manager": exec_browser_manager_default,
     "exec-image-generation": exec_image_generation_default,
-    "life-campus-watch": life_campus_watch_default,
     "ctx-media-sticker-pick": ctx_media_sticker_pick_default,
     "ctx-memory-update": ctx_memory_update_default,
     "ctx-memory-profile-facts": ctx_memory_profile_facts_default,
@@ -8653,9 +8533,9 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     }
     return "";
   }
-  function compFieldValue(field, el4) {
+  function compFieldValue(field, el3) {
     if (field.type === "moodRules") {
-      const rules = [...el4.querySelectorAll(".mood-rule-row")].map((row) => ({
+      const rules = [...el3.querySelectorAll(".mood-rule-row")].map((row) => ({
         id: row.dataset.ruleId,
         label: row.querySelector(".mood-rule-label").value.trim(),
         delta: Number(row.querySelector(".mood-rule-delta").value),
@@ -8670,44 +8550,44 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       }
       return rules;
     }
-    if (field.type === "json") return JSON.parse(el4.querySelector(".comp-form-json").value);
+    if (field.type === "json") return JSON.parse(el3.querySelector(".comp-form-json").value);
     if (field.type === "ackGroup") {
-      const seconds = Number(el4.querySelector(".comp-ack-delay").value);
+      const seconds = Number(el3.querySelector(".comp-ack-delay").value);
       return {
-        enabled: el4.querySelector(".comp-ack-enabled").checked,
+        enabled: el3.querySelector(".comp-ack-enabled").checked,
         delayMs: Number.isFinite(seconds) ? Math.round(Math.max(0, Math.min(600, seconds)) * 1e3) : 0,
-        lines: el4.querySelector(".comp-ack-lines").value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 100)
+        lines: el3.querySelector(".comp-ack-lines").value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 100)
       };
     }
     if (field.type === "flags") {
       const vals = [];
-      el4.querySelectorAll("input[data-flag]").forEach((c) => {
+      el3.querySelectorAll("input[data-flag]").forEach((c) => {
         if (c.checked) vals.push(c.dataset.flag);
       });
       return vals.join("|");
     }
-    if (field.type === "comma-list") return el4.querySelector(".comp-form-text").value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
-    if (field.type === "lines") return el4.querySelector(".comp-form-lines").value.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (field.type === "comma-list") return el3.querySelector(".comp-form-text").value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+    if (field.type === "lines") return el3.querySelector(".comp-form-lines").value.split("\n").map((s) => s.trim()).filter(Boolean);
     if (field.type === "number") {
-      const n = Number(el4.querySelector(".comp-form-num").value);
+      const n = Number(el3.querySelector(".comp-form-num").value);
       if (!Number.isFinite(n) || field.min != null && n < field.min || field.max != null && n > field.max) throw new Error(field.label + "超出有效范围");
       return n;
     }
     if (field.type === "minutes") {
-      const n = Number(el4.querySelector(".comp-form-minutes").value);
+      const n = Number(el3.querySelector(".comp-form-minutes").value);
       return Number.isFinite(n) ? Math.round(n) * 6e4 : void 0;
     }
-    if (field.type === "select") return el4.querySelector(".comp-form-select").value;
-    if (field.type === "boolean") return el4.querySelector(".comp-form-bool").checked;
-    if (field.type === "text") return el4.querySelector(".comp-form-text").value.trim();
-    if (field.type === "textarea") return el4.querySelector(".comp-form-textarea").value.trim();
+    if (field.type === "select") return el3.querySelector(".comp-form-select").value;
+    if (field.type === "boolean") return el3.querySelector(".comp-form-bool").checked;
+    if (field.type === "text") return el3.querySelector(".comp-form-text").value.trim();
+    if (field.type === "textarea") return el3.querySelector(".comp-form-textarea").value.trim();
     if (field.type === "items") {
       const items2 = [];
-      el4.querySelectorAll(".comp-item").forEach((row) => {
+      el3.querySelectorAll(".comp-item").forEach((row) => {
         const val = row.querySelector(".comp-item-val").value.trim();
         if (val) items2.push({ value: val, enabled: row.querySelector(".comp-item-on").checked });
       });
-      const add = el4.querySelector(".comp-item-new");
+      const add = el3.querySelector(".comp-item-new");
       if (add) {
         const nv = add.value.trim();
         if (nv) items2.push({ value: nv, enabled: true });
@@ -8773,9 +8653,9 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
       }
       return heading + html;
     }).join("") + (grouped ? "</div></details>" : "");
-    return { ownsEnabled, saveLabel: componentForm?.saveLabel || "保存" + form.title, html: (showTitle ? '<div class="meta" style="margin:6px 0">' + esc(form.title) + "</div>" : "") + '<div class="component-fields">' + fields + "</div>", collect: (el4) => {
+    return { ownsEnabled, saveLabel: componentForm?.saveLabel || "保存" + form.title, html: (showTitle ? '<div class="meta" style="margin:6px 0">' + esc(form.title) + "</div>" : "") + '<div class="component-fields">' + fields + "</div>", collect: (el3) => {
       const out = {};
-      const fields2 = el4.querySelectorAll(".comp-field[data-config-key]");
+      const fields2 = el3.querySelectorAll(".comp-field[data-config-key]");
       form.fields.forEach((f, index) => {
         const v = compFieldValue(f, fields2[index]);
         if (v === void 0) delete out[f.key];
@@ -8788,7 +8668,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   }
 
   // console/shared/components/scope.js
-  var LOCAL = /* @__PURE__ */ new Set(["exec-browser-manager", "exec-image-generation", "life-campus-watch", "tool-user-checking", "tool-codex-chat", "personal-core"]);
+  var LOCAL = /* @__PURE__ */ new Set(["exec-browser-manager", "exec-image-generation", "life-web-watch", "tool-user-checking", "tool-codex-chat", "personal-core"]);
   var NOTES = {
     "personal-core": "本机挂载目录与阅读参数，供此 bot 的适用会话使用；目录提示范围不改变MCP读取权限，不改写原稿。",
     "tool-user-checking": "所有会话共用这一份桌面txt，不按群拆分，也不把内容发送到QQ。",
@@ -8799,7 +8679,6 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     "life-proactive-time-bubble": "上方具体时段按选中的会话单独保存。",
     "ctx-chat-topic-drive": "下方可为某个私聊设置更严格的限制。",
     "life-schedule-reminder": "单条日程的收件会话和覆盖值单独保存。",
-    "life-campus-watch": "本机监控与脚本配置；消息只投递到配置中的目标会话。",
     "exec-image-generation": "本机 API 服务、额度与密钥；密钥单独保存，普通参数按钮不修改密钥。",
     "obs-cost-policy": "AI助手会话、主动处理及独立任务共用的唯一调用策略。保存后同步已有会话与未完成任务；正在生成的请求不追溯切换，后续请求使用新档位。复杂或明确指定的任务按本面板升级规则执行。DSH 自动上下文压缩摘要保持独立档位。"
   };
@@ -8808,14 +8687,14 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     const action = label2 || "保存功能设置";
     return {
       label: prefix2 === "本机" ? "本机配置" : "全局规则",
-      description: id === "life-campus-watch" && action.includes("脚本") ? "本机脚本地址与逐项启停；执行和搜索细节按开发者与 AI 的约定处理。" : id === "life-campus-watch" ? "本机网页监控配置；通知发送到配置的目标会话。" : NOTES[id] || (prefix2 === "本机" ? "配置保存在本机，供此 bot 的相关功能使用。" : "适用于此 bot 符合条件的会话；不修改下方单个会话或人物的内容。"),
+      description: id === "life-web-watch" ? action.includes("脚本") ? "本机脚本地址与逐项启停。" : "本机网页监控配置，通知发送给此 bot 的管理员。" : NOTES[id] || (prefix2 === "本机" ? "配置保存在本机，供此 bot 的相关功能使用。" : "适用于此 bot 符合条件的会话；不修改下方单个会话或人物的内容。"),
       saveLabel: action.includes(prefix2) ? action : action.replace(/^保存/, "保存" + prefix2)
     };
   }
 
   // console/shared/components/detail.js
-  async function loadComponentDetail(id, el4) {
-    const body = el4.querySelector(".comp-body");
+  async function loadComponentDetail(id, el3) {
+    const body = el3.querySelector(".comp-body");
     if (!body || body.dataset.loaded === "1") return;
     try {
       const resp = await api("/api/plugins/detail?id=" + encodeURIComponent(id));
@@ -8825,13 +8704,13 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         body.dataset.loaded = "1";
         return;
       }
-      const form = renderComponentForm(p, el4.dataset.inlineFields ? el4.dataset.inlineFields.split(",") : null, el4.dataset.hideTitle !== "1" && !!el4.dataset.inlineFields && id !== "life-daily-worklog" && !el4.closest(".env-comp-root"), !!el4.closest(".environment-page"));
-      const toggleLabel = id === "tool-user-checking" ? "启用自查与桌面便签" : el4.dataset.toggleLabel || "启用此功能";
-      const enabled = el4.dataset.hideToggle === "1" || id === "exec-image-generation" || form?.ownsEnabled ? "" : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? " checked" : "") + "> <span>" + esc(toggleLabel) + '</span></label><span class="meta comp-toggle-msg"></span>';
+      const form = renderComponentForm(p, el3.dataset.inlineFields ? el3.dataset.inlineFields.split(",") : null, el3.dataset.hideTitle !== "1" && !!el3.dataset.inlineFields && id !== "life-daily-worklog" && !el3.closest(".env-comp-root"), !!el3.closest(".environment-page"));
+      const toggleLabel = id === "tool-user-checking" ? "启用自查与桌面便签" : el3.dataset.toggleLabel || "启用此功能";
+      const enabled = el3.dataset.hideToggle === "1" || id === "exec-image-generation" || form?.ownsEnabled ? "" : '<label class="comp-toggle"><input type="checkbox" class="comp-enabled"' + (p.enabled ? " checked" : "") + "> <span>" + esc(toggleLabel) + '</span></label><span class="meta comp-toggle-msg"></span>';
       if (form) {
-        const saveLabel = el4.dataset.saveLabel || (id === "life-campus-watch" ? el4.closest("#envCompScript") ? "保存脚本协同参数" : "保存网页监控参数" : form.saveLabel || "保存" + p.name);
+        const saveLabel = el3.dataset.saveLabel || form.saveLabel || "保存" + p.name;
         const scope = componentScope(id, saveLabel);
-        body.innerHTML = (form.empty || el4.dataset.hideScope === "1" ? "" : '<p class="parameter-scope" data-config-scope="' + esc(scope.label) + '"><b>' + esc(scope.label) + "</b> · " + esc(scope.description) + "</p>") + enabled + form.html + (form.empty || el4.dataset.deferSave === "1" ? "" : '<div class="row" style="gap:8px;margin-top:8px"><button class="small primary comp-save" data-save-action>' + esc(scope.saveLabel) + '</button><span class="meta comp-msg"></span></div>');
+        body.innerHTML = (form.empty || el3.dataset.hideScope === "1" ? "" : '<p class="parameter-scope" data-config-scope="' + esc(scope.label) + '"><b>' + esc(scope.label) + "</b> · " + esc(scope.description) + "</p>") + enabled + form.html + (form.empty || el3.dataset.deferSave === "1" ? "" : '<div class="row" style="gap:8px;margin-top:8px"><button class="small primary comp-save" data-save-action>' + esc(scope.saveLabel) + '</button><span class="meta comp-msg"></span></div>');
         if (id === "life-proactive-time-bubble") {
           const capacityInput = body.querySelector(".comp-form-num");
           if (capacityInput) {
@@ -8839,10 +8718,10 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
             syncV2TimeBubbleCapacity();
           }
         }
-        if (id === "exec-image-generation") await mountImageGeneration({ id, body, p, el: el4, form });
-        if (id === "ctx-knowledge-quota") await mountKnowledgeQuota({ id, body, p, el: el4, form });
-        if (id === "ctx-memory-profile-store") await mountPersonProfile({ id, body, p, el: el4, form });
-        if (id === "life-daily-worklog") await mountWorklog({ id, body, p, el: el4, form });
+        if (id === "exec-image-generation") await mountImageGeneration({ id, body, p, el: el3, form });
+        if (id === "ctx-knowledge-quota") await mountKnowledgeQuota({ id, body, p, el: el3, form });
+        if (id === "ctx-memory-profile-store") await mountPersonProfile({ id, body, p, el: el3, form });
+        if (id === "life-daily-worklog") await mountWorklog({ id, body, p, el: el3, form });
         if (id === "personal-core") mountPersonalCore({ id, body, p });
         wireItems(body);
         body.dataset.loaded = "1";
@@ -8856,31 +8735,27 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
             msg.textContent = event.target.checked ? "已启用" : "已停用";
             if (id === "personal-core") {
               body.dataset.loaded = "";
-              await loadComponentDetail(id, el4);
+              await loadComponentDetail(id, el3);
             }
           } catch (error) {
             event.target.checked = previous;
             msg.textContent = "更新失败：" + error.message;
           }
         });
-        el4.__saveComponent = async () => {
+        el3.__saveComponent = async () => {
           const cfg2 = form.collect(body);
           const msg = body.querySelector(".comp-msg");
           if (msg) msg.textContent = "保存中…";
           let next = cfg2;
-          if (el4.dataset.inlineFields) {
+          if (el3.dataset.inlineFields) {
             const latest = await api("/api/plugins/detail?id=" + encodeURIComponent(id));
             next = { ...(latest.plugin || latest).config || {}, ...cfg2 };
           }
-          if (id === "life-campus-watch" && el4.closest("#envCompBrowserWatch")) {
-            next.watchUrlsConfigured = true;
-            next.bbCoursesConfigured = true;
-            next.bbCourses = [];
-            next.enabledScripts = String(next.enabledScripts || "").split("|").filter((script) => script && script !== "blackboard").join("|");
+          if (id === "life-web-watch" && el3.closest("#envCompBrowserWatch")) {
             const activeUrls = (next.watchUrls || []).filter((e) => typeof e === "string" ? true : e.enabled !== false);
             if (next.webWatchEnabled && !activeUrls.length) throw Error("请先勾选并填写至少一个监控网址");
           }
-          if (id === "life-campus-watch" && el4.closest("#envCompScript")) {
+          if (id === "life-web-watch" && el3.closest("#envCompScript")) {
             const activeScripts = (next.scriptPaths || []).filter((e) => typeof e === "string" ? true : e.enabled !== false);
             next.scriptCollabEnabled = activeScripts.length > 0;
           }
@@ -8898,17 +8773,17 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
           }
           if (msg) msg.textContent = "已保存并重载";
           body.dataset.loaded = "";
-          await loadComponentDetail(id, el4);
+          await loadComponentDetail(id, el3);
           const readbackMsg = body.querySelector(".comp-msg");
           if (readbackMsg) readbackMsg.textContent = id === "personal-core" ? "已保存并校验挂载设置，已重新读取；此操作不重载MCP工具进程。" : "已保存并重载，已重新读取";
-          el4.dispatchEvent(new CustomEvent("component-config-saved", { bubbles: true, detail: { id } }));
+          el3.dispatchEvent(new CustomEvent("component-config-saved", { bubbles: true, detail: { id } }));
         };
         body.querySelector(".comp-save")?.addEventListener("click", async (event) => {
           const button = event.currentTarget;
           button.disabled = true;
           button.setAttribute("aria-busy", "true");
           try {
-            await el4.__saveComponent();
+            await el3.__saveComponent();
           } catch (error) {
             const msg = body.querySelector(".comp-msg");
             if (msg) msg.textContent = "保存失败：" + error.message;
@@ -8930,7 +8805,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     row.id = "balanceToolControl";
     row.dataset.componentId = balance.id;
     const numeric = [["abundantBalance", "富足提醒阈值", 0, 1e6, 20, "例：填20，达到20及以上为超级富足。"], ["lowBalance", "偏少提醒阈值", 0, 1e6, 5, "例：填5，余额降到5及以下进入偏少；低于见底阈值再进入下一档。"], ["criticalBalance", "见底提醒阈值", 0, 1e6, 1, "例：填1，余额降到1及以下可再次提醒；0及以下为空了。"], ["dropAlertAmount", "明显消耗参考金额", 0, 1e6, 5, "例：填5，两次核对净减少至少5时记录明显消耗；0关闭。"], ["notificationCooldownMin", "普通变化提醒冷却（分钟）", 1, 1440, 30, "例：普通补充/消耗30分钟冷却；偏少→见底→空了各自可提醒。"], ["checkIntervalMin", "余额检查间隔（分钟）", 1, 1440, 5, "例：5表示约每5分钟核对一次，不调用LLM。"]];
-    row.innerHTML = '<label class="v2-tool-item"><input type="checkbox" id="balanceToolEnabled"' + (balance.enabled ? " checked" : "") + '><span><b>启用API预算存量监控</b><small class="meta">检查真实余额；有效告警经 LLM 向管理员说一句，并刷新主动状态。</small></span></label><span class="meta" role="status"></span><details class="balance-settings"><summary>阶段金额与提醒范围</summary><p class="meta">定时告警：仅发管理员私聊，跳过主动概率，经 LLM 生成一句；实际发送成功后重置主动状态。仍遵守暂停、免打扰、预算和发送限额。</p><div class="balance-config-grid"><label><span>自动检查</span><input type="checkbox" data-balance-setting="monitorEnabled" checked><small>关闭后保留手动查询；停用上方组件开关则全部停止。</small></label><label><span>聊天内提示范围</span><select data-balance-setting="reminderScope"><option value="admin">仅管理员</option><option value="private">仅私聊</option><option value="all" selected>全部</option></select><small>在已有聊天中自然提及：仅管理员／授权私聊／再含群聊。独立定时告警始终只发管理员。</small></label><label><span>提醒币种</span><select data-balance-setting="currency"><option value="CNY">人民币 CNY</option><option value="USD">美元 USD</option></select><small>三个金额阈值统一按这个币种判断，不混算币种。</small></label>' + numeric.map(([key2, label2, min, max, value2, example2]) => "<label><span>" + label2 + '</span><input type="number" data-balance-setting="' + key2 + '" min="' + min + '" max="' + max + '" step="' + (["checkIntervalMin", "notificationCooldownMin"].includes(key2) ? "1" : "0.01") + '" value="' + value2 + '"><small>' + example2 + "</small></label>").join("") + '</div><p class="meta" data-balance-example></p><div class="balance-actions"><button class="small primary" type="button" data-balance-save>保存API预算监控阶段与范围</button><button class="small" type="button" data-balance-query>立即核对API预算存量</button><span class="meta" data-balance-message role="status"></span></div><p class="meta" data-balance-snapshot>尚未加载核对记录。</p></details>';
+    row.innerHTML = '<label class="v2-tool-item"><input type="checkbox" id="balanceToolEnabled"' + (balance.enabled ? " checked" : "") + '><span><b>启用API预算存量监控</b><small class="meta">检查真实余额；有效告警经 LLM 向管理员说一句，并刷新主动状态。</small></span></label><span class="meta" role="status"></span><details class="balance-settings"><summary>余额阈值、提醒范围与预警语义</summary><p class="meta">定时告警：仅发管理员私聊，跳过主动概率，经 LLM 生成一句；实际发送成功后重置主动状态。仍遵守暂停、免打扰、预算和发送限额。</p><div class="balance-config-grid"><label><span>自动检查</span><input type="checkbox" data-balance-setting="monitorEnabled" checked><small>关闭后保留手动查询；停用上方组件开关则全部停止。</small></label><label><span>聊天内提示范围</span><select data-balance-setting="reminderScope"><option value="admin">仅管理员</option><option value="private">仅私聊</option><option value="all" selected>全部</option></select><small>在已有聊天中自然提及：仅管理员／授权私聊／再含群聊。独立定时告警始终只发管理员。</small></label><label><span>提醒币种</span><select data-balance-setting="currency"><option value="CNY">人民币 CNY</option><option value="USD">美元 USD</option></select><small>三个金额阈值统一按这个币种判断，不混算币种。</small></label>' + numeric.map(([key2, label2, min, max, value2, example2]) => "<label><span>" + label2 + '</span><input type="number" data-balance-setting="' + key2 + '" min="' + min + '" max="' + max + '" step="' + (["checkIntervalMin", "notificationCooldownMin"].includes(key2) ? "1" : "0.01") + '" value="' + value2 + '"><small>' + example2 + "</small></label>").join("") + '<label class="balance-alert-text"><span>余额预警语义</span><textarea data-balance-setting="alertStyle" rows="3" maxlength="500" placeholder="默认把余额变化理解为 API 预算变化，用自然的话简要说明。"></textarea><small>可以填写想用的比喻、称呼和语气。留空使用默认表达。</small></label></div><p class="meta" data-balance-example></p><div class="balance-actions"><button class="small primary" type="button" data-balance-save>保存余额预警设置</button><button class="small" type="button" data-balance-query>立即核对API预算存量</button><span class="meta" data-balance-message role="status"></span></div><p class="meta" data-balance-snapshot>尚未加载核对记录。</p></details>';
     container.append(row);
     updateCounts();
     let dirty3 = false, loaded = false;
@@ -8995,7 +8870,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
     });
     row.querySelector("[data-balance-save]").addEventListener("click", async (event) => {
       const button = event.currentTarget, config = {};
-      for (const input of row.querySelectorAll("[data-balance-setting]")) config[input.dataset.balanceSetting] = input.type === "checkbox" ? input.checked : input.tagName === "SELECT" ? input.value : Number(input.value);
+      for (const input of row.querySelectorAll("[data-balance-setting]")) config[input.dataset.balanceSetting] = input.type === "checkbox" ? input.checked : input.type === "number" ? Number(input.value) : input.value;
       button.disabled = true;
       fields.forEach((input) => input.disabled = true);
       try {
@@ -9084,7 +8959,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         const root = typeof rootOrId === "string" ? document.getElementById(rootOrId) : rootOrId;
         if (!root) return;
         const items2 = compCache.filter((p) => !isInternalPromptComponent(p) && (ids || []).includes(p.id));
-        root.innerHTML = items2.length ? items2.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${root.dataset.hideToggle === "1" || ["ctx-memory-profile-store", "life-campus-watch", "exec-image-generation"].includes(p.id) ? "1" : "0"}" data-save-label="${esc(root.dataset.saveLabel || "")}" data-toggle-label="${p.id === "exec-browser-manager" ? "启用 DOM 操作" : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || "")}"><div class="comp-body">加载设置…</div></div>`).join("") : "";
+        root.innerHTML = items2.length ? items2.map((p) => `<div class="comp-card" data-id="${esc(p.id)}" data-hide-toggle="${root.dataset.hideToggle === "1" || ["ctx-memory-profile-store", "life-web-watch", "exec-image-generation"].includes(p.id) ? "1" : "0"}" data-save-label="${esc(root.dataset.saveLabel || "")}" data-toggle-label="${p.id === "exec-browser-manager" ? "启用 DOM 操作" : esc(p.name)}" data-inline-fields="${esc(root.dataset.fields || "")}"><div class="comp-body">加载设置…</div></div>`).join("") : "";
         await Promise.all([...root.querySelectorAll(".comp-card")].map((d) => loadComponentDetail(d.dataset.id, d)));
       };
       componentUI.loadMessageAck = async () => {
@@ -9244,6 +9119,23 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         document.getElementById("aliasModalReject").style.display = entry.status === "candidate" ? "" : "none";
         document.getElementById("aliasModalOverlay").classList.add("open");
       }
+      const redactCandidateIds = (value2) => String(value2 ?? "").replace(/\d{5,}/g, "••••");
+      function candidatePreview(entry) {
+        return {
+          ...entry,
+          alias: redactCandidateIds(entry.alias),
+          targetName: redactCandidateIds(entry.targetName),
+          qq: entry.qq ? "已绑定，审核时可查看" : "",
+          note: redactCandidateIds(entry.note),
+          reason: redactCandidateIds(entry.reason),
+          sourceKeys: (entry.sourceKeys || []).map(redactCandidateIds),
+          evidence: (entry.evidence || []).map((item) => ({
+            ...item,
+            key: redactCandidateIds(item.key),
+            text: redactCandidateIds(item.text)
+          }))
+        };
+      }
       function render2() {
         const suffix = active === "candidate" ? "Cand" : active[0].toUpperCase() + active.slice(1), target = document.getElementById("alias" + active[0].toUpperCase() + active.slice(1) + "List"), q = search(), limit = Number(document.getElementById("aliasLimit" + suffix).value) || 100;
         const list = rows2.filter((x) => x.status === active), filtered = list.filter((x) => !q || [x.alias, x.qq, x.note, x.reason, x.targetName, (x.sourceKeys || []).join(" "), ...(x.evidence || []).map((y) => y.text)].join(" ").toLowerCase().includes(q)), shown = filtered.slice(0, limit);
@@ -9252,7 +9144,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
           return;
         }
         let html = '<div class="meta" style="padding:6px 8px">共 ' + filtered.length + " 条，显示 " + shown.length + " 条</div><table><tr><th>选择</th><th>绰号</th><th>被称呼者</th><th>对应 QQ</th><th>适用会话 / 语境证据</th><th>备注</th><th>操作</th></tr>";
-        for (const e of shown) {
+        for (const row of shown) {
+          const e = active === "candidate" ? candidatePreview(row) : row;
           const actions = active === "candidate" ? '<button class="small" data-alias-edit="' + esc(e.id) + '">查看 / 编辑</button><button class="small primary" data-alias-confirm="' + esc(e.id) + '">确认</button><details class="compact-actions"><summary>更多</summary><div class="compact-actions-menu"><button class="small" data-alias-reject="' + esc(e.id) + '">拒绝</button></div></details>' : active === "confirmed" ? '<button class="small" data-alias-edit="' + esc(e.id) + '">编辑</button><button class="small danger" data-alias-delete="' + esc(e.id) + '">删除</button>' : '<span class="meta">已记入拒绝记录</span>';
           html += '<tr data-alias-id="' + esc(e.id) + '"><td>' + (active !== "rejected" ? '<input type="checkbox" data-alias-select="' + esc(e.id) + '" ' + (selected3.has(e.id) ? "checked" : "") + ">" : "—") + "</td><td><b>" + esc(e.alias) + '</b><br><span class="' + (active === "candidate" ? "pill b" : active === "confirmed" ? "pill g" : "pill r") + '">' + statusLabel[active] + "</span></td><td>" + esc(e.targetName || "—") + "</td><td>" + esc(e.qq || "未绑定") + "</td><td>" + sourceKeysMarkup(e) + (e.evidence?.length ? "<br>" + learningEvidence(e.evidence) : "") + "</td><td>" + esc(e.note || e.reason || "—") + '</td><td class="row">' + actions + "</td></tr>";
         }
@@ -9547,8 +9440,8 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         }
         const status = document.getElementById("envMonitorStatus");
         const scriptStatus = document.getElementById("envScriptStatus");
-        if (!status) return;
-        statusRequest = api("/api/plugins/call", "POST", { tool: "campus_watch_status", input: {} }).then((response) => {
+        if (!status || !scriptStatus) return;
+        statusRequest = api("/api/plugins/call", "POST", { tool: "web_watch_status", input: {} }).then((response) => {
           const result = response.result || {};
           if (response.ok !== true || result.ok !== true) throw Error(result.error || "状态读取失败");
           lastSites = result.sites || [];
@@ -9574,7 +9467,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
         button.disabled = true;
         button.textContent = "正在请求重新监管…";
         try {
-          const response = await api("/api/plugins/config", "POST", { id: "life-campus-watch", config: { manualRetry: { url: button.dataset.watchRetry, nonce: crypto.randomUUID() } } });
+          const response = await api("/api/plugins/config", "POST", { id: "life-web-watch", config: { manualRetry: { url: button.dataset.watchRetry, nonce: crypto.randomUUID() } } });
           if (response.ok !== true) throw Error(response.error || "重新监管失败");
           await loadStatus({ force: true });
         } catch (error) {

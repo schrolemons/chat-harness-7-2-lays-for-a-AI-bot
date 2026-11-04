@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { WHALE_MCP_SERVERS } from './servers.js';
@@ -24,6 +25,31 @@ export async function inspectWhaleMcpServers(root) {
   const fingerprintSources=toolCatalogInputs(root);
   return {version:2,observedAt:new Date().toISOString(),fingerprint: fingerprintInputs(fingerprintSources),fingerprintSources,servers};
 }
+// Fresh installs have no local registration snapshot. Audit once on the
+// authenticated catalog request and share concurrent requests for this root.
+const catalogAudits = new Map();
+export async function ensureToolCatalog(root) {
+  const catalog = readToolCatalog(root);
+  if (catalog.ok && !catalog.stale && catalog.servers.every(server => server.ok)) return catalog;
+  if (!catalogAudits.has(root)) {
+    const audit = (async () => {
+      const snapshot = await inspectWhaleMcpServers(root);
+      const file = path.join(root, 'state', 'tool-catalog.json');
+      const temporary = file + '.' + randomUUID() + '.tmp';
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      try {
+        fs.writeFileSync(temporary, JSON.stringify(snapshot, null, 2), { flag: 'wx' });
+        fs.renameSync(temporary, file);
+      } finally {
+        fs.rmSync(temporary, { force: true });
+      }
+      return readToolCatalog(root);
+    })().finally(() => catalogAudits.delete(root));
+    catalogAudits.set(root, audit);
+  }
+  return catalogAudits.get(root);
+}
+
 export function readToolCatalog(root) {
   let registered;
   try{registered=JSON.parse(fs.readFileSync(path.join(root,'state/tool-catalog.json'),'utf8'));}

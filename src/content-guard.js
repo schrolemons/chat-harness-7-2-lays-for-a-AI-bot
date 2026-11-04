@@ -98,6 +98,7 @@ function toRuleDefinitions(rules) {
 
 export const DEFAULT_INJECTION_RULES = toRuleDefinitions(INJECTION_RULES);
 export const DEFAULT_FORBIDDEN_RULES = toRuleDefinitions(FORBIDDEN_RULES);
+const defaultSecretRule = DEFAULT_INJECTION_RULES.find(rule => rule.id === 'secret-exfil');
 
 const RULE_FLAGS = new Set(['i', 'm', 's', 'u']);
 const guardRuleCache = new Map();
@@ -165,10 +166,21 @@ export function normalizeExternalText(input) {
     .trim();
 }
 
-function collectHits(rules, text) {
+// In feedback, these bounded phrases report receipt facts. Mask only the
+// ambiguous verb for the built-in secret rule; the credential noun and every
+// other request verb remain visible, including requests for those receipts.
+function matchesInjectionRule(rule, text, feedback) {
+  const builtInSecret = rule.id === defaultSecretRule.id && rule.pattern === defaultSecretRule.pattern && rule.flags === defaultSecretRule.flags;
+  if (feedback && builtInSecret) {
+    text = text.replace(/(^|[。！？；\n])(\s*(?:(?:本次|本轮)?成功)?)发送(?=(?:(?:回执)?凭据(?:缺失|未登记|未匹配|已登记|绑定失败|绑定错误)(?=[。！？；\n]|$)|记录(?:出现异常|未更新|已更新|丢失|缺失)(?=[，。！？；\n]|$)))/g, '$1$2投递');
+  }
+  return rule.re.test(text);
+}
+
+function collectHits(rules, text, matches = (rule, source) => rule.re.test(source)) {
   const hits = [];
   for (const rule of rules) {
-    if (rule.re.test(text)) hits.push({ id: rule.id, label: rule.label });
+    if (matches(rule, text)) hits.push({ id: rule.id, label: rule.label });
   }
   return hits;
 }
@@ -198,11 +210,11 @@ export function detectForbidden(text, extraTerms = [], rules = undefined) {
  * 把疑似指令的**行**中和掉：加「外部原文·不可执行」前缀、替换尖括号，避免被当成标签/系统消息。
  * 只动命中的那一行，尽量保留原文语义给管理端看。
  */
-function neutralizeLines(text, rules = INJECTION_RULES) {
+function neutralizeLines(text, rules, matches) {
   return String(text)
     .split('\n')
     .map((line) => {
-      const hit = rules.some((rule) => rule.re.test(line));
+      const hit = rules.some((rule) => matches(rule, line));
       const safe = line.replace(/</g, '＜').replace(/>/g, '＞');
       if (!hit) return safe;
       return '（外部原文·不可执行）' + safe;
@@ -246,17 +258,18 @@ export function guardExternalText(raw, options = {}) {
     };
   }
   const injectionRules = compileGuardRules(conf.injectionRules);
-  const injection = detectInjection(source, conf.injectionRules);
-  const needsNeutralize = injection.hits.length > 0 && conf.quarantineInjection;
-  const cleaned = needsNeutralize ? neutralizeLines(source, injectionRules) : source;
+  const matches = (rule, text) => matchesInjectionRule(rule, text, kind === '反馈');
+  const hits = collectHits(injectionRules, source, matches);
+  const needsNeutralize = hits.length > 0 && conf.quarantineInjection;
+  const cleaned = needsNeutralize ? neutralizeLines(source, injectionRules, matches) : source;
   const clamped = clampText(cleaned, maxLength);
   return {
     action: needsNeutralize ? 'neutralize' : 'allow',
     text: clamped.text,
-    hits: injection.hits,
-    risk: injection.risk,
+    hits,
+    risk: hits.length === 0 ? 'none' : hits.length >= 2 ? 'blocked' : 'suspicious',
     truncated: clamped.truncated,
-    reason: needsNeutralize ? `含疑似提示词注入（${injection.hits.map((h) => h.label).join('、')}），已中和并标记为外部数据` : ''
+    reason: needsNeutralize ? `含疑似提示词注入（${hits.map((h) => h.label).join('、')}），已中和并标记为外部数据` : ''
   };
 }
 

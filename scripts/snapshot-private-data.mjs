@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 import {bridgeHistory,sessionRows,writeSession} from './private-history.mjs';
 
-const ROOT_FILES=['config.json','campus-watch.json','browser-sites.json'];
-const STATE_FILES=['current-role.json','mode.json','initial-prompts.json','person-profiles.json','user-profiles.json','slang.json','stickers.json','feedback.json','tasks.json','time-bubbles.json','time-bubble-locks.json','sessions.json','social-v2.json','campus-watch-state.json','script-heartbeats.json','token-usage.jsonl'];
+const ROOT_FILES=['config.json','browser-sites.json'];
+const STATE_FILES=['current-role.json','mode.json','initial-prompts.json','person-profiles.json','user-profiles.json','slang.json','stickers.json','feedback.json','tasks.json','time-bubbles.json','time-bubble-locks.json','sessions.json','social-v2.json','script-heartbeats.json','token-usage.jsonl'];
 const STATE_DIRECTORIES=['state/memory','state/plugins','state/migrations'];
 const SECRET_KEY=/^(?:token|consoleToken|accessToken|authToken|agentToken|apiKey|api[_-]key|password|passwd|secret|cookie|cookies|authorization|bearerToken|launchToken|refreshToken|sessionToken)$|(?:api[_-]?key|access[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token)$/i;
 const MARKER='<LOCAL_CREDENTIAL>';

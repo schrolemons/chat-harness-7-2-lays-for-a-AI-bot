@@ -102,19 +102,6 @@ function collectV2TimeBubbles() {
   }));
 }
 
-// Keep an already-loaded editor current without replacing its unsaved row edits.
-export function appendExampleTimeBubbleRows(key, slots = []) {
-  if (!timeBubbleEditorReady(key)) return;
-  const box = document.getElementById('v2TimeBubbleRows');
-  const current = collectV2TimeBubbles();
-  for (const slot of slots) {
-    if (current.some(row => row.id === slot.id || (row.hour === slot.hour && row.minute === slot.minute))) continue;
-    box.appendChild(buildV2TimeBubbleRow(slot));
-    current.push(slot);
-  }
-  applyV2TimeBubbleLocks();
-}
-
 function setV2TbMsg(text) { const el = document.getElementById('v2TbMsg'); if (el) el.textContent = text || ''; }
 
 async function loadV2TimeBubblesFor(key) {

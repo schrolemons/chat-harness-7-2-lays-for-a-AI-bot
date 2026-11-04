@@ -7195,6 +7195,15 @@ button.comp-save {
     grid-template-columns: 1fr;
   }
 }
+#balanceToolControl .balance-config-grid > .balance-alert-text {
+  grid-column: 1/-1;
+}
+#balanceToolControl .balance-alert-text textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+}
 
 /* console/layers/E/environments.css */
 .environment-page > .env-card {

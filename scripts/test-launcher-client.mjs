@@ -31,7 +31,7 @@ test('last-instance hot reload replaces only its widget; old disposer cannot rem
  assert.equal(p.body.children.length,1);assert.equal(p.body.children[0].isConnected,true);assert.equal(p.timers.size,1);assert.equal(p.events.get('resize').size,1);
 });
 test('spawned runtime is labelled pending connection confirmation and never shown as QQ ready',async t=>{
- const p=await page(t);p.statuses.a='running';await p.tick();assert.match(p.nodes.get('qq-launcher-a-button').title,/连接状态待确认/);
+ const p=await page(t);p.statuses.a='running';await p.tick();assert.match(p.nodes.get('qq-launcher-a-button').title,/正在等待 QQ 与 DSH 连接/);
  p.statuses.a='stopped';await p.tick();assert.match(p.nodes.get('qq-launcher-a-button').title,/已停止/);
 });
 test('all six ports roundtrip and port changes survive a full client reload through live discovery',async t=>{

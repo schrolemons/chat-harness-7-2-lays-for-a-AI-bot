@@ -25,7 +25,7 @@
   ctx-memory-profile-store、ctx-memory-store、ctx-memory-update、ctx-role-card
 - **T**：tool-bilibili、tool-codex-chat、tool-injection-lab、tool-registry
 - **E**：env-bridge、exec-browser-manager、exec-sandbox、gov-admin-dev-mode（管理员模式环境）
-- **L**：life-campus-watch、life-daily-worklog、life-proactive-startup-greeting、
+- **L**：life-daily-worklog、life-proactive-startup-greeting、
   life-proactive-time-bubble、life-relay-message、life-schedule-reminder、life-scheduler、
   life-task-session、life-user-availability、life-wake-reasons
 - **O**：obs-bridge-health、obs-cost-policy、obs-health-monitor、obs-self-review
