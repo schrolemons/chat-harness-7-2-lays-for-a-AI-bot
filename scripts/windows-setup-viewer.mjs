@@ -15,11 +15,18 @@ public sealed class SetupViewer : Form {
   private SetupViewer(Stream input, string title) {
     Text = title;
     StartPosition = FormStartPosition.CenterScreen;
-    ClientSize = new Size(710, 190);
+    AutoScaleMode = AutoScaleMode.Dpi;
+    ClientSize = new Size(540, 150);
+    MinimumSize = Size;
+    MaximizeBox = false;
+    ShowIcon = false;
+    BackColor = Color.FromArgb(19, 20, 24);
+    Padding = new Padding(18, 14, 18, 14);
     var output = new TextBox {
       Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
-      BackColor = Color.FromArgb(16, 16, 16), ForeColor = Color.Gainsboro,
-      Font = new Font("Consolas", 11)
+      BorderStyle = BorderStyle.None,
+      BackColor = BackColor, ForeColor = Color.FromArgb(231, 233, 238),
+      Font = new Font("Consolas", 10)
     };
     Controls.Add(output);
     Load += (sender, args) => {

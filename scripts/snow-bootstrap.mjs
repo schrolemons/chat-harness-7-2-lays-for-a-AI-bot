@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 
 // No changes to the vendor bundle on disk, and no WebUI authentication changes.
 // Apply a checked startup adapter to this one entry only, in updater and worker.
-export function scopeSnowSource(source, uin, helperUrl) {
+export function scopeSnowSource(source, uin, helperUrl, setupUrl) {
   if (!/^[1-9]\d{4,19}$/.test(String(uin))) throw Error('缺少明确的 bot QQ 账号，拒绝全账号自动加载');
   const anchor = 'const notificationManager = createNotificationManager(';
   const networkAnchor = 'oneBotManager.bind(bridgeManager);';
@@ -32,40 +32,37 @@ export function scopeSnowSource(source, uin, helperUrl) {
   if (hook.split(loginAnchor).length !== 2) throw Error('SnowLuma 登录接口已变化，拒绝启动');
   hook = hook.replace(loginAnchor, `${loginAnchor}\nif(String(uin)!==${account}){session.dispose();return;}`);
   source = source.slice(0, start) + hook + source.slice(end);
+  if (setupUrl) {
+    const credentials = 'logInitialWebuiCredentials(initialPassword);';
+    if (source.split(credentials).length !== 2) throw Error('SnowLuma 初始凭据接口已变化，请检查版本');
+    source = 'const __qqSetup = await import(' + JSON.stringify(setupUrl) + ');\n'
+      + source.replace(credentials, '__qqSetup.showSetupConsole(process.env.SNOWLUMA_WEBUI_PORT, initialPassword);');
+  }
   return `const __qqAccountAdapter = await import(${JSON.stringify(helperUrl)});\n` + source.replace(networkAnchor,
     `oneBotManager.bind(__qqAccountAdapter.targetSessionSource(bridgeManager, ${account}));`)
     .replace(anchor,
     `__qqAccountAdapter.startTargetAccount(hookManager, ${account});\n\t` + anchor);
 }
 
-export function showSetupConsole(port) {
-  const title = 'SnowLuma WebUI setup: http://127.0.0.1:' + port;
-  const writer = openSetupViewer(title, [
-    title + '/',
-    'The initial WebUI credentials, if required, appear below.',
+export function showSetupConsole(port, password) {
+  openSetupViewer('SnowLuma WebUI 设置 · ' + port, [
+    'http://127.0.0.1:' + port + '/',
+    '',
+    'Username: admin',
+    'Initial password: ' + password,
+    '',
+    'Sign in to the WebUI and set your own password.',
   ], () => process.stderr.write('SnowLuma: startup console unavailable.\n'));
-  const write = process.stdout.write.bind(process.stdout);
-  process.stdout.write = (chunk, ...args) => {
-    // SnowLuma emits initial credentials only to stdout. Relay them to the
-    // separate viewer through an anonymous pipe, without persisting another copy.
-    if (String(chunk).includes('initial credentials:') && writer.stdin.writable) {
-      writer.stdin.write(String(chunk).replace(/[\r\n]+$/, '') + '\n');
-    }
-    return write(chunk, ...args);
-  };
-  return writer;
 }
 
 if (process.env.SNOWLUMA_BRIDGE_ENTRY) {
-  if (process.platform === 'win32' && process.env.SNOWLUMA_BRIDGE_CONSOLE === '1') {
-    showSetupConsole(process.env.SNOWLUMA_WEBUI_PORT);
-  }
+  const setupUrl = process.platform === 'win32' && process.env.SNOWLUMA_BRIDGE_CONSOLE === '1' ? import.meta.url : undefined;
   const entry = pathToFileURL(process.env.SNOWLUMA_BRIDGE_ENTRY).href;
   const helper = new URL('./snow-target-account.mjs', import.meta.url).href;
   registerHooks({ load(url, context, nextLoad) {
     const result = nextLoad(url, context);
     if (url !== entry) return result;
     const source = typeof result.source === 'string' ? result.source : Buffer.from(result.source).toString('utf8');
-    return { ...result, source: scopeSnowSource(source, process.env.SNOWLUMA_BRIDGE_UIN, helper) };
+    return { ...result, source: scopeSnowSource(source, process.env.SNOWLUMA_BRIDGE_UIN, helper, setupUrl) };
   } });
 }

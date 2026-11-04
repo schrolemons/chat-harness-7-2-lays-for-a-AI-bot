@@ -51,6 +51,10 @@ oneBotManager.bind(bridgeManager); const hookManager = {}; const notificationMan
   assert.match(patched, /targetSessionSource\(bridgeManager, "222222"\)/);
   assert.throws(() => scopeSnowSource(src, '', 'fixture'), /明确的 bot/);
   assert.throws(() => scopeSnowSource('changed vendor', '222222', 'fixture'), /启动接口已变化/);
+  const startup = src + '\nif (initialPassword) logInitialWebuiCredentials(initialPassword);';
+  assert.match(scopeSnowSource(startup, '222222', 'file:///fixture.mjs', 'file:///setup.mjs'),
+    /if \(initialPassword\) __qqSetup\.showSetupConsole\(process\.env\.SNOWLUMA_WEBUI_PORT, initialPassword\);/);
+  assert.doesNotMatch(scopeSnowSource(startup, '222222', 'file:///fixture.mjs'), /__qqSetup/);
 });
 
 test('自动接管前重新核实账号；其他账号和未知身份均不能打开 pipe 客户端', async()=>{
