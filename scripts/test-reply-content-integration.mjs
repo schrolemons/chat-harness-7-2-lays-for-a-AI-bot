@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
-async function open(t,{texts=['这幅画很好看','今天天气不错','这首歌很有趣'],rate=0,extraFiles={},globals}={}){
- const h=await bridgeHarness({config:{sendDelayMs:0},globals,files:{'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:3,maxMessagesCasual:3,maxMessagesSerious:3,maxSendPerMinute:rate,maxSendPerHour:rate,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},...extraFiles}});
+async function open(t,{texts=['这幅画很好看','今天天气不错','这首歌很有趣'],rate=0,extraFiles={},extraConfig={},globals}={}){
+ const h=await bridgeHarness({config:{sendDelayMs:0,...extraConfig},globals,files:{'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:3,maxMessagesCasual:3,maxMessagesSerious:3,maxSendPerMinute:rate,maxSendPerHour:rate,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},...extraFiles}});
  h.setMode('reserved2');const key='private:123',st=h.getSocialV2State(key);st.bootstrapSent=true;
  const messages=texts.map((text,i)=>h.appendSocialV2Message(key,'甲',text,text,false,true,String(101+i),[],'123',[],undefined,false,{bodyComplete:true}));
  const sid=await h.ensureSession(key);await h.deliverPrompt(key,'',{wakeReason:'private'});await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:1}}}});
@@ -84,7 +84,7 @@ test('mixed task operations require a selected paid group and cannot consume a s
  const denied=await request('/api/socialV2/schedules',write);assert.equal(denied.status,409);assert.match(denied.body.error,/task_group_not_admitted/);
  const undeclaredReceipt=await request('/api/socialV2/receipt-report',{key,receipts:[{seq:messages[1].seq,status:'replied'}]});assert.equal(undeclaredReceipt.status,409);assert.equal(undeclaredReceipt.body.error,'task_group_pending');
  const declared=await request('/api/socialV2/reply-contents',{key,groups:messages.map((m,i)=>({seqs:[m.seq],kind:i<2?'task':'chat'}))});
- assert.equal(declared.body.ok,true,JSON.stringify(declared.body));assert.equal(declared.body.deferred.length,1);
+ assert.equal(declared.body.ok,true,JSON.stringify(declared.body));assert.equal(declared.body.deferred.length,1);assert.match(declared.body.deferredDetail[0].reason,/minute_limit|hour_limit/);assert.ok(declared.body.deferredDetail[0].nextAt>Date.now());
  const [paid,waiting,chat]=declared.body.contents;assert.equal(paid.taskExempt,true);assert.equal(waiting.taskPending,true);
  const repeated=await request('/api/socialV2/reply-contents',{key,groups:messages.map((m,i)=>({seqs:[m.seq],kind:i<2?'task':'chat'}))});assert.equal(repeated.body.ok,true);
  for(const id of [waiting.id,chat.id,'content:forged'])assert.equal((await request('/api/socialV2/schedules',write,id)).status,409);
@@ -107,4 +107,25 @@ test('a real memory maintenance turn may read and update its diary without takin
  const read=await fetch(base+'?key='+key,{headers});assert.equal(read.status,200);const diary=await read.json();
  const update=await fetch(base,{method:'POST',headers,body:JSON.stringify({key,day:diary.day,text:'maintenance diary'})});assert.equal(update.status,200);
  assert.equal(h.pluginHost.callService('replyPlan','preview',{key}).minute,0);assert.equal(h.calls.sent.length,0);
+});
+
+test('an admitted private relay carries the source task to its one named destination',async t=>{
+ const {h,key,st,messages,request}=await open(t,{texts:['去私聊测试朋友说声晚安'],extraConfig:{allow:{private:['123','12001','12002'],groups:['456']},socialV2:{relayAliases:{测试朋友:'private:12001'}}}});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'task'}]});
+ const content=declared.body.contents?.[0];assert.equal(content?.taskExempt,true,JSON.stringify(declared.body));
+ const send=(userId,contentId)=>request('/api/send/private',{userId,token:st.agentToken,message:'晚安'},contentId);
+ const missing=await send('12001');assert.equal(missing.body.code,'CROSS_SESSION_TASK_REQUIRED',JSON.stringify(missing));
+ const other=await send('12002',content.id);assert.equal(other.body.code,'CROSS_SESSION_TARGET_MISMATCH',JSON.stringify(other));
+ const sent=await send('12001',content.id);assert.equal(sent.body.sent,1,JSON.stringify(sent.body));
+ assert.match((await send('12001',content.id)).body.error,/duplicate_delivery/);
+ assert.equal(h.calls.http.filter(c=>/send_private_msg$/.test(c.url)).length,1);
+});
+
+test('a newer unread message does not block a bound reply to an earlier complete source',async t=>{
+ const {h,key,messages,request}=await open(t,{texts:['先前的完整问题']});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'chat'}]});
+ const content=declared.body.contents?.[0];assert.ok(content);
+ h.appendSocialV2Message(key,'甲','之后的未读消息','之后的未读消息',false,true,'999',[],'123',[],undefined,false,{bodyComplete:true});
+ const sent=await request('/api/socialV2/send-message',{key,messages:'回答上一条'},content.id);
+ assert.equal(sent.body.sent,1,JSON.stringify(sent.body));
 });

@@ -89,7 +89,7 @@ test('real pinned native Connection serves authenticated live discovery and synt
  await page.waitForFunction(followsMenu,{timeout:6500});
  assert.equal(await page.evaluate(()=>window.savedLateB===document.getElementById('qq-launcher-b-button')&&window.savedA===document.getElementById('qq-launcher-a-button')),true);
  assert.equal(await page.evaluate(()=>window.fixtureResizeCount),0,'geometry changes must not require resize');
- await page.click('#qq-launcher-a-button');await page.waitForFunction(()=>document.getElementById('qq-launcher-a-button').title.includes('连接状态待确认'));
+ await page.click('#qq-launcher-a-button');await page.waitForFunction(()=>document.getElementById('qq-launcher-a-button').title.includes('正在等待 QQ 与 DSH 连接'));
  assert.deepEqual(f.events,['a:start']);
  await page.click('#qq-launcher-a-settings');await page.waitForFunction(()=>!document.getElementById('qq-launcher-a-settings-save').disabled);
  assert.equal(await page.$eval('#qq-launcher-a-port-dsh',node=>node.value),'');

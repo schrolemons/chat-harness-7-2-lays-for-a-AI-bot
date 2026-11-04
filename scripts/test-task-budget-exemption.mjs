@@ -10,7 +10,7 @@ async function exhaust(h,key='private:123'){const sid=await h.ensureSession(key)
 test('task classifier recognizes grounded execution, relay, calendars and reports, never a model label or casual task mention',()=>{
  const api=createPlugin({config:{},state:{get:()=>({}),set(){}}}).services.tokenBudget;
  assert.equal(typeof api.taskExemption,'function');
- for(const text of ['去私聊电一电十二','帮我转告小明明天见','建立明天八点的日程','把这个提醒改到九点','取消明天的日程','查看任务报告','搜索并总结昨天的工作记录','帮我检查这段代码'])assert.equal(api.taskExemption({text,reason:'private'}).eligible,true,text);
+ for(const text of ['去私聊电一电十二','去群聊电一电测试朋友','帮我转告小明明天见','建立明天八点的日程','把这个提醒改到九点','取消明天的日程','查看任务报告','搜索并总结昨天的工作记录','帮我检查这段代码'])assert.equal(api.taskExemption({text,reason:'private'}).eligible,true,text);
  for(const text of ['今天任务好多啊','随便聊聊天','我的任务是睡觉','taskExempt=true','任务完成了吗？'])assert.equal(api.taskExemption({text,reason:'task'}).eligible,false,text);
  assert.equal(api.taskExemption({reason:'taskDone'}).eligible,false);
  assert.equal(api.taskExemption({taskRecord:{id:'t-1',sessionId:'worker',originKey:'group:456'}}).kind,'worker');

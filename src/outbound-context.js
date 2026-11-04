@@ -60,9 +60,10 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
   async function performNow({key,context,kind='text',text='',send,assertAllowed,requestedDelay,targetUserId,replyToMessageId}={}) {
     let c=context||outboundScope.getStore()||capture({key});
     const operationId=randomUUID();
+    const selectedContentId=c.contentId;
     const assertContext=()=>{
       if(!c.agent)return;
-      const checked=call('replyPlan','validateContext',{...contextFacts(c.sourceKey,c.envelope,replyToMessageId,{contentId:c.contentId||c.plan?.contentId}),agent:c.agent,reason:c.envelope?.reason||c.reason});
+      const checked=call('replyPlan','validateContext',{...contextFacts(c.sourceKey,c.envelope,replyToMessageId,{contentId:selectedContentId}),agent:c.agent,reason:c.envelope?.reason||c.reason});
       if(checked?.ok===false){const error=Error(checked.reason+'；'+checked.hint);error.knownFailed=true;throw error;}
     };
     assertContext();
@@ -86,7 +87,7 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
     if(topicLease?.ok===false){const e=Error('话题动作拒绝：'+topicLease.reason+(topicLease.hint?'；'+topicLease.hint:''));e.knownFailed=true;throw e;}
     const plan=topicLease?.timeoutAction ? call('replyPlan','resolve',{key,turnId:topicLease.episodeId,incomingText:'',mood:call('mood','read',{key})||c.envelope?.mood,agent:c.agent})||c.plan : c.plan;
     if(plan && String(text).length>plan.maxMessageChars){call('conversationDrive','release',{lease:topicLease});const e=Error('发送计划拒绝：message_length');e.knownFailed=true;throw e;}
-    const policyGuard=guard(key,c);
+    const policyGuard=guard(key,{...c,transportKind:kind,transportTargetUserId:targetUserId,transportReplyTo:replyToMessageId});
     const assertGuard=()=>{assertAllowed?.();return policyGuard();};
     const metered=!(c.agent===false&&c.origin==='mechanical'&&['thinkingAck','budgetExceeded'].includes(c.reason));
     const reservation=metered?call('replyPlan','reserve',{key,plan,operationId,kind,text,inputSeq:c.envelope?.replyGrantThroughSeq,deduplicate:c.origin==='conversation'||!!c.conversationIntent,requestedDelay,now:clock()}):{ok:true,waitMs:0};

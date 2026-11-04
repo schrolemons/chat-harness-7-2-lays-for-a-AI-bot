@@ -2,6 +2,7 @@ import {createRuntimeIpcClient} from './instance-runtime-ipc.mjs';
 import {bindInstanceSnowConfig} from './instance-snow-connection.mjs';
 import {bindInstanceDshConfig} from './instance-dsh-target.mjs';
 import {loadInstanceSessionPolicy} from './instance-session-policy.mjs';
+import {parseRelayCommand, stripRelayPrefix} from './relay-intent.js';
 import { presetBindings, summarizePreset } from './console/preset-overview.js';
 import {buildDshBundle} from '../scripts/build-dsh-bundle.mjs';
 import { openSetupViewer } from '../scripts/windows-setup-viewer.mjs';
@@ -8186,6 +8187,13 @@ async function main() {
           }
           if (currentMode === 'reserved2' && !token) { sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token' }, 403); return; }
           if (token && !agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+          const sendContext = outboundScope.getStore();
+          if (currentMode === 'reserved2' && sendContext?.agent && sendContext.sourceKey !== key) {
+            const error = tokenEq(token,req.headers['x-agent-token']) && !replyToMessageId && !atUserId
+              ? crossSessionTaskError(key,sendContext)
+              : 'CROSS_SESSION_TASK_REQUIRED：跨会话任务须使用发起会话令牌并发送独立消息。';
+            if (error) { sendJson({ok:false,code:error.split('：')[0],error},409); return; }
+          }
           const flag = isPrivate ? 'sendPrivate' : (isReply ? 'reply' : 'sendGroup');
           if (token && !v2ToolEnabled(flag)) { sendJson({ ok: false, error: `工具未启用：${flag}` }, 403); return; }
           if (shouldBlockSilentReply(key,outboundScope.getStore(),replyToMessageId)) {
@@ -8555,6 +8563,42 @@ async function main() {
     for(const message of [...view.unread,...view.recentMessages])if(!message.isSelf && messageAdmitted(envelope,message))bySeq.set(message.seq,message);
     return [...bySeq.values()];
   }
+  function crossSessionTaskError(targetKey, context) {
+    const sourceKey = context?.sourceKey;
+    const envelope = context?.envelope;
+    const contentId = context?.contentId;
+    const content = contentId && pluginHost.callService('replyPlan','getContent',{key:sourceKey,contentId});
+    const grant = content && envelope?.admittedTaskGroups?.[content.id];
+    if (!sourceKey?.startsWith('private:') || !activeReplyContext(sourceKey,context)
+        || !isSessionAllowedInCurrentMode(sourceKey) || !content?.taskExempt || !validTaskBudgetAdmission(grant,sourceKey)) {
+      return 'CROSS_SESSION_TASK_REQUIRED：用发起私聊中完整读入的原指令声明 task 分组，发送时带上该组已准入的 contentId。收件人无需先来信。';
+    }
+    const source = content.seqs.map(seq=>findV2MessageBySeq(getSocialV2State(sourceKey),seq));
+    if (source.some(message=>!messageAdmitted(envelope,message))) {
+      return 'CROSS_SESSION_TASK_REQUIRED：原任务来源已变化，请重读发起会话的完整指令并重新声明。';
+    }
+    const resolve = name => {
+      const alias = cfg.socialV2?.relayAliases?.[name];
+      if (alias) return resolveRelayTargetV2(String(alias));
+      const confirmed = pluginHost.callService('aliases','lookupConfirmed',{alias:name});
+      return resolveRelayTargetV2(confirmed?.ok ? 'private:'+confirmed.qq :
+        /^(?:(?:private|group):)?[1-9]\d{4,11}$/.test(name) ? name : '');
+    };
+    const targets = new Set();
+    for (const message of source) {
+      const command = stripRelayPrefix(message.plain ?? message.text).replace(/^去?私聊(?:里)?\s*(?:电一电|电一下|戳一戳|拍一拍)?\s*/, '告诉');
+      const relay = parseRelayCommand(command,{resolve:name=>!!resolve(name)});
+      if (relay) {
+        const target = resolve(relay.name);
+        if (target && target !== sourceKey) targets.add(target);
+      }
+    }
+    if (targets.size !== 1 || !targets.has(targetKey)) {
+      return 'CROSS_SESSION_TARGET_MISMATCH：目标必须是原指令中唯一可核实的白名单会话，请先向发起者确认目标。';
+    }
+    return null;
+  }
+
   function assertAcceptedTaskOperation(context){
     const envelope=context?.envelope,key=context?.sourceKey;
     const reject = (rule, detail) => {
@@ -9361,7 +9405,7 @@ async function main() {
     const outbound=bindQuotedReplyContext(key,outboundContext(key),replyToMessageId);
     messages=messages.flatMap(m=>splitLongSegment(m,outbound.plan?.maxMessageChars||500)).slice(0,pluginHost.callService('replyPlan','remaining',{key,plan:outbound.plan})??0);
     if(!messages.length)return Promise.reject(Object.assign(new Error('本轮发送额度已用完'),{statusCode:429}));
-    const assertSendAllowed = captureSendGuard(key,{replyContext:outbound});
+    const assertSendAllowed = captureSendGuard(key,{...(outbound.agent?{wakeOrigin:outbound.envelope,taskContentExempt:outbound.plan?.taskExempt===true}:{}),replyContext:outbound});
     const [kind, id] = key.split(':');
     let sendChain = sendChains.get(key) || Promise.resolve();
     const sent = [];
@@ -9417,6 +9461,12 @@ async function main() {
     const sessionId = state.sessions[key];
     return () => {
       if (wakeOrigin?.cancelled) throw new Error('发送已取消：所属回合已被抢占');
+      if (replyContext?.agent && replyContext.sourceKey !== key && replyContext.origin !== 'relay') {
+        const error = (replyContext.transportKind && replyContext.transportKind !== 'text') || replyContext.transportTargetUserId || replyContext.transportReplyTo
+          ? 'CROSS_SESSION_ACTION_UNSUPPORTED：这个任务凭据只授权向指定会话发送独立文字。'
+          : crossSessionTaskError(key,replyContext);
+        if (error) throw Error(error);
+      }
       if(wakeOrigin?.scheduledEvent && (wakeOrigin.scheduledEvent.signal?.aborted || !pluginHost.isEnabled(wakeOrigin.scheduledEvent.plugin) || Date.now()>wakeOrigin.scheduledEvent.expiresAt))throw Error('发送已取消：定时事件已失效');
       if(currentMode==='reserved2' && (socialV2.paused || cfg.socialV2?.enabled===false))throw Error('发送已取消：会话编排已暂停');
       const chatOrigin = wakeOrigin || (messageAck ? activeTurnEnvelopes.get(sessionId) : null);
@@ -12376,7 +12426,7 @@ async function main() {
     const known=envelope && !envelope.cancelled && envelope.key===key && state.sessions[key]===envelope.sessionId && (activeTurnEnvelopes.get(envelope.sessionId)===envelope || pendingTurnEnvelopes.get(envelope.sessionId)?.includes(envelope));
     if(!known || !isSessionAllowedInCurrentMode(key) || socialV2.paused || cfg.socialV2?.enabled===false)return {ok:false,reason:'task_envelope_not_admitted'};
     if(pluginHost.callService('availability','canWake',{key,reason:envelope.taskAdmission?.wakeReason || envelope.reason})===false)return {ok:false,reason:'task_environment_unavailable'};
-    const admitted=[],deferred=[],refreshed=[],bySeq=new Map(messages.map(message=>[message.seq,message]));
+    const admitted=[],deferred=[],deferredDetail=[],refreshed=[],bySeq=new Map(messages.map(message=>[message.seq,message]));
     envelope.admittedTaskGroups ||= {};
     for(const input of contents){
       let content=pluginHost.callService('replyPlan','getContent',{key,contentId:input?.id});
@@ -12394,7 +12444,9 @@ async function main() {
         for(const message of source)stampSeenAtV2(getSocialV2State(key),message.seq);
         const old=pluginHost.callService('taskAdmission','get',{groupId:content.id});
         const queued=old || pluginHost.callService('taskAdmission','enqueue',{key,groupId:content.id,sourceSeqs:content.seqs,messages:source,originActionId:envelope.actionId,wakeReason:envelope.taskAdmission?.wakeReason || envelope.reason,originAdmission:original});
-        if(queued?.ok===false)return {ok:false,reason:queued.reason};deferred.push(content.id);
+        if(queued?.ok===false)return {ok:false,reason:queued.reason};
+        deferred.push(content.id);
+        deferredDetail.push({contentId:content.id,reason:credit?.reason||'task_admission_pending',nextAt:credit?.nextAt});
       }else{
         if(queuedBefore && ['waiting','creditClaimed'].includes(queuedBefore.status)){
           const settled=pluginHost.callService('taskAdmission','acceptActive',{key,groupId:content.id});
@@ -12405,7 +12457,7 @@ async function main() {
       }
       content=pluginHost.callService('replyPlan','getContent',{key,contentId:content.id});refreshed.push(content);
     }
-    saveSocialV2State();return {ok:true,contents:refreshed,admitted,deferred,admissions:{...envelope.admittedTaskGroups}};
+    saveSocialV2State();return {ok:true,contents:refreshed,admitted,deferred,deferredDetail,admissions:{...envelope.admittedTaskGroups}};
   };
 
   taskCaps.taskAdmissionStatus=async(input={})=>{
@@ -14013,7 +14065,7 @@ async function main() {
       const ownerQq = String(cfg.ownerQQ ?? '');
       crossSessionLine = '【传话能力】'
         + (ownerQq ? `管理员/管理员就是 QQ ${ownerQq}（别名：墨辞、墨薛、黄猫、大黄猫）。` : '')
-        + '好友明确托你转达给别人时，不要说做不到：先问清要转的内容，再用 qq_send_private_message 发给目标，正文以「【传话】来自好友：」开头并写明是谁托的。'
+        + '好友明确托你传话时，先核实内容和白名单收件人；用发起私聊里的完整原指令声明 task，拿到已准入的 contentId 后用 qq_send_private_message 发给目标。正文以「【传话】来自好友：」开头并写明是谁托的。'
         + '只能发给白名单里的人，桥接会限频并做内容审计；不要替人编内容，不要把别人的私密对话转述出去，也不要把对方的 QQ 号报给第三方。\n\n';
     }
     const stickerCfg = cfg.socialV2?.sticker ?? {};

@@ -10,7 +10,9 @@ export function createReplyContentCarrier(){
    const [description,schema,handler,...tail]=rest;
    const hint = name==='qq_schedule'
     ? '查询 list 不需要。新增、修改、确认完成或取消时沿用已准入任务组的 contentId。'
-    : '多条来信时，即使只发一条，也先用本回合完整已读seq调用qq_reply_contents；同义碎片合为一组，发送显式携带返回的contentId。只有服务端已绑定单条来信时可省略；引用也不能跳过分组，同一份跨步骤保持ID。';
+    : /^(?:qq_send_private_message|qq_send_group_message)$/.test(name)
+      ? '跨会话发送须用发起私聊的原指令声明 task，并带上该组已准入的 contentId；目标须与原指令一致。'
+      : '多条来信时，即使只发一条，也先用本回合完整已读seq调用qq_reply_contents；同义碎片合为一组，发送显式携带返回的contentId。只有服务端已绑定单条来信时可省略；引用也不能跳过分组，同一份跨步骤保持ID。';
    return [description,{...schema,contentId:z.string().max(200).regex(/^[A-Za-z0-9:_-]+$/).optional().describe(hint)},
     (input,...extra)=>scope.run({contentId:input?.contentId},()=>handler(input,...extra)),...tail];
   },

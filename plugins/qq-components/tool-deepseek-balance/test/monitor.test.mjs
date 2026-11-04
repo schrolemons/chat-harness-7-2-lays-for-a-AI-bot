@@ -35,6 +35,16 @@ test('custom alert semantics reach the scheduled owner prompt only, keeping deli
  assert.equal(validateMilkPolicy({alertStyle:'x'.repeat(501)}).ok,false);
 });
 
+test('a slow successful sample can dispatch its urgent event in the same tick',async()=>{
+ let now=10000000,state={},requested=0;
+ const monitor=createMilkMonitor({config:{},state:{get:()=>state,set:p=>state={...state,...p}},
+  capabilities:{getOwnerQQ:()=>123,requestScheduledConversation:async()=>{requested++;return {ok:true};}}},
+ {clock:()=>now,query:async()=>{now+=300;return account('0');}});
+ await monitor.tick();
+ assert.equal(requested,1);
+ assert.equal(monitor.status().lastSuccess.at,now);
+});
+
 test('the next unchanged sample is newer and does not re-label the previous event as a fresh change',async()=>{
  const f=fixture();await f.monitor.tick();
  f.next(account('0.50'));const changed=await f.monitor.queryFor({key:'group:456'});

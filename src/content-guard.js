@@ -174,6 +174,11 @@ function matchesInjectionRule(rule, text, feedback) {
   if (feedback && builtInSecret) {
     text = text.replace(/(^|[。！？；\n])(\s*(?:(?:本次|本轮)?成功)?)发送(?=(?:(?:回执)?凭据(?:缺失|未登记|未匹配|已登记|绑定失败|绑定错误)(?=[。！？；\n]|$)|记录(?:出现异常|未更新|已更新|丢失|缺失)(?=[，。！？；\n]|$)))/g, '$1$2投递');
   }
+  const toolRule = INJECTION_RULES.find(item=>item.id==='tool-hijack');
+  if (feedback && rule.id===toolRule.id && rule.pattern===toolRule.re.source && rule.flags===toolRule.re.flags) {
+    // A reported tool result describes an existing call. Keep requests and every other rule visible.
+    text = text.replace(/(^|[。！？；\n])(\s*(?:用例|复现|现象|日志)[：:]\s*(?:在[^。！？；\n]{1,80}?(?:回合内|时|后))?\s*)调用(?=\s*(?:qq_|mcp__|browser_)\w+(?:\([^。！？；\n]{0,260}\))?\s*[，,：:]?\s*(?:返回|被拒|报错|失败))/g, '$1$2调用过');
+  }
   return rule.re.test(text);
 }
 

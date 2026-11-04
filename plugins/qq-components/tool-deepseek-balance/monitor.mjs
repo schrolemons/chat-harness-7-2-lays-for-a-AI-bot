@@ -76,7 +76,7 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
    write({lastResult:out,lastSuccess:sample,lastError:null,failures:0,nextCheckAt:checkedAt+c.checkIntervalMin*60000,pendingAlert:pending,scheduledNotice});
    social.observe(event,checkedAt);
    return out;
-  })().finally(()=>{inflight=null;});const result=await inflight;if(notify)await deliver(now);return result;
+  })().finally(()=>{inflight=null;});const result=await inflight;if(notify)await deliver(Math.max(now,clock()));return result;
  }
  async function queryResult(){const result=await refresh();if(!result?.ok)return result;
   // Manual and automatic reads share one baseline and one event. Dispatch promptly

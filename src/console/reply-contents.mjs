@@ -21,5 +21,5 @@ export async function declareReplyContents({key,sourceKey,envelope,groups,messag
   if(admission?.ok===false)return {status:409,body:{ok:false,error:admission.reason||'任务准入未通过'}};
  }
  const contents=result.contents.map(c=>callService('replyPlan','getContent',{key,contentId:c.id})||c);
- return {status:200,body:{ok:true,key,contents,deferred:admission?.deferred||[],hint:'每份完整意思分别计数；同义碎片合并，重读不续领。待接手任务不可执行或标为已回复。'}};
+ return {status:200,body:{ok:true,key,contents,deferred:admission?.deferred||[],deferredDetail:admission?.deferredDetail||[],hint:'每份完整意思分别计数；同义碎片合并，重读不续领。待接手任务不可执行或标为已回复；若额度不足，按 deferredDetail 的原因和可用时间等待。'}};
 }
