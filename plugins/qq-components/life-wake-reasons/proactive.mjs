@@ -8,6 +8,7 @@ const GROUP_CHAT_WAKE = /^(message|private|probability|atMention|nameMention|que
 const evidenceUrl=new URL('./availability-evidence.mjs',import.meta.url);evidenceUrl.search=new URL(import.meta.url).search;
 const {resolveSleepAvailability,validAssessment}=await import(evidenceUrl.href);
 const mechanical = /^(thinking|thinkingAck|ack|messageAck|replyCheck)$/;
+const PRIVATE_UNSOLICITED = new Set(['proactiveCheck', 'timeBubble', 'startupGreeting', 'privateFollowup', 'newsShare', 'milkStock', 'careCheck', 'idleRescue', 'newFriend']);
 export function createProactive(ctx) {
   const p = normalizeProactivePolicy(ctx.config), valid = validateProactivePolicy(p);
   const recoveredAccepted = new Set(Object.entries(ctx.state?.get?.().proactiveByKey || {}).filter(([, s]) => s.phase === 'accepted').map(([key]) => key));
@@ -25,7 +26,9 @@ export function createProactive(ctx) {
     return !String(key).startsWith('group:') || !GROUP_CHAT_WAKE.test(String(reason).split(':')[0])
       || !p.curfewDirectOnlyInGroups || !isProactiveCurfew(p,now) || direct === true;
   }
-  function blocked(facts, now) {
+  const privatePassive = ({key} = {}) => p.privatePassiveOnly && String(key).startsWith('private:');
+  function blocked(facts, now, key) {
+    if (privatePassive({key})) return 'private_passive_only';
     if (!valid.ok) return 'invalid_policy';
     if (!p.proactiveEnabled || p.disabledReasons.includes('proactiveCheck')) return 'disabled';
     if (!facts || facts.allowed !== true) return 'not_allowed';
@@ -45,8 +48,10 @@ export function createProactive(ctx) {
     const old=get(key);let s=available(key,now);
     const recovered=!!s.availabilityRecovery && s.availabilityRecovery.assessmentAt===s.lastAI?.at && !old.availabilityRecovery;
     if(recovered){s={...s,...(s.phase!=='accepted'?{nextAt:null}:{})};put(key,s);}
-    const reason = blocked(facts, now);
-    if (reason) { put(key, { ...s, blockedReason: reason }); cancel(key); return { allowed: false, reason, nextAt: s.nextAt ?? null }; }
+    const reason = blocked(facts, now, key);
+    if (reason) {
+      if (reason === 'private_passive_only' && old.blockedReason !== reason) ctx.log?.('跳过私聊主动检查 ' + key + ' (' + reason + ')');
+      put(key, { ...s, blockedReason: reason }); cancel(key); return { allowed: false, reason, nextAt: s.nextAt ?? null }; }
     if (s.phase === 'accepted') return { allowed: false, reason: 'accepted', intent: s.intent, nextAt: null };
     const effective = effectiveProactiveStage(p, s.stage, s.willingness, mood || facts.mood);
     if (!Number.isFinite(s.nextAt)) {
@@ -114,7 +119,7 @@ export function createProactive(ctx) {
       lifecycleHistory: [...(s.lifecycleHistory || []), { at: now, reason }].slice(-100) }); cancel(key);
     return { ok: true, released: true };
   }
-  return { policy: () => ({ ...p }), plan, refresh, observe, finished, allowsGroupChat,
+  return { policy: () => ({ ...p }), plan, refresh, observe, finished, allowsGroupChat, privatePassive,
     availability({key,now=Date.now()}={}) { const s=available(key,now);return {willingness:s.willingness,source:s.source,lastAI:s.lastAI||null,review:s.review||null,recovery:s.availabilityRecovery||null}; },
     incoming({key,eventId,at=Date.now(),event={},blockedReason='',random=Math.random}={}){
       if(/^private:[1-9]\d*$/.test(String(key||'')))return evaluateGroupIncoming({key});
@@ -132,8 +137,9 @@ export function createProactive(ctx) {
       put(key,{...state,incomingDecisions:decisions,lastIncomingDecision:result});return result;
     },
     cancel({key}={}) { cancel(key); return {ok:true}; },
-    allowsReason({reason,now=Date.now(),hasPendingHuman=false}={}) {
+    allowsReason({key,reason,now=Date.now(),hasPendingHuman=false}={}) {
       const r=String(reason||'').split(':')[0];
+      if(privatePassive({key}) && PRIVATE_UNSOLICITED.has(r))return {allowed:false,reason:'private_passive_only'};
       if(['replyCheck','timeout'].includes(r) && !hasPendingHuman)return {allowed:false,reason:'observation_only'};
       if(['proactiveCheck','timeBubble','startupGreeting','privateFollowup','newsShare','milkStock'].includes(r) && isProactiveCurfew(p,now))return {allowed:false,reason:'curfew'};
       return {allowed:true};
@@ -150,7 +156,7 @@ export function createProactive(ctx) {
       const s = available(key,now), facts = factsFor(key);
       return { conversationAwake:typeof facts?.conversationAwake==='boolean'?facts.conversationAwake:null,stage: s.stage, willingness: s.willingness, source: s.source, lastAI: s.lastAI || null,
         ...effectiveProactiveStage(p, s.stage, s.willingness, facts?.mood), nextAt: s.nextAt ?? null,
-        blockedReason: blocked(facts, now) || s.blockedReason || '', intent: s.intent || 'proactiveCheck', phase: s.phase, lastFinishedReason: s.lastFinishedReason || '', lastIncomingDecision:s.lastIncomingDecision||null,
+        blockedReason: blocked(facts, now, key) || s.blockedReason || '', intent: s.intent || 'proactiveCheck', phase: s.phase, lastFinishedReason: s.lastFinishedReason || '', lastIncomingDecision:s.lastIncomingDecision||null,
         review:s.review||null,recovery:s.availabilityRecovery||null };
     }
   };

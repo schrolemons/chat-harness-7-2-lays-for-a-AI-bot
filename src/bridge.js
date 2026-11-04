@@ -9560,7 +9560,7 @@ async function main() {
       }
       if(wakeOrigin && pluginHost.callService('availability','canWake',{key,reason:wakeOrigin.reason})===false)throw Error('发送已取消：会话处于免打扰');
       if(readRoleState().mode==='silent' && key!=='private:'+String(cfg.ownerQQ))throw Error('发送已取消：静默模式');
-      if(wakeOrigin && pluginHost.callService('proactive','allowsReason',{reason:wakeOrigin.reason,hasPendingHuman:pendingMessagesV2(getSocialV2State(key)).some(m=>!m.isSelf)})?.allowed===false)throw Error('当前回合只可观察，未获自主发送许可');
+      if(wakeOrigin && pluginHost.callService('proactive','allowsReason',{key,reason:wakeOrigin.reason,hasPendingHuman:pendingMessagesV2(getSocialV2State(key)).some(m=>!m.isSelf)})?.allowed===false)throw Error('当前回合只可观察，未获自主发送许可');
       if (!isSessionAllowedInCurrentMode(key) || policy !== sessionPolicy(key)
           || (sessionId && state.sessions[key] !== sessionId)) {
         throw new Error('发送已取消：会话、模式或白名单已变化');
@@ -10249,7 +10249,12 @@ async function main() {
     if(!dshReady||!pluginHost.isEnabled(plugin))return {ok:false,reason:'unavailable'};
     if(pluginHost.callService('scheduler','transportReady')!==true)return {ok:false,reason:'transport'};
     const blocked=automaticNotificationBlockReason(key);if(blocked)return {ok:false,reason:blocked};
-    if(!pluginHost.allowsWake(reason,{key})||pluginHost.callService('availability','canWake',{key,reason})===false||pluginHost.callService('proactive','allowsReason',{reason})?.allowed===false)return {ok:false,reason:'wake_blocked'};
+    if(!pluginHost.allowsWake(reason,{key})||pluginHost.callService('availability','canWake',{key,reason})===false)return {ok:false,reason:'wake_blocked'};
+    const decision=pluginHost.callService('proactive','allowsReason',{key,reason});
+    if(decision?.allowed===false){
+      log('[reserved2] 跳过主动唤醒 ' + key + ' (' + reason + ', ' + decision.reason + ')');
+      return {ok:false,reason:decision.reason==='private_passive_only'?decision.reason:'wake_blocked'};
+    }
     const facts=taskCaps.getProactiveFacts(key);
     if(facts.busy||promptQueues.get(key)?.running||promptQueues.get(key)?.queue?.length)return {ok:false,reason:'busy'};
     const timedRate=!facts.rateAllowed&&pluginHost.callService('replyPlan','preview',{key,scheduled:{reason,scheduledEvent:event}})?.burstAllowed===true;
@@ -14384,8 +14389,9 @@ async function main() {
       return;
     }
     // 主动宵禁仍约束独立的闲聊候选。
-    if (pluginHost.callService('proactive','allowsReason',{reason,hasPendingHuman:pendingMessagesV2(st).some(m=>!m.isSelf)})?.allowed===false) {
-      log(`[reserved2] 宵禁时段，跳过主动唤醒 ${key}（${reason}）`);
+    const wakeDecision = pluginHost.callService('proactive','allowsReason',{key,reason,hasPendingHuman:pendingMessagesV2(st).some(m=>!m.isSelf)});
+    if (wakeDecision?.allowed===false) {
+      log(`[reserved2] 跳过主动唤醒 ${key}（${reason}，${wakeDecision.reason}）`);
       return;
     }
     const existingReminder = [activeTurnEnvelopes.get(state.sessions[key]), ...(pendingTurnEnvelopes.get(state.sessions[key]) || [])]
@@ -15785,6 +15791,11 @@ async function main() {
     }
     greetedFriends.set(userId, now);
     const key = 'private:' + userId;
+    const decision = pluginHost.callService('proactive','allowsReason',{key,reason:'newFriend'});
+    if (decision?.allowed === false) {
+      log('[friend] 跳过主动问候 ' + key + ' (' + decision.reason + ')');
+      return;
+    }
     const hour = new Date().getHours();
     const greetWord = hour < 11 ? '上午好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好';
     const inWhitelist = modeAllowed(key, 'private', Number(userId), cfg, currentMode);

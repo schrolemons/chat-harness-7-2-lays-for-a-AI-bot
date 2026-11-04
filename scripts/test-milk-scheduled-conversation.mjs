@@ -5,9 +5,9 @@ import {bridgeHarness} from './audit-bridge-harness.mjs';
 import {createMilkMonitor} from '../plugins/qq-components/tool-deepseek-balance/monitor.mjs';
 import {createOutboundTransport} from '../src/outbound-context.js';
 const key='private:123';
-async function open(t){
+async function open(t, wakeConfig = {}){
  const h=await bridgeHarness({config:{sendDelayMs:0},files:{
-  'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},
+  'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false,...wakeConfig},
   'state/plugins/life-wake-reasons.json':{proactiveByKey:{[key]:{stage:4,willingness:60,source:'default',phase:'idle',availabilityVersion:1,activeConversationCount:0}}},
   'state/plugins/config/ctx-chat-reply-shape.json':{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0,maxMessagesNormal:1,maxMessagesCasual:1,maxMessagesSerious:1,maxSendPerMinute:1,maxSendPerHour:1}
  }});t.after(()=>h.close());h.setMode('reserved2');h.getSocialV2State(key).bootstrapSent=true;
@@ -28,6 +28,22 @@ test('real milk admission and physical send both use a one-off timer slot after 
  const envelope=h.pendingTurnEnvelopes.get(sid)[0];assert.equal(envelope.replyPlan.scheduledGrant.ids.length,1);
  assert.equal(await h.sendToQQ(key,'API预算提醒',{wakeOrigin:envelope,conversationReply:true}),true);
  assert.equal(await h.sendToQQ(key,'不得重复',{wakeOrigin:envelope,conversationReply:true}),false);
+ assert.equal(h.calls.sent.length,1);
+});
+
+test('private passive mode blocks timed wake and milk dispatch but still sends an authorized reminder',async t=>{
+ const {h,sid}=await open(t,{privatePassiveOnly:true});
+ await h.sendWakePromptV2(key,'timeBubble');
+ assert.equal((await h.taskCaps.requestScheduledConversation(key,event())).reason,'private_passive_only');
+ assert.equal(h.calls.prompts.length,0);
+ assert.equal(h.pluginHost.callService('milkStock','context',{key}),'');
+ const wait={key,scope:'empty',endRound:false,emptyWaits:1,random:()=>assert.fail('passive chat must not draw a topic')};
+ assert.deepEqual(h.pluginHost.callService('conversationDrive','afterWait',wait),{action:'wait'});
+ const now=Date.now();
+ h.getSocialV2State(key).pendingReminderItems=[{id:'allowed',text:'明确登记的提醒',dueAt:now+60000,requestedAt:now}];
+ await h.deliverPrompt(key,'',{silent:true,wakeReason:'reminder'});
+ const envelope=h.pendingTurnEnvelopes.get(sid)[0];
+ assert.equal(await h.sendToQQ(key,'明确登记的提醒',{wakeOrigin:envelope,conversationReply:true}),true);
  assert.equal(h.calls.sent.length,1);
 });
 

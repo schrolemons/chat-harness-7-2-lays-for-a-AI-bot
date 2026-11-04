@@ -21,6 +21,18 @@ test('canonical policy has validated cross-field boundaries and no legacy aliase
   assert.equal(policyModule.validateProactivePolicy({ checkMinMinutes: 40, checkMaxMinutes: 20 }).ok, false);
   assert.equal(policyModule.validateProactivePolicy({ initialProbability: .9, probabilityMax: .2 }).ok, false);
 });
+test('private passive mode blocks unsolicited wakes but retains replies, explicit reminders and group policy',()=>{
+ const f=fixture({privatePassiveOnly:true}),key='private:123',group='group:456';
+ for(const reason of ['proactiveCheck','timeBubble','startupGreeting','privateFollowup','milkStock','careCheck','idleRescue','newsShare','newFriend']){
+  assert.deepEqual(f.service.allowsReason({key,reason,now:noon}),{allowed:false,reason:'private_passive_only'});
+  assert.equal(f.service.allowsReason({key:group,reason,now:noon}).allowed,true);
+ }
+ assert.equal(f.service.refresh({key,now:noon}).reason,'private_passive_only');
+ assert.equal(f.jobs.has('proactive:'+key),false);
+ for(const reason of ['message','private','reminder','scheduledContact','taskDone'])
+  assert.equal(f.service.allowsReason({key,reason,now:noon}).allowed,true);
+ assert.equal(f.service.allowsReason({key,reason:'replyCheck',hasPendingHuman:true,now:noon}).allowed,true);
+});
 test('stage math combines mood and willingness, signed intervals and positive floor', () => {
   assert.equal(typeof policyModule.effectiveProactiveStage, 'function', 'stage math exists');
   const p = policyModule.normalizeProactivePolicy({});

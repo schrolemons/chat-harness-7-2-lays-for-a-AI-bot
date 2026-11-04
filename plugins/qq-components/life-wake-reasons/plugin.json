@@ -24,6 +24,7 @@
   "config": {
     "disabledReasons": [],
     "proactiveEnabled": true,
+    "privatePassiveOnly": false,
     "silenceMinutes": 20,
     "initialProbability": 0.15,
     "probabilityStep": 0.1,
@@ -55,6 +56,11 @@
       "type": "boolean",
       "label": "启用统一随机主动",
       "example": "关闭后不再安排统一随机主动机会；独立的日程提醒仍按自身设置运行。"
+    },
+    "privatePassiveOnly": {
+      "type": "boolean",
+      "label": "私聊仅回应来信",
+      "example": "关闭私聊中的自动开场、冒泡、余额播报和无来信时的追问；明确安排的提醒和已授权任务照常执行。"
     },
     "silenceMinutes": {
       "type": "number",

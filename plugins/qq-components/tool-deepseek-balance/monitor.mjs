@@ -48,7 +48,7 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
   let result;try{result=await ctx.capabilities.requestScheduledConversation(key,meta);}catch{if(alive()&&read().pendingAlert?.id===pending.id)write({pendingAlert:null,scheduledNotice:{...read().scheduledNotice,status:'uncertain'},lastNoticeAt:now,noticeUnconfirmed:true});return;}
   if(!alive()||read().pendingAlert?.id!==pending.id)return;
   if(result?.ok===true)write({pendingAlert:null,scheduledNotice:{...read().scheduledNotice,status:read().scheduledNotice.status==='sent'?'sent':'accepted'},lastNoticeAt:now,lastNoticeKind:pending.kind});
-  else {deliveryMetas.delete(pending.id);meta.expiresAt=0;write({scheduledNotice:null});}
+  else {deliveryMetas.delete(pending.id);meta.expiresAt=0;write({scheduledNotice:null,...(result?.reason==='private_passive_only'?{pendingAlert:null}:{})});}
  }
  async function refresh({notify=false,now=clock()}={}){
   if(inflight)return inflight;
@@ -96,7 +96,7 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
   },
   status(){const st=read(),maxAge=Math.max(15,milkPolicy(ctx.config).checkIntervalMin*3)*60000;return {...st,lastSuccess:st.lastSuccess?{...st.lastSuccess,stock:selectedStock(st.lastSuccess,milkPolicy(ctx.config))}:undefined,fresh:!!st.lastSuccess&&!st.lastError&&clock()-st.lastSuccess.at<=maxAge};},
   context({key}={}){
-   if(!validMilkKey(key))return '';
+   if(!validMilkKey(key)||ctx.callService?.('proactive','privatePassive',{key})===true)return '';
    const isOwner=key==='private:'+String(ctx.capabilities?.getOwnerQQ?.()||''),scope=milkPolicy(ctx.config).reminderScope;
    if((scope==='admin'&&!isOwner)||(scope==='private'&&!key.startsWith('private:')))return '';
    const st=this.status();let snapshot;

@@ -3,7 +3,7 @@ const {engagementFactors}=await import(engagementURL.href);
 const groupWakeUrl=new URL('./group-wake.mjs',import.meta.url);groupWakeUrl.search=new URL(import.meta.url).search;
 const {GROUP_WAKE_DEFAULTS,validateGroupWake}=await import(groupWakeUrl.href);
 export const DEFAULT_PROACTIVE_POLICY = Object.freeze({
-  ...GROUP_WAKE_DEFAULTS, proactiveEnabled: true, silenceMinutes: 20, initialProbability: .15, probabilityStep: .10,
+  ...GROUP_WAKE_DEFAULTS, proactiveEnabled: true, privatePassiveOnly: false, silenceMinutes: 20, initialProbability: .15, probabilityStep: .10,
   probabilityMax: .85, checkMinMinutes: 15, checkMaxMinutes: 30, intervalStepMinutes: -1,
   checkFloorMinutes: 1, minActiveGapMinutes: 30, maxSilenceMinutes: 180,
   initialWillingness: 60,
@@ -21,7 +21,7 @@ export function validateProactivePolicy(raw = {}) {
   for (const [key, [min, max]] of Object.entries(ranges)) {
     if (typeof p[key] !== 'number' || !Number.isFinite(p[key]) || p[key] < min || p[key] > max) errors.push(`${key} must be ${min}..${max}`);
   }
-  for (const key of ['proactiveEnabled', 'curfewEnabled', 'curfewDirectOnlyInGroups']) if (typeof p[key] !== 'boolean') errors.push(`${key} must be boolean`);
+  for (const key of ['proactiveEnabled', 'privatePassiveOnly', 'curfewEnabled', 'curfewDirectOnlyInGroups']) if (typeof p[key] !== 'boolean') errors.push(`${key} must be boolean`);
   for (const key of ['curfewStartHour', 'curfewEndHour']) if (!Number.isInteger(p[key])) errors.push(`${key} must be integer`);
   if (p.checkMinMinutes > p.checkMaxMinutes) errors.push('checkMinMinutes must not exceed checkMaxMinutes');
   if (p.checkFloorMinutes > p.checkMinMinutes) errors.push('checkFloorMinutes must not exceed checkMinMinutes');

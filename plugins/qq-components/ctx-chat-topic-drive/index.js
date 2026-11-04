@@ -43,8 +43,9 @@ export function createPlugin(ctx) {
   // Config reload preserves state; turning this off cancels queued followups
   // immediately so enabling it later cannot replay a cancelled send.
   if (cfg.privateFollowupEnabled === false) discardPendingFollowup();
+  const privatePassive = key => ctx.callService?.('proactive', 'privatePassive', {key}) === true;
   const eligible = (groupKey, userId) => {
-    if (!/^group:\d+$/.test(String(groupKey || '')) || !/^\d{1,20}$/.test(String(userId || ''))) return false;
+    if (!/^group:\d+$/.test(String(groupKey || '')) || !/^\d{1,20}$/.test(String(userId || '')) || privatePassive('private:' + userId)) return false;
     try {
       const data = JSON.parse(fs.readFileSync(path.join(ctx.root || process.cwd(), 'state', 'person-profiles.json'), 'utf8'));
       const person = data?.people?.[String(userId)];
@@ -65,7 +66,7 @@ export function createPlugin(ctx) {
   });
   return {
     validateConfig: topicActions.validateConfig,
-    services: { conversationDrive: { ...conversationDrive, afterWait: payload => referencePolicy(payload).mode !== 'off' ? {action:'wait'} : topicActions.afterWait(payload) } },
+    services: { conversationDrive: { ...conversationDrive, afterWait: payload => privatePassive(payload?.key) || referencePolicy(payload).mode !== 'off' ? {action:'wait'} : topicActions.afterWait(payload) } },
     hooks: {
       beforePrompt(payload) {
         if (referencePolicy(payload).mode !== 'off') return '';
@@ -73,6 +74,7 @@ export function createPlugin(ctx) {
         const st = payload?.st;
         if (!st) return '';
         const key = String(payload?.key || '');
+        if (privatePassive(key)) return '【私聊被动应答】围绕对方发来的消息回应。需要理解请求或执行任务时，可以自然地问一句必要的澄清；答完等新来信。没有新来信时不要主动追问、延续话题或另起话题。';
         const identity = {...payload, groupNames:ctx.callService?.('proactive','policy',{})?.groupNames};
         const bareAttention=hasBareSelfAttention(identity);
         const groupAttention = payload.hasUnreadNow!==false && key.startsWith('group:') && (bareAttention||/^(?:atMention|nameMention|question|poke|keyword|reply)(?:@|$)/.test(String(payload.reason || '')));
