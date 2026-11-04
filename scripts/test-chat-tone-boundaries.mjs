@@ -52,7 +52,7 @@ test('normal style uses conversational behavior and factual boundaries', () => {
   plugin.hooks.beforePrompt({isPrivate: true});
   const prompt = blocks.join('\n');
   assert.doesNotMatch(prompt, /你不是客服/);
-  assert.match(prompt, /内部风格要求/);
+  assert.match(prompt, /不复述内部流程/);
   assert.match(prompt, /价格/);
   assert.match(prompt, /不编造/);
   assert.match(prompt, /官网/);
@@ -63,7 +63,20 @@ test('disabled block and critical mood keep their existing ownership', () => {
   for (const [config, payload] of [[{disabledBlocks: ['antiAi']}, {}], [{}, {moodState: {mode: 'critical'}}]]) {
     const {plugin, blocks} = fixture(style, config);
     plugin.hooks.beforePrompt(payload);
-    assert.doesNotMatch(blocks.join('\n'), /【反AI味】/);
+    assert.doesNotMatch(blocks.join('\n'), /【自然交流】/);
+  }
+});
+
+test('explanations and corrections keep a form-aware check even on focused reply paths', () => {
+  for (const [mode, moodState] of [['off'], ['task'], ['task', {mode: 'critical'}]]) {
+    const blocks = [];
+    const {hooks} = style({addPromptBlock: block => blocks.push(block), callService: () => ({mode})});
+    hooks.beforePrompt({reason: 'private', isPrivate: true, incomingText: '你刚才说的时间有误，解释一下', moodState});
+    const prompt = blocks.join('\n');
+    assert.equal((prompt.match(/【解释与纠错自检】/g) || []).length, 1);
+    assert.match(prompt, /沿用当前形态已配置的自称或称呼/);
+    assert.match(prompt, /先说具体哪一点有误和正确事实/);
+    if (mode !== 'off') assert.doesNotMatch(prompt, /【自然交流】/);
   }
 });
 
