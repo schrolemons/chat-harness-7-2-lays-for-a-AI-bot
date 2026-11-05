@@ -4,7 +4,7 @@
 
 Chat Bridge 源自 QQ Bridge，基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.5.1**，通过独立运行目录接入 DSH；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
 
-在 Windows 上首次安装，请看 [安装与启停](#windows-安装与启停)。
+在 Windows 上首次安装，请看 **[Windows 人类安装教程](#windows-安装与启停)**。
 
 ## 当前架构
 
@@ -89,11 +89,20 @@ QQ 身份以真实 QQ 号区分，昵称相同、前缀相同或改名不合并�
 
 ## Windows 安装与启停
 
-1. 在 DSH Desktop 的插件管理器中安装 Release 的预构建组合包 chat-bridge-0.5.1.tgz。在「添加插件」中填写下载包的本机绝对路径，或使用 GitHub 发行包的直链。插件显示名为 Chat Bridge，包 ID 为 chat-bridge。已有 qq-bridge-public 请先从 DSH 插件管理器卸载。
-2. 下载并解压 Chat-Bridge-Windows-Setup.zip，双击 Install-and-Start-Chat-Bridge.cmd。脚本识别已安装插件的 profile，自动下载并校验 SnowLuma 2.4.0 和所需运行依赖。多个 profile 装有插件时选择其中一个。
-3. 打开 DSH 中的 Chat Bridge 面板，配置 QQ 账号和允许名单。通过该面板启动、停止服务，按提示完成 QQ 登录。
+<table>
+<tr><th align="left">给人类的 Windows 安装教程</th></tr>
+<tr><td>
 
-插件代码由 DSH profile 管理，运行目录在 DSH 数据目录的 bot-instances/runtime/<profile>/chat-bridge 下。卸载时先在 Chat Bridge 面板停止服务，再用 DSH 插件管理器移除插件。要同时清空运行目录，双击安装 ZIP 里的 Remove-Chat-Bridge-Data.cmd，按提示确认。删除脚本会检查实例归属，已有 DSH 会话时停止并保留数据。已有 v0.4.x 链接式实例见 [旧版迁移与回滚](docs/INSTANCE_INSTALLATION.md)。
+1. **在 DSH Desktop 添加插件。** **[下载 Chat Bridge 插件包（chat-bridge-0.5.1.tgz）](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/download/v0.5.1/chat-bridge-0.5.1.tgz)**。打开 DSH Desktop 的**插件管理器 → 添加插件**，填入下载包的完整本机路径，也可以复制上面的直链填入。安装后插件显示为 **Chat Bridge**。如果已装旧版 `qq-bridge-public`，请先在插件管理器中卸载旧版。
+2. **解压安装包，双击启动脚本。** **[下载 Windows 安装包（Chat-Bridge-Windows-Setup.zip）](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/download/v0.5.1/Chat-Bridge-Windows-Setup.zip)**。解压后双击 **`Install-and-Start-Chat-Bridge.cmd`**。脚本会识别 DSH 中已安装的插件，自动下载并校验 SnowLuma 2.4.0 和运行依赖。如果有多个 DSH 配置（profile），按提示选择。
+3. **配置并启动 Chat Bridge。** 在 DSH 中打开 **Chat Bridge** 面板，填写 **QQ 账号和允许名单**，点击**启动**，按提示完成 QQ 登录。以后可在同一面板**启动或停止服务**。
+
+**运行文件位置**为 DSH 数据目录下的 `bot-instances/runtime/<profile>/chat-bridge`。插件代码由对应的 DSH 配置管理。
+
+**卸载时先停止服务，再从 DSH 插件管理器移除 Chat Bridge。** 如果还想删除该实例的运行文件，双击解压目录中的 **`Remove-Chat-Bridge-Data.cmd`** 并确认。脚本会检查实例归属，发现已有 DSH 会话时会停止并保留数据。v0.4.x 链接式安装请参阅 **[旧版迁移与回滚](docs/INSTANCE_INSTALLATION.md)**。
+
+</td></tr>
+</table>
 
 ### 可选能力
 
