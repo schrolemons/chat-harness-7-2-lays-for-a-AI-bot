@@ -4,6 +4,8 @@
 
 项目基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.4.0**，通过独立运行目录接入 DSH；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
 
+在 Windows 上首次安装？可以直接看 [四步安装](#windows-四步安装)。
+
 ## 当前架构
 
 ```text
@@ -87,25 +89,38 @@ QQ 身份以真实 QQ 号区分，昵称相同、前缀相同或改名不合并�
 
 ## 安装与首次启动
 
-### 前置软件
+### Windows 四步安装
 
-| 软件 | 用途与要求 |
-| --- | --- |
-| DeepSeek Harness 桌面版 | 模型、会话及插件宿主；先启动一次并完成模型服务配置。 |
-| Node.js 24.20.0 或更新版本（Windows） | 桥接与工具进程，需要 `node`、`npm` 可用。 |
-| pnpm | 使用 DSH CLI 安装插件时需要；桌面安装器未提供时须单独安装并加入 PATH。 |
-| QQ 桌面客户端 | 安装并登录作为 bot 的账号。 |
-| SnowLuma 完整发行包 | 安装器自动获取并校验固定官方版本，在独立实例内安装；不接管外部 Snow 工程。 |
+1. **准备环境。** 使用 Windows x64、Node.js 24.20.0 或更新版本、DSH Desktop 和 QQ 桌面版。首次打开 DSH，完成模型配置，找到目标 DSH 数据目录，然后退出 Desktop。从 [v0.4.0 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.4.0) 下载 `qq-bridge-public-0.4.0.tgz` 和 `SHA256SUMS`，并将两个文件放在同一目录。
+2. **准备新实例。** 在 PowerShell 粘贴下面的命令，按本机情况替换四个路径。`$target` 必须是尚不存在的目录，且它的父目录已经存在。SnowLuma 会自动下载和校验。
 
-### 安装组合插件
+   ```powershell
+   $package = 'C:/Downloads/qq-bridge-public-0.4.0.tgz'
+   $dshHome = 'C:/DSHHome'
+   $target = 'C:/Bots/public-bot'
+   $bootstrap = 'C:/BotSetup'
 
-使用固定的独立运行目录，DSH profile 通过链接加载它。从 [v0.4.0 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.4.0) 下载公开包和校验文件。完整安装步骤见 [独立实例安装与精确迁移](docs/INSTANCE_INSTALLATION.md)：公开产物通过 npm bootstrap 后由 `install.mjs` 准备全新目录、锁定 SDK 依赖及自动下载的官方 SnowLuma，再生成 disabled 的精确 profile 候选。检查后，在目标 Desktop 已退出的窗口应用候选；安装器不会启动或重启任何服务。
+   $checksum = Join-Path (Split-Path -Parent $package) 'SHA256SUMS'
+   $filename = [regex]::Escape((Split-Path -Leaf $package))
+   $entry = Get-Content -LiteralPath $checksum | Where-Object { $_ -match ('^[0-9a-f]{64}\s+' + $filename + '$') }
+   $expected = ($entry -split '\s+')[0]
+   if ((Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash -ne $expected) { throw '发行包 SHA-256 不匹配' }
+   npm install --prefix $bootstrap $package --ignore-scripts --no-audit --no-fund
+   if ($LASTEXITCODE -ne 0) { throw '临时安装目录准备失败' }
+   $installer = Join-Path $bootstrap 'node_modules/qq-bridge-public/scripts/install.mjs'
+   node $installer --target $target --dsh-home $dshHome --profile desktop
+   ```
 
-Windows 需要 Node.js 24.20.0 或更新版本和 npm。实际 bot/七个 MCP 使用验证后的 Snow 内置 Node 24.22.1。公开包和私人实例具有不同的真实 package name、entry/settings namespace、客户端 ID、预设、工作目录及 listener 端口。账号和发送名单默认为空，冒泡/日程示例未绑定。
+3. **核对后应用。** 确认输出的 `conflicts` 为空，候选文件指向正确的实例和 DSH profile，且 Desktop 和其他 profile 写入者均已退出。然后在同一个 PowerShell 窗口执行：
 
-### 从源码部署或更新
+   ```powershell
+   $candidate = Join-Path $target '.instance-install/candidate.json'
+   node $installer --apply-plan $candidate --writers-stopped
+   ```
 
-执行 `npm ci` 后，通过同一 `scripts/release-public.mjs` 生成 allowlist 公开包。不要直接把本源码 checkout 或 `.worktrees` 当作新的运行目录，也不要用 DSH 包管理替换持有 state 的永久目录。升级先准备新 stage，按当前哈希评审、应用代码差异，保留原 descriptor、配置、state、角色和会话。具体命令、精确旧 profile 迁移和中断回滚见上述文档。
+4. **启用并检查。** 重新打开 DSH Desktop，在插件设置启用新注册的公开 Bot。在该实例的启动面板设置自己的 QQ 账号和允许交互的联系人或群，启动服务并按提示完成 QQ 登录。打开默认控制台 `http://127.0.0.1:3200/`，确认 QQ 和 DSH 已连接。
+
+已有实例升级、端口冲突处理、失败回滚和源码打包见 [完整安装指南](docs/INSTANCE_INSTALLATION.md)。升级前先保留现有配置、角色、会话和状态，再按指南审查新旧源码差异。
 
 ### 可选能力
 
