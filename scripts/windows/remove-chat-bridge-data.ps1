@@ -104,18 +104,22 @@ try {
   Move-Item -LiteralPath $physicalTarget -Destination $quarantine
   $moved = $true
   $remaining = @($registeredRoots.roots | Where-Object { $_.installationId -cne $manifest.installationId })
-  if ($remaining.Count -eq 0) { Remove-Item -LiteralPath $inventory }
-  else {
+  if ($remaining.Count -eq 0) {
+    Remove-Item -LiteralPath $inventory
+    $registered = $false
+  } else {
     $registeredRoots.roots = $remaining
     $temporary = $inventory + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+    $priorInventory = $temporary + '.backup'
     try {
       [IO.File]::WriteAllText($temporary, ($registeredRoots | ConvertTo-Json -Depth 12), [Text.UTF8Encoding]::new($false))
-      [IO.File]::Replace($temporary, $inventory, $null)
+      [IO.File]::Replace($temporary, $inventory, $priorInventory)
+      $registered = $false
     } finally {
       if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary }
+      if (!$registered -and (Test-Path -LiteralPath $priorInventory)) { Remove-Item -LiteralPath $priorInventory }
     }
   }
-  $registered = $false
   if ($remaining.Count -eq 0) {
     $leases = Join-Path $management 'account-leases'
     if (Test-Path -LiteralPath $leases) {

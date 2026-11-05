@@ -368,7 +368,8 @@
       "scripts/test-instance-dsh-target.mjs",
       "scripts/test-instance-snow-receipt.mjs",
       "scripts/test-instance-integration.mjs",
-      "scripts/test-budget-console-ui.mjs"
+      "scripts/test-budget-console-ui.mjs",
+      "scripts/test-windows-chat-bridge-cleanup.mjs"
     ]
   }
 }

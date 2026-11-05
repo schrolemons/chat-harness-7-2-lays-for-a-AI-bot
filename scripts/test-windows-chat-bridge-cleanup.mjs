@@ -1,0 +1,34 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+test('Windows data cleanup removes only the unregistered public instance', { skip: process.platform !== 'win32' }, async t => {
+  const home = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'chat-bridge-cleanup-')));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const management = path.join(home, 'bot-instances');
+  const parent = path.join(management, 'runtime', 'desktop');
+  const target = path.join(parent, 'qq-bridge-public');
+  const sibling = path.join(parent, 'unrelated');
+  await fs.mkdir(target, { recursive: true });
+  await fs.mkdir(sibling);
+  const sentinel = path.join(sibling, 'sentinel.txt');
+  await fs.writeFile(sentinel, 'preserve');
+  const descriptor = { root: target, dshHome: home, profile: 'desktop', bundleName: 'qq-bridge-public', instanceId: 'desktop-chat-bridge', entryId: 'public-bot-mode', version: 1 };
+  const write = (file, data) => fs.writeFile(file, JSON.stringify(data));
+  await write(path.join(target, '.qq-bridge-instance.json'), descriptor);
+  await write(path.join(target, '.qq-bridge-instance-manifest.json'), { ...descriptor, installationId: 'fixture-1', paths: [], sessions: [] });
+  await write(path.join(target, 'chat-bridge-runtime.json'), { version: 1 });
+  const kept = { root: sibling, instanceId: 'unrelated', installationId: 'fixture-2', bundleName: 'unrelated', state: 'ready', profile: 'desktop' };
+  const inventory = path.join(management, 'installation-roots.json');
+  await write(inventory, { version: 1, roots: [{ root: target, instanceId: descriptor.instanceId, installationId: 'fixture-1', bundleName: descriptor.bundleName, state: 'ready', profile: 'desktop' }, kept] });
+  const script = fileURLToPath(new URL('./windows/remove-chat-bridge-data.ps1', import.meta.url));
+  execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-DshHome', home, '-Profile', 'desktop', '-Yes'], { windowsHide: true, stdio: 'pipe', timeout: 30000 });
+  await assert.rejects(fs.stat(target), { code: 'ENOENT' });
+  assert.equal(await fs.readFile(sentinel, 'utf8'), 'preserve');
+  assert.deepEqual(JSON.parse(await fs.readFile(inventory, 'utf8')).roots, [kept]);
+  assert.deepEqual((await fs.readdir(management)).sort(), ['installation-roots.json', 'runtime']);
+});
