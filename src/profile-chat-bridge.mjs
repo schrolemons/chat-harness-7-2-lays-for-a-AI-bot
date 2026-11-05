@@ -1,7 +1,7 @@
 import path from 'node:path';
 
-export const PROFILE_BUNDLE = 'qq-bridge-public';
-export const PROFILE_ENTRY = 'public-bot-mode';
+export const PROFILE_BUNDLE = 'chat-bridge';
+export const PROFILE_ENTRY = 'chat-bridge-mode';
 export const PROFILE_RUNTIME_RECEIPT = 'chat-bridge-runtime.json';
 
 export function profileRuntimeRoot(home, profile, bundle = PROFILE_BUNDLE) {

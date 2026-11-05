@@ -4,7 +4,7 @@ param(
   [switch] $Yes
 )
 $ErrorActionPreference = 'Stop'
-$bundle = 'qq-bridge-public'
+$bundle = 'chat-bridge'
 $homeDir = (Get-Item -LiteralPath $DshHome).FullName
 $management = Join-Path $homeDir 'bot-instances'
 $runtime = Join-Path $management 'runtime'
@@ -54,7 +54,7 @@ $descriptor = Get-Content -LiteralPath (Join-Path $target '.qq-bridge-instance.j
 $manifest = Get-Content -LiteralPath (Join-Path $target '.qq-bridge-instance-manifest.json') -Raw | ConvertFrom-Json
 if ($receipt.version -ne 1 -or $descriptor.root -ine $target -or $descriptor.dshHome -ine $homeDir -or
     $descriptor.profile -ine $Profile -or $descriptor.bundleName -cne $bundle -or
-    $descriptor.entryId -cne 'public-bot-mode' -or $manifest.root -ine $target -or
+    $descriptor.entryId -cne 'chat-bridge-mode' -or $manifest.root -ine $target -or
     $manifest.instanceId -cne $descriptor.instanceId -or $manifest.bundleName -cne $bundle -or
     $manifest.profile -ine $Profile -or $manifest.dshHome -ine $homeDir -or !$manifest.installationId) {
   throw 'Chat Bridge ownership records do not match this DSH profile.'

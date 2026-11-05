@@ -89,11 +89,11 @@ QQ 身份以真实 QQ 号区分，昵称相同、前缀相同或改名不合并�
 
 ## Windows 安装与启停
 
-1. 在 DSH Desktop 的插件管理器中安装 Release 的预构建组合包 qq-bridge-public-0.5.1.tgz。在「添加插件」中填写下载包的本机绝对路径，或使用 GitHub 发行包的直链。插件显示名为 Chat Bridge，底层包 ID 保留用于升级识别。
+1. 在 DSH Desktop 的插件管理器中安装 Release 的预构建组合包 chat-bridge-0.5.1.tgz。在「添加插件」中填写下载包的本机绝对路径，或使用 GitHub 发行包的直链。插件显示名为 Chat Bridge，包 ID 为 chat-bridge。已有 qq-bridge-public 请先从 DSH 插件管理器卸载。
 2. 下载并解压 Chat-Bridge-Windows-Setup.zip，双击 Install-and-Start-Chat-Bridge.cmd。脚本识别已安装插件的 profile，自动下载并校验 SnowLuma 2.4.0 和所需运行依赖。多个 profile 装有插件时选择其中一个。
 3. 打开 DSH 中的 Chat Bridge 面板，配置 QQ 账号和允许名单。通过该面板启动、停止服务，按提示完成 QQ 登录。
 
-插件代码由 DSH profile 管理，运行目录在 DSH 数据目录的 bot-instances/runtime/<profile>/qq-bridge-public 下。卸载时先在 Chat Bridge 面板停止服务，再用 DSH 插件管理器移除插件。要同时清空运行目录，双击安装 ZIP 里的 Remove-Chat-Bridge-Data.cmd，按提示确认。删除脚本会检查实例归属，已有 DSH 会话时停止并保留数据。已有 v0.4.x 链接式实例见 [旧版迁移与回滚](docs/INSTANCE_INSTALLATION.md)。
+插件代码由 DSH profile 管理，运行目录在 DSH 数据目录的 bot-instances/runtime/<profile>/chat-bridge 下。卸载时先在 Chat Bridge 面板停止服务，再用 DSH 插件管理器移除插件。要同时清空运行目录，双击安装 ZIP 里的 Remove-Chat-Bridge-Data.cmd，按提示确认。删除脚本会检查实例归属，已有 DSH 会话时停止并保留数据。已有 v0.4.x 链接式实例见 [旧版迁移与回滚](docs/INSTANCE_INSTALLATION.md)。
 
 ### 可选能力
 

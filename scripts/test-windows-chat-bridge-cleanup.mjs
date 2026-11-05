@@ -11,13 +11,13 @@ test('Windows data cleanup removes only the unregistered public instance', { ski
   t.after(() => fs.rm(home, { recursive: true, force: true }));
   const management = path.join(home, 'bot-instances');
   const parent = path.join(management, 'runtime', 'desktop');
-  const target = path.join(parent, 'qq-bridge-public');
+  const target = path.join(parent, 'chat-bridge');
   const sibling = path.join(parent, 'unrelated');
   await fs.mkdir(target, { recursive: true });
   await fs.mkdir(sibling);
   const sentinel = path.join(sibling, 'sentinel.txt');
   await fs.writeFile(sentinel, 'preserve');
-  const descriptor = { root: target, dshHome: home, profile: 'desktop', bundleName: 'qq-bridge-public', instanceId: 'desktop-chat-bridge', entryId: 'public-bot-mode', version: 1 };
+  const descriptor = { root: target, dshHome: home, profile: 'desktop', bundleName: 'chat-bridge', instanceId: 'desktop-chat-bridge', entryId: 'chat-bridge-mode', version: 1 };
   const write = (file, data) => fs.writeFile(file, JSON.stringify(data));
   await write(path.join(target, '.qq-bridge-instance.json'), descriptor);
   await write(path.join(target, '.qq-bridge-instance-manifest.json'), { ...descriptor, installationId: 'fixture-1', paths: [], sessions: [] });

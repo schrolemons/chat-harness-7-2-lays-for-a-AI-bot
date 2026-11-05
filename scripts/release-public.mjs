@@ -5,6 +5,7 @@ import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {checkPrivacy,forbiddenReleasePath} from './privacy-check.mjs';
 import {buildDshBundle} from './build-dsh-bundle.mjs';
+import {PROFILE_BUNDLE, PROFILE_ENTRY} from '../src/profile-chat-bridge.mjs';
 import {sha256,assertPlainDirectory,installError} from './plan-instance-install.mjs';
 
 export const RELEASE_ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -52,7 +53,8 @@ export function runNpm(root,args) {
   return result.stdout;
 }
 export async function packPublicRelease(options) {
-  const stage=await stagePublicRelease(options),output=options.packDirectory;
+  const identity = options.profileManaged ? { bundleName: PROFILE_BUNDLE, entryId: PROFILE_ENTRY } : {};
+  const stage=await stagePublicRelease({...options,...identity}),output=options.packDirectory;
   await assertPlainDirectory(output);
   const packed=JSON.parse(runNpm(stage.target,['pack','--ignore-scripts','--json','--pack-destination',output]))[0];
   const file=path.join(output,packed.filename),bytes=await fs.readFile(file);

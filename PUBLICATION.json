@@ -6,7 +6,7 @@
   "edition": "public",
   "defaultLanguage": "neutral AI assistant",
   "release": {
-    "artifact": "qq-bridge-public-0.5.1.tgz",
+    "artifact": "chat-bridge-0.5.1.tgz",
     "fileAllowlist": "release-files.json",
     "sourceManifest": "public-source-manifest.json",
     "checksums": "SHA256SUMS"

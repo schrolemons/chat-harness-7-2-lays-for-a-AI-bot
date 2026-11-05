@@ -4,7 +4,7 @@ param(
   [string] $NpmCli
 )
 $ErrorActionPreference = 'Stop'
-$bundleName = 'qq-bridge-public'
+$bundleName = 'chat-bridge'
 function Get-ChatBridgeProfile([string] $Root) {
   $profiles = Join-Path $Root 'profiles'
   if (!(Test-Path -LiteralPath $profiles -PathType Container)) { return }
