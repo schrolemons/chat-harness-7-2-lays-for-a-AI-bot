@@ -305,6 +305,8 @@
   "examples/personal-core/minimal/sources/original.md",
   "examples/personal-core/minimal/topics/boundaries.md",
   "examples/personal-core/minimal/topics/reversible.md",
+  "locale/en.json",
+  "locale/zh.json",
   "package-lock.json",
   "package.json",
   "plugins/qq-agent-presets/admin-environment-guard.mjs",

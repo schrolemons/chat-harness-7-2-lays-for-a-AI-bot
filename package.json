@@ -1,6 +1,6 @@
 {
   "name": "qq-bridge",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "license": "MIT",
   "description": "Chat Bridge for DeepSeek Harness, derived from QQ Bridge. Connects OneBot and QQ via SnowLuma.",
@@ -155,7 +155,8 @@
     "./client": "./dsh-client.js",
     "./package.json": "./package.json",
     "./dsh-mcp-entry.mjs": "./dsh-mcp-entry.mjs",
-    "./plugins/*": "./plugins/*"
+    "./plugins/*": "./plugins/*",
+    "./locale/*": "./locale/*"
   },
   "dsh": {
     "bundle": {
@@ -187,7 +188,8 @@
     "dsh-mcp-entry.mjs",
     "dsh-client.js",
     "release-edition.json",
-    "release-files.json"
+    "release-files.json",
+    "locale/"
   ],
   "qqBridge": {
     "instance": {

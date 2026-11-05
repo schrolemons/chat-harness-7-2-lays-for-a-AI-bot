@@ -2,7 +2,7 @@
 
 一个面向 QQ 私聊与群聊的有状态 Agent harness，以 DeepSeek Harness（DSH）为模型、会话与工具宿主，通过 SnowLuma 接入 QQ。它在消息收发之外，管理上下文装填、记忆、人物身份、发送计划、等待、主动行为和运行观测。
 
-Chat Bridge 源自 QQ Bridge，基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.5.0**，通过独立运行目录接入 DSH；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
+Chat Bridge 源自 QQ Bridge，基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.5.1**，通过独立运行目录接入 DSH；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
 
 在 Windows 上首次安装，请看 [安装与启停](#windows-安装与启停)。
 
@@ -89,7 +89,7 @@ QQ 身份以真实 QQ 号区分，昵称相同、前缀相同或改名不合并�
 
 ## Windows 安装与启停
 
-1. 在 DSH Desktop 的插件管理器中安装 Release 的预构建组合包 qq-bridge-public-0.5.0.tgz。插件显示为 Chat Bridge，底层包 ID 保留用于升级识别。
+1. 在 DSH Desktop 的插件管理器中安装 Release 的预构建组合包 qq-bridge-public-0.5.1.tgz。在「添加插件」中填写下载包的本机绝对路径，或使用 GitHub 发行包的直链。插件显示名为 Chat Bridge，底层包 ID 保留用于升级识别。
 2. 下载并解压 Chat-Bridge-Windows-Setup.zip，双击 Install-and-Start-Chat-Bridge.cmd。脚本识别已安装插件的 profile，自动下载并校验 SnowLuma 2.4.0 和所需运行依赖。多个 profile 装有插件时选择其中一个。
 3. 打开 DSH 中的 Chat Bridge 面板，配置 QQ 账号和允许名单。通过该面板启动、停止服务，按提示完成 QQ 登录。
 
@@ -126,7 +126,7 @@ node scripts/build-agent-preset-patches.mjs --check
 npm run privacy:check
 ```
 
-版本变更与验证记录见 [v0.5.0 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.5.0)。发行附件提供 SHA-256 校验值和打包源码清单。
+版本变更与验证记录见 [v0.5.1 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.5.1)。发行附件提供 SHA-256 校验值和打包源码清单。
 
 测试使用临时副本、测试状态与桩 QQ/DSH；模拟通过不代表实际账号已登录、模型已完成任务或 QQ 已成功投递。真实运行核验应分别检查连接、当前加载版本与投递回执；维护操作不应以删除会话、清空历史或反复重启代替排查。
 
