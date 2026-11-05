@@ -71,8 +71,14 @@ export async function setupChatBridge({ home, profile, artifact } = {}) {
     if (error.code !== 'ENOENT') throw error;
   }
   const parent = path.dirname(target);
-  await fs.mkdir(parent, { recursive: true, mode: 0o700 });
-  for (let current = parent; current !== home; current = path.dirname(current)) await assertPlainDirectory(current);
+  let directory = home;
+  await assertPlainDirectory(directory);
+  for (const name of path.relative(home, parent).split(path.sep)) {
+    directory = path.join(directory, name);
+    try { await fs.mkdir(directory, { mode: 0o700 }); }
+    catch (error) { if (error.code !== 'EEXIST') throw error; }
+    await assertPlainDirectory(directory);
+  }
   // Validate downloaded bytes before creating the durable runtime and its ownership record.
   const acquired = await acquireSnowArtifact({ root: parent, artifact });
   const instanceId = profile.toLowerCase() + '-chat-bridge';

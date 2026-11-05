@@ -85,6 +85,7 @@ $moved = $false
 $registered = $true
 try {
   Assert-PluginRemoved
+  if (Test-Path -LiteralPath (Join-Path $parent '.chat-bridge-setup.lock')) { throw 'Chat Bridge setup is still running.' }
   $running = Get-CimInstance Win32_Process | Where-Object {
     ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($target + '\', [StringComparison]::OrdinalIgnoreCase)) -or
     ($_.CommandLine -and ($_.CommandLine.IndexOf($target + '\', [StringComparison]::OrdinalIgnoreCase) -ge 0 -or

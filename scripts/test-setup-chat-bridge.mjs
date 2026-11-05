@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { profileRuntimeRoot, findInstalledProfiles } from './setup-chat-bridge.mjs';
+import { profileRuntimeRoot, findInstalledProfiles, setupChatBridge } from './setup-chat-bridge.mjs';
 
 test('setup selects only native Chat Bridge bundles registered in the requested DSH home', async t => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-bridge-setup-'));
@@ -25,4 +25,25 @@ test('setup selects only native Chat Bridge bundles registered in the requested 
   assert.equal(profileRuntimeRoot(home, 'desktop'), path.join(home, 'bot-instances', 'runtime', 'desktop', 'qq-bridge-public'));
   assert.throws(() => profileRuntimeRoot(home, '..'), /INVALID_PROFILE/);
   assert.notEqual(profileRuntimeRoot(home, 'desktop'), profileRuntimeRoot(home, 'web'));
+});
+
+
+test('setup refuses a linked management directory without writing into its target', async t => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-bridge-link-'));
+  t.after(() => fs.rm(base, { recursive: true, force: true }));
+  const home = path.join(base, 'home');
+  const other = path.join(base, 'other');
+  const profile = path.join(home, 'profiles', 'desktop');
+  const bundle = path.join(profile, 'node_modules', 'qq-bridge-public');
+  await fs.mkdir(bundle, { recursive: true });
+  await fs.mkdir(other);
+  await fs.writeFile(path.join(profile, 'package.json'), JSON.stringify({
+    dependencies: { 'qq-bridge-public': '1.0.0' }, dsh: { profile: { bundles: ['qq-bridge-public'] } },
+  }));
+  await fs.writeFile(path.join(bundle, 'package.json'), JSON.stringify({
+    name: 'qq-bridge-public', qqBridge: { profileManaged: true },
+  }));
+  await fs.symlink(other, path.join(home, 'bot-instances'), 'junction');
+  await assert.rejects(setupChatBridge({ home, profile: 'desktop' }), /UNSAFE_INSTALL_PATH/);
+  assert.deepEqual(await fs.readdir(other), []);
 });
