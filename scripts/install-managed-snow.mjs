@@ -3,11 +3,14 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { inflateRawSync, crc32 } from 'node:zlib';
 import { readInstanceDescriptor, claimInstanceRoot } from '../src/instance-descriptor.mjs';
-import { patchSnowQuote, SNOW_QUOTE_PATCH_ID, SNOW_QUOTE_PATCH_INPUT } from './snow-quote-patch.mjs';
+import { patchSnowQuote, SNOW_QUOTE_PATCH_ID, SNOW_QUOTE_PATCH_INPUT, LEGACY_SNOW_QUOTE_PATCH_INPUT } from './snow-quote-patch.mjs';
 
-export const SNOW_RELEASE = Object.freeze({ version: '2.1.1', platform: 'win-x64',
+export const LEGACY_SNOW_RELEASE = Object.freeze({ version: '2.1.1', platform: 'win-x64',
   url: 'https://github.com/SnowLuma/SnowLuma/releases/download/v2.1.1/SnowLuma-v2.1.1-win-x64.zip',
   sha256: 'c739171f95c27706767e69ba36099707c222fcec639b46f4d59689997b527772' });
+export const SNOW_RELEASE = Object.freeze({ version: '2.4.0', platform: 'win-x64',
+  url: 'https://github.com/SnowLuma/SnowLuma/releases/download/v2.4.0/SnowLuma-v2.4.0-win-x64.zip',
+  sha256: '93096cb6d4cf576999094e9f7d1c9fb08e22f6b41c879182f015e639dc437613' });
 const fail = (code, message = code) => Object.assign(Error(`${code}: ${message}`), { code });
 const hash = b => crypto.createHash('sha256').update(b).digest('hex');
 const markerName = '.qq-bridge-managed.json';
@@ -78,12 +81,13 @@ export async function installManagedSnow({descriptor,artifact,expectedDigest}={}
     await realDirectory(selected.root);
     const managed=path.join(selected.root,'managed-dependencies');
     await fs.mkdir(managed,{recursive:true});await realDirectory(managed);
-    if(expectedDigest!==SNOW_RELEASE.sha256)throw fail('ARTIFACT_UNTRUSTED');
+    const artifactRelease = [SNOW_RELEASE, LEGACY_SNOW_RELEASE].find(candidate => candidate.sha256 === expectedDigest);
+    if(!artifactRelease)throw fail('ARTIFACT_UNTRUSTED');
     if((await ordinary(artifact)).size>256*1024*1024)throw fail('ARCHIVE_INVALID','Artifact is too large');
     const buffer=await fs.readFile(artifact);
     if(hash(buffer)!==expectedDigest)throw fail('ARTIFACT_DIGEST');
     const entries=inspectManagedSnowArchive(buffer);
-    const snowHome=path.join(managed,`snowluma-${SNOW_RELEASE.version}-${SNOW_RELEASE.platform}-${expectedDigest.slice(0,12)}`);
+    const snowHome=path.join(managed,`snowluma-${artifactRelease.version}-${artifactRelease.platform}-${expectedDigest.slice(0,12)}`);
     lock=path.join(managed,'.snow-install.lock');
     try{await fs.mkdir(lock);}catch(error){lock=null;if(error.code==='EEXIST')throw fail('INSTALL_BUSY');throw error;}
     try{await fs.lstat(snowHome);throw fail('MANAGED_ALREADY_INSTALLED');}catch(error){if(error.code!=='ENOENT')throw error;}
@@ -100,7 +104,7 @@ export async function installManagedSnow({descriptor,artifact,expectedDigest}={}
     // Pinned archive has no config entry; exclusive creation cannot adopt vendor/user output.
     await fs.mkdir(path.join(staging,'config'),{mode:0o700});
     const marker={version:1,kind:'snowluma',instanceId:selected.instanceId,entry:'index.mjs',runtime:'node.exe',files,createdDirectories:['config'],
-      artifact:{...SNOW_RELEASE},patches:[{id:SNOW_QUOTE_PATCH_ID,file:'index.mjs',inputSha256:SNOW_QUOTE_PATCH_INPUT,outputSha256:files['index.mjs']}]};
+      artifact:{...artifactRelease},patches:[{id:SNOW_QUOTE_PATCH_ID,file:'index.mjs',inputSha256:artifactRelease === SNOW_RELEASE ? SNOW_QUOTE_PATCH_INPUT : LEGACY_SNOW_QUOTE_PATCH_INPUT,outputSha256:files['index.mjs']}]};
     await fs.writeFile(path.join(staging,markerName),JSON.stringify(marker,null,2)+'\n',{flag:'wx',mode:0o600});
     await realDirectory(managed);await fs.rename(staging,snowHome);staging=null;
     return {snowHome,manifestPath:path.join(snowHome,markerName)};

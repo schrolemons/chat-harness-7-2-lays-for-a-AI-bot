@@ -7,10 +7,12 @@ import {SNOW_RELEASE,installManagedSnow} from './install-managed-snow.mjs';
 import {initializeManifest,appendInstallationEvidence} from '../src/instance-manifest.mjs';
 import {readInstanceDescriptor} from '../src/instance-descriptor.mjs';
 import {readInstanceSessionPolicy} from '../src/instance-session-policy.mjs';
+import {verifyManagedSnow, MANAGED_SNOW_MANIFEST} from '../src/instance-runtime.mjs';
 import {resolveInstanceNode} from '../src/dsh-instance-factories.mjs';
 import {validateLauncherPorts,readLauncherPorts} from './launcher-settings.mjs';
 import {bootstrapLocal} from './bootstrap-local.mjs';
 import {planInstanceInstall,sha256,assertPlainDirectory,installError} from './plan-instance-install.mjs';
+import {PROFILE_RUNTIME_RECEIPT} from '../src/profile-chat-bridge.mjs';
 import {applyInstanceInstall,recoverInstanceInstall} from './migrate-instance-profile.mjs';
 export {installProfile} from './install-profile.mjs';
 
@@ -51,11 +53,14 @@ export async function acquireSnowArtifact({root,artifact,fetchImpl=fetch}={}) {
   const bytes=Buffer.concat(chunks);if(sha256(bytes)!==SNOW_RELEASE.sha256)throw installError('ARTIFACT_DIGEST');
   await fs.writeFile(target,bytes,{flag:'wx',mode:0o600});return {artifact:target,bytes:size,downloaded:true};
 }
-async function checkPorts(ports,home,instanceId) {
+export async function checkPorts(ports,home,instanceId,resumeRoot) {
   const ownKeys=['console','snowHttp','snowWs','launcher','snowWebui'];
   let inventory;try{inventory=JSON.parse(await fs.readFile(path.join(home,'bot-instances','installation-roots.json'),'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
   for(const row of inventory?.roots||[]) {
-    if(row.instanceId===instanceId)throw installError('INSTANCE_ID_CONFLICT');
+    if (row.instanceId === instanceId) {
+      if (resumeRoot && path.relative(resumeRoot, row.root) === '') continue;
+      throw installError('INSTANCE_ID_CONFLICT');
+    }
     if(row.state!=='ready')throw installError('ROOT_DECLARATION_INCOMPLETE');
     const descriptor=await readInstanceDescriptor(row.root);
     if(descriptor.instanceId!==row.instanceId)throw installError('ROOT_DECLARATION_CONFLICT');
@@ -64,8 +69,32 @@ async function checkPorts(ports,home,instanceId) {
   }
   for(const kind of ownKeys)await new Promise((resolve,reject)=>{const server=net.createServer();server.once('error',()=>reject(installError('INSTANCE_PORT_CONFLICT')));server.listen({host:'127.0.0.1',port:ports[kind],exclusive:true},()=>server.close(resolve));});
 }
+async function resumeProfileStage(target, sourceRoot) {
+  try { await assertPlainDirectory(target); }
+  catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
+  const directory = path.join(target,'.instance-install');
+  await assertPlainDirectory(directory);
+  const creation = JSON.parse(await fs.readFile(path.join(directory,'creation.json'),'utf8'));
+  if (creation.root !== await fs.realpath(target) || creation.source !== 'created' || !creation.transactionId || !Array.isArray(creation.files))
+    throw installError('INSTALL_RECEIPT_MISMATCH');
+  const allowed = JSON.parse(await fs.readFile(path.join(sourceRoot,'release-files.json'),'utf8'));
+  const paths = new Set([...allowed,'npm-shrinkwrap.json']);
+  if (paths.size !== creation.files.length) throw installError('INSTALL_RECEIPT_MISMATCH');
+  for (const row of creation.files) {
+    if (!paths.delete(row.path) || !/^[a-f0-9]{64}$/.test(row.sha256)) throw installError('INSTALL_RECEIPT_MISMATCH');
+    const file = path.join(target,row.path);
+    await assertPlainDirectory(path.dirname(file));
+    const stat = await fs.lstat(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || sha256(await fs.readFile(file)) !== row.sha256)
+      throw installError('INSTALL_RECEIPT_MISMATCH');
+  }
+  const readPackage = async root => JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8'));
+  if ((await readPackage(target)).version !== (await readPackage(sourceRoot)).version) throw installError('INSTALL_RECEIPT_MISMATCH');
+  return {target,creation};
+}
+
 /** Fresh code/dependencies + disabled candidate; no profile apply or service launch. */
-export async function preparePublicInstall({sourceRoot=RELEASE_ROOT,target,dshHome,profile,instanceId='public-bot',label='Public bot',bundleName='qq-bridge-public',entryId='public-bot-mode',artifact,ports,installDependencies=true}={}) {
+export async function preparePublicInstall({sourceRoot=RELEASE_ROOT,target,dshHome,profile,instanceId='public-bot',label='Public bot',bundleName='qq-bridge-public',entryId='public-bot-mode',artifact,ports,installDependencies=true,nativeProfile=false}={}) {
   if(!path.isAbsolute(target||'')||!path.isAbsolute(dshHome||'')||!profile||!/^[\w-]+$/.test(profile)||!/^[a-z0-9][a-z0-9._-]*$/.test(instanceId))throw installError('EXPLICIT_INSTALL_TARGET_REQUIRED');
   await assertPlainDirectory(path.join(dshHome,'profiles',profile));
   for(let p=path.dirname(target);;p=path.dirname(p)) {
@@ -75,23 +104,48 @@ export async function preparePublicInstall({sourceRoot=RELEASE_ROOT,target,dshHo
     }
     if(path.dirname(p)===p)break;
   }
-  const selectedPorts=validateLauncherPorts({dsh:'',console:3200,snowHttp:3201,snowWs:3202,launcher:3299,snowWebui:5299,...ports},undefined,{managed:true});
-  await checkPorts(selectedPorts,dshHome,instanceId);
-  const stage=await stagePublicRelease({sourceRoot,target,bundleName,entryId});
+  const resumed = nativeProfile ? await resumeProfileStage(target, sourceRoot) : undefined;
+  const storedPorts = resumed ? await fs.readFile(path.join(target,'config.json'),'utf8')
+    .then(raw => readLauncherPorts(JSON.parse(raw), {managed:true}))
+    .catch(error => { if (error.code !== 'ENOENT') throw error; }) : undefined;
+  const selectedPorts=validateLauncherPorts({dsh:'',console:3200,snowHttp:3201,snowWs:3202,launcher:3299,snowWebui:5299,...(storedPorts || ports)},undefined,{managed:true});
+  await checkPorts(selectedPorts,dshHome,instanceId,resumed ? target : undefined);
+  const stage=resumed || await stagePublicRelease({sourceRoot,target,bundleName,entryId,installedSource:nativeProfile});
   const creation=stage.creation;
   const descriptor={version:1,instanceId,label,bundleName,entryId,settingsNamespace:entryId,root:await fs.realpath(target),dshHome:await fs.realpath(dshHome),profile,presetIdMap:{},workspaces:{}};
   for(const kind of ['chat','learning','task','summary'])descriptor.workspaces[kind]=path.join(descriptor.root,'state','workspaces',instanceId+'-'+kind);
   const policy=readInstanceSessionPolicy({descriptor});descriptor.presetIdMap={...policy.presetMap};
   for(const kind of ['chat','learning','task','summary'])descriptor.workspaces[kind]=policy.workspace(kind);
-  await fs.mkdir(path.join(target,'.instance-install'),{mode:0o700});
-  await fs.writeFile(path.join(target,'.instance-install','creation.json'),JSON.stringify(creation,null,2)+'\n',{flag:'wx',mode:0o600});
-  await fs.writeFile(path.join(target,'.qq-bridge-instance.json'),JSON.stringify(descriptor,null,2)+'\n',{flag:'wx',mode:0o600});
+  if (!resumed) {
+    await fs.mkdir(path.join(target,'.instance-install'),{mode:0o700});
+    await fs.writeFile(path.join(target,'.instance-install','creation.json'),JSON.stringify(creation,null,2)+'\n',{flag:'wx',mode:0o600});
+  }
+  const descriptorFile = path.join(target,'.qq-bridge-instance.json');
+  try {
+    await fs.writeFile(descriptorFile,JSON.stringify(descriptor,null,2)+'\n',{flag:'wx',mode:0o600});
+  } catch (error) {
+    if (!resumed || error.code !== 'EEXIST') throw error;
+    const prior = await readInstanceDescriptor(target);
+    for (const key of ['instanceId','profile','bundleName','dshHome','entryId'])
+      if (descriptor[key] !== prior[key]) throw installError('DESCRIPTOR_CONFLICT');
+  }
   await initializeManifest(target,descriptor);
   // Failed preparations remain inspectable. No recursive deletion/unregistration.
-  if(installDependencies)runNpm(target,['ci','--omit=dev','--no-audit','--no-fund']);
+  if(installDependencies) {
+    const args = ['ci','--omit=dev','--no-audit','--no-fund'];
+    if (nativeProfile) args.push('--ignore-scripts','--cache',path.join(target,'.instance-install','npm-cache'),'--userconfig',path.join(target,'.instance-install','npmrc'));
+    runNpm(target,args);
+  }
   else throw installError('DEPENDENCY_PROVISIONING_REQUIRED');
   const acquired=await acquireSnowArtifact({root:target,artifact});
-  const managed=await installManagedSnow({descriptor,artifact:acquired.artifact,expectedDigest:SNOW_RELEASE.sha256});
+  let managed;
+  try { managed=await installManagedSnow({descriptor,artifact:acquired.artifact,expectedDigest:SNOW_RELEASE.sha256}); }
+  catch (error) {
+    if (!resumed || error.code !== 'MANAGED_ALREADY_INSTALLED') throw error;
+    const snowHome = path.join(target,'managed-dependencies','snowluma-'+SNOW_RELEASE.version+'-'+SNOW_RELEASE.platform+'-'+SNOW_RELEASE.sha256.slice(0,12));
+    await verifyManagedSnow(target, snowHome, descriptor.instanceId);
+    managed = { snowHome, manifestPath: path.join(snowHome, MANAGED_SNOW_MANIFEST) };
+  }
   const runtime={snowHome:managed.snowHome,nodePath:path.join(managed.snowHome,'node.exe')};
   runtime.nodePath=await resolveInstanceNode({descriptor,config:runtime,host:{execPath:'Desktop.exe',versions:{electron:'installation-check'}}});
   bootstrapLocal(target,{descriptor,snowHome:managed.snowHome,ports:selectedPorts});
@@ -105,6 +159,13 @@ export async function preparePublicInstall({sourceRoot=RELEASE_ROOT,target,dshHo
   ];
   for(const name of ['config.json','state/mode.json','state/current-role.json'])createdPaths.push({path:path.join(target,name),kind:'data',...created,mutable:true,sha256:sha256(await fs.readFile(path.join(target,name)))});
   await appendInstallationEvidence(target,{profileEntries:[],links:[],paths:createdPaths});
+  if (nativeProfile) {
+    const receipt = path.join(target, PROFILE_RUNTIME_RECEIPT);
+    const pending = receipt + '.pending';
+    await fs.writeFile(pending, JSON.stringify({version:1,snowHome:runtime.snowHome},null,2)+'\n',{flag:'wx',mode:0o600});
+    await fs.rename(pending, receipt);
+    return {descriptor,runtime,stage};
+  }
   const plan=await planInstanceInstall({descriptor,profilePath:path.join(dshHome,'profiles',profile),runtime,creation});
   await fs.writeFile(path.join(target,'.instance-install','candidate.json'),JSON.stringify(plan,null,2)+'\n',{flag:'wx',mode:0o600});
   return {descriptor,runtime,plan,stage,dependencyArtifact:{version:SNOW_RELEASE.version,sha256:SNOW_RELEASE.sha256,bytes:acquired.bytes,downloaded:acquired.downloaded},candidate:path.join(target,'.instance-install','candidate.json')};

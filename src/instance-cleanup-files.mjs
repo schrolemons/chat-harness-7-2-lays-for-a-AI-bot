@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {rowHash,sha256,assertPlainDirectory,jsonEdit,yamlRows,removeYamlRows} from '../scripts/plan-instance-install.mjs';
-import {SNOW_RELEASE} from '../scripts/install-managed-snow.mjs';
+import {SNOW_RELEASE, LEGACY_SNOW_RELEASE} from '../scripts/install-managed-snow.mjs';
 export {rowHash,sha256,assertPlainDirectory};
 export const cleanupError=(code,message=code)=>Object.assign(Error(message),{code});
 export const samePath=(a,b)=>process.platform==='win32'?path.resolve(a).toLowerCase()===path.resolve(b).toLowerCase():path.resolve(a)===path.resolve(b);
@@ -66,8 +66,10 @@ export async function prepareFileCleanup(manifest) {
    if(journal.status!=='committed'||journal.planHash!==rowHash(candidate)||journal.receipt?.root!==root)throw cleanupError('INSTALL_RECEIPT_MISMATCH');
    await addFile(candidateFile,'code');await addFile(candidate.journalPath,'code');
   }
-  const download=path.join(root,'.instance-install',`snow-${SNOW_RELEASE.sha256}.zip`);
-  if((await state(download)).kind!=='missing')await addFile(download,'dependency',SNOW_RELEASE.sha256);
+  for (const release of [SNOW_RELEASE, LEGACY_SNOW_RELEASE]) {
+   const download=path.join(root,'.instance-install','snow-'+release.sha256+'.zip');
+   if((await state(download)).kind!=='missing')await addFile(download,'dependency',release.sha256);
+  }
  } else preserve.push({path:root,reason:'Developer source and unowned metadata remain'});
  for(const row of manifest.paths) {
   if(row.cleanup!=='owned'){preserve.push(row);continue;}if(row.kind==='code')continue;
@@ -81,7 +83,7 @@ export async function prepareFileCleanup(manifest) {
    if(!row.manifestPath||!within(row.path,row.manifestPath))throw cleanupError('DEPENDENCY_INVENTORY_REQUIRED');
    if((await state(row.manifestPath)).sha256!==row.sha256)throw cleanupError('PATH_CHANGED');
    const marker=await plainJson(row.manifestPath);
-   if(marker.version!==1||marker.kind!=='snowluma'||marker.instanceId!==manifest.instanceId||marker.artifact?.sha256!==SNOW_RELEASE.sha256)throw cleanupError('DEPENDENCY_INVENTORY_REQUIRED');
+   if(marker.version!==1||marker.kind!=='snowluma'||marker.instanceId!==manifest.instanceId||![SNOW_RELEASE, LEGACY_SNOW_RELEASE].some(release => release.sha256 === marker.artifact?.sha256))throw cleanupError('DEPENDENCY_INVENTORY_REQUIRED');
    expected={files:[...Object.entries(marker.files).map(([p,h])=>({path:p,sha256:h})),{path:path.relative(row.path,row.manifestPath).replaceAll('\\','/'),sha256:row.sha256}],links:[]};
    if(marker.createdDirectories!==undefined){
     if(rowHash(marker.createdDirectories)!==rowHash(['config']))throw cleanupError('DEPENDENCY_INVENTORY_REQUIRED');

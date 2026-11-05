@@ -1,10 +1,10 @@
-# QQ Bridge Harness for DeepSeek Harness
+# Chat Bridge for DeepSeek Harness
 
 一个面向 QQ 私聊与群聊的有状态 Agent harness，以 DeepSeek Harness（DSH）为模型、会话与工具宿主，通过 SnowLuma 接入 QQ。它在消息收发之外，管理上下文装填、记忆、人物身份、发送计划、等待、主动行为和运行观测。
 
-项目基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.4.0**，通过独立运行目录接入 DSH；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
+Chat Bridge 源自 QQ Bridge，基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.5.0**，通过独立运行目录接入 DSH；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
 
-在 Windows 上首次安装？可以直接看 [四步安装](#windows-四步安装)。
+在 Windows 上首次安装，请看 [安装与启停](#windows-安装与启停)。
 
 ## 当前架构
 
@@ -87,40 +87,13 @@ QQ 身份以真实 QQ 号区分，昵称相同、前缀相同或改名不合并�
 - **预算约束**：支持令牌/费用统计及分阶段处理。低预算待处理队列按私聊、群聊 @、群聊普通消息分别限长；恢复处理仍受触发策略约束。群聊机械回应要求真实 @ 或已核实引用 bot。
 - **任务隔离**：独立任务、后台学习和网页摘要采用各自预设；工具返回、内部输出、任务产物与真实 QQ 投递分别记录。
 
-## 安装与首次启动
+## Windows 安装与启停
 
-### Windows 四步安装
+1. 在 DSH Desktop 的插件管理器中安装 Release 的预构建组合包 qq-bridge-public-0.5.0.tgz。插件显示为 Chat Bridge，底层包 ID 保留用于升级识别。
+2. 下载并解压 Chat-Bridge-Windows-Setup.zip，双击 Install-and-Start-Chat-Bridge.cmd。脚本识别已安装插件的 profile，自动下载并校验 SnowLuma 2.4.0 和所需运行依赖。多个 profile 装有插件时选择其中一个。
+3. 打开 DSH 中的 Chat Bridge 面板，配置 QQ 账号和允许名单。通过该面板启动、停止服务，按提示完成 QQ 登录。
 
-1. **准备环境。** 使用 Windows x64、Node.js 24.20.0 或更新版本、DSH Desktop 和 QQ 桌面版。首次打开 DSH，完成模型配置，找到目标 DSH 数据目录，然后退出 Desktop。从 [v0.4.0 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.4.0) 下载 `qq-bridge-public-0.4.0.tgz` 和 `SHA256SUMS`，并将两个文件放在同一目录。
-2. **准备新实例。** 在 PowerShell 粘贴下面的命令，按本机情况替换四个路径。`$target` 必须是尚不存在的目录，且它的父目录已经存在。SnowLuma 会自动下载和校验。
-
-   ```powershell
-   $package = 'C:/Downloads/qq-bridge-public-0.4.0.tgz'
-   $dshHome = 'C:/DSHHome'
-   $target = 'C:/Bots/public-bot'
-   $bootstrap = 'C:/BotSetup'
-
-   $checksum = Join-Path (Split-Path -Parent $package) 'SHA256SUMS'
-   $filename = [regex]::Escape((Split-Path -Leaf $package))
-   $entry = Get-Content -LiteralPath $checksum | Where-Object { $_ -match ('^[0-9a-f]{64}\s+' + $filename + '$') }
-   $expected = ($entry -split '\s+')[0]
-   if ((Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash -ne $expected) { throw '发行包 SHA-256 不匹配' }
-   npm install --prefix $bootstrap $package --ignore-scripts --no-audit --no-fund
-   if ($LASTEXITCODE -ne 0) { throw '临时安装目录准备失败' }
-   $installer = Join-Path $bootstrap 'node_modules/qq-bridge-public/scripts/install.mjs'
-   node $installer --target $target --dsh-home $dshHome --profile desktop
-   ```
-
-3. **核对后应用。** 确认输出的 `conflicts` 为空，候选文件指向正确的实例和 DSH profile，且 Desktop 和其他 profile 写入者均已退出。然后在同一个 PowerShell 窗口执行：
-
-   ```powershell
-   $candidate = Join-Path $target '.instance-install/candidate.json'
-   node $installer --apply-plan $candidate --writers-stopped
-   ```
-
-4. **启用并检查。** 重新打开 DSH Desktop，在插件设置启用新注册的公开 Bot。在该实例的启动面板设置自己的 QQ 账号和允许交互的联系人或群，启动服务并按提示完成 QQ 登录。打开默认控制台 `http://127.0.0.1:3200/`，确认 QQ 和 DSH 已连接。
-
-已有实例升级、端口冲突处理、失败回滚和源码打包见 [完整安装指南](docs/INSTANCE_INSTALLATION.md)。升级前先保留现有配置、角色、会话和状态，再按指南审查新旧源码差异。
+插件代码由 DSH profile 管理，运行目录在 DSH 数据目录的 bot-instances/runtime/<profile>/qq-bridge-public 下。卸载时先在 Chat Bridge 面板停止服务，再用 DSH 插件管理器移除插件。要同时清空运行目录，双击安装 ZIP 里的 Remove-Chat-Bridge-Data.cmd，按提示确认。删除脚本会检查实例归属，已有 DSH 会话时停止并保留数据。已有 v0.4.x 链接式实例见 [旧版迁移与回滚](docs/INSTANCE_INSTALLATION.md)。
 
 ### 可选能力
 
@@ -153,7 +126,7 @@ node scripts/build-agent-preset-patches.mjs --check
 npm run privacy:check
 ```
 
-版本变更与验证记录见 [v0.4.0 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.4.0)。发行附件提供 SHA-256 校验值和打包源码清单。
+版本变更与验证记录见 [v0.5.0 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.5.0)。发行附件提供 SHA-256 校验值和打包源码清单。
 
 测试使用临时副本、测试状态与桩 QQ/DSH；模拟通过不代表实际账号已登录、模型已完成任务或 QQ 已成功投递。真实运行核验应分别检查连接、当前加载版本与投递回执；维护操作不应以删除会话、清空历史或反复重启代替排查。
 

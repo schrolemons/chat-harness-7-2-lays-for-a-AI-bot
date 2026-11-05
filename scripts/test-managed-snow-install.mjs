@@ -57,8 +57,9 @@ test('official artifact installs all assets, preserves reviewed quote patch and 
   const artifact=process.env.TEST_SNOW_ARTIFACT,before=hash(await fs.readFile(artifact));
   const result=await api.installManagedSnow({descriptor:f.descriptor,artifact,expectedDigest:api.SNOW_RELEASE.sha256});
   const marker=JSON.parse(await fs.readFile(result.manifestPath,'utf8'));
-  assert.equal(Object.keys(marker.files).length,71);assert.equal(marker.files['node.exe'],'d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5');
-  assert.equal(marker.patches[0].inputSha256,'e23ed3d4aa7e01e7f45400a7ffe6b0c4b67bb6d011f776f2fd04b959510435e6');
+  assert.equal(marker.artifact.version,'2.4.0');
+  assert.equal(Object.keys(marker.files).length,72);assert.equal(marker.files['node.exe'],'d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5');
+  assert.equal(marker.patches[0].inputSha256,'2af79d5759b65a15a97a1f6d600b4ce895b54d2b2fc475b8aa566f57035c2e93');
   assert.match(await fs.readFile(path.join(result.snowHome,'index.mjs'),'utf8'),/Math.abs\(_prevStored.time - _qt\) < 21600/);
   for(const [name,digest] of Object.entries(marker.files))assert.equal(hash(await fs.readFile(path.join(result.snowHome,name))),digest);
   assert.equal(hash(await fs.readFile(artifact)),before);

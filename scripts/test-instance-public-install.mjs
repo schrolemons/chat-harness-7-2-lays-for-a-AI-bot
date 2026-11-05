@@ -36,7 +36,7 @@ test('public bootstrap never restores private snapshot or rewrites existing conf
 test('automatic Snow acquisition requests only the pinned official URL and rejects untrusted bytes',async t=>{
   assert.equal(typeof install.acquireSnowArtifact,'function');const base=await temp(t);let seen;
   await assert.rejects(install.acquireSnowArtifact({root:base,fetchImpl:async url=>{seen=url;return new Response('untrusted fixture');}}),/ARTIFACT_DIGEST/);
-  assert.equal(seen,'https://github.com/SnowLuma/SnowLuma/releases/download/v2.1.1/SnowLuma-v2.1.1-win-x64.zip');
+  assert.equal(seen,'https://github.com/SnowLuma/SnowLuma/releases/download/v2.4.0/SnowLuma-v2.4.0-win-x64.zip');
 });
 test('Windows instance Node rejects the known 24.16 worker-crash runtime and accepts fixed versions',async()=>{
   const api=await import('../src/dsh-instance-factories.mjs');assert.equal(typeof api.isSupportedInstanceNode,'function');

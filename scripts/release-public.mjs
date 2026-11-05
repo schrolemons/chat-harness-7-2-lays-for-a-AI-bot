@@ -10,7 +10,7 @@ import {sha256,assertPlainDirectory,installError} from './plan-instance-install.
 export const RELEASE_ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const freshCreations=new WeakSet();
 export const isFreshReleaseCreation=(creation,root)=>freshCreations.has(creation)&&creation.root===root;
-export async function stagePublicRelease({sourceRoot=RELEASE_ROOT,target,bundleName='qq-bridge-public',entryId='public-bot-mode'}={}) {
+export async function stagePublicRelease({sourceRoot=RELEASE_ROOT,target,bundleName='qq-bridge-public',entryId='public-bot-mode',profileManaged=false,installedSource=false}={}) {
   if(!path.isAbsolute(target||'')||!path.isAbsolute(sourceRoot)||!/^[a-z0-9][a-z0-9._-]*$/.test(bundleName)||!/^[a-z0-9][a-z0-9._-]*$/.test(entryId))throw installError('RELEASE_INPUT_INVALID');
   await assertPlainDirectory(path.dirname(target));
   try{await fs.lstat(target);throw installError('TARGET_EXISTS');}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -23,13 +23,14 @@ export async function stagePublicRelease({sourceRoot=RELEASE_ROOT,target,bundleN
   for(const file of files) {
     if(typeof file!=='string'||file.includes('\\')||file.split('/').some(p=>!p||p==='..'||p==='.')||path.isAbsolute(file)||forbiddenReleasePath.test(file))throw installError('RELEASE_PATH_DENIED');
     const actual=await actualSource(file);await assertPlainDirectory(path.dirname(path.join(sourceRoot,actual)));
-    const stat=await fs.lstat(path.join(sourceRoot,actual));if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)throw installError('RELEASE_PATH_DENIED');
+    const stat=await fs.lstat(path.join(sourceRoot,actual));if(!stat.isFile()||stat.isSymbolicLink()||(!installedSource&&stat.nlink!==1))throw installError('RELEASE_PATH_DENIED');
   }
   const privacy=checkPrivacy(sourceRoot,{files:await Promise.all(files.map(actualSource))});if(!privacy.ok)throw Object.assign(installError('RELEASE_PRIVACY_FAILED'),{problems:privacy.problems});
   await fs.mkdir(target,{mode:0o700}); // exclusive creation; failures retain staging for inspection
   for(const file of files){const destination=path.join(target,file);await fs.mkdir(path.dirname(destination),{recursive:true});await fs.copyFile(path.join(sourceRoot,await actualSource(file)),destination,1);}
   const pkg=JSON.parse(await fs.readFile(path.join(target,'package.json'),'utf8'));
-  pkg.name=bundleName;pkg.qqBridge.instance={bundleName,entryId,settingsNamespace:entryId};
+  pkg.name=bundleName;pkg.qqBridge.profileManaged=profileManaged;pkg.qqBridge.instance={bundleName,entryId,settingsNamespace:entryId};
+  if (profileManaged) delete pkg.scripts.postinstall;
   pkg.files=files.filter(file=>file!=='package.json'&&file!=='package-lock.json');
   // npm normally excludes package-lock; the canonical distribution needs its
   // exact resolution graph for fresh npm ci. npm-shrinkwrap is the same lock.
@@ -59,6 +60,6 @@ export async function packPublicRelease(options) {
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const args=process.argv.slice(2),get=flag=>args[args.indexOf(flag)+1];
-  try {console.log(JSON.stringify(await packPublicRelease({target:get('--stage'),packDirectory:get('--output')}),null,2));}
+  try {console.log(JSON.stringify(await packPublicRelease({target:get('--stage'),packDirectory:get('--output'),profileManaged:args.includes('--profile-managed')}),null,2));}
   catch(e){console.error(e.code||e.message);if(e.problems)console.error(JSON.stringify(e.problems));process.exitCode=1;}
 }
