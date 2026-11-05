@@ -75,7 +75,11 @@ test('explanations and corrections keep a form-aware check even on focused reply
     const prompt = blocks.join('\n');
     assert.equal((prompt.match(/【解释与纠错自检】/g) || []).length, 1);
     assert.match(prompt, /沿用当前形态已配置的自称或称呼/);
-    assert.match(prompt, /先说具体哪一点有误和正确事实/);
+    assert.match(prompt, /先接住对方说的具体观察或疑问/);
+    assert.match(prompt, /影响的程度和仍成立的条件/);
+    assert.match(prompt, /谁影响谁、变化朝哪个方向/);
+    assert.match(prompt, /哪句话说过头或说错/);
+    assert.match(prompt, /省去无依据的联想/);
     if (mode !== 'off') assert.doesNotMatch(prompt, /【自然交流】/);
   }
 });

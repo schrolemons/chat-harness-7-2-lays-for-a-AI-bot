@@ -2,7 +2,7 @@
 
 一个面向 QQ 私聊与群聊的有状态 Agent harness，以 DeepSeek Harness（DSH）为模型、会话与工具宿主，通过 SnowLuma 接入 QQ。它在消息收发之外，管理上下文装填、记忆、人物身份、发送计划、等待、主动行为和运行观测。
 
-项目基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.3.2**（已对齐公开版安装修复），以单个 DSH 组合插件安装；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
+项目基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.4.0**，通过独立运行目录接入 DSH；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
 
 ## 当前架构
 
@@ -25,7 +25,7 @@ QQ ↔ SnowLuma / OneBot ↔ Bridge ↔ DSH 会话与模型
 
 ### Console 分层
 
-控制台默认地址为 `http://127.0.0.1:3100/`。当前导航包含八个业务层，以及独立的组件注册层：
+公开受管实例的控制台默认地址为 `http://127.0.0.1:3200/`。当前导航包含八个业务层，以及独立的组件注册层：
 
 | 层 | 名称 | 主要内容 |
 | --- | --- | --- |
@@ -99,7 +99,7 @@ QQ 身份以真实 QQ 号区分，昵称相同、前缀相同或改名不合并�
 
 ### 安装组合插件
 
-使用固定的独立运行目录，DSH profile 通过链接加载它。唯一安装流程见 [独立实例安装与精确迁移](docs/INSTANCE_INSTALLATION.md)：公开产物通过 npm bootstrap 后由 `install.mjs` 准备全新目录、锁定 SDK 依赖及自动下载的官方 SnowLuma，再生成 disabled 的精确 profile 候选。检查后，在目标 Desktop 已退出的窗口应用候选；安装器不会启动或重启任何服务。
+使用固定的独立运行目录，DSH profile 通过链接加载它。从 [v0.4.0 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.4.0) 下载公开包和校验文件。完整安装步骤见 [独立实例安装与精确迁移](docs/INSTANCE_INSTALLATION.md)：公开产物通过 npm bootstrap 后由 `install.mjs` 准备全新目录、锁定 SDK 依赖及自动下载的官方 SnowLuma，再生成 disabled 的精确 profile 候选。检查后，在目标 Desktop 已退出的窗口应用候选；安装器不会启动或重启任何服务。
 
 Windows 需要 Node.js 24.20.0 或更新版本和 npm。实际 bot/七个 MCP 使用验证后的 Snow 内置 Node 24.22.1。公开包和私人实例具有不同的真实 package name、entry/settings namespace、客户端 ID、预设、工作目录及 listener 端口。账号和发送名单默认为空，冒泡/日程示例未绑定。
 
@@ -138,8 +138,10 @@ node scripts/build-agent-preset-patches.mjs --check
 npm run privacy:check
 ```
 
-v0.3.1 的发行验证包含干净环境 `npm ci`、524 项隔离测试、DSH 原生 CLI 安装及六套预设自动注册，GitHub Actions 的测试、lint、生成产物与隐私检查通过。发行附件提供 SHA-256 校验值和源码文件清单。
+版本变更与验证记录见 [v0.4.0 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.4.0)。发行附件提供 SHA-256 校验值和打包源码清单。
 
 测试使用临时副本、测试状态与桩 QQ/DSH；模拟通过不代表实际账号已登录、模型已完成任务或 QQ 已成功投递。真实运行核验应分别检查连接、当前加载版本与投递回执；维护操作不应以删除会话、清空历史或反复重启代替排查。
 
 进一步阅读：[架构说明](construct.md)、[上下文查看器](docs/guides/CONTEXT_INSPECTOR.md)、[组件运行契约](docs/guides/PLUGIN_RUNTIME_CONTRACT.md)。
+
+[![powered by dsh](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

@@ -6,10 +6,10 @@
 
 目前托管 SnowLuma 产物适用于 Windows x64。准备 Node.js **24.20.0 或更新版本**及 npm，先启动一次 DSH 创建目标 profile，再退出该 Desktop，使 profile 没有写入者。Windows 旧 Node 24.16 存在已定位的原生 worker 退出问题；实际 bot 和七个 MCP 使用安装器验证过的 SnowLuma 内置 Node 24.22.1。安装器不会升级全局 Node。
 
-本轮新版独立安装产物尚未发布；目前先用本页末尾的 canonical pack 命令生成本地 `qq-bridge-public-<version>.tgz`，以后正式发布后也可下载对应新版产物。示例中的 `0.3.2` 是本地候选包版本，不表示旧 Release 已包含该文件。在独立的临时 bootstrap 目录安装这个包，然后准备永久运行目录。下列路径均为示例，必须替换为自己的绝对路径；永久目标必须尚不存在，父目录必须已存在。
+从 [v0.4.0 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.4.0) 下载公开包并核对 SHA256SUMS。也可用本页末尾的命令从同版本源码生成公开包。在独立的临时 bootstrap 目录安装它，再准备永久运行目录。下列路径均为示例，必须替换为自己的绝对路径；永久目标必须尚不存在，父目录必须已存在。
 
 ```powershell
-npm install --prefix C:/BotSetup C:/Downloads/qq-bridge-public-0.3.2.tgz --ignore-scripts --no-audit --no-fund
+npm install --prefix C:/BotSetup C:/Downloads/qq-bridge-public-0.4.0.tgz --ignore-scripts --no-audit --no-fund
 node C:/BotSetup/node_modules/qq-bridge-public/scripts/install.mjs --target C:/Bots/public-bot --dsh-home C:/DSHHome --profile desktop
 ```
 
@@ -91,3 +91,5 @@ bridge 和受管网页摘要读取同一次启动的目标快照。子进程及�
 Windows 验证使用 Node **24.22.1**，CI 固定同版本；受管运行最低为 24.20.0，避开已诊断的旧 Windows native teardown race。统一 runner 使用临时源码、独立物理依赖副本与空 `DSH_HOME`/`HOME`、npm cache。Windows `USERPROFILE` 保留操作系统值以兼容浏览器默认目录校验，浏览器仍只使用测试创建的一次性 profile。官方 Snow 与真实浏览器专项前置条件通过 `TEST_SNOW_ARTIFACT`、`TEST_OWNED_BROWSER_PATH`、`TEST_LAUNCHER_BROWSER` 明确提供；可选 Desktop 载体参考使用 `TEST_DESKTOP_MAIN`。常规 CI 不自动下载 Snow 或启动 QQ。完整发行验收必须另行运行这些专项，不能以缺少资产时的跳过当通过。
 
 公共发行安装测试在同一从零产物上核验原生默认 zstd、缓存、索引、显式 Snow 配置和完整收据的只读清理计划。完整删除执行另由较小的受控原生夹具验证；真实依赖树的逐文件同步日志吞吐仍有规模限制，安装测试不将数千次删除混入其成功条件。该证明的 home 和所有 writer 都由测试独占创建；不提供真实共享 home 的删除协调器。普通生产删除仍须保持 `UNSUPPORTED_SESSION_DELETE`，不以 bot 已停止替代共享原生存储的独占证明。源码测试、发行字节、实际已加载运行时与真实 QQ/模型结果须分别报告。
+
+[![powered by dsh](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
