@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /** Offline console preview using source declarations and isolated learning handlers; no production credentials, state, or network clients are loaded. */
 import http from 'node:http';
+import {createModelPolicyController} from '../src/console/model-policy.mjs';
+import {normalizeModelPolicy} from '../plugins/qq-components/obs-cost-policy/policy.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import { createAffairStore } from '../plugins/qq-components/ctx-memory-store/affairs.mjs';
@@ -397,6 +399,14 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
   const scriptsFixture=componentFixtures.get('life-web-watch');
   scriptsFixture.config.scriptPaths=[{value:'scripts/example-watch.mjs',enabled:true},{value:'scripts/example-summary.mjs',enabled:false}];
   scriptsFixture.config.scriptDescriptions={'scripts/example-watch.mjs':'按约定检查指定网页，发现更新后通知','scripts/example-summary.mjs':'整理已有结果，不主动搜索或发送'};
+  const modelCatalog={groups:[
+    {id:'deepseek-official',name:'DeepSeek',models:['deepseek-flash','deepseek-v4-pro'].map(id=>({id,reasoning:{efforts:['off','low','high','max'].map(id=>({id})),defaultEffort:'high'}}))},
+    {id:'magpie-responses',name:'Magpie · Responses',models:[{id:'codex/gpt-6.1-sol',name:'GPT-6.1-Sol',reasoning:{efforts:['low','medium','high','xhigh','max'].map(id=>({id}))}}]}
+  ],failures:[]};
+  const modelController=createModelPolicyController({fetchCatalog:async()=>modelCatalog,
+    fetchPresets:async()=>['qq-chat','qq-chat-v2','qq-admin','qq-task-worker','qq-learning','campus-summary','custom-agent'].map(id=>({id,name:id})),
+    readPolicy:()=>normalizeModelPolicy(componentFixtures.get('obs-cost-policy').config),
+    savePolicy:async config=>{componentFixtures.get('obs-cost-policy').config=structuredClone(config);return {ok:true};},synchronize:async()=>({ok:true,applied:0})});
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     const path = url.pathname;
@@ -445,12 +455,14 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
         if (logWrites) console.log(`[mock write] ${method} ${path} ${JSON.stringify(body)}`);
       }
 
+      if(await modelController.route({req,url,readBody:async()=>body,sendJson:json}))return;
       if(path==='/api/plugins/detail' && method==='GET'){
         const kind=url.searchParams.get('id')==='ctx-member-alias'?'alias':url.searchParams.get('id')==='ctx-interest-terms'?'terms':null;
         if(kind){const c=learningContexts[kind];return json({ok:true,plugin:{id:c.id,config:c.config,state:learningStates[kind]}});}
       }
       if(path==='/api/plugins/toggle' && method==='POST'&&componentFixtures.has(body.id)){componentFixtures.get(body.id).enabled=body.enabled!==false;return json({ok:true});}
       if(path==='/api/plugins/config' && method==='POST'){
+        if(body.id==='obs-cost-policy')return json({ok:false,error:'请在 E 层预设总览设置模型'},410);
         if(body.id==='personal-core'){
           const next={...coreFixture.config,...body.config},checked=refreshCore().validateConfig(next);
           if(!checked.ok)return json({ok:false,error:checked.errors.join('；')},400);
@@ -546,6 +558,10 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
             const preset = url.searchParams.get('preset') === 'qq-chat' ? 'qq-chat' : 'qq-chat-v2';
             return json({ ok: true, backups: [{ file: `${preset}.agent.cordis.yml.fixture`, mtime: Date.parse(timestamp) }] });
           }
+          case '/api/dsh/models': return json({ok:true,source:'dsh',groups:[
+            {id:'deepseek-official',name:'DeepSeek',models:['deepseek-flash','deepseek-v4-pro'].map(id=>({id,reasoning:{efforts:['off','low','high','max'].map(id=>({id})),defaultEffort:'high'}}))},
+            {id:'magpie-responses',name:'Magpie · Responses',models:[{id:'codex/gpt-6.1-sol',name:'GPT-6.1-Sol',reasoning:{efforts:['low','medium','high','xhigh','max'].map(id=>({id}))}}]}
+          ],failures:[]});
           case '/api/dsh/model': return json({
             provider: 'deepseek-official',
             model: 'deepseek-flash',

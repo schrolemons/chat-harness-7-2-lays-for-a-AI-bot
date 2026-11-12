@@ -2,7 +2,7 @@ import {createRuntimeIpcClient} from './instance-runtime-ipc.mjs';
 import {bindInstanceSnowConfig} from './instance-snow-connection.mjs';
 import {bindInstanceDshConfig} from './instance-dsh-target.mjs';
 import {loadInstanceSessionPolicy} from './instance-session-policy.mjs';
-import {isScheduledContactRequest, parseGameInvitation, parseRelayCommand, parseScheduledRelay, stripRelayPrefix} from './relay-intent.js';
+import {isScheduledContactRequest, parseGameInvitation, parseGroupReplyRequest, parseRelayCommand, parseScheduledRelay, stripRelayPrefix} from './relay-intent.js';
 import { presetBindings, summarizePreset } from './console/preset-overview.js';
 import {buildDshBundle} from '../scripts/build-dsh-bundle.mjs';
 import { openSetupViewer } from '../scripts/windows-setup-viewer.mjs';
@@ -10,6 +10,7 @@ import { isAdminPluginTool, isAdminEnvironmentAuthorized } from './tools/admin-p
 import { FIXED_PRESETS, adminPresetConfig, requestedPreset, simulationPreset } from './preset-policy.js';
 import {ensureDialogueSequences} from './bridge-core/dialogue-sequence.mjs';
 import {readLocalConversationHistory} from './bridge-core/local-history.mjs';
+import {createReceivedMessageCache} from './bridge-core/received-history.mjs';
 import {projectReceiptActivity, receiptStateView} from './bridge-core/receipt-index.mjs';
 import {routeLearningManagement} from './console/learning-management.js';
 import {routeFeedbackRepairs} from './console/feedback-repairs.js';
@@ -101,7 +102,9 @@ import {
 } from './sticker-lib.js';
 import { normalizeConversationDriveConfig } from './conversation-drive.js';
 import { createPluginHost } from './plugin-host.js';
-import {resolveCallPolicy} from '../plugins/qq-components/obs-cost-policy/policy.mjs';
+import {resolveCallPolicy,readCostPolicy,taskModelRange,selectTaskModel} from '../plugins/qq-components/obs-cost-policy/policy.mjs';
+import {validateCatalogSelection} from '../plugins/qq-components/obs-cost-policy/catalog.mjs';
+import {createModelPolicyController} from './console/model-policy.mjs';
 import { listGames, setGameSettings, saveCustomGame, deleteCustomGame } from '../plugins/qq-components/tool-games/games-store.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -609,24 +612,8 @@ function forgetAgentToken(key) {
   CONVERSATION_TOKENS.delete(key);
 }
 
-// 读取 DSH 模型能力的在途 Promise：withTimeout 只做 Promise.race，不会取消底层 RPC，
-// 因此并发刷新会各自留下一个不可取消的请求。这里做去重，同一时刻只发一个。
-let modelCatalogInFlight = null;
-// DSH 思考强度（reasoningEffort）热切换代号。
-// 控制台改强度后递增它，让已在运行的会话在下一条消息重新 selectModel；
-// 放在模块级是为了不依赖 main() 内部声明的执行顺序（避免 TDZ）。
+// Existing sessions select again after the shared call policy changes.
 let modelSelectionEpoch = 0;
-// DeepSeek provider 明确支持的取值（见 dsh-llm-deepseek：其它值会抛 UNSUPPORTED_REASONING_EFFORT）。
-// 'off' 虽然合法（关闭思考），但 QQ 聊天助手依赖思考，控制台不提供该档。
-const REASONING_EFFORT_OPTIONS = ['low', 'high', 'max'];
-const REASONING_EFFORT_DEFAULT = 'low';
-function normalizeReasoningEffort(value) {
-  const v = String(value ?? '').trim().toLowerCase();
-  if (!REASONING_EFFORT_OPTIONS.includes(v)) {
-    throw new Error(`思考强度只能是 ${REASONING_EFFORT_OPTIONS.join(' / ')}`);
-  }
-  return v;
-}
 
 // 敏感文本脱敏：把 SENSITIVE_RE 命中的片段替换为 ***，供日志/反馈/活动记录写入前使用。
 // SENSITIVE_RE 未带 g 标志，这里动态补 g 以替换所有命中片段。
@@ -845,7 +832,7 @@ function loadConfig() {
       // 新消息处理前，按条数回查最近消息；回合结束由模型以逐条 JSON 回执确认状态。
       doubleStamp: { enabled: true, windowCount: 8 },
       // 管理员开发模式：仅 owner 私聊使用完整工具面的 DSH preset（可改本机/桥接后端），其他会话不受影响。
-      adminDev: { enabled: false, preset: '', autoApprove: false },
+      adminDev: { enabled: false, preset: 'qq-admin', autoApprove: false },
       // 自我更新：每隔 N 小时让管理员会话自查最近的对话质量（找出问题并修改配置/提示词/代码）。
       selfReview: { enabled: true, intervalHours: 6, memoryFile: 'state/memory/_optimization.md', autoOptimize: true, optimizeCooldownHours: 2, maxFeedbackFixesPerRound: 3, maxSelfFixesPerRound: 3 },
       agentPreset: 'qq-chat-v2',
@@ -930,7 +917,7 @@ function loadConfig() {
         inlineWakeMessages: true,
         wakeMessageLimit: 12,
         wakeRecentLimit: 4,
-        wakeMaxChars: 6000
+        wakeMaxChars: 20000
       },
       // 操作者在控制台为单个会话预写的「初始提示词」的字数上限（只在首次唤醒时注入一次）。
       // 它不是安全边界，只是防止误粘贴一篇长文把首次唤醒的 prompt 撑爆。
@@ -1082,15 +1069,6 @@ function loadConfig() {
   // authTokenExplicit 记录「token 是用户填的还是这里猜的」，客户端据此排优先级。
   cfg.dsh.authTokenExplicit = Boolean(cfg.dsh.authToken);
   if (!cfg.dsh.authToken) cfg.dsh.authToken = discoverDshLaunchToken();
-
-  // 思考强度可能被手工改成非法值（config.json 是用户可编辑的）。DeepSeek 适配器对非法值
-  // 会硬拒绝，若直接透传会让每个会话的 selectModel 每次都失败；这里统一规范化并告警。
-  try {
-    cfg.dsh.reasoningEffort = normalizeReasoningEffort(cfg.dsh.reasoningEffort ?? REASONING_EFFORT_DEFAULT);
-  } catch (error) {
-    log(`⚠️ config.json 的 dsh.reasoningEffort「${cfg.dsh.reasoningEffort}」非法，已回退 ${REASONING_EFFORT_DEFAULT}（${error?.message ?? error}）`);
-    cfg.dsh.reasoningEffort = REASONING_EFFORT_DEFAULT;
-  }
 
   // 人格卡注入上限（字符）。历史硬编码 6000，现在可配：每条约 4~6k token 的成本护栏。
   cfg.role = { maxInjectChars: ROLE_INJECT_MAX_CHARS_DEFAULT, ...(file.role ?? {}) };
@@ -2147,6 +2125,7 @@ async function main() {
     if (slangLearnerSessionId) {
       learnerSessions.add(slangLearnerSessionId);
       api.events.follow(slangLearnerSessionId);
+      if(await ensureChatModel(slangLearnerSessionId,undefined,{reason:'slangLearn'})!=='applied')throw new Error('整理会话模型设置失败');
       return slangLearnerSessionId;
     }
     if (saved?.sessionId && instanceSessionPolicy.equivalentPreset(saved.preset,preset)) {
@@ -2287,7 +2266,6 @@ async function main() {
   // 调用会抛 “api.sessions.modelCatalog is not a function”，让思考强度档位静默退回内置清单。
   // 这里直接用桥接自己覆写的 callUnary（它本来就是为「不依赖旧版客户端域方法」而存在的），
   // 并保留一次 `session/models` 回落以兼容更老的 DSH。
-  const modelCatalogErrorLogged = new Set();
   async function fetchModelCatalog() {
     try {
       return await api.callUnary('session.modelCatalog', {});
@@ -2425,6 +2403,14 @@ async function main() {
   /** sessionId -> 最近一次已知的实际模型。切换模型会让单价差好几倍，所以按会话记。 */
   const sessionModels = new Map();
   const nominalModel = () => resolveCallPolicy(pluginHost,ROOT,{reason:'policySync'}).model;
+  const modelPolicyController = createModelPolicyController({
+    fetchCatalog: async () => unwrap(await withTimeout(fetchModelCatalog(), 8000, 'session/modelCatalog'), 'session.modelCatalog'),
+    fetchPresets: async () => unwrap(await api.agentPresets.list({}), 'agentPresets.list').presets,
+    canonicalPreset: id => instanceSessionPolicy.canonicalPreset(id),
+    readPolicy: () => readCostPolicy(ROOT),
+    savePolicy: async config => { const saved=pluginHost.setConfig('obs-cost-policy',config);if(saved.ok)await pluginHost.reload('obs-cost-policy');return saved; },
+    synchronize: () => taskCaps.synchronizeCostPolicy(),
+  });
 
   function rememberModel(sessionId, selection) {
     const model = selection?.model;
@@ -2466,7 +2452,7 @@ async function main() {
         projection: snapshot.projections,
         at: Date.now(),
         model: known?.model ?? nominalModel(),
-        provider: known?.provider ?? cfg.dsh?.provider
+        provider: known?.provider ?? resolveCallPolicy(pluginHost,ROOT,{reason:'policySync'}).provider
       });
       tokenLedger.ingestSnapshotRecords({ sessionId, records: snapshot.records });
       rebuildInFlightCollector(sessionId, snapshot.records);
@@ -2763,7 +2749,7 @@ async function main() {
   /** 管理员开发模式配置。 */
   function adminDevCfgV2() {
     const a = cfg.socialV2?.adminDev ?? {};
-    return adminPresetConfig(a, readJsonSafe(path.join(STATE_DIR, 'mode.json'), {})?.closedAgentPreset || '');
+    return adminPresetConfig(a);
   }
   /** 该 key 是否享管理员开发模式（只有 owner 私聊）。 */
   function isAdminDevKey(key) {
@@ -4346,68 +4332,7 @@ async function main() {
         }
 
         // ── DSH 模型与思考强度 ───────────────────────────────────────────────
-        if (req.method === 'GET' && url.pathname === '/api/dsh/model') {
-          const provider = String(cfg.dsh?.provider || 'deepseek-official');
-          const currentPolicy = resolveCallPolicy(pluginHost, ROOT, {reason:'policySync'});
-          const model = currentPolicy.model;
-          // 档位优先取 DSH 实际公布的能力（DSH 换档位词汇或换 provider 时自动跟随），失败退回内置白名单。
-          let options = REASONING_EFFORT_OPTIONS.slice();
-          let labels = {};
-          let providerDefault = null;
-          let catalogSource = 'fallback';
-          try {
-            if (!modelCatalogInFlight) {
-              modelCatalogInFlight = withTimeout(fetchModelCatalog(), 3000, 'session/modelCatalog')
-                .finally(() => { modelCatalogInFlight = null; });
-            }
-            const catalog = unwrap(await modelCatalogInFlight, 'session.modelCatalog');
-            const group = (catalog?.groups ?? []).find((g) => g?.id === provider);
-            const entry = (group?.models ?? []).find((m) => m?.id === model);
-            const efforts = entry?.reasoning?.efforts ?? [];
-            const advertised = efforts.map((e) => String(e?.id ?? '')).filter((id) => REASONING_EFFORT_OPTIONS.includes(id));
-            if (advertised.length) {
-              options = advertised;
-              labels = Object.fromEntries(efforts.map((e) => [String(e.id), { name: e.name ?? '', description: e.description ?? '' }]));
-              providerDefault = entry.reasoning.defaultEffort ?? null;
-              catalogSource = 'dsh';
-            }
-          } catch (error) {
-            // 同一条失败原因只记一次：控制台每次刷新都会打这条接口，否则日志会被刷爆。
-            const reason = String(error?.message ?? error);
-            if (!modelCatalogErrorLogged.has(reason)) {
-              modelCatalogErrorLogged.add(reason);
-              log(`读取 DSH 模型能力失败，思考强度暂用内置清单：${reason}`);
-            }
-          }
-          sendJson({
-            provider,
-            model,
-            reasoningEffort: currentPolicy.reasoningEffort,
-            policySource: 'obs-cost-policy',
-            options,
-            labels,
-            default: currentPolicy.reasoningEffort,
-            providerDefault,
-            catalogSource,
-            // selectModel 会同时写会话级与 DSH 全局默认（~/.dsh/settings.yaml 的 agent-default-model），
-            // 控制台要把这点明确告诉管理员，避免「只想调 QQ 助手却改了 Web GUI 新会话默认」的意外。
-            globalSideEffect: true,
-          });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/dsh/effort') {
-          const body = await readBody();
-          let effort;
-          try { effort = normalizeReasoningEffort(body.reasoningEffort); }
-          catch (error) { sendJson({ ok: false, error: error?.message ?? '思考强度无效' }, 400); return; }
-          // Compatibility entry writes the component policy instead of a second preference.
-          const saved = pluginHost.setConfig('obs-cost-policy', {defaultEffort:effort});
-          if(!saved.ok){sendJson(saved,400);return;}
-          await pluginHost.reload('obs-cost-policy');
-          const sync = await taskCaps.synchronizeCostPolicy();
-          sendJson({ok:sync.ok,reasoningEffort:effort,policySource:'obs-cost-policy',sync},sync.ok?200:409);
-          return;
-        }
+        if (await modelPolicyController.route({req,url,readBody,sendJson})) return;
 
         // ── 安全拦截通知设置 ─────────────────────────────────────────────────
         if (req.method === 'GET' && url.pathname === '/api/security') {
@@ -4837,8 +4762,7 @@ async function main() {
           // adminDev：管理员开发模式
           if (body.adminDev && typeof body.adminDev === 'object') {
             merged.adminDev = { ...(current.adminDev ?? {}), ...body.adminDev };
-            if (merged.adminDev.enabled !== undefined) merged.adminDev.enabled = merged.adminDev.enabled === true;
-            if (merged.adminDev.preset !== undefined) merged.adminDev.preset = String(merged.adminDev.preset ?? '').trim().slice(0, 64);
+            Object.assign(merged.adminDev, adminPresetConfig(merged.adminDev));
           }
           // selfReview：自我更新频率
           if (body.selfReview && typeof body.selfReview === 'object') {
@@ -5182,7 +5106,7 @@ async function main() {
           return;
         }
         if (await routeContextManagement({req,url,pluginHost,readBody,sendJson})) return;
-        if (await routePluginManagement({req,url,pluginHost,readBody,sendJson,synchronizeCostPolicy:()=>taskCaps.synchronizeCostPolicy()})) return;
+        if (await routePluginManagement({req,url,pluginHost,readBody,sendJson})) return;
         if (req.method === 'GET' && url.pathname === '/api/tools/catalog') {
           if (!consoleAdminRequest) { sendJson({ok:false,error:'工具注入审计仅限管理端'},403); return; }
           sendJson(await ensureToolCatalog(ROOT));
@@ -5401,7 +5325,7 @@ async function main() {
         if (req.method === 'POST' && url.pathname === '/api/socialV2/reply-contents') {
           const body=await readBody(),key=String(body.key ?? '').trim();
           const result=await declareReplyContents({key,sourceKey,envelope:sourceEnvelope,groups:body.groups,
-            messages:admittedContentMessages(sourceKey,sourceEnvelope),
+            messages:admittedContentMessages(sourceKey,sourceEnvelope),adminAuthorized:authorizedAdminContext(requestOutbound),
             allowed:agentRequest && agentTokenOk(key,sourceToken) && v2SessionAllowed(key) && v2ToolEnabled('sendMessage'),
             callService:(service,method,payload)=>pluginHost.callService(service,method,payload),admitTaskContents:taskCaps.admitTaskContents});
           sendJson(result.body,result.status);return;
@@ -8220,8 +8144,8 @@ async function main() {
           if (token && !agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
           const sendContext = outboundScope.getStore();
           if (currentMode === 'reserved2' && sendContext?.agent && sendContext.sourceKey !== key) {
-            const error = tokenEq(token,req.headers['x-agent-token']) && !replyToMessageId && !atUserId
-              ? crossSessionTaskError(key,sendContext)
+            const error = tokenEq(token,req.headers['x-agent-token'])
+              ? crossSessionTaskError(key,sendContext,{kind:'text',replyTo:replyToMessageId,targetUserId:atUserId})
               : 'CROSS_SESSION_TASK_REQUIRED：跨会话任务须使用发起会话令牌并发送独立消息。';
             if (error) { sendJson({ok:false,code:error.split('：')[0],error},409); return; }
           }
@@ -8640,6 +8564,7 @@ async function main() {
   }
 
   function crossSessionTaskError(targetKey, context, {kind = "text", targetUserId, replyTo} = {}) {
+    if (authorizedAdminContext(context)) return null;
     if (!['text','poke'].includes(kind) || replyTo || kind==='text' && targetUserId) {
       return 'CROSS_SESSION_ACTION_UNSUPPORTED：跨会话任务只支持已授权的独立文字或明确要求的拍一拍。';
     }
@@ -8660,6 +8585,13 @@ async function main() {
     const targets = new Set();
     for (const message of source) {
       const plain = stripRelayPrefix(message.plain ?? message.text);
+      const groupReply = kind==='text' && parseGroupReplyRequest(message.plain ?? message.text);
+      if (groupReply) {
+        const member=pluginHost.callService('aliases','lookupConfirmed',{alias:groupReply.name});
+        const groups=(member?.sourceKeys||[]).filter(key=>key.startsWith('group:')&&isSessionAllowedInCurrentMode(key));
+        if(member?.ok && groups.length===1)targets.add(groups[0]);
+        continue;
+      }
       const groupPoke = /^(?:去)?群(?:聊|里)\s*(?:电一电|电一下|戳一戳|戳一下|拍一拍|拍一下)\s*(.+)$/.exec(plain);
       if (groupPoke) {
         if (kind!=='poke') continue;
@@ -8716,7 +8648,9 @@ async function main() {
       const target=replyToMessageId==null?null:[...view.unread,...view.recentMessages].find(m=>String(m.messageId)===String(replyToMessageId));
       const content=options.contentId?pluginHost.callService('replyPlan','getContent',{key:sourceKey,contentId:options.contentId}):null;
       const requiredSeqs=pendingMessagesV2(view).filter(m=>m.replyRequirement==='required'&&!view.receiptSendPendingSeqs?.includes(m.seq)).map(m=>m.seq);
-      return {pending,requiredSeqs,selectedSeqs:[...new Set([...(target?[target.seq]:[]),...(content?.seqs||[])])],targetIncomplete:!!target&&!target.isSelf&&!messageFullyProcessedV2(target)&&!messageAdmitted(envelope,target)};
+      const selectedSeqs=[...new Set([...(target?[target.seq]:[]),...(content?.seqs||[])])];
+      const surrounding=pluginHost.callService('historyContext','replyContext',{key:sourceKey,state:view,throughSeq:selectedSeqs.length?Math.max(...selectedSeqs):Infinity,limit:normalizeContextLimits(cfg.socialV2?.context).contextWindow})||[];
+      return {pending,requiredSeqs,selectedSeqs,groupContext:surrounding.map(m=>({seq:m.seq,complete:messageAdmitted(envelope,m)})),targetIncomplete:!!target&&!target.isSelf&&!messageFullyProcessedV2(target)&&!messageAdmitted(envelope,target)};
     },
     callService: (service, method, payload) => {
       if(service==='proactive'&&method==='observe'&&payload.kind==='sent'&&!['thinkingAck','messageAck','ack'].includes(payload.reason)){
@@ -9146,7 +9080,7 @@ async function main() {
    *          绝不发注定被 DSH 丢掉的字节（那样模型只会看到看不懂的英文错误）。
    */
   async function toModelMedia(buffer, mimeType, label = '图片') {
-    const out = await normalizeImageForModel(buffer, mimeType, { ...modelMediaLimits, label });
+    const out = await normalizeImageForModel(buffer, mimeType, { ...modelMediaLimits, tmpDir:path.join(STATE_DIR,'tmp','model-media'), label });
     if (!out.ok) {
       log(`[media] ${label} 不提供：${out.error}`);
       return out;
@@ -9586,6 +9520,10 @@ async function main() {
     return !prior||canContinueReplyBudget(key,selected,budget)?selected:context;
   }
 
+  function authorizedAdminContext(context) {
+    return activeReplyContext(context?.sourceKey,context) && hasAdminEnvironment(context.sourceKey);
+  }
+
   function activeReplyContext(key,context) {
     return !!(context?.agent&&context.sourceKey===key&&context.envelope&&!context.envelope.cancelled&&context.envelope===activeTurnEnvelopes.get(state.sessions[key]));
   }
@@ -9680,16 +9618,20 @@ async function main() {
   // 'not-found' 表示 DSH 侧会话已经不存在（DSH 重启、异常退出、归档竞态），
   // 本地映射已失效，调用方必须退役重建，否则每条消息都会对着一个不存在的会话重试。
   async function ensureChatModel(sessionId, key, context = {}) {
-    const tier = resolveCallPolicy(pluginHost, ROOT, {key, ...context});
-    const provider = String(cfg.dsh?.provider || 'deepseek-official');
-    const appliedKey = `${modelSelectionEpoch}:${provider}:${tier.model}:${tier.reasoningEffort}`;
+    const worker=context.purpose==='task'||context.task!==undefined;
+    const learning=context.reason==='slangLearn';
+    const purpose=context.purpose||(worker||learning?'task':'conversation');
+    const preset=context.preset||(learning?'qq-learning':worker?'qq-task-worker':state.sessionPresets?.[key]);
+    const tier = resolveCallPolicy(pluginHost, ROOT, {...context,key,purpose,preset:instanceSessionPolicy.canonicalPreset(preset)});
+    const provider = tier.provider;
+    const appliedKey = JSON.stringify([modelSelectionEpoch,provider,tier.model,tier.reasoningEffort??null]);
     if (modelAppliedSessions.get(sessionId) === appliedKey) return 'applied';
     const model = tier.model;
     const effort = tier.reasoningEffort;
     let lastError = null;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        const result = unwrap(await api.sessions.selectModel({ sessionId, provider, model, reasoningEffort: effort }), 'session.selectModel');
+        const result = unwrap(await api.sessions.selectModel({ sessionId, provider, model, ...(effort ? {reasoningEffort: effort} : {}) }), 'session.selectModel');
         modelAppliedSessions.set(sessionId, appliedKey);
         log(`已设置会话模型 ${sessionId} -> ${result.selected.provider}/${result.selected.model} (${result.selected.reasoningEffort ?? '默认'})`);
         return 'applied';
@@ -9714,7 +9656,7 @@ async function main() {
     modelSelectionEpoch += 1;
     const targets = new Map(Object.entries(state.sessions).map(([key,id])=>[id,{key,context:{reason:'policySync'}}]));
     if(slangLearnerSessionId)targets.set(slangLearnerSessionId,{context:{reason:'slangLearn'}});
-    for(const task of Object.values(tasksStore))if(task?.sessionId&&['running','waiting_input'].includes(task.status))targets.set(task.sessionId,{key:task.originKey,context:{task:task.task}});
+    for(const task of Object.values(tasksStore))if(task?.sessionId&&['running','waiting_input'].includes(task.status))targets.set(task.sessionId,{key:task.originKey,context:{task:task.task,modelSelection:task.modelSelection}});
     const failed=[];let applied=0;
     for(const [id,target] of targets){try{const result=await ensureChatModel(id,target.key,target.context);if(result==='applied')applied++;else failed.push({sessionId:id,status:result});}catch(error){failed.push({sessionId:id,status:'failed',error:String(error?.message||error)});}}
     return {ok:failed.length===0,applied,total:targets.size,failed};
@@ -9868,10 +9810,25 @@ async function main() {
     if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('任务执行协议未加载');
     return prompt;
   }
-  async function taskSpawn({ token, title, task }) {
+  async function taskModels({token}) {
+    if(!taskCapTokenKey(token))throw Error('任务模型范围仅管理员会话可用');
+    const range=taskModelRange(readCostPolicy(ROOT)),catalog=await modelPolicyController.catalog(),unavailable=[];
+    const allowed=range.allowed.map(item=>({...item,efforts:item.efforts.filter(effort=>{
+      try{validateCatalogSelection({provider:item.provider,model:item.model,effort},catalog);return true;}
+      catch{unavailable.push({provider:item.provider,model:item.model,effort});return false;}
+    })})).filter(item=>item.efforts.length);
+    return {ok:true,allowed,unavailable,hint:'由你按任务需要选择范围内的 provider、model、effort，作为 modelSelection 传给 task_spawn；续办默认保持原选择，也可在 task_input 重新选择。'};
+  }
+  async function checkedTaskModel(selection){
+    const selected=selectTaskModel(readCostPolicy(ROOT),selection);
+    validateCatalogSelection(selected,await modelPolicyController.catalog());
+    // Recheck after the asynchronous catalog read, in case the console narrowed the range.
+    return selectTaskModel(readCostPolicy(ROOT),selected);
+  }
+  async function taskSpawn({ token, title, task, modelSelection }) {
     const callerKey = taskCapTokenKey(token);
     if (!callerKey) throw new Error('任务委派需要启用管理员环境并使用已选高权限预设：令牌或环境校验失败');
-    return taskSpawnCore({ callerKey, title, task });
+    return taskSpawnCore({ callerKey, title, task, modelSelection });
   }
   function selectedTaskBudgetAdmission(key) {
     const scope=outboundScope.getStore(),envelope=activeTurnEnvelopes.get(state.sessions[key]);
@@ -9879,9 +9836,11 @@ async function main() {
     const groupId=scope.plan.taskGroupId,grant=envelope.admittedTaskGroups?.[groupId];
     return groupId && validTaskBudgetAdmission(grant,key)?grant:null;
   }
-  async function taskSpawnCore({ callerKey, title, task, feedbackIssueId = '', feedbackClaimId = '' }) {
+  async function taskSpawnCore({ callerKey, title, task, modelSelection, feedbackIssueId = '', feedbackClaimId = '' }) {
     if (!hasAdminEnvironment(callerKey)) throw new Error('任务委派需要启用管理员环境并使用已选高权限预设');
     if (cfg.socialV2?.taskSession?.enabled === false) throw new Error('任务会话已停用');
+    // Console-triggered feedback research has no initiating model; use its ordinary task default within the same range.
+    modelSelection=await checkedTaskModel(modelSelection??(feedbackIssueId?readCostPolicy(ROOT).task:undefined));
     const taskConfig = pluginHost.get('life-task-session')?.config || {};
     const maxConcurrent = Math.max(1, Number(taskConfig.maxConcurrentTasks ?? cfg.socialV2?.taskSession?.maxConcurrentTasks) || 3);
     const running = Object.values(tasksStore).filter((t) => t && ['running','waiting_input'].includes(t.status)).length;
@@ -9911,9 +9870,12 @@ async function main() {
     const created = unwrap(await api.sessions.create({ workspaceId: wsValue.workspace.workspaceId, agentPreset: instanceSessionPolicy.resolvePreset('qq-task-worker'), title: '任务 · ' + title }), 'task session.create');
     const sessionId = created.sessionId;
     api.events.follow(sessionId);
-    if(await ensureChatModel(sessionId,callerKey,{task})!=='applied'){
+    try{
+      if(await ensureChatModel(sessionId,callerKey,{task,modelSelection})!=='applied')throw Error('任务模型档位设置失败，未提交任务');
+      selectTaskModel(readCostPolicy(ROOT),modelSelection);
+    }catch(error){
       try{await api.workspace.archiveSession({sessionId});}catch{}
-      throw new Error('任务模型档位设置失败，未提交任务');
+      throw error;
     }
     const id = 't-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
     const now = Date.now();
@@ -9928,7 +9890,7 @@ async function main() {
       budgetAdmission={id,originKey:callerKey,admittedAt:now,groupId,creditId:credit.admission.id};
     }
     tasksStore[id] = {
-      id, originKey: callerKey, title, task, sessionId,budgetAdmission,
+      id, originKey: callerKey, title, task, sessionId,budgetAdmission,modelSelection,
       status: 'running', createdAt: now, updatedAt: now, result: '', error: ''
     };
     if (feedbackIssueId && feedbackClaimId) {
@@ -9957,7 +9919,7 @@ async function main() {
       throw new Error('任务会话已创建但任务注入失败：' + (error?.message ?? error));
     }
     return {
-      ok: true, taskId: id, sessionId, title,
+      ok: true, taskId: id, sessionId, title,modelSelection,
       hint: '独立任务已在 DSH「AI助手任务」工作区可见。聊天协调器继续聊天并管理输入输出；收到状态回执后用 task_result 核实，待补充时用 task_input 将答案送回此任务。'
     };
   }
@@ -9966,7 +9928,7 @@ async function main() {
     const list = Object.values(tasksStore)
       .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0))
       .map((t) => ({
-        taskId: t.id, title: t.title, status: t.status, createdAt: t.createdAt, updatedAt: t.updatedAt,
+        taskId: t.id, title: t.title, status: t.status, createdAt: t.createdAt, updatedAt: t.updatedAt,modelSelection:t.modelSelection,
         resultPreview: String(t.result || t.error || '').slice(0, 200)
       }));
     return { ok: true, count: list.length, tasks: list };
@@ -9977,7 +9939,7 @@ async function main() {
     if (!t) throw new Error('没有这个任务：' + taskId);
     await reconcileTaskHistory(t);
     return {
-      ok: true, taskId: t.id, title: t.title, status: t.status,
+      ok: true, taskId: t.id, title: t.title, status: t.status,modelSelection:t.modelSelection,
       createdAt: t.createdAt, updatedAt: t.updatedAt,
       result: String(t.result || ''), error: String(t.error || ''), pendingInput: String(t.pendingInput || ''), pendingInputCount:(t.inputs||[]).filter(x=>x.kind!=='control'&&!x.settled).length, pendingRequests:(t.pendingRequests||[]).map(({clientId,turn,...rest})=>rest)
     };
@@ -10018,14 +9980,14 @@ async function main() {
     taskHistoryReads.set(t.id,read);
     try{await read;}finally{if(taskHistoryReads.get(t.id)===read)taskHistoryReads.delete(t.id);}
   }
-  async function taskInput({token, taskId, input, requestId, replyToRequest, decision, answers}) {
+  async function taskInput({token, taskId, input, requestId, replyToRequest, decision, answers, modelSelection}) {
     const callerKey=taskCapTokenKey(token);
     if (!callerKey) throw new Error('任务输入仅管理员会话可用');
     const t = tasksStore[String(taskId)];
     if (!t) throw new Error('没有这个任务');
     const text = String(input || '').trim(), rid = String(requestId || '').trim();
     if (!text || text.length > 20000 || !/^[a-zA-Z0-9._:-]{1,100}$/.test(rid)) throw new Error('需要 1~20000 字的任务输入和有效 requestId');
-    const digest = crypto.createHash('sha256').update(JSON.stringify({text,replyToRequest,decision,answers})).digest('hex');
+    const digest = crypto.createHash('sha256').update(JSON.stringify({text,replyToRequest,decision,answers,modelSelection})).digest('hex');
     t.inputs = Array.isArray(t.inputs) ? t.inputs : [];
     const existing = t.inputs.find(x => x.requestId === rid);
     if (existing) {
@@ -10034,6 +9996,9 @@ async function main() {
       if(existing.delivery==='accepted' || existing.delivery==='pending' || existing.kind==='control') return {ok:existing.delivery === 'accepted', taskId:t.id, status:t.status, delivery:existing.delivery, duplicate:true};
     }
     if (!['running','waiting_input'].includes(t.status)) throw new Error('任务已结束，不能继续投递输入');
+    const nextModel=await checkedTaskModel(modelSelection??t.modelSelection);
+    if(!['running','waiting_input'].includes(t.status))throw Error('目录校验期间任务已结束，未投递输入');
+    if(t.inputs.find(x=>x.requestId===rid)!==existing)return taskInput({token,taskId,input,requestId,replyToRequest,decision,answers,modelSelection});
     const request = replyToRequest ? (t.pendingRequests || []).find(x=>x.id===replyToRequest) : null;
     if (replyToRequest && !request) throw new Error('待答请求已失效，请重新查询任务状态');
     if (!replyToRequest && (decision!==undefined || answers!==undefined)) throw new Error('权限或问题回答必须指定 replyToRequest');
@@ -10073,11 +10038,13 @@ async function main() {
     if(t.feedbackIssueId)pluginHost.callService('selfReviewFeedback','updateResearchTask',{id:t.feedbackIssueId,taskId:t.id,status:t.status});
     try {
       if(request){
-        if(await ensureChatModel(t.sessionId,t.originKey,{task:t.task})!=='applied')throw Object.assign(new Error('任务模型档位同步失败'),{notAdmitted:true});
+        if(await ensureChatModel(t.sessionId,t.originKey,{task:t.task,modelSelection:nextModel})!=='applied')throw Object.assign(new Error('任务模型档位同步失败'),{notAdmitted:true});
+        t.modelSelection=nextModel;saveTasks();
         await api.respond({clientId:request.clientId,eventId:request.id,outcome:{kind:'result',value:request.kind==='approval'?decision:{answers}}});
         t.pendingRequests=(t.pendingRequests||[]).filter(x=>x.id!==request.id);
       }else{
-        if(await ensureChatModel(t.sessionId,t.originKey,{task:t.task})!=='applied')throw Object.assign(new Error('任务模型档位同步失败'),{notAdmitted:true});
+        if(await ensureChatModel(t.sessionId,t.originKey,{task:t.task,modelSelection:nextModel})!=='applied')throw Object.assign(new Error('任务模型档位同步失败'),{notAdmitted:true});
+        t.modelSelection=nextModel;saveTasks();
         const response=await api.sessions.prompt({sessionId:t.sessionId,mode:'queue',requestId:wireId,content:[{type:'text',text:buildTaskPrompt(t.title,text)}]});
         if(response?.result?.ok===false){const error=new Error(response.result.error?.message||'任务输入被拒绝');error.notAdmitted=true;throw error;}
         unwrap(response,'task input');
@@ -10153,6 +10120,7 @@ async function main() {
   }
   // 晚绑定：插件 handler 通过这两个挂在同一对象引用上的函数与桥接交互。
   taskCaps.taskSpawn = taskSpawn;
+  taskCaps.taskModels = taskModels;
   taskCaps.taskList = taskList;
   taskCaps.taskResult = taskResult;
   taskCaps.taskCancel = taskCancel;
@@ -10617,12 +10585,19 @@ async function main() {
   taskCaps.readAffairsContext = (key, maxChars) => pluginHost.callService('affairs', 'context', { key, maxChars });
   // Facts and the existing component hooks only; no wake, scheduling or send.
   const historyRecoveryStartedAt = Date.now();
+  const receivedHistory=createReceivedMessageCache({root:path.join(STATE_DIR,'received-messages'),writeJson:atomicWriteJson,limit:()=>normalizeContextLimits(cfg.socialV2?.context).recentLimit});
   taskCaps.readLocalConversationHistory = ({key,limit,forLookup=false}={}) => {
     if (!isSessionAllowedInCurrentMode(key) || !cfg.snowluma?.botUin) return {ok:false,reason:'not_allowed',messages:[]};
     if(pluginHost.callService('historyContext','policy')?.localHistoryEnabled!==true)return {ok:false,reason:'local_cache_disabled',messages:[]};
     const runtimeRoot = cfg.snowluma.runtimeRoot || (cfg.snowluma.launcherPath ? path.dirname(cfg.snowluma.launcherPath) : '');
     const st = getSocialV2State(key), since = forLookup?0:Math.max(0,...st.recentMessages.map(m=>Number(m.time)||0));
-    return readLocalConversationHistory({runtimeRoot,botUin:String(cfg.snowluma.botUin),key,allowedKeys:[key],limit,since,until:forLookup?Date.now():historyRecoveryStartedAt});
+    const botUin=String(cfg.snowluma.botUin),until=forLookup?Date.now():historyRecoveryStartedAt;
+    const cached=receivedHistory.read({botUin,key,limit,since,until}),gateway=readLocalConversationHistory({runtimeRoot,botUin,key,allowedKeys:[key],limit,since,until});
+    const merged=new Map();for(const event of [...gateway.messages,...cached.messages]){
+      if(pluginHost.callService('incomingFilter','evaluate',{key,message:event.message,rawMessage:event.raw_message})?.blocked===true)continue;
+      const id=event.message_id??event.msg_id??event.message_seq;if(id!=null)merged.set(String(id),event);
+    }
+    return {ok:gateway.ok||cached.ok,source:cached.messages.length?'bridge-received+snowluma-local':gateway.source||cached.source,partial:gateway.partial,messages:[...merged.values()].sort((a,b)=>(Number(a.time)||0)-(Number(b.time)||0)).slice(-Math.max(1,Math.min(100,Number(limit)||40)))};
   };
   taskCaps.importLocalConversationHistory = async ({key,messages=[],excludeMessageId}={}) => {
     if (!isSessionAllowedInCurrentMode(key)) return {ok:false,reason:'not_allowed'};
@@ -12383,7 +12358,7 @@ async function main() {
       skipWake();return {ok:true,skipped:true,taskAdmissionPending:true,groupId,reason:reason || credit?.reason};
     };
     if(envelope.replyPlan.taskPending){
-      const groupId=envelope.replyPlan.taskGroupId,credit=pluginHost.callService('replyPlan','claimTaskGroup',{key,groupId,plan:envelope.replyPlan});
+      const groupId=envelope.replyPlan.taskGroupId,credit=pluginHost.callService('replyPlan','claimTaskGroup',{key,groupId,plan:hasAdminEnvironment(key)?{...envelope.replyPlan,maxSendPerMinute:0,maxSendPerHour:0}:envelope.replyPlan});
       if(credit?.ok!==true)return deferTask(credit?.reason,credit);
       const bound=pluginHost.callService('replyPlan','bindContent',{key,plan:envelope.replyPlan,contentId:envelope.replyPlan.contentId,taskGroupId:groupId,messages:sourceMessages});
       if(bound?.ok!==true)throw Error('任务组已准入但未能绑定：'+bound?.reason);
@@ -12538,8 +12513,9 @@ async function main() {
       const queuedBefore=pluginHost.callService('taskAdmission','get',{groupId:content.id});
       if(queuedBefore && ['dispatching','unknown'].includes(queuedBefore.status) && !validTaskBudgetAdmission(grant,key))return {ok:false,reason:'task_admission_dispatch_conflict'};
       const budget=tokenBudgetOf(key),original=envelope.originAdmission;
-      const feeAllowed=validTaskBudgetAdmission(grant,key) || budget.stage!=='silent' && (budget.stage!=='weak' || original?.weakBatchConsumed===true || pluginHost.callService('tokenBudget','canDispatch',{key,stage:budget.stage})!==false);
-      const credit=feeAllowed?pluginHost.callService('replyPlan','claimTaskGroup',{key,groupId:content.id,plan:envelope.replyPlan}):{ok:false,reason:'task_fee_admission_pending'};
+      const adminAuthorized=hasAdminEnvironment(key) && activeTurnEnvelopes.get(envelope.sessionId)===envelope;
+      const feeAllowed=adminAuthorized || validTaskBudgetAdmission(grant,key) || budget.stage!=='silent' && (budget.stage!=='weak' || original?.weakBatchConsumed===true || pluginHost.callService('tokenBudget','canDispatch',{key,stage:budget.stage})!==false);
+      const credit=feeAllowed?pluginHost.callService('replyPlan','claimTaskGroup',{key,groupId:content.id,plan:adminAuthorized?{...envelope.replyPlan,maxSendPerMinute:0,maxSendPerHour:0}:envelope.replyPlan}):{ok:false,reason:'task_fee_admission_pending'};
       if(credit?.ok!==true){
         for(const message of source)stampSeenAtV2(getSocialV2State(key),message.seq);
         const old=pluginHost.callService('taskAdmission','get',{groupId:content.id});
@@ -14020,7 +13996,7 @@ async function main() {
     const limits = normalizeContextLimits(context);
     const maxChars = weakBudget ? limits.weakWakeMaxChars : limits.wakeMaxChars;
     const maxUnread = limits.wakeMessageLimit;
-    const maxRecent = weakBudget ? st.recentMessages.length+st.unread.length : limits.wakeRecentLimit;
+    const maxRecent = weakBudget ? st.recentMessages.length+st.unread.length : (pluginHost.callService('historyContext','snapshotLimit',{key,previewLimit:limits.wakeRecentLimit,contextWindow:limits.contextWindow})??limits.wakeRecentLimit);
     // 一次快照只取一次 now：同一批消息的 ago 必须彼此可比。
     const now = Date.now();
     // 只展示还没双戳齐全的消息；双戳齐全的在回复/收尾时就已经从 unread 摘除。
@@ -14039,8 +14015,10 @@ async function main() {
     const receiptAudit = st.doubleStampCheck && typeof st.doubleStampCheck === 'object' ? st.doubleStampCheck : null;
     const receiptSeqs = Array.isArray(receiptAudit?.windowSeqs) ? receiptAudit.windowSeqs.filter(Number.isSafeInteger).filter(seq=>!weakBudget||findV2MessageBySeq(st,seq)?.replyRequirement==='required'&&findV2MessageBySeq(st,seq)?.replyDisposition!=='history') : [];
     const receiptPriorSeqs = receiptSeqs.filter((seq) => seq !== Number(receiptAudit?.triggerSeq));
+    const contextSeqs=weakBudget?[]:(pluginHost.callService('historyContext','replyContext',{key,state:st,limit:limits.contextWindow})||[]).map(m=>m.seq);
     const packet = {
       conversationId: key,
+      ...(key.startsWith('group:')?{contextSeqs,contextPartial:true}:{}),
       receiptWindowCount: receiptWindowCountV2(),
       receiptWindowSeqs: receiptSeqs,
       receiptWindow: [],
@@ -14102,6 +14080,7 @@ async function main() {
       packet.recent.reverse();
     }
     if(weakBudget)packet.contextPartial=packet.recent.length<packet.contextSeqs.length||packet.recent.some(m=>m.truncated);
+    else if(key.startsWith('group:')){const included=new Set([...packet.messages,...packet.recent,...packet.receiptWindow].filter(messageContentComplete).map(m=>m.seq));packet.contextPartial=contextSeqs.some(seq=>!included.has(seq));}
     return packet;
   }
 
@@ -15111,6 +15090,8 @@ async function main() {
       log(`忽略未授权会话 ${key}（当前模式 ${currentMode}，来自 ${event.user_id}）`);
       return;
     }
+    try{receivedHistory.record({botUin:String(cfg.snowluma?.botUin||event.self_id||''),key,event:{...event,message_type:kind,...(kind==='group'?{group_id:id}:{user_id:event.user_id??id})},receivedAt:incomingAt});}
+    catch(error){log('[history-cache] 来信缓存写入失败：'+String(error?.code||'IO_ERROR'));}
     const incomingPolicy = await pluginHost.callService('incomingFilter', 'evaluate', {
       key, message: event.message, rawMessage: event.raw_message,
     });

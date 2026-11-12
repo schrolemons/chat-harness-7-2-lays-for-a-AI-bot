@@ -4,8 +4,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
 import {createGamesRuntime} from '../plugins/qq-components/tool-games/games-runtime.mjs';
-async function open(t,{texts=['这幅画很好看','今天天气不错','这首歌很有趣'],rate=0,extraFiles={},extraConfig={},globals,groupMembers}={}){
+async function open(t,{texts=['这幅画很好看','今天天气不错','这首歌很有趣'],rate=0,extraFiles={},extraConfig={},globals,groupMembers,admin=false}={}){
  const h=await bridgeHarness({config:{sendDelayMs:0,...extraConfig},globals,groupMembers,files:{'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:3,maxMessagesCasual:3,maxMessagesSerious:3,maxSendPerMinute:rate,maxSendPerHour:rate,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},...extraFiles}});
+ if(admin){h.cfg.socialV2.adminDev={enabled:true,preset:'qq-admin'};h.setPresets(['standard','qq-chat','qq-chat-v2','qq-admin']);}
  h.setMode('reserved2');const key='private:123',st=h.getSocialV2State(key);st.bootstrapSent=true;
  const messages=texts.map((text,i)=>h.appendSocialV2Message(key,'甲',text,text,false,true,String(101+i),[],'123',[],undefined,false,{bodyComplete:true}));
  const sid=await h.ensureSession(key);await h.deliverPrompt(key,'',{wakeReason:'private'});await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:1}}}});
@@ -269,4 +270,32 @@ test('cross-session group poke requires one confirmed group and the named member
  await h.pluginHost.callTool('alias_add',{alias:'测试群友',qq:'12001',sourceKeys:['group:456','group:457']});
  assert.equal((await poke('456','12001')).body.code,'CROSS_SESSION_TARGET_MISMATCH');
  assert.equal(h.calls.http.filter(c=>/group_poke$/.test(c.url)).length,1);
+});
+
+test('qq-admin accepts a real read instruction without ordinary task keywords or task rate admission',async t=>{
+ const {h,key,messages,request}=await open(t,{admin:true,rate:1,texts:['去群里回复一下A2示例猫猫','下一件也照这样办理']});
+ for(const message of messages){const result=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[message.seq],kind:'task'}]});assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.contents[0].taskExempt,true);assert.deepEqual(result.body.deferred,[]);}
+ const forged=await request('/api/socialV2/reply-contents',{key,adminAuthorized:true,groups:[{seqs:[99999],kind:'task'}]});assert.equal(forged.body.ok,false);
+ h.cfg.socialV2.adminDev.enabled=false;
+ const off=await request('/api/socialV2/reply-contents',{key,adminAuthorized:true,groups:[{seqs:[messages[1].seq],kind:'task'}]});assert.equal(off.body.ok,false,'disable revokes trusted admin eligibility');
+});
+
+test('qq-admin can quote a real group message using the private source task, with whitelist enforcement and immediate revocation on disable',async t=>{
+ const {h,key,st,messages,request}=await open(t,{admin:true,texts:['去群里回复一下A2示例猫猫'],groupMembers:[{user_id:12001,nickname:'A2示例猫猫'}],extraConfig:{allow:{private:['123'],groups:['456']}}});
+ h.appendSocialV2Message('group:456','A2示例猫猫','猫猫的实际问题','猫猫的实际问题',false,false,'8801',[],'12001',[],undefined,false,{bodyComplete:true});
+ const d=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'task'}]});assert.equal(d.status,200,JSON.stringify(d.body));const id=d.body.contents[0].id;
+ const send=(groupId,replyToMessageId)=>request('/api/send/reply',{groupId,replyToMessageId,token:st.agentToken,message:'针对猫猫这条问题的回复'},id);
+ const denied=await send('999','8801');assert.equal(denied.body.ok,false);
+ const sent=await send('456','8801');assert.equal(sent.body.sent,1,JSON.stringify(sent.body));
+ h.cfg.socialV2.adminDev.enabled=false;const revoked=await send('456','8801');assert.equal(revoked.body.ok,false);
+ assert.equal(h.calls.http.filter(c=>/send_group_msg$/.test(c.url)).length,1);
+});
+
+test('ordinary group relay is admitted only for the named member in one confirmed allowed group',async t=>{
+ const {h,key,st,messages,request}=await open(t,{texts:['去群里回复一下A2示例猫猫'],groupMembers:[{user_id:12001,nickname:'A2示例猫猫'}],extraConfig:{allow:{private:['123'],groups:['456','457']}}});
+ await h.pluginHost.callTool('alias_add',{alias:'A2示例猫猫',qq:'12001',sourceKeys:['group:456']});
+ const d=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'task'}]});assert.equal(d.status,200,JSON.stringify(d.body));const id=d.body.contents[0].id;
+ const send=groupId=>request('/api/send/group',{groupId,token:st.agentToken,message:'回复猫猫的原问题'},id);
+ assert.equal((await send('457')).body.ok,false);const sent=await send('456');assert.equal(sent.body.sent,1,JSON.stringify(sent.body));
+ await h.pluginHost.callTool('alias_add',{alias:'A2示例猫猫',qq:'12001',sourceKeys:['group:456','group:457']});assert.equal((await send('456')).body.code,'CROSS_SESSION_TARGET_MISMATCH');
 });

@@ -17,6 +17,11 @@ export function createLoginRecovery(root,{config={},clock=Date.now}={}){
  const noticeEntries=state=>[...Object.values(state.sites||{}),...Object.values(state.checks||{})];
  return {
   get policy(){return currentPolicy();},get,
+  status(url){
+   const login=get(url),check=read().checks?.[new URL(url).href];
+   if(check?.phase!=='error'||['needed','waiting','paused'].includes(login.phase))return login;
+   return {...login,phase:'error',checkError:check.checkError,checkAttempts:check.attempts,checkedAt:check.checkedAt,firstFailureAt:check.firstFailureAt,noticeError:check.noticeError||'',lastNoticeAt:check.lastNoticeAt||0};
+  },
   claimWindow(){return update(state=>{const now=clock();if(state.lastWindowSpawnAt&&now-state.lastWindowSpawnAt<30000)return false;state.lastWindowSpawnAt=now;return true;});},
   canCheck(url,now=clock()){const entry=get(url);return entry.phase!=='paused'&&!(entry.phase==='waiting'&&now<entry.nextAttemptAt);},
   fail(target,{generation}={}){const key=keyFor(target.url),now=clock();return update(state=>{
@@ -36,11 +41,15 @@ export function createLoginRecovery(root,{config={},clock=Date.now}={}){
    const now=clock(),key=keyFor(target.url),url=new URL(target.url).href;
    return update(state=>{
     const login=state.sites[key];if(['waiting','paused'].includes(login?.phase))return login;
+    const manual=login?.phase==='needed'&&login.requestedUrl===url;
+    // Finish this request even when navigation failed. Authentication remains
+    // unproven; the per-page error below must not block another queued website.
+    if(manual){login.phase='ready';login.requestCompletedAt=now;}
     state.checks||={};let entry=state.checks[url];
     if(!entry||entry.phase==='ready')entry=state.checks[url]={phase:'error',generation:crypto.randomUUID(),attempts:0,firstFailureAt:now,notices:[],url};
     entry.attempts++;entry.name=target.name||entry.name||'监控网页';entry.checkError=String(error).slice(0,240);entry.checkedAt=now;
     const confirmed=entry.attempts>1&&now-entry.firstFailureAt>=currentPolicy().loginRetryMinutes*60000;
-    if(confirmed&&!entry.notices.some(item=>item.accepted||now<item.expiresAt))notice(entry,`【网页监管访问失败】${entry.name}\n网址：${url}\n首次检测失败：${beijingTime(entry.firstFailureAt)}\n再次验证时间：${beijingTime(now)}\n${entry.checkError}\n同一页面再次检查仍失败，未确认登录失效，不自动弹出登录窗口。`,'check-error',now);
+    if((manual||confirmed)&&!entry.notices.some(item=>now<item.expiresAt))notice(entry,`【网页监管访问失败】${entry.name}\n网址：${url}\n首次检测失败：${beijingTime(entry.firstFailureAt)}\n再次验证时间：${beijingTime(now)}\n${entry.checkError}\n${manual?'本次手动验证失败':'同一页面再次检查仍失败'}，未确认登录失效，不自动弹出登录窗口。持续失败按配置间隔提醒，其他网站继续检查。`,'check-error',now);
     return entry;
    });
   },

@@ -5,6 +5,7 @@ const {createSendLedger}=await import(moduleURL('./send-ledger.mjs'));
 const {createBatchGrants}=await import(moduleURL('./batch-grants.mjs'));
 const {createContentUnits}=await import(moduleURL('./content-units.mjs'));
 const {validateContextSend}=await import(moduleURL('./context-send-policy.mjs'));
+export const TOOL_LOADING_RULE='【按需工具调用】以当前请求实际提供的工具参数为准，历史加载回执不保证本轮仍可用。已经提供完整参数的工具直接调用，不再用 qq_select_tools 确认。缺少所需工具时按需加载；成功回执已列出某工具，就继续原任务，不重复选择该工具，也不为了确认加载成功调用其他工具。';
 export function createPlugin(ctx) {
   const referencePolicy=createTurnPolicy(ctx),policy=()=>replyPolicy(ctx.config);
   const replyPlan=createSendLedger(ctx,policy);
@@ -43,8 +44,8 @@ export function createPlugin(ctx) {
   const forMessages=createBatchGrants(payload=>replyPlan.resolve(payload));
   replyPlan.forMessages=payload=>forMessages({...payload,canRenew:!['milkStock','reminder','timeBubble','scheduledContact'].includes(String(payload?.reason||'').split(':')[0])&&payload?.canRenew!==false});
   return {validateConfig:validateReplyPolicy,services:{replyPlan},hooks:{beforePrompt:payload=>{
-    const plan=payload?.replyPlan;if(!plan)return '';
+    const plan=payload?.replyPlan;if(!plan)return TOOL_LOADING_RULE;
     const progress=replyPlan.progress({plan});
-    return [plan.line,progress?'【所选语义内容发送进度】contentId='+progress.contentId+'；已成功发送 '+progress.successful+' 条；发送中或结果待确认 '+progress.inflight+' 条；'+(progress.taskExempt?'可信任务免除分条额度':'此内容最多还可发送 '+progress.remaining+' 条')+'。同一内容跨调用共用记录；已经回应的内容不要换说法再次发送，不补满条数。完成后直接结束，无需另写发送流水、额度说明或内部工作汇报。':''].filter(Boolean).join('\n');
+    return [plan.line,progress?'【所选语义内容发送进度】contentId='+progress.contentId+'；已成功发送 '+progress.successful+' 条；发送中或结果待确认 '+progress.inflight+' 条；'+(progress.taskExempt?'可信任务免除分条额度':'此内容最多还可发送 '+progress.remaining+' 条')+'。同一内容跨调用共用记录；已经回应的内容不要换说法再次发送，不补满条数。完成后直接结束，无需另写发送流水、额度说明或内部工作汇报。':'',TOOL_LOADING_RULE].filter(Boolean).join('\n');
   }}};
 }

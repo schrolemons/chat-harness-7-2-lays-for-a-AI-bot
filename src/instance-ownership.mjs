@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ChildProcess, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
 
 const execFileAsync = promisify(execFile);
@@ -34,10 +35,22 @@ function normalizeUin(value) {
 }
 async function observed(probe, pid, { requireExecutable = true } = {}) {
   let value;
-  try { value = await probe(pid); } catch { throw fail('OWNERSHIP_UNCERTAIN', 'Cannot verify process identity'); }
+  try { value = await probe(pid); } catch(error) {
+    const diagnostic=typeof error.diagnostic==='string'&&/^[A-Z0-9_]{1,40}$/.test(error.diagnostic)?' ['+error.diagnostic+']':'';
+    throw fail('OWNERSHIP_UNCERTAIN', 'Cannot verify process identity'+diagnostic);
+  }
   if (value === null) return null;
   if (!identity(value) || value.pid !== pid || (requireExecutable && !absolute(value.executablePath))) throw fail('OWNERSHIP_UNCERTAIN', 'Incomplete process identity');
   return value;
+}
+
+// A query failure is not an identity mismatch. Re-query the same registered PID
+// briefly; every successful observation still needs the original full checks.
+async function observedForStop(probe,pid) {
+  for(let attempt=0;;attempt++) {
+    try{return await observed(probe,pid);}
+    catch(error){if(error.code!=='OWNERSHIP_UNCERTAIN'||attempt>=1)throw error;await delay(100);}
+  }
 }
 
 async function probeWindowsProcesses(pids) {
@@ -60,7 +73,11 @@ export async function probeProcess(pid) {
       const [result = null] = await probeWindowsProcesses([pid]);
       if (result !== null && (!identity(result) || result.pid !== pid || !absolute(result.executablePath))) throw new Error('Invalid probe');
       return result;
-    } catch { throw fail('OWNERSHIP_UNCERTAIN', 'Windows process identity could not be verified'); }
+    } catch(error) {
+      const raw=error.killed?'QUERY_TIMEOUT':error.code||'INVALID_QUERY_RESULT';
+      const diagnostic=/^[A-Z0-9_]{1,40}$/.test(String(raw))?String(raw):'QUERY_FAILED';
+      throw Object.assign(fail('OWNERSHIP_UNCERTAIN', 'Windows process identity could not be verified'),{diagnostic});
+    }
   }
   if (process.platform === 'linux') {
     try {
@@ -241,7 +258,13 @@ export function createProcessOwnership({ instanceId, nonce, probeProcess: probe 
       registeredChildren.add(child);
       const registration = (async () => {
         try {
-          const live = await observed(probe, child.pid);
+          let live;
+          try { live = await observed(probe, child.pid); }
+          catch (error) {
+            if (child.exitCode !== null || child.signalCode !== null) throw error;
+            await delay(100);
+            live = await observed(probe, child.pid);
+          }
           if (!live || live.parentPid !== process.pid || !samePath(live.executablePath, child.spawnfile)
             || child.exitCode !== null || child.signalCode !== null) throw fail('PROCESS_NOT_OWNED', 'Spawned process does not belong to this invocation');
           const record = Object.freeze({ pid: live.pid, startTime: live.startTime, executablePath: live.executablePath, commandPath, instanceId, nonce, ownership: 'spawned' });
@@ -286,13 +309,13 @@ export async function stopOwnedProcesses(records, options = {}) {
     const capability = ownedRecords.get(record);
     if (capability.child.exitCode !== null || capability.child.signalCode !== null) continue;
     const probe = options.probeProcess ?? capability.probe;
-    const live = await observed(probe, record.pid);
+    const live = await observedForStop(probe, record.pid);
     if (live === null) continue;
     if (live.startTime !== record.startTime || !samePath(live.executablePath, record.executablePath)) throw fail('PROCESS_IDENTITY_CHANGED', 'Refusing to stop a process whose identity changed');
     pending.push({ record, capability, probe });
   }
   for (const { record, capability, probe } of pending.reverse()) {
-    const live = await observed(probe, record.pid);
+    const live = await observedForStop(probe, record.pid);
     if (live === null) continue;
     if (live.startTime !== record.startTime || !samePath(live.executablePath, record.executablePath)) throw fail('PROCESS_IDENTITY_CHANGED', 'Process identity changed immediately before stop');
     const terminate = options.terminateProcess ?? capability.terminateProcess;

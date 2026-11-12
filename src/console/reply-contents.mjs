@@ -1,13 +1,13 @@
 // Authenticated transport adapter. Semantic policy and persistent counters remain
 // owned by ctx-chat-reply-shape; task admission is owned by the budget component.
-export async function declareReplyContents({key,sourceKey,envelope,groups,messages,allowed,callService,admitTaskContents}){
+export async function declareReplyContents({key,sourceKey,envelope,groups,messages,allowed,adminAuthorized=false,callService,admitTaskContents}){
  if(!allowed||!sourceKey||key!==sourceKey||!envelope||envelope.key!==key||envelope.cancelled)return {status:403,body:{ok:false,error:'仅当前已唤醒会话可声明实际读取的用户内容'}};
  if(!Array.isArray(groups)||!groups.length||groups.length>40)return {status:400,body:{ok:false,error:'groups需为1–40份完整用户内容'}};
  const normalized=groups.map(g=>({seqs:g?.seqs,kind:g?.kind||'chat'}));
- const bySeq=new Map(messages.map(message=>[message.seq,message])),taskEligible={...envelope.taskSources};
+ const bySeq=new Map(messages.map(message=>[message.seq,message])),taskEligible=Object.fromEntries(Object.entries(envelope.taskSources||{}).filter(([,source])=>adminAuthorized||source?.kind!=='admin'));
  for(const group of normalized){
   if(!Array.isArray(group.seqs)||group.seqs.some(seq=>!bySeq.has(seq)))continue;
-  const policy=callService('tokenBudget','taskExemption',{text:[...group.seqs].sort((a,b)=>a-b).map(seq=>bySeq.get(seq).plain??bySeq.get(seq).text??'').join('\n'),reason:envelope.reason});
+  const policy=adminAuthorized && group.kind==='task' ? {eligible:true,kind:'admin'} : callService('tokenBudget','taskExemption',{text:[...group.seqs].sort((a,b)=>a-b).map(seq=>bySeq.get(seq).plain??bySeq.get(seq).text??'').join('\n'),reason:envelope.reason});
   if(policy?.eligible===true)for(const seq of group.seqs)taskEligible[seq]={...policy,sourceSeq:seq};
  }
  envelope.taskSources=taskEligible;

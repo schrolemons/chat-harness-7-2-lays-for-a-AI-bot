@@ -1,8 +1,7 @@
-// Dedicated workers keep their protocol and tool boundaries; only the owner binding is selectable.
+// Bridge roles have fixed protocols; model and effort remain independently configurable.
 export const FIXED_PRESETS = Object.freeze({chat:'qq-chat', reserved:'qq-chat', reserved2:'qq-chat-v2', learning:'qq-learning', task:'qq-task-worker', summary:'campus-summary'});
-export function adminPresetConfig(config = {}, legacyPreset = '') {
-  const value = config.preset;
-  return { enabled: config.enabled === true, preset: String(value === undefined || value === 'qq-chat-dev' ? legacyPreset : value).trim() };
+export function adminPresetConfig(config = {}) {
+  return { enabled: config.enabled === true, preset: 'qq-admin' };
 }
 export function requestedPreset({mode, owner = false, admin = {}}) {
   const binding = adminPresetConfig(admin);

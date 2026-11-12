@@ -11,7 +11,7 @@ const NOTES = {
   'ctx-chat-topic-drive':'下方可为某个私聊设置更严格的限制。',
   'life-schedule-reminder':'单条日程的收件会话和覆盖值单独保存。',
   'exec-image-generation':'本机 API 服务、额度与密钥；密钥单独保存，普通参数按钮不修改密钥。',
-  'obs-cost-policy':'AI助手会话、主动处理及独立任务共用的唯一调用策略。保存后同步已有会话与未完成任务；正在生成的请求不追溯切换，后续请求使用新档位。复杂或明确指定的任务按本面板升级规则执行。DSH 自动上下文压缩摘要保持独立档位。'
+  'obs-cost-policy':'在 E 层预设总览分别设置默认对话、普通任务、各预设模型和独立任务允许范围。DSH 自动上下文压缩摘要保持独立。'
 };
 export function componentScope(id, label) {
   const prefix = LOCAL.has(id) ? '本机' : '全局';

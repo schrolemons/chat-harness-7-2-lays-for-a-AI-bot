@@ -98,6 +98,16 @@ function splitTarget(rest, resolve, weak, preferLongest) {
   return { name, content: rest.slice(token.length).replace(LEAD_SEP_RE, ''), weak: weak === true };
 }
 
+// Explicit group-response requests are relay tasks; choosing a destination still
+// requires a confirmed member and a unique allowed group at the send boundary.
+export function parseGroupReplyRequest(text) {
+  const raw=String(text||'').trim(),source=stripRelayPrefix(raw);
+  if(!/^(?:去|到)/.test(source)&&source===raw)return null;
+  const match=/^(?:去|到|在)?群(?:聊|里)(?:里)?\s*(?:回复|回应|回)(?:一下|一声|一句|下)?\s*([^，,。！？!?；;\n]+?)[。！!]?\s*$/.exec(source);
+  const name=match&&cleanName(match[1]);
+  return name&&validName(name)&&!/^(?:一下|一声|一句|下)$/.test(name)&&!/(?:了吗|了吗呀|没有|怎么|什么|可以吗|能不能|了吧)$/.test(name)?{name}:null;
+}
+
 export function parseGameInvitation(text) {
   const match = /^(?:邀请|约)\s*([^\s，,。！？!?；;：:]{1,24}?)\s*(?:一起玩|玩一局|玩一场|玩一把)\s*([^，,。！？!?；;\n]{1,60})[。！!？?]?$/.exec(stripRelayPrefix(text));
   const name = match && cleanName(match[1]);

@@ -260,29 +260,26 @@ try {
       assert.deepEqual(await clickWrite(`#modeRow [data-mode="${mode}"]`, '/api/mode'), { mode });
     }
     assert.equal(await page.locator('#closedPreset,#showAllPresets').count(), 0, 'preset controls belong to the administrator environment');
-    const select = await reveal('#v2AdminDevPreset');
-    await page.waitForFunction(() => document.querySelector('#v2AdminDevPreset option[value="qq-chat-dev"]'));
-    assert.match(await select.locator('option[value="qq-chat-dev"]').innerText(), /管理员助手/);
-    const writes = fixture.requests.length;
-    const original = await select.inputValue();
-    await select.selectOption('qq-chat-v2');
-    assert.match(await page.locator('#envAdminPresetExample').innerText(), /二代仿真/);
-    assert.equal(fixture.requests.length, writes, 'editing a preset draft must not save or change the running mode');
-    assert.equal(fixture.state.mode, 'closed-agent');
-    await select.selectOption(original);
+    await reveal('#v2AdminDevEnabled');
+    assert.equal(await page.locator('#v2AdminDevPreset').count(),0);
+    assert.match(await page.locator('#envAdminEnabledExample').innerText(), /qq-admin/);
     assert.deepEqual(await clickWrite('#modeRow [data-mode="reserved2"]', '/api/mode'), { mode: 'reserved2' });
   });
 
   await test('Preset overview loads current bindings without writing configuration', async () => {
     const writes = fixture.requests.length;
     await navigate('environment-presets');
-    await page.locator('[data-preset-binding="owner"]').waitFor();
-    assert.equal(await page.locator('#presetOverviewRows article').count(), 8);
-    assert.match(await page.locator('#presetOverviewStatus').innerText(), /已读取.*只读/);
-    assert.match(await page.locator('#presetOverviewExplanation').innerText(), /未启用.*当前运行模式/);
-    assert.equal(await page.locator('#section-environment-presets input,#section-environment-presets select,#section-environment-presets textarea').count(), 0);
+    const root=page.locator('#presetModelPolicy');
+    await root.locator('[data-model-scope="global"]').waitFor();
+    await root.locator('[data-model-preset="qq-chat-v2"]').waitFor();
+    assert.equal(await root.locator('[data-preset-select]').count(),8);
+    assert.equal(await page.locator('#presetOverviewRows article').count(),6);
+    assert.match(await root.locator('[data-model-scope="global"]').innerText(),/全局默认模型/);
+    assert.equal(await root.locator('[data-model-scope="global"] select').count(),3);
+    assert.equal(await root.locator('[data-model-preset="qq-chat-v2"] select').count(),3);
     assert.equal(fixture.requests.length, writes);
     assert(fixture.reads.some(read => read.path === '/api/presets/overview'));
+    assert(fixture.reads.some(read => read.path === '/api/presets/model-policy'));
   });
 
   await test('Role creation, selection, clearing and silent-mode contracts', async () => {
@@ -718,7 +715,7 @@ try {
     await page.waitForFunction(() => document.getElementById('roleInjectMaxMsg').textContent.includes('6000'));
   });
 
-  await test('模型设置统一由成本策略管理，控制台不再修改 DSH 全局默认', async () => {
+  await test('模型设置归于预设总览，旧的 DSH 全局默认写入卡片已移除', async () => {
     await navigate('overview');
     assert.equal(await page.locator('#section-dsh,#dshEffortSelect,#dshEffortSave').count(),0);
     assert.equal(fixture.requests.some(r=>r.path==='/api/dsh/model'||r.path==='/api/dsh/effort'),false);

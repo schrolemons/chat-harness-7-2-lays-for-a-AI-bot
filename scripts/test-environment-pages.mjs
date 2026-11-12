@@ -11,12 +11,11 @@ test('E component bodies stay visible; parameter panels are framed, expanded and
  assert.equal(await page.locator('#mainNav [data-view="environments"]').count(),0);
  const admin=page.locator('section[data-page="environment-admin"]');
  assert.equal(await admin.locator('details,summary').count(),0,'component panels have no expand/collapse controls');
- assert.equal(await page.locator('#v2AdminDevPreset').isVisible(),true,'settings are visible on entry');
- await admin.locator('.env-card-heading').click();assert.equal(await page.locator('#v2AdminDevPreset').isVisible(),true,'clicking a heading cannot hide its settings');
- await page.locator('#v2AdminDevPreset').waitFor();await page.locator('#v2AdminDevEnabled').setChecked(true);await page.locator('#v2AdminDevPreset').selectOption('qq-chat-dev');
- for(const id of ['v2AdminDevEnabled','v2AdminDevPreset'])assert.ok(await page.locator('#'+id).evaluate(e=>{const example=e.closest('.env-admin-field').querySelector('.parameter-example');return example.getBoundingClientRect().top>=e.getBoundingClientRect().bottom;}),'examples stay below '+id);
- const response=page.waitForResponse(r=>r.url().endsWith('/api/socialV2/config')&&r.request().method()==='POST');await admin.getByRole('button',{name:'保存管理员环境',exact:true}).click();await response;
- const saved=fixture.requests.filter(r=>r.path==='/api/socialV2/config').at(-1);assert.deepEqual(saved.body,{adminDev:{enabled:true,preset:'qq-chat-dev'}});
+ assert.equal(await page.locator('#v2AdminDevPreset').count(),0);
+ assert.equal(await page.locator('#v2AdminDevEnabled').isVisible(),true);
+ await page.locator('#v2AdminDevEnabled').setChecked(true);
+ const response=page.waitForResponse(r=>r.url().endsWith('/api/socialV2/config')&&r.request().method()==='POST');await admin.getByRole('button',{name:'保存',exact:true}).click();await response;
+ const saved=fixture.requests.filter(r=>r.path==='/api/socialV2/config').at(-1);assert.deepEqual(saved.body,{adminDev:{enabled:true}});
  const visit=async id=>{await page.locator('#mainNav [data-view="'+id+'"]').click();await page.locator('section[data-page="'+id+'"]').first().waitFor();};
  await visit('environment-web');await page.locator('#envCompBrowserDom .comp-save').waitFor({state:'attached'});
  assert.equal(await page.locator('#envCompBrowserDom input.comp-form-text').count(),0,'monitor run modes are absent from generic DOM controls');

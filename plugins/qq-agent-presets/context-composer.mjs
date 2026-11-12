@@ -3,6 +3,8 @@ const snapshotURL=new URL('../qq-components/obs-context-assembly/message-snapsho
 const {splitMessageSnapshot}=await import(snapshotURL.href);
 import {orderProjectedDialogue} from '../qq-components/obs-context-assembly/dialogue-order.mjs';
 import {historyBackfillRows} from '../qq-components/obs-context-assembly/history-backfill.mjs';
+import {compactHistoricalToolResults} from '../qq-components/obs-context-assembly/tool-history.mjs';
+import {installDynamicChatTools} from './dynamic-tools.mjs';
 import {previewRequestMessage,previewRequestBlocks,previewRequestToolResults} from '../qq-components/obs-context-assembly/request-view.mjs';
 import {observeModuleDelivery} from '../qq-components/obs-context-assembly/knowledge.mjs';
 import path from 'node:path';
@@ -18,6 +20,7 @@ import {prioritizeChatExpression} from '../qq-components/obs-context-assembly/ch
 import {refreshContextPacket} from './context-refresh.mjs';
 import {installSendFailureGuard} from '../qq-components/ctx-chat-reply-shape/request-guard.mjs';
 export const name='qq-context-composer';
+export const inject=['tools'];
 const OWN='qq-context-current';
 function texts(message){return (message?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n');}
 function messageText(text,source,id=randomUUID()){return {id,role:'user',content:[{type:'text',text}],source};}
@@ -36,6 +39,7 @@ function projectDialogue(message,packet,snapshot,seen,seenDialogue){
 }
 function retireCurrent(session,position,replace=replaceSurface){for(const seq of [...session.surface.nodes]){const e=session.eventAt(seq);if(e?.type==='user/message'&&[OWN,'qq-context-update','qq-context-latest','qq-context-task'].includes(e.data.source?.kind))replace(session,seq,{...e.data,content:[],source:{...e.data.source,kind:'qq-context-retired'}},position);}}
 export function apply(ctx,config={}) {
+ installDynamicChatTools(ctx);
  installSendFailureGuard(ctx);
  const root=config.root||path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
  const secret=secretFor(root),states=new Map(),agents=new Map(),resumed=new Set(),tombstones=new Map(),activities=new Map();
@@ -159,6 +163,7 @@ export function apply(ctx,config={}) {
   }
   const backfill=historyBackfillRows({session:agent.session,messages,key:state.key,seen,seenDialogue});
   if(backfill.length)messages.push(messageText('【历史 QQ 消息数据】\n'+JSON.stringify(backfill),{kind:'qq-context-dialogue',key:state.key,nonce:state.nonce,reason:'local-history-backfill',seqs:backfill.map(row=>row.seq).filter(Number.isSafeInteger),dialogueSeqs:backfill.map(row=>row.dialogueSeq).filter(Number.isSafeInteger)}));
+  compactHistoricalToolResults(agent.session,config.toolHistory);
   retireCurrent(agent.session,position,replaceBeforeStep);
   retireDialogueTasks(agent.session,position,replaceBeforeStep);
   const refill=refillContext({session:agent.session,compiled:state.compiled,key:state.key,nonce:state.nonce,scene:state.scene,position,messages});

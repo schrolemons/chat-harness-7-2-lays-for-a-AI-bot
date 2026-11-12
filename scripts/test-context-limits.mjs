@@ -22,8 +22,11 @@ test('weak budget keeps private/group-at/group-ordinary windows separately witho
   const call=h.pluginHost.callService.bind(h.pluginHost);h.pluginHost.callService=(service,method,input)=>service==='tokenBudget'&&method==='assess'?{stage:'weak',exempt:false,periodStart:1}:call(service,method,input);
   const key='group:456',st=h.getSocialV2State(key),append=(text,atSelf)=>h.appendSocialV2Message(key,'人',text,text,false,false,text,[],'123',[],undefined,atSelf);
   const old=append('旧@',true);old.seenAt=1000;append('新@',true);for(let i=0;i<12;i++)append('普通'+i,false);
-  assert.deepEqual(Array.from(st.unread,m=>m.text),['旧@','新@','普通11']);assert.equal(old.seenAt,1000);assert(!old.repliedAt);assert(st.unread.every(m=>!m.repliedAt));
-  const p='private:123';for(let i=0;i<4;i++)h.appendSocialV2Message(p,'人','私聊'+i,'私聊'+i,false,false,'p'+i);assert.equal(h.getSocialV2State(p).unread.length,2);
+  assert.equal(st.recentMessages.length,14,'storage preserves ordinary context regardless of weak visibility');
+  const snapshot=h.buildWakeSnapshotV2(key,true),visible=new Set([...snapshot.messages,...snapshot.recent,...snapshot.receiptWindow].map(m=>m.text));
+  assert.deepEqual([...visible].sort(),['旧@','新@','普通11'].sort());assert.equal(old.seenAt,1000);assert(!old.repliedAt);assert(st.unread.every(m=>!m.repliedAt));
+  const p='private:123';for(let i=0;i<4;i++)h.appendSocialV2Message(p,'人','私聊'+i,'私聊'+i,false,false,'p'+i);
+  const privateSnapshot=h.buildWakeSnapshotV2(p,true);assert.equal(new Set([...privateSnapshot.messages,...privateSnapshot.recent,...privateSnapshot.receiptWindow].map(m=>m.seq)).size,2);
  }finally{await h.close();}
 });
 test('real Console API validates window bounds and round-trips per-message character settings',async()=>{

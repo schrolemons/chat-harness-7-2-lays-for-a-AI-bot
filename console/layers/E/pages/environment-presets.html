@@ -1,7 +1,12 @@
 <section id="section-environment-presets" data-page="environment-presets" class="card span-all environment-page">
-  <h2>预设总览</h2>
-  <p class="meta">只读查看各用途选定的 DSH 预设与配置概述。修改请使用对应入口。</p>
-  <div id="presetOverviewExplanation" class="preset-overview-explanation" aria-live="polite">读取当前会话与预设配置…</div>
-  <div class="row"><button type="button" id="presetOverviewRefresh" class="small">刷新状态</button><span id="presetOverviewStatus" class="meta" role="status"></span></div>
-  <div id="presetOverviewRows" class="preset-overview-grid"></div>
+  <h2>预设</h2>
+  <div id="presetOverviewExplanation" hidden></div>
+  <div hidden><button type="button" id="presetOverviewRefresh">刷新状态</button><span id="presetOverviewStatus" role="status"></span></div>
+  <section id="presetModelPolicy" aria-label="预设模型设置">
+    <div class="preset-overview-grid preset-model-defaults" data-model-defaults></div>
+    <div class="preset-toolbar"><div class="preset-tabs" role="tablist" aria-label="预设选择" data-preset-tabs></div><button type="button" class="small" data-model-refresh aria-label="刷新模型目录" title="刷新模型目录">↻</button><button type="button" data-model-read hidden>重新读取</button></div>
+    <span class="meta" role="status" data-model-status>读取中…</span>
+    <div id="presetOverviewRows" class="preset-overview-grid" data-model-rows></div>
+    <details class="preset-model-help"><summary>生效说明</summary><p class="meta">未启用单独设置的环境继承全局默认；启用后使用各自配置。保存全局默认同时更新默认对话和普通任务，保留所有单独配置及独立任务范围。关闭某项单独设置并保存后，恢复继承。保存后用于后续请求；已开始的请求不追溯切换。任务续办保留原选择，超出新范围时须重新选择。DSH 选模接口也会更新 DSH 全局默认模型。</p></details>
+  </section>
 </section>

@@ -35,7 +35,7 @@ export async function generateWebSummary(payload, { root, timeoutMs = 35000, rec
   await assertGlobalBudgetAllowsModel(root);
   const policy=loadInstanceSessionPolicy({root});
   const cfg = bindInstanceDshConfig(JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8')),{active:policy.active});
-  const tier=selectCostPolicy(readCostPolicy(root),{reason:'webSummary'}),provider=String(cfg.dsh?.provider||'deepseek-official');
+  const tier=selectCostPolicy(readCostPolicy(root),{purpose:'task',preset:'campus-summary',reason:'webSummary'}),provider=tier.provider;
   const api = new NodeApiClient(cfg.dsh.baseUrl, 8000, cfg.dsh.authToken ? { token: cfg.dsh.authToken } : {}, {root,recordCreatedSession,onOwnershipError:(error,record)=>console.warn('会话归属未记录',record.sessionId,error.message)});
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(Error('网页整理超时')), Math.max(1000, Math.min(timeoutMs, 60000)));
@@ -50,7 +50,7 @@ export async function generateWebSummary(payload, { root, timeoutMs = 35000, rec
     preserveUnrecorded = response.ownership?.status === 'unrecorded';
     const created = unwrap(response, 'session.create');
     sessionId = created.sessionId;
-    unwrap(await api.sessions.selectModel({sessionId,provider,model:tier.model,reasoningEffort:tier.reasoningEffort},signal),'summary session.selectModel');
+    unwrap(await api.sessions.selectModel({sessionId,provider,model:tier.model,...(tier.reasoningEffort?{reasoningEffort:tier.reasoningEffort}:{})},signal),'summary session.selectModel');
     const url = new URL('/api/remote.mux', cfg.dsh.baseUrl);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     const answer = await new Promise((resolve, reject) => {

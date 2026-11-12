@@ -12,7 +12,6 @@ import form8 from '../../layers/C/components/ctx-media-sticker-pick.js';
 import form9 from '../../layers/C/components/ctx-memory-update.js';
 import form10 from '../../layers/C/components/ctx-memory-profile-facts.js';
 import form11 from '../../layers/C/components/ctx-memory-context.js';
-import form12 from '../../layers/O/components/obs-cost-policy.js';
 import form13 from '../../layers/L/components/life-relay-message.js';
 import form14 from '../../layers/L/components/life-task-session.js';
 import form15 from '../../layers/L/components/life-proactive-time-bubble.js';
@@ -49,7 +48,6 @@ export const COMPONENT_FORMS = {
   'ctx-memory-update': form9,
   'ctx-memory-profile-facts': form10,
   'ctx-memory-context': form11,
-  'obs-cost-policy': form12,
   'life-relay-message': form13,
   'life-task-session': form14,
   'life-proactive-time-bubble': form15,

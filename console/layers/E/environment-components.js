@@ -1,5 +1,4 @@
 import {initializePresetOverview,loadPresetOverview} from './preset-overview.js';
-import {refreshAdminPresets} from './admin-presets.js';
 
 import { registerPageLoader } from '../../shared/page-loaders.js';
 import { componentUI } from '../../shared/components/service.js';
@@ -15,7 +14,6 @@ export function initialize() {
 (() => {
   let lastScripts=[],lastSites=[],statusRequest=null,lastStatusAt=0;
   const loadEnvironmentPage = async page => {
-    if(page==='environment-admin')await refreshAdminPresets();
     if (!componentUI.renderIds) return;
     await Promise.all([...document.querySelectorAll('section[data-page="'+page+'"] .env-comp-root')].map(root => {
       const ids = (root.dataset.ids || '').split(',').map((s) => s.trim()).filter(Boolean);

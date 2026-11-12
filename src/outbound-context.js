@@ -60,10 +60,9 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
   async function performNow({key,context,kind='text',text='',send,assertAllowed,requestedDelay,targetUserId,replyToMessageId}={}) {
     let c=context||outboundScope.getStore()||capture({key});
     const operationId=randomUUID();
-    const selectedContentId=c.contentId;
     const assertContext=()=>{
       if(!c.agent)return;
-      const checked=call('replyPlan','validateContext',{...contextFacts(c.sourceKey,c.envelope,replyToMessageId,{contentId:selectedContentId}),agent:c.agent,reason:c.envelope?.reason||c.reason});
+      const checked=call('replyPlan','validateContext',{...contextFacts(c.sourceKey,c.envelope,replyToMessageId,{contentId:c.contentId||c.plan?.contentId}),agent:c.agent,reason:c.envelope?.reason||c.reason});
       if(checked?.ok===false){const error=Error(checked.reason+'；'+checked.hint);error.knownFailed=true;throw error;}
     };
     assertContext();

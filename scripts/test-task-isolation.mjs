@@ -105,10 +105,11 @@ test('a queued supplement keeps the task active until its own turn finishes',()=
 test('a late input receipt cannot erase a newer worker question',()=>harness(async(h,token)=>{
   h.socialV2.paused=true;
   const t=await h.taskCaps.taskSpawn({token,title:'test',task:'original'});
-  let release,wireId;
+  let release,wireId,entered;const submitted=new Promise(r=>entered=r);
   const gate=new Promise(r=>release=r);
-  h.api.sessions.prompt=async p=>{wireId=p.requestId;await gate;return {result:{ok:true,value:{accepted:true}}};};
+  h.api.sessions.prompt=async p=>{wireId=p.requestId;entered();await gate;return {result:{ok:true,value:{accepted:true}}};};
   const sending=h.taskCaps.taskInput({token,taskId:t.taskId,input:'answer one',requestId:'answer-1'});
+  await submitted;
   await workerEvent(h,t,'turn/start',{turn:2});
   await workerEvent(h,t,'user/message',{source:{kind:'user',rpcId:wireId},content:[]});
   h.handleTaskTurnEnd(t.taskId,{turn:2,reason:{kind:'completed'},text:'Need another file\n[任务需补充]'});
@@ -158,10 +159,11 @@ test('an explicit retry of uncertain input reuses its wire identity and receipt'
 
 test('a late definite rejection settles an already finished original turn',()=>harness(async(h,token)=>{
   h.socialV2.paused=true;
-  const t=await h.taskCaps.taskSpawn({token,title:'test',task:'original'});let release;
+  const t=await h.taskCaps.taskSpawn({token,title:'test',task:'original'});let release,entered;const submitted=new Promise(r=>entered=r);
   const gate=new Promise(r=>release=r);
-  h.api.sessions.prompt=async()=>{await gate;return {result:{ok:false,error:{code:'session/agent-busy',message:'not admitted'}}};};
+  h.api.sessions.prompt=async()=>{entered();await gate;return {result:{ok:false,error:{code:'session/agent-busy',message:'not admitted'}}};};
   const sending=h.taskCaps.taskInput({token,taskId:t.taskId,input:'extra',requestId:'late-reject-1'});
+  await submitted;
   h.handleTaskTurnEnd(t.taskId,{turn:1,reason:{kind:'completed'},text:'Original done\n[任务完成]'});
   assert.equal(h.tasksStore[t.taskId].status,'running');
   release();await assert.rejects(sending);
@@ -206,7 +208,7 @@ test('hot reload refreshes task policy dependencies and preserves task tool regi
    fs.writeFileSync(path.join(dir,'task-policy.mjs'),original+'\nexport const generation='+JSON.stringify(version)+';');
    const mod=await import(entry+'?generation='+version),tools=[];
    const instance=mod.createPlugin({registerTool:name=>tools.push(name),capabilities:{},state:{get:()=>({})}});
-   assert.deepEqual(tools.sort(),['task_cancel','task_input','task_list','task_result','task_spawn']);
+   assert.deepEqual(tools.sort(),['task_cancel','task_input','task_list','task_models','task_result','task_spawn']);
    const policy=await import(pathToFileURL(path.join(dir,'task-policy.mjs')).href+'?generation='+version);
    assert.equal(policy.generation,version);assert.equal(instance.services['task-session'].prompt,policy.buildTaskPrompt);
   }

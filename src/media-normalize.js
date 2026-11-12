@@ -364,8 +364,9 @@ export async function normalizeImageForModel(buf, mimeType, opts = {}) {
   const maxBytes = plan.maxBytes;
   const maxLongEdge = plan.maxLongEdge;
 
-  const dir = makeTempWorkspace(opts.tmpDir);
+  let dir;
   try {
+    dir = makeTempWorkspace(opts.tmpDir);
     const inExt = info.format === 'jpeg' ? '.jpg' : `.${info.format}`;
     const inFile = path.join(dir, `in${inExt}`);
     fs.writeFileSync(inFile, buf);
@@ -435,8 +436,12 @@ export async function normalizeImageForModel(buf, mimeType, opts = {}) {
     // 压不动：小图照发，大图明确拒绝（绝不发注定被 DSH 丢掉的东西）。
     if (bytes <= maxBytes) return { ok: true, buffer: buf, mimeType, note: `压缩失败（${lastError}），按原图提供` };
     return { ok: false, error: `${(bytes / 1024 / 1024).toFixed(2)}MB 压不到 ${(maxBytes / 1024).toFixed(0)}KB 以内（${lastError}）` };
+  } catch(error) {
+    const reason=(dir?'媒体临时文件处理失败':'媒体临时目录建立失败')+'（'+String(error?.code||'IO_ERROR')+'）';
+    if(bytes<=maxBytes)return {ok:true,buffer:buf,mimeType,note:reason+'；按原图提供'+(info?.animated?'，未完成动图抽帧，不能据此判断完整动画':'')};
+    return {ok:false,error:reason+'；原图超过模型大小限制，未传入模型'};
   } finally {
-    cleanupWorkspace(dir);
+    if(dir)cleanupWorkspace(dir);
   }
 }
 

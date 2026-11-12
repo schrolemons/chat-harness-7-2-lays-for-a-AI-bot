@@ -54,7 +54,9 @@ test('native DSH execution rechecks the switch, selected and loaded preset, task
  config.socialV2.adminDev.enabled=false;save('config.json',config);
  assert(adminToolPermission(root,'owner-session'));assert(adminToolPermission(root,'worker-session'));
  config.socialV2.adminDev.enabled=true;config.socialV2.adminDev.preset='qq-chat-v2';save('config.json',config);
- assert(adminToolPermission(root,'owner-session'));
+ assert.equal(adminToolPermission(root,'owner-session'),undefined,'legacy selection cannot change the fixed qq-admin binding');
+ state.sessionPresets['private:123']='qq-chat-v2';save('state/sessions.json',state);assert(adminToolPermission(root,'owner-session'),'stale ordinary session denied');
+ state.sessionPresets['private:123']='qq-admin';
  config.socialV2.adminDev.preset='qq-admin';save('config.json',config);state.sessions['private:123']='new-session';save('state/sessions.json',state);
  assert(adminToolPermission(root,'owner-session'));assert.equal(adminToolPermission(root,'new-session'),undefined);
  save('state/tasks.json',{tasks:{worker:{sessionId:'worker-session',originKey:'private:789',status:'running'}}});assert(adminToolPermission(root,'worker-session'));

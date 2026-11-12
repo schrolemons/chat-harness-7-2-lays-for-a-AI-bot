@@ -9,8 +9,11 @@
     "node": ">=24"
   },
   "scripts": {
+    "test:models": "node --test scripts/test-global-model-policy.mjs scripts/test-dynamic-model-policy.mjs scripts/test-cost-authority.mjs scripts/test-cost-policy.mjs scripts/test-cost-optimization.mjs scripts/test-summary-model-routing.mjs scripts/test-preset-model-routing.mjs scripts/test-task-model-range.mjs scripts/test-task-model-mcp.mjs && node scripts/test-global-model-policy-ui.mjs && node scripts/test-preset-model-ui.mjs",
     "test:incoming-filter": "node --test scripts/test-incoming-auto-reply.mjs",
     "test:history-context": "node --test scripts/test-history-context.mjs scripts/test-local-history.mjs",
+    "test:reply-latency": "node --test scripts/test-reply-latency.mjs scripts/test-context-composer.mjs scripts/test-context-refill.mjs scripts/test-context-history-backfill.mjs scripts/test-context-limits.mjs scripts/test-context-scope.mjs scripts/test-memory-context.mjs scripts/test-group-context-admission.mjs scripts/test-history-context.mjs scripts/test-tool-loading-guidance.mjs scripts/test-request-timing.mjs",
+    "test:reply-latency:native": "node --test scripts/test-tool-history-native.mjs",
     "test:chat-regression-guards": "node --test scripts/test-chat-regression-guards.mjs",
     "test:desktop-notes": "node --test scripts/test-desktop-bug-notes.mjs scripts/test-session-recovery.mjs scripts/test-session-recovery-console.mjs",
     "test:session-recovery": "node --test scripts/test-session-recovery.mjs scripts/test-session-recovery-capability.mjs scripts/test-session-recovery-bridge.mjs scripts/test-session-recovery-console.mjs",
@@ -292,6 +295,7 @@
       "scripts/test-private-data-snapshot.mjs",
       "scripts/test-git-credential-audit.mjs",
       "scripts/test-group-context-admission.mjs",
+      "scripts/test-reply-latency.mjs",
       "scripts/test-alias-unique-identity.mjs",
       "scripts/test-alias-learning.mjs",
       "scripts/test-whale-addressing.mjs",
@@ -369,7 +373,18 @@
       "scripts/test-instance-snow-receipt.mjs",
       "scripts/test-instance-integration.mjs",
       "scripts/test-budget-console-ui.mjs",
-      "scripts/test-windows-chat-bridge-cleanup.mjs"
+      "scripts/test-windows-chat-bridge-cleanup.mjs",
+      "scripts/test-dynamic-model-policy.mjs",
+      "scripts/test-global-model-policy.mjs",
+      "scripts/test-media-temp-recovery.mjs",
+      "scripts/test-preset-model-routing.mjs",
+      "scripts/test-received-history.mjs",
+      "scripts/test-request-timing.mjs",
+      "scripts/test-summary-model-routing.mjs",
+      "scripts/test-task-model-mcp.mjs",
+      "scripts/test-task-model-range.mjs",
+      "scripts/test-tool-loading-guidance.mjs",
+      "scripts/test-web-watch-public-http.mjs"
     ]
   }
 }

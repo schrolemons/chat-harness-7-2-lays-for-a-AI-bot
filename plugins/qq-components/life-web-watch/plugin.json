@@ -32,7 +32,8 @@
     "watchUrls": [],
     "scriptCollabEnabled": false,
     "scriptPaths": [],
-    "scriptDescriptions": {}
+    "scriptDescriptions": {},
+    "anonymousHttpFallbackUrls": []
   },
   "configSchema": {
     "manualRetry": {
@@ -56,6 +57,11 @@
     "scriptDescriptions": {
       "editable": false,
       "description": "开发者与 AI 维护的逐脚本执行/搜索约定，只读一行显示，不直接执行脚本"
+    },
+    "anonymousHttpFallbackUrls": {
+      "type": "array",
+      "label": "允许匿名静态读取的 HTTP 网页",
+      "example": "默认留空。仅列出已配置且已确认无需登录的完整 HTTP 网址；不会发送 Cookie，也不替代登录验证。"
     }
   }
 }

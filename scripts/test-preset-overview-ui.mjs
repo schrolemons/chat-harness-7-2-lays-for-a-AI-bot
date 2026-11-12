@@ -1,31 +1,11 @@
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import {chromium} from 'playwright';
-import {startConsoleFixture} from './console-ui-fixture.mjs';
-import {presetBindings} from '../src/console/preset-overview.js';
+import assert from 'node:assert/strict';import {chromium} from 'playwright';import {startConsoleFixture} from './console-ui-fixture.mjs';import {presetBindings} from '../src/console/preset-overview.js';
 const fixture=await startConsoleFixture(),browser=await chromium.launch({headless:true,channel:'msedge'});
-try {
-  const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];
-  page.on('pageerror',error=>errors.push(error.message));
-  const bindings=presetBindings({mode:'reserved2',admin:{enabled:false,preset:''},defaultPreset:'cordis',ownerHasSession:true,ownerLoadedPreset:'qq-chat-v2'}).map(binding=>({...binding,configuration:{id:binding.preset,name:binding.preset==='qq-chat-v2'?'AI助手二代仿真':binding.label,description:'控制此用途的基础指令与工具规则',features:['联网检索与网页读取','上下文压缩；保留 48000 tokens'],configStatus:'read',moduleCount:8}}));
-  await page.route('**/api/presets/overview',route=>route.fulfill({json:{ok:true,mode:'reserved2',defaultPreset:'cordis',adminEnabled:false,bindings}}));
-  await page.goto(fixture.url+'/#environment-presets');
-  await page.locator('[data-preset-binding="owner"]').waitFor();
-  assert.equal(await page.locator('#presetOverviewRows article').count(),8);
-  assert.equal(await page.locator('#section-environment-presets input,#section-environment-presets select,#section-environment-presets textarea,.preset-overview-card button').count(),0);
-  assert.match(await page.locator('#presetOverviewExplanation').textContent(),/未启用.*当前运行模式/);
-  assert.equal(await page.locator('[data-preset-binding="task"] a').count(),0);
-  await page.locator('[data-preset-binding="owner"] a').click();
-  await page.locator('#section-environment-admin:visible').waitFor();
-  await page.locator('#mainNav [data-view="environment-presets"]').click();
-  await page.locator('[data-preset-binding="v2"] a').click();
-  await page.locator('#section-persona:visible').waitFor();
-  assert.deepEqual(errors,[]);
-  await page.locator('#mainNav [data-view="environment-presets"]').click();
-  await page.locator('#presetOverviewStatus').filter({hasText:'已读取'}).waitFor();
-  fs.mkdirSync('state/audits/preset-overview',{recursive:true});
-  await page.screenshot({path:'state/audits/preset-overview/desktop.png',fullPage:true});
-  await page.setViewportSize({width:390,height:844});
-  assert(await page.locator('.preset-overview-card').first().evaluate(el=>el.getBoundingClientRect().width<390));
-  console.log('PASS E navigation, eight read-only bindings, explanation, admin/prompt edit destinations, mobile layout, zero page errors');
+try{
+ const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));let enabled=false;
+ await page.route('**/api/presets/overview',r=>{const bindings=presetBindings({mode:'reserved2',admin:{enabled,preset:'qq-admin'},defaultPreset:'cordis',ownerHasSession:true,ownerLoadedPreset:enabled?'qq-admin':'qq-chat-v2'}).map(b=>({...b,configuration:{name:b.label,description:'DSH 的原始描述 '+b.preset,features:['基础会话配置'],configStatus:'read'}}));return r.fulfill({json:{ok:true,mode:'reserved2',defaultPreset:'cordis',adminEnabled:enabled,bindings}});});
+ await page.goto(fixture.url+'/#environment-presets');await page.locator('[data-preset-select="admin"]').waitFor();assert.deepEqual(await page.locator('[data-preset-select]').allTextContents(),['聊天模式','封闭 Agent','一代仿真','二代仿真','管理员环境','独立任务','后台学习','网页整理']);assert.equal(await page.locator('[data-model-scope="conversation"],[data-model-scope="task"]').count(),0);
+ for(const [mode,id] of [['chat','qq-chat'],['closed-agent','qq-chat'],['reserved','qq-chat'],['reserved2','qq-chat-v2']]){await page.locator('[data-preset-select="'+mode+'"]').click();assert(await page.locator('[data-model-preset="'+id+'"]').isVisible());assert.equal(await page.locator('#presetModelPolicy article:visible').count(),1);}
+ await page.locator('[data-preset-select="admin"]').click();assert.equal(await page.locator('.preset-state:visible').innerText(),'未启用');const desc=await page.locator('.preset-selected-description:visible').innerText();assert.equal(desc,'DSH 的原始描述 qq-admin');
+ enabled=true;await page.reload();await page.locator('[data-preset-select="admin"]').click();assert.equal(await page.locator('.preset-state:visible').innerText(),'当前使用');assert.equal(await page.locator('.preset-selected-description:visible').innerText(),desc);await page.locator('[data-preset-select="closed-agent"]').click();assert(await page.locator('[data-model-preset="qq-admin"]').isVisible());
+ assert(!/展示预设的能力配置|基础会话配置|DSH ·/.test(await page.locator('#presetModelPolicy').innerText()));await page.locator('[data-preset-select="task"]').click();assert.equal(await page.locator('[data-range-options] fieldset:visible').count(),1);await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);console.log('PASS four modes and four bot tasks, no defaults/native extras, shared real bindings, disabled admin keeps original description, one editor, mobile layout');
 }finally{await browser.close();await fixture.close();}

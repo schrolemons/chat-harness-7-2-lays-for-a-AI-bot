@@ -16,7 +16,7 @@ test('each source has a separate block and normal chat excludes display diary an
     affairsContext: { text: '[事务ID] 等报告结果' }, midTermText: '不再读取的旧笔记' });
   const all = blocks.join('\n');
   assert.equal(blocks.length, 6);
-  for(const label of ['当前事务','事务数据规则','每轮复核','持久化会话记忆'])assert.ok(blocks.some(block=>block.includes(label)),label);
+  for(const label of ['当前事务','事务数据规则','按需复核','持久化会话记忆'])assert.ok(blocks.some(block=>block.includes(label)),label);
   for (const value of ['周末去哪玩', '加班到几点', '本轮说话急', '用户原话', '等报告结果']) assert.ok(all.includes(value));
   for (const value of ['窗口外印象', '展示日记', '不再读取的旧笔记']) assert.ok(!all.includes(value));
 });

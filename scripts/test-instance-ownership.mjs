@@ -284,3 +284,25 @@ test('a settled failed admission keeps later and repeated shutdown fail-closed',
   assert.equal(child.exitCode, null);
   assert.equal(child.signalCode, null);
 });
+
+test('registration retries a transient probe error on the same live child', async t => {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { windowsHide: true, stdio: 'ignore' });
+  await once(child, 'spawn');
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill(); });
+  let attempts=0;
+  const owned=createProcessOwnership({instanceId:'fixture',nonce:'retry',probeProcess:async pid=>{
+    assert.equal(pid,child.pid);
+    if(++attempts===1)throw Error('fixture transient process query failure');
+    return {pid,startTime:'same-child',executablePath:process.execPath,parentPid:process.pid};
+  }});
+  assert.equal((await owned.registerSpawn(child,{commandPath:process.execPath})).pid,child.pid);
+  assert.equal(attempts,2);
+  await owned.stop();
+});
+
+test('stopping a registered child retries a transient identity query before exact identity checks',async t=>{
+ const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore'});await once(child,'spawn');t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill();});
+ let failing=false,queries=0;
+ const owner=createProcessOwnership({instanceId:'fixture',nonce:'transient-stop',probeProcess:async()=>{if(failing&&queries++===0)throw Error('temporary query failure');return {pid:child.pid,startTime:'stable',executablePath:process.execPath,parentPid:process.pid};}});
+ await owner.registerSpawn(child,{commandPath:process.execPath});failing=true;await owner.stop();assert.ok(child.exitCode!==null||child.signalCode!==null);assert.ok(queries>=3);
+});

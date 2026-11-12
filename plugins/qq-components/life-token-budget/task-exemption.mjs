@@ -1,4 +1,4 @@
-import { isScheduledContactRequest, parseGameInvitation } from '../../../src/relay-intent.js';
+import { isScheduledContactRequest, parseGameInvitation, parseGroupReplyRequest } from '../../../src/relay-intent.js';
 
 /** Classify real incoming text or a server-owned worker record. Callers own provenance. */
 export function classifyTaskContent({text='',reason='',taskRecord}={}) {
@@ -9,6 +9,7 @@ export function classifyTaskContent({text='',reason='',taskRecord}={}) {
  if(/^(?:去)?群(?:聊|里)\s*(?:电一电|电一下|戳一戳|戳一下|拍一拍|拍一下)\s*[^，。！？；\n]+/.test(relayInstruction))return {eligible:true,kind:'relay'};
  const thirdParty=/^(?:转告|转达|传话(?:给)?|捎话(?:给)?|代发(?:给)?|发消息给|转发给|发给|告诉)(?!\s*(?:我|我们|咱|自己|本人))\s*\S+/;
  if(thirdParty.test(relayInstruction) || relayInstruction!==source&&/^(?:私聊|联系|通知|发送给)(?!\s*(?:我|我们|咱|自己|本人))\s*\S+/.test(relayInstruction))return {eligible:true,kind:'relay'};
+ if(parseGroupReplyRequest(source))return {eligible:true,kind:'relay'};
  if(parseGameInvitation(source))return {eligible:true,kind:'relay'};
  if(isScheduledContactRequest(source))return {eligible:true,kind:'calendar'};
  if(/^(?:设(?:置)?|定)(?:个|一个)?(?:提醒|闹钟|日程)/.test(relayInstruction))return {eligible:true,kind:'calendar'};

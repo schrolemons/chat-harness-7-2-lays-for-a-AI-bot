@@ -1,0 +1,21 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import fs from 'node:fs';import path from 'node:path';import {pathToFileURL} from 'node:url';
+import {compactHistoricalToolResults} from '../plugins/qq-components/obs-context-assembly/tool-history.mjs';
+const nativeRoot=process.env.DSH_NATIVE_TEST_ROOT||JSON.parse(fs.readFileSync(new URL('../workspace.local.json',import.meta.url))).dshSourceRepository;
+const {Session,SessionId}=await import(pathToFileURL(path.join(nativeRoot,'packages/core/session/lib/index.js')).href);
+const {createMessage,createToolResultMessage,ToolCallId}=await import(pathToFileURL(path.join(nativeRoot,'packages/llm/llm/lib/index.js')).href);
+test('native session accepts excerpt without changing result identity and replays it losslessly',()=>{
+ const session=Session.create(SessionId('latency-native-excerpt'));
+ session.append('turn/start',{turn:1});
+ session.append('step/start',{turn:1,step:1});
+ const callId=ToolCallId('read-history');
+ session.append('assistant/message',{turn:1,step:1,stream:[],message:createMessage({role:'assistant',content:[{type:'tool-call',id:callId,name:'mcp__snowluma__qq_get_recent_messages',arguments:'{}'}],source:{kind:'model',provider:'test',model:'test'}})},{surfaceOp:'append'});
+ const original=session.append('tool/result',{turn:1,step:1,message:createToolResultMessage({callId,content:[{type:'text',text:'完整聊天记录'.repeat(3000)}],isError:false})},{surfaceOp:'append'});
+ const before=JSON.stringify(original),stats=compactHistoricalToolResults(session,{keepRecent:0});
+ assert.equal(stats.count,1);assert(stats.savedChars>10000);assert.equal(JSON.stringify(original),before);
+ const replacement=session.eventAt(session.surface.nodes.at(-1));
+ assert.deepEqual({...replacement.data,message:{...replacement.data.message,content:null}},{...original.data,message:{...original.data.message,content:null}});
+ assert.equal(compactHistoricalToolResults(session,{keepRecent:0}).count,0);
+ const replay=Session.create(SessionId('latency-native-replay'),structuredClone(session.snapshotEvents()));
+ assert.deepEqual(replay.deriveMessages(),session.deriveMessages());
+});

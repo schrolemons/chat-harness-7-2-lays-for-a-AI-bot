@@ -31,12 +31,18 @@ export function createPlugin(ctx) {
     return token;
   };
 
+  const modelSelectionSchema={type:'object',description:'先用 task_models 查询范围，再选择 provider、model、effort；effort 空字符串表示模型默认',properties:{provider:{type:'string'},model:{type:'string'},effort:{type:'string'}},required:['provider','model','effort'],additionalProperties:false};
+  ctx.registerTool('task_models', {
+    description:'查询独立任务允许的模型与思考档位范围，与 DSH 当前目录取交集；由发起模型选择组合。仅管理员会话可用。',
+    schema:{token:{type:'string'}},handler:async input=>ctx.capabilities.taskModels({token:need(input)})
+  });
   ctx.registerTool('task_spawn', {
     description: '在 DSH 里启动一个独立任务会话（qq-task-worker，用户在界面可见）：把需要长时间、多步骤、或要独立完成的任务丢给它；它独立执行，缺少输入时返回状态；完成或待补充时桥接会唤醒你，你用 task_result 取结果再向管理员汇报。仅管理员（管理员）会话可用。',
     schema: {
       token: { type: 'string', description: '你的会话令牌（见唤醒提示中的【会话令牌】）' },
       title: { type: 'string', description: '任务标题（会显示在 DSH 工作区里，简短）' },
-      task: { type: 'string', description: '任务说明：目标、背景、约束、期望产物，写清楚一点' }
+      task: { type: 'string', description: '任务说明：目标、背景、约束、期望产物，写清楚一点' },
+      modelSelection: modelSelectionSchema
     },
     handler: async (input) => {
       const token = need(input);
@@ -45,7 +51,7 @@ export function createPlugin(ctx) {
       if (!task) throw new Error('task 不能为空');
       const cap = ctx.capabilities;
       if (!cap || typeof cap.taskSpawn !== 'function') throw new Error('桥接未提供任务会话能力（capabilities.taskSpawn）');
-      return cap.taskSpawn({ token, title, task });
+      return cap.taskSpawn({ token, title, task, modelSelection:input.modelSelection });
     }
   });
 
@@ -96,11 +102,11 @@ export function createPlugin(ctx) {
 
   ctx.registerTool('task_input', {
     description: '给已有独立任务补充输入或回答问题，继续同一任务会话；仅管理员会话可用，不要为同一任务重复 spawn。requestId 是本次输入的稳定唯一编号，重试必须复用。',
-    schema: {token:{type:'string'}, taskId:{type:'string'}, input:{type:'string'}, requestId:{type:'string'},replyToRequest:{type:'string'},decision:{type:'string'},answers:{type:'array'}},
+    schema: {token:{type:'string'}, taskId:{type:'string'}, input:{type:'string'}, requestId:{type:'string'},replyToRequest:{type:'string'},decision:{type:'string'},answers:{type:'array'},modelSelection:modelSelectionSchema},
     handler: async (input) => {
       const token = need(input);
       if (typeof ctx.capabilities?.taskInput !== 'function') throw new Error('当前桥接尚未加载任务输入能力');
-      return ctx.capabilities.taskInput({token, taskId:String(input?.taskId||''), input:String(input?.input||''), requestId:String(input?.requestId||''),replyToRequest:input?.replyToRequest,decision:input?.decision,answers:input?.answers});
+      return ctx.capabilities.taskInput({token, taskId:String(input?.taskId||''), input:String(input?.input||''), requestId:String(input?.requestId||''),replyToRequest:input?.replyToRequest,decision:input?.decision,answers:input?.answers,modelSelection:input?.modelSelection});
     },
   });
 
@@ -113,6 +119,7 @@ export function createPlugin(ctx) {
       beforePrompt(payload) {
         if (/^(memoryWrite|slangLearn)$/.test(String(payload?.reason||''))) return '';
         if (!payload?.isAdminEnvironment) return '';
+        ctx.addPromptBlock('【任务模型选择】创建独立任务前先用 qq_task_models 查询允许范围，由你按任务需求选择 provider、model、effort，以 modelSelection 传给 qq_task_spawn。禁止范围外选择。任务续办保持原选择；范围改变后可查询并在 qq_task_input 提交新的 modelSelection。普通对话和其他预设的模型由控制台分别设置，不按关键词自动升级。');
         const notices = ctx.state?.get?.()?.notices || [];
         if (notices.length) ctx.addPromptBlock('【待回传任务状态】逐项用 qq_task_result 核实并转达，不遗漏并行任务：'+JSON.stringify(notices));
         ctx.addPromptBlock("【任务进展回复】先核实真实状态，再清楚说明结果、阻碍、下一步和必要路径。成功须有工具结果或回执；结果未知时明确未知，不编造已送达或已完成。使用当前配置的交流风格，严肃任务保持准确完整，不逐项照念内部状态字段。");

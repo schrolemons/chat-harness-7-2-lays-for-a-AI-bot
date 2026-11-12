@@ -27,9 +27,15 @@ export function createPlugin(ctx) {
     return state.doubleStampCheck;
   }
   return { hooks: { beforePrompt() {
-    return '【历史与待答资格】双戳只记录实际已读与真实发送，待答资格另行判断。只有双戳窗口内 replyRequirement=required 且 needsReply=true 的消息必须按收件 seq 从小到大回应；相关连续片段可合并，并可结合紧挨其后的普通补充一并回复；一次发送须明确绑定全部所答seq，不得跳过更早的必答消息去答更晚的必答消息。群聊以首条实际触发唤醒的消息作为本次输入，后来的消息不替换它；初始回查窗为空，后续只由必答消息占位置，普通自由消息不计数。自主概率增长、定时冒泡与日常唤醒可自行决定是否回应历史。私聊新来信默认全部必答；窗口内普通消息、replyDisposition=history 的上文、未压缩的近期历史都可自由选择是否回复，不形成逐条补答义务；久远内容按需参考摘要。群聊已读但决定不参与的普通消息可报 context 并说明原因，不写回复戳；不能用 context 跳过窗口内的必答消息。私聊最多保留最近 '+privateReplyLimit+' 条旧未处理消息可答。所有聊天历史只能从 bridge 或 SnowLuma 本地缓存获得；缓存缺失即如实说明，不调用 QQ 历史、漫游或远程消息详情 API。';
+    return '【群聊上下文】是否回复与是否需要阅读不同。回复群消息前先结合连续的近期群聊记录判断话题、说话人和引用，不凭最后一句或记忆摘要猜。最近聊天默认随消息快照作为历史上文带入，不必重复调用近期消息工具。contextPartial=true 只表示部分历史未带入；仅当理解当前所答消息确实需要缺失内容时按需补读，不能机械补齐整个窗口。窗口外或图片实际不可读的内容如实说明。'+'\n\n'+'【历史与待答资格】双戳只记录实际已读与真实发送，待答资格另行判断。只有双戳窗口内 replyRequirement=required 且 needsReply=true 的消息必须按收件 seq 从小到大回应；相关连续片段可合并，并可结合紧挨其后的普通补充一并回复；一次发送须明确绑定全部所答seq，不得跳过更早的必答消息去答更晚的必答消息。群聊以首条实际触发唤醒的消息作为本次输入，后来的消息不替换它；初始回查窗为空，后续只由必答消息占位置，普通自由消息不计数。自主概率增长、定时冒泡与日常唤醒可自行决定是否回应历史。私聊新来信默认全部必答；窗口内普通消息、replyDisposition=history 的上文、未压缩的近期历史都可自由选择是否回复，不形成逐条补答义务；久远内容按需参考摘要。群聊已读但决定不参与的普通消息可报 context 并说明原因，不写回复戳；不能用 context 跳过窗口内的必答消息。私聊最多保留最近 '+privateReplyLimit+' 条旧未处理消息可答。所有聊天历史只能从 bridge 或 SnowLuma 本地缓存获得；缓存缺失即如实说明，不调用 QQ 历史、漫游或远程消息详情 API。';
   } }, services: { historyContext: {
     policy() { return { privateReplyLimit, historyLimit, localHistoryEnabled: ctx.config?.localHistoryEnabled !== false }; },
+    replyContext({key,state,throughSeq=Infinity,limit=20}={}) {
+      if(!String(key).startsWith('group:'))return [];
+      const anchor=(state?.recentMessages||[]).find(m=>m.seq===throughSeq),count=Math.max(1,Math.min(1000,Number(limit)||20));
+      return (state?.recentMessages||[]).filter(m=>m.isSelf?(!anchor||m.time<=anchor.time):valid(m.seq)&&m.seq<=throughSeq).slice(-count).filter(m=>!m.isSelf);
+    },
+    snapshotLimit({key,previewLimit,contextWindow}={}) {return String(key).startsWith('group:')?Math.max(previewLimit,contextWindow):previewLimit;},
     refreshWindow,
     retain({state,limit}={}) {
       if(!state)return null;
@@ -49,7 +55,7 @@ export function createPlugin(ctx) {
       refreshWindow({key,state,triggerSeq:first.seq,now});
       return {triggerMessage:first,wakeTriggerSeq:first.seq};
     },
-    snapshotGuidance() { return '【消息处理】收件索引不替代正文。仅窗口内明确 required 的待答消息须按收件 seq 升序处理；普通消息和未压缩历史可自由参与。缺少所选回复来源的完整正文时，从本地缓存补读。未回复不冒充已完成，普通群消息可报 context 回执保留为上文。'; },
+    snapshotGuidance() { return '【消息处理】收件索引不替代正文。仅窗口内明确 required 的待答消息须按收件 seq 升序处理；普通消息和历史仅作上文，不形成补答队列。缺少所选回复来源的完整正文时，从本地缓存补读。未回复不冒充已完成，普通群消息可报 context 回执保留为上文。'; },
     classifyIncoming({key,state,message,wakeAccepted,requiresResponse=false,windowSeqs}={}) {
       if(!message||message.isSelf||message.repliedAt)return {changed:false};
       const group=String(key).startsWith('group:');

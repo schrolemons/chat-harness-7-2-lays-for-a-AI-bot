@@ -219,8 +219,8 @@ test('real multipart group send acquires only its first explicit target after th
  const incoming=async(user,id)=>h.handleIncoming('group',456,{message_id:id,user_id:user,self_id:9,sender:{nickname:'person'},message:[{type:'text',data:{text:'ordinary response'}}]},h.cfg);
  await send({});assert.equal(readWait().targetUserId,null);
  await incoming(123,'before-target');await new Promise(resolve=>setTimeout(resolve,5));
- // Actual agent read, not merely queue arrival, admits the new body to this turn.
- const admitted=await get('/api/socialV2/unread?key='+encodeURIComponent(key),st.agentToken);
+ // Ordinary group history is optional, so explicitly read the surrounding context.
+ const admitted=await get('/api/socialV2/recent?key='+encodeURIComponent(key),st.agentToken);
  assert.equal(admitted.body.ok,true,JSON.stringify(admitted));
  await send({atUserId:'123'});assert.equal(readWait().targetUserId,'123');assert.equal(readWait().answeredAt,null);
  const targetFromAt=readWait().targetFromAt;

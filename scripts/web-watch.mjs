@@ -15,6 +15,8 @@ import { acquireLease, leaseActive, classifyNavigation } from './web-watch-brows
 import {createLoginRecovery,loginOrigin} from '../plugins/qq-components/life-web-watch/login-recovery.mjs';
 import {createSiteSessions} from './web-watch-site-sessions.mjs';
 import {flushLoginNotices} from './web-watch-login-notifications.mjs';
+import {resumeWaitingLogin} from './web-watch-login-flow.mjs';
+import {readPublicHttpSnapshot,allowsAnonymousHttpFallback} from './web-watch-public-http.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let ownedCleanup=async()=>{};
@@ -83,8 +85,14 @@ function looksLoadFailed(text) {
 }
 
 async function fetchPage(page, url, { waitMs = 2500 } = {}) {
-  let navigationSucceeded=true,response;
-  try{response=await page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});}catch{navigationSucceeded=false;}
+  let navigationSucceeded=true,response,navigationError='';
+  try{response=await page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});}catch(error){
+    navigationSucceeded=false;navigationError=String(error.message).split(' at ')[0].slice(0,120);
+    if(allowsAnonymousHttpFallback(url,WATCH_PLUGIN_CONFIG)&&navigationError.includes('net::ERR_BLOCKED_BY_CLIENT')){
+      try{const snapshot=await readPublicHttpSnapshot(page,url);return {...snapshot,status:classifyNavigation(snapshot,url,{navigationSucceeded:true,httpStatus:snapshot.httpStatus})};}
+      catch(fallbackError){navigationError+='; public HTTP: '+String(fallbackError.message).slice(0,160);}
+    }
+  }
   await sleep(waitMs);
   const r = await page.evaluate(extractPageSnapshot).catch(() => ({ url, title: '', text: '', lines: [], links: [] }));
   // goto 失败/被重定向到别的站点时 location.href 会落到别的 host：此刻抓的是上一页旧内容，
@@ -92,7 +100,7 @@ async function fetchPage(page, url, { waitMs = 2500 } = {}) {
   let hostOk = false;
   try { hostOk = new URL(String(r.url || '')).host === new URL(String(url || '')).host; } catch {}
   const status = classifyNavigation(r,url,{navigationSucceeded,httpStatus:response?.status()||200});
-  if (!hostOk || status !== 'ready') return { url: r.url, title: r.title, text: '', lines: [], links: [], status };
+  if (!hostOk || status !== 'ready') return { url: r.url, title: r.title, text: '', lines: [], links: [], status, diagnostic:navigationError||`HTTP ${response?.status()||'unknown'}; host=${hostOk}; contentLength=${r.text?.length||0}; status=${status}` };
   return { ...r, status };
 }
 
@@ -113,11 +121,12 @@ async function checkWebsites(state, changes) {
     }
     if (!r || looksLoadFailed(r.text) || !String(r.text || '').trim()) {
       Object.assign(health, { fetch: 'red', auth: 'unknown', diff: 'unknown', delivery: 'unknown', hint: '页面无法读取，请检查网址、网络或登录状态' });
+      if(r?.diagnostic)health.hint+='：'+r.diagnostic;
       loginRecovery.checkFailed(site,health.hint);await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});
-      logLine(`【${site.name}】页面加载失败/为空，跳过本轮（不改基线）`);
+      logLine(`【${site.name}】页面加载失败/为空，跳过本轮（不改基线）`+(r?.diagnostic?'：'+r.diagnostic:''));
       continue;
     }
-    Object.assign(health, { fetch: 'green', auth: 'green', hint: '页面可读取' });
+    Object.assign(health, { fetch: 'green', auth: 'green', hint: r.transport==='public-http'?'公开 HTTP 页面已通过匿名静态读取验证':'页面可读取' });
     await loginReady(site.url);
     const key = 'bookmark/' + site.url;
     const hash = sha(r.text.slice(0, 20000));
@@ -156,6 +165,7 @@ async function main() {
   // Never refresh pages or replay an old jar while the owner is signing in.
   const loginLock = path.join(ROOT, 'state', 'login-window.lock');
   if (leaseActive(loginLock)) { console.log('登录正在进行，暂停后台页面检查'); return; }
+  if(RETRY_URL&&await resumeWaitingLogin({target:WATCH_SITES.find(site=>site.url===RETRY_URL),recovery:loginRecovery,request:requestLoginWindow}))return;
   if (!WATCH_SITES.some(site => !RETRY_URL || site.url === RETRY_URL)) return;
   // The PID lease prevents concurrent checks from changing the same baseline.
   const lockFile = path.join(ROOT, 'state', 'web-watch.lock');

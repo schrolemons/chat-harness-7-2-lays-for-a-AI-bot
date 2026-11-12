@@ -6,10 +6,12 @@
 
 仅主动开启管理员环境、实际装配所选高权限预设的 owner 私聊有效令牌可用；owner 身份本身不授权。MCP 名为 qq_task_*。环境关闭或预设变更后拒绝后续调用并取消未完成任务。管理员环境可直接使用所选 DSH 工具；需要独立后台执行时才委派任务，不强制所有操作转交工作会话。
 
-- task_spawn(token,title,task)：新建 qq-task-worker 会话。task 只传目标、必要背景、源文件位置、约束与验收要求，不附聊天历史、人格、令牌或唤醒规则。
+- task_models(token)：读取控制台允许范围与 DSH 当前模型目录的交集。由发起任务的模型按任务需求选择 provider、model、effort。
+- task_spawn(token,title,task,modelSelection)：新建 qq-task-worker 会话。modelSelection 使用刚查询到的合法组合；只有唯一组合时可省略。task 只传目标、必要背景、源文件位置、约束与验收要求，不附聊天历史、人格、令牌或唤醒规则。
 - task_list(token)：查看任务列表。
 - task_result(token,taskId)：查看状态、结果、待补充输入和 pendingRequests。读取时会核对最近历史，恢复漏接的结束事件；读失败保留原状态，不猜测成功。
 - task_input(token,taskId,input,requestId)：补充同一任务，稳定 requestId 在明确重试时复用；不能为相同输入重复派单。确定未接收可重试；传输结果不确定不能自动重发。普通输入以同一 wireId 投递，由 DSH 去重。
+- task_input 默认保持任务原有模型；控制台缩小范围后若原组合失效，先查 task_models，再用新的 modelSelection 续办。同一个 requestId 不能改换模型选择。
 - task_input 的 replyToRequest：回答 pendingRequests 中对应请求。权限决定必须来自用户明确同意或拒绝，用 decision=allowed-once/rejected；问题用原编号 answers。控制类响应结果不确定时不自动重发。
 - task_cancel(token,taskId)：取消在跑或待补充的任务。
 

@@ -1,8 +1,9 @@
+import {createModelPolicyController} from '../src/console/model-policy.mjs';
 import {createRuntimeIpcClient} from '../src/instance-runtime-ipc.mjs';
 import {bindInstanceSnowConfig} from '../src/instance-snow-connection.mjs';
 import {bindInstanceDshConfig} from '../src/instance-dsh-target.mjs';
 import * as instanceSessionPolicy from '../src/instance-session-policy.mjs';
-import {isScheduledContactRequest, parseGameInvitation, parseRelayCommand, parseScheduledRelay, stripRelayPrefix} from '../src/relay-intent.js';
+import {isScheduledContactRequest, parseGameInvitation, parseGroupReplyRequest, parseRelayCommand, parseScheduledRelay, stripRelayPrefix} from '../src/relay-intent.js';
 import * as presetOverview from '../src/console/preset-overview.js';
 import {buildDshBundle} from './build-dsh-bundle.mjs';
 import * as presetPolicy from '../src/preset-policy.js';
@@ -32,6 +33,8 @@ import * as receiptState from '../src/bridge-core/receipt-state.js';
 import * as contextLimits from '../src/bridge-core/context-limits.mjs';
 import * as sessionRecovery from '../src/bridge-core/session-recovery.mjs';
 import * as costPolicy from '../plugins/qq-components/obs-cost-policy/policy.mjs';
+import {createReceivedMessageCache} from '../src/bridge-core/received-history.mjs';
+import {validateCatalogSelection} from '../plugins/qq-components/obs-cost-policy/catalog.mjs';
 import * as directTimedNotices from '../src/bridge-core/direct-timed-notices.js';
 import {migrateOutboundMood} from '../src/migrations/outbound-mood.mjs';
 import {migrateGroupWake,RETIRED_GROUP_WAKE_FIELDS} from '../src/migrations/group-wake.mjs';
@@ -157,7 +160,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     },
     respond: async () => success({}),
     stopSessionWork: async (sessionId) => { calls.cancelled.push(sessionId); return { removed: 0 }; },
-    callUnary: async (method, params) => { calls.cancelled.push({ method, params }); return success({ accepted: true }); },
+    callUnary: async (method, params) => { if(method==='session.modelCatalog')return success({groups:[{id:'deepseek-official',models:['deepseek-flash','deepseek-v4-pro'].map(id=>({id,reasoning:{efforts:['off','low','high','max'].map(id=>({id}))}}))}]});calls.cancelled.push({ method, params }); return success({ accepted: true }); },
   };
   class FakeBot {
     async sendPrivateMessage(id, text) { calls.sent.push({ kind: 'private', id, text }); }
@@ -268,7 +271,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   const timers = new Set();
   const context = vm.createContext({
     fs, os, path, http, crypto, fileURLToPath, URL, Buffer, AbortSignal, console: { log() {}, error() {} },
-    isScheduledContactRequest, parseGameInvitation, parseRelayCommand, parseScheduledRelay, stripRelayPrefix,
+    isScheduledContactRequest, parseGameInvitation, parseGroupReplyRequest, parseRelayCommand, parseScheduledRelay, stripRelayPrefix,
     fetch: fakeFetch,
     // Simulated consoles never launch a native window or display a fixture token.
     openSetupViewer: () => ({ stdin: { end() {} } }),
@@ -285,8 +288,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, ...replyContentsRoute, migrateOutboundMood, migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS,
-    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...contextLimits, ...dialogueSequence, ...localHistory, ...receiptIndex, ...costPolicy, ...consoleDocument, ...toolCatalog,
-    createRuntimeIpcClient, bindInstanceSnowConfig, bindInstanceDshConfig, ...instanceSessionPolicy, ...sessionRecovery, ...presetPolicy, ...adminToolPolicy, ...presetOverview,buildDshBundle,
+    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...contextLimits, ...dialogueSequence, ...localHistory, ...receiptIndex, ...costPolicy, createModelPolicyController, ...consoleDocument, ...toolCatalog,
+    createRuntimeIpcClient, bindInstanceSnowConfig, bindInstanceDshConfig, ...instanceSessionPolicy, ...sessionRecovery, ...presetPolicy, ...adminToolPolicy, ...presetOverview,buildDshBundle,validateCatalogSelection,createReceivedMessageCache,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
     routePluginManagement,
     routeMemoryManagement,routeDiaryManagement,routeLearningManagement,routeContextManagement,routeFeedbackRepairs,

@@ -1,6 +1,5 @@
 import { api } from '../../shared/api.js';
 import { updateOverview, setConnectionError } from '../../shared/navigation.js';
-import { refreshAdminPresets } from '../E/admin-presets.js';
 import { followSimulationMode } from '../C/preset-prompt.js';
 // layers/O/status: explicit imports; initialize is called in the application startup order.
 
@@ -71,7 +70,6 @@ async function refresh() {
 
 async function refreshPresets() {
   try {
-    await refreshAdminPresets();
   } catch {}
 }
 

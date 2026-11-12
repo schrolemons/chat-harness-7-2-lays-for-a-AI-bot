@@ -52,3 +52,11 @@ test('async spawn acknowledgement commits cooldown only after success and failed
  plugin.hooks.onTick({now:now+1});assert.equal(runs,1,'in-flight spawn must not duplicate');accept(false);await first;assert.equal(state.lastFullAt,undefined);
  const second=plugin.hooks.onTick({now:now+2});assert.equal(runs,2);accept(true);await second;assert.equal(state.lastFullAt,now+2);
 });
+
+test('a waiting login is resumed before normal cooldown when the preceding site window has closed',async t=>{
+ const {root,runs,plugin}=setup(t,{fullCheckMinutes:30});const now=Date.now();
+ plugin.hooks.onTick({now});assert.equal(runs.length,1);
+ const recovery=createLoginRecovery(root);recovery.fail({url:'https://example.invalid/',name:'Example'});
+ const release=acquireLease(path.join(root,'state/login-window.lock'));plugin.hooks.onTick({now:now+1});assert.equal(runs.length,1);release();
+ await plugin.hooks.onTick({now:now+2});assert.deepEqual(runs[1],['--force','--retry-url','https://example.invalid/']);
+});

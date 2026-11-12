@@ -4,7 +4,7 @@ import fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:
 import {createOwnedMonitorClient} from './owned-monitor-client.mjs';
 import {acquireLease,classifyNavigation,selectLoginTargets} from './web-watch-browser-session.mjs';
 import {createSiteSessions} from './web-watch-site-sessions.mjs';
-import {reuseLoginPage,waitForLogin,createLoginProbe} from './web-watch-login-flow.mjs';
+import {reuseLoginPage,waitForLogin,createLoginProbe,focusLoginPage} from './web-watch-login-flow.mjs';
 import {createLoginRecovery,loginOrigin} from '../plugins/qq-components/life-web-watch/login-recovery.mjs';
 import {flushLoginNotices} from './web-watch-login-notifications.mjs';
 import {extractPageSnapshot} from '../plugins/qq-components/life-web-watch/web-changes.mjs';
@@ -44,7 +44,7 @@ async function main(){
   await notify();browser=await launch(false);
   await attach();const {page,reused}=await reuseLoginPage(scoped(),activeTarget,{owned:true});
   if(!reused)await page.goto(activeTarget.url,{waitUntil:'domcontentloaded',timeout:25000}).catch(()=>{});
-  await page.bringToFront().catch(()=>{});log('已打开或复用该平台独立登录标签；不自动填账号密码、不刷新等待页');
+  await focusLoginPage(browser,page,{owned:!!ownedMonitor});log('已打开或复用该平台独立登录标签；不自动填账号密码、不刷新等待页');
   async function verify(){
    const probe=await context.newPage();try{for(const target of sameSite){let navigationSucceeded=true,response;try{response=await probe.goto(target.url,{waitUntil:'domcontentloaded',timeout:25000});}catch{navigationSucceeded=false;}if(classifyNavigation(await snapshot(probe),target.url,{navigationSucceeded,httpStatus:response?.status()||200})!=='ready')return false;}return true;}finally{await probe.close().catch(()=>{});}
   }

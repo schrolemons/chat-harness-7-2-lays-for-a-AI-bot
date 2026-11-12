@@ -29,7 +29,7 @@ test('receipt metadata counts current reply eligibility separately from stored h
  assert.equal(view.unreadCount,1);assert.equal(view.bufferedUnreadCount,2);assert.deepEqual(view.pendingSeqs,[2]);assert.equal(view.queueObservedThroughSeq,2);
 });
 
-async function httpFixture(run){const h=await bridgeHarness();let server;try{
+async function httpFixture(run){const h=await bridgeHarness({config:{sendDelayMs:0},files:{'state/plugins/config/life-wake-reasons.json':{curfewEnabled:false},'state/plugins/config/ctx-chat-reply-shape.json':{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0}}});let server;try{
  h.setMode('reserved2');const key='group:456',st=h.getSocialV2State(key),old=await h.ensureSession(key);
  server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));
  const call=async(route,body,agent=true)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+route+'?key='+encodeURIComponent(key),{method:body===undefined?'GET':'POST',headers:{'x-console-token':'fixture-console-token',...(agent?{'x-agent-token':st.agentToken}:{}),...(body?.contentId?{'x-reply-content-id':body.contentId}:{}),'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify({key,...body})})});return {status:r.status,data:await r.json()};};

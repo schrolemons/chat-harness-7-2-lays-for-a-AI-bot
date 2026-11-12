@@ -6,6 +6,27 @@ import {createPlugin as replyPlugin} from '../plugins/qq-components/ctx-chat-rep
 import {createOutboundTransport} from '../src/outbound-context.js';
 
 const quoted='[引用 小甲：有人最近在跟我说你的坏话。]谁👀';
+test('group snapshot carries continuous optional context and reports budget omissions without read stamps',async()=>{
+ const h=await bridgeHarness({config:{socialV2:{context:{contextWindow:12,wakeRecentLimit:2,wakeMaxChars:20000}}}});
+ try{
+  h.setMode('reserved2');const key='group:456',st=h.getSocialV2State(key);
+  for(let n=0;n<12;n++){const m=h.appendSocialV2Message(key,'群友','连续话题'+n,'连续话题'+n,false,false,String(n+1));m.replyRequirement='optional';m.replyDisposition='history';}
+  const full=h.buildWakeSnapshotV2(key);assert.equal(full.contextSeqs.length,12);assert.equal(full.contextPartial,false);assert.equal(full.recent.length,12);
+  h.cfg.socialV2.context.wakeMaxChars=500;const clipped=h.buildWakeSnapshotV2(key);assert.equal(clipped.contextPartial,true);assert(JSON.stringify(clipped).length<=500);assert.equal(clipped.contextSeqs.length,12);
+  assert(st.recentMessages.every(m=>!m.seenAt&&!m.repliedAt));
+ }finally{await h.close();}
+});
+test('complete target can reply without a mandatory read of unrelated optional history',async t=>{
+ const {h,key,st,request}=await fixture(t);h.cfg.socialV2.context.contextWindow=20;
+ for(let n=0;n<20;n++){
+  const m=h.appendSocialV2Message(key,'群友',n===0?'我们正在讨论游戏里的二加一配置':'话题补充 '+n,n===0?'我们正在讨论游戏里的二加一配置':'话题补充 '+n,false,false,String(300+n),[],'789');
+  m.replyRequirement='optional';m.replyDisposition='history';
+ }
+ await request('/api/socialV2/recent?key='+encodeURIComponent(key)+'&limit=1');
+ const blocked=await request('/api/send/reply',{groupId:'456',replyToMessageId:'319',message:'仅回应当前完整消息',token:st.agentToken});
+ assert.equal(blocked.body.ok,true,JSON.stringify(blocked.body));
+ assert.equal(st.recentMessages.find(m=>m.messageId==='300').replyRequirement,'optional');assert(!st.recentMessages.find(m=>m.messageId==='300').repliedAt,'reading context never fabricates replies');
+});
 test('memory candidate cannot reveal new text before full admission; admitted evidence preserves quotes',()=>{
  let state={};const p=factsPlugin({config:{},state:{get:()=>state,set:v=>state={...state,...v}},addPromptBlock(){}});
  const msg={key:'group:456',userId:'789',sender:'乙',text:'谁👀',messageId:'101',at:Date.now()};
@@ -106,7 +127,7 @@ test('an explicitly incomplete current body is not repaired by omitting its unkn
  await h.handleIncoming('group',456,{message_id:202,user_id:789,self_id:9,bodyComplete:false,sender:{nickname:'乙'},message:[{type:'reply',data:{id:'303'}},{type:'text',data:{text:'残缺正文'}}]},h.cfg);
  h.socialV2.paused=false;await request('/api/socialV2/recent?key='+encodeURIComponent(key)+'&limit=1');
  assert.equal(st.unread.at(-1).bodyComplete,false);
- const r=await request('/api/socialV2/send-message',{key,messages:'不能猜剩余正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/(message_context_pending|source_not_admitted|content_required)/);
+ const r=await request('/api/socialV2/send-message',{key,messages:'不能猜剩余正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/(message_context_pending|group_context_pending|source_not_admitted|content_required)/);
 });
 test('an empty local cache detail never promotes a missing current body into complete input',async t=>{
  const {h,key,request}=await fixture(t);
@@ -132,7 +153,7 @@ test('a quote-only arrival directed at the bot retains its missing own-body stat
  h.socialV2.paused=false;const current=st.unread.find(m=>m.messageId==='202');
  assert.equal(current.bodyComplete,false);assert.equal(current.plain,'');assert.match(current.text,/已知机器人原文/);
  await request('/api/socialV2/recent?key='+encodeURIComponent(key)+'&limit=1');
- const r=await request('/api/socialV2/send-message',{key,messages:'引用不是本条自有正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/(message_context_pending|source_not_admitted|content_required)/);
+ const r=await request('/api/socialV2/send-message',{key,messages:'引用不是本条自有正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/(message_context_pending|group_context_pending|source_not_admitted|content_required)/);
 });
 test('a known visible complete quote is reused locally with only its own plain body',async t=>{
  const {h,key,st,request}=await fixture(t);h.socialV2.paused=true;

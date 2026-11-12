@@ -243,6 +243,7 @@ const SAFE_EXACT = new Set([
   'mcp__personal-core__core_read',
   'ask_user_question',
   'todo_write',
+  'qq_select_tools',
 ])
 
 // ── 诊断落盘：restrict 失败时到底为什么 ────────────────────────────────────

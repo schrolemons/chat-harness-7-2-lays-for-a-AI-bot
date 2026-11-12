@@ -281,7 +281,7 @@
       "inlineWakeMessages": true,
       "wakeMessageLimit": 12,
       "wakeRecentLimit": 4,
-      "wakeMaxChars": 6000
+      "wakeMaxChars": 20000
     },
     "initialPromptMaxChars": 2000,
     "media": {

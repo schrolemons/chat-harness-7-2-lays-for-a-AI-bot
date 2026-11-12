@@ -31,10 +31,10 @@ test('administrator can query diary archives, worklogs and tasks without opening
  const mutation=await f.call('task_spawn');assert.equal(mutation.status,409);await mutation.json();
 });
 
-test('ordinary selected preset, stale loaded preset and disabled switch cannot authorize management',async t=>{
- const f=await fixture(t,{enabled:true,preset:'qq-chat-v2'});
+test('enabling admin does not authorize a stale ordinary chat session',async t=>{
+ const f=await fixture(t,{enabled:false,preset:'standard'});
  assert.equal((await f.call('task_list')).status,403);
- f.h.cfg.socialV2.adminDev.preset='qq-admin';
+ f.h.cfg.socialV2.adminDev.enabled=true;
  assert.equal((await f.call('task_list')).status,403,'enabling admin selection cannot upgrade the old chat session');
 });
 
@@ -85,5 +85,17 @@ test('QQ tokens cannot enable admin environment or invoke console control endpoi
    assert.equal(r.status,403,route);await r.json();
   }
  }
+ assert.equal(f.h.calls.sent.length,0);
+});
+
+test('config API fixes legacy selections to qq-admin and preserves an already loaded admin session',async t=>{
+ const f=await fixture(t,{enabled:true});
+ const session=f.h.calls.created.at(-1);
+ const response=await fetch(f.base+'/api/socialV2/config',{method:'POST',headers:{'content-type':'application/json','x-console-token':'fixture-console-token'},body:JSON.stringify({adminDev:{enabled:true,preset:'standard'}})});
+ assert.equal(response.status,200);const data=await response.json();
+ assert.equal(data.config.adminDev.preset,'qq-admin');
+ assert.equal(f.h.cfg.socialV2.adminDev.preset,'qq-admin');
+ assert.equal((await f.call('task_list')).status,200);
+ assert.equal(f.h.calls.created.at(-1),session);
  assert.equal(f.h.calls.sent.length,0);
 });

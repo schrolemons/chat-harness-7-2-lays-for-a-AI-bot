@@ -303,16 +303,13 @@ await test('a delegated send records reply evidence on the conversation that rec
 });
 
 // ── 2. 回复只盖「本轮看过的」：新到的消息不跟着变成已回复 ────────────────────
-await test('a reply waits for a newer complete body and only stamps explicitly reported replies', async () => {
+await test('a complete selected reply does not wait for a newer arrival and only stamps explicitly reported replies', async () => {
   const c = await open();
   try {
     c.append('seen one');
     assert.equal((await c.call('unread')).status, 200);
+    const [content]=await c.declare([{seqs:[1],kind:'chat'}]);
     c.append('unseen new arrival');
-    const blocked = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply' } });
-    assert.notEqual(blocked.status,200);assert.match(blocked.data.error,/message_context_pending/);
-    await c.call('unread');
-    const [content]=await c.declare([{seqs:[1,2],kind:'chat'}]);
     const sent = await c.call('/api/send/private', { body: { token: c.st().agentToken, userId: '123', message: 'reply',contentId:content.id } });
     assert.equal(sent.status, 200);
     const report = await c.call('/api/socialV2/receipt-report', { body: { conversationId: KEY, receipts: [{ seq: 1, status: 'replied' }] } });

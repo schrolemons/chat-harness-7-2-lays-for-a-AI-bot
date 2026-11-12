@@ -1,24 +1,11 @@
 <section id="section-environment-admin" data-page="environment-admin" class="card span-all environment-page">
-  <h2>管理员环境</h2>
-  <p class="meta">高权限能力的统一入口；管理员身份本身不授予执行权限。</p>
-      <div class="comp-card env-card">
-        <div class="env-card-heading"><h3>管理员助手</h3><span class="meta">开发开关与预设</span></div>
-        <div class="env-card-body" id="envAdminControls">
-          <p class="meta">主动启用并选择高权限预设后，管理员私聊才能执行命令、委派任务、查看管理信息或跨会话管理。关闭时按普通聊天权限处理；封闭 Agent 也遵守此开关。</p>
-          <div class="env-admin-fields">
-            <div class="env-admin-field">
-              <span class="env-admin-label" id="envAdminModeLabel">启用管理员环境</span>
-              <label class="env-admin-switch" for="v2AdminDevEnabled"><input type="checkbox" id="v2AdminDevEnabled" aria-labelledby="envAdminModeLabel" aria-describedby="envAdminEnabledExample"><span>启用</span></label>
-              <small class="parameter-example" id="envAdminEnabledExample" data-example-for="v2AdminDevEnabled">关闭后立即拒绝后续管理调用并取消未完成的委派任务；选择普通聊天或只读预设不会获得高权限。</small>
-            </div>
-            <div class="env-admin-field">
-              <label for="v2AdminDevPreset">管理员预设</label>
-              <select id="v2AdminDevPreset" aria-describedby="envAdminPresetExample"><option value="">跟随 DSH 默认</option></select>
-              <small class="parameter-example" id="envAdminPresetExample" data-example-for="v2AdminDevPreset">可选“AI助手管理员 · 专业开发”，保留桥接人设并提供开发工具。控制管理员会话的基础指令与可用工具。跟随默认时使用 DSH 当前标记的默认预设；与一、二代运行模式独立。</small>
-            </div>
-          </div>
-          <p class="meta env-admin-apply"><b>生效方式：</b>保存后，如果所用预设发生变化，管理员私聊会在下一条消息到来时重建会话并使用新预设。</p>
-          <div class="env-admin-actions"><button class="small primary v2-save" type="button" data-save-action>保存管理员环境</button><span class="meta v2-save-msg" role="status"></span></div>
-        </div>
-      </div>
+  <div id="envAdminControls">
+    <label class="env-admin-switch" for="v2AdminDevEnabled"><input type="checkbox" id="v2AdminDevEnabled" aria-describedby="envAdminEnabledExample"><span>启用管理员环境</span></label>
+    <p class="meta" id="envAdminEnabledExample">开启使用 <code>qq-admin</code>；关闭后，管理员私聊跟随当前聊天模式，并取消未完成的委派任务。</p>
+    <div class="env-admin-apply">
+      <b>与二代仿真同步</b>
+      <p class="meta"><code>qq-admin</code> 由二代仿真（<code>qq-chat-v2</code>）派生，同步其对话协议、上下文与压缩配置，并增加本机工具、独立任务等管理能力。模型和思考强度可在预设总览中单独设置。</p>
+    </div>
+    <div class="env-admin-actions"><button class="small primary v2-save" type="button" data-save-action>保存</button><span class="meta v2-save-msg" role="status"></span></div>
+  </div>
 </section>

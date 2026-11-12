@@ -54,3 +54,17 @@ test('transient access failures send nothing; persistent page failures notify on
  f.recovery.checkRecovered(other.url);await notify();assert.equal(sent.length,1);
  f.recovery.checkRecovered(target.url);await notify();assert.equal(sent.length,2);assert.match(sent[1].text,/原先失败的页面/);
 });
+
+test('queued login recovery opens the requested site without consuming another login attempt',async t=>{
+ const {resumeWaitingLogin}=await import('./web-watch-login-flow.mjs');const f=fixture(t);f.recovery.fail(target);let opened;
+ assert.equal(await resumeWaitingLogin({target,recovery:f.recovery,request:async items=>{opened=items;return true;}}),true);
+ assert.deepEqual(opened,[target]);assert.equal(f.recovery.get(target.url).attempts,1);
+ f.recovery.recovered(target.url,f.recovery.get(target.url).generation);opened=null;
+ assert.equal(await resumeWaitingLogin({target,recovery:f.recovery,request:async items=>{opened=items;return true;}}),false);assert.equal(opened,null);
+});
+
+test('login foreground removes only unused blank tabs after the actual target is open',async()=>{
+ const {focusLoginPage}=await import('./web-watch-login-flow.mjs');let blankClosed=0,otherClosed=0,focused=0;
+ const active={bringToFront:async()=>focused++};const blank={isClosed:()=>false,url:()=> 'about:blank',close:async()=>blankClosed++};const other={isClosed:()=>false,url:()=> 'https://other.example/',close:async()=>otherClosed++};
+ await focusLoginPage({pages:async()=>[blank,active,other]},active,{owned:true});assert.equal(blankClosed,1);assert.equal(otherClosed,0);assert.equal(focused,1);
+});

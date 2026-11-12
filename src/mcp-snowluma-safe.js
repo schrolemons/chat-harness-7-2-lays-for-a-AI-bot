@@ -1860,20 +1860,26 @@ server.tool(
 );
 
 // ── L 层任务委派会话工具（life-task-session 插件；桥接执行 + 仅管理员会话可用） ──
+const taskModelSelectionSchema=z.object({provider:z.string(),model:z.string(),effort:z.string()}).strict().optional().describe('先用 qq_task_models 查询范围，由你选择 provider、model、effort；续办不传则保持原选择');
+server.tool('qq_task_models','查询独立任务允许的模型与思考档位，与 DSH 当前可用目录取交集；创建任务前调用。仅管理员会话可用。',{token:z.string()},async({token})=>{
+  try{const data=await agentApi('/api/plugins/call',{method:'POST',headers:{'x-agent-token':token},body:JSON.stringify({tool:'task_models',input:{token}}),timeoutMs:30000});return {content:[{type:'text',text:serializeModelData(data)}]};}
+  catch(error){return {content:[{type:'text',text:'查询任务模型范围失败：'+error.message}],isError:true};}
+});
 server.tool(
   'qq_task_spawn',
   '在 DSH 里启动一个独立任务会话（qq-task-worker，用户在界面「AI助手任务」工作区可见）：把需要长时间、多步骤、或要独立完成的任务交给它；它独立执行，缺少输入时通过任务状态返回；完成或待补充时桥接会唤醒你，用 qq_task_result 取结果再向管理员汇报。仅管理员（管理员）会话可用，其它会话调用会被拒绝。',
   {
     token: z.string().describe('你的会话令牌（见唤醒提示中的【会话令牌】）'),
     title: z.string().describe('任务标题（简短，会显示在 DSH 工作区）'),
-    task: z.string().describe('任务说明：目标、背景、约束、期望产物，写清楚')
+    task: z.string().describe('任务说明：目标、背景、约束、期望产物，写清楚'),
+    modelSelection: taskModelSelectionSchema
   },
-  async ({ token, title, task }) => {
+  async ({ token, title, task, modelSelection }) => {
     try {
       const data = await agentApi('/api/plugins/call', {
         method: 'POST',
         headers: { 'x-agent-token': token },
-        body: JSON.stringify({ tool: 'task_spawn', input: { token, title, task } }),
+        body: JSON.stringify({ tool: 'task_spawn', input: { token, title, task, modelSelection } }),
         timeoutMs: 120000
       });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
@@ -1935,12 +1941,13 @@ server.tool(
     replyToRequest: z.string().optional().describe('回答 task_result.pendingRequests 中的确切请求 id；普通补充输入省略'),
     decision: z.enum(['allowed-once','rejected']).optional().describe('权限决定，仅在用户明确同意或拒绝该项操作后填写'),
     answers: z.array(z.object({id:z.string(),selected:z.array(z.string()),custom:z.string().max(20000).optional()})).optional().describe('结构化问题的完整回答；id 与选项来自 pendingRequests.questions'),
+    modelSelection: taskModelSelectionSchema,
   },
-  async ({token,taskId,input,requestId,replyToRequest,decision,answers}) => {
+  async ({token,taskId,input,requestId,replyToRequest,decision,answers,modelSelection}) => {
     try {
       const data = await agentApi('/api/plugins/call', {
         method:'POST', headers:{'x-agent-token':token},
-        body:JSON.stringify({tool:'task_input',input:{token,taskId,input,requestId,replyToRequest,decision,answers}}),timeoutMs:30000,
+        body:JSON.stringify({tool:'task_input',input:{token,taskId,input,requestId,replyToRequest,decision,answers,modelSelection}}),timeoutMs:30000,
       });
       return {content:[{type:'text',text:serializeModelData(data)}]};
     } catch (error) {

@@ -60,3 +60,19 @@ test('another page on the same origin cannot clear a failed page, and independen
  next.checkRecovered(other.url);assert.equal(next.pendingNotices().length,1);
  assert.equal(next.get(site.url).phase,'ready','page-read errors do not mark the whole login session failed');
 });
+
+test('failed manual verification completes the request and exposes its page error without claiming login expired',t=>{
+ const f=fixture(t);f.recovery.retry(site.url,site.name);f.next(.1);f.recovery.checkFailed(site,'net::ERR_BLOCKED_BY_CLIENT');
+ assert.notEqual(f.recovery.get(site.url).phase,'needed');
+ const status=f.recovery.status(site.url);assert.equal(status.phase,'error');assert.equal(status.checkAttempts,1);assert.match(status.checkError,/ERR_BLOCKED_BY_CLIENT/);
+ assert.equal(f.recovery.status('https://course.example/other').phase,'ready');
+ assert.equal(f.recovery.pendingNotices().length,1,'an explicitly requested check reports its failure immediately');
+ f.recovery.retry(site.url,site.name);assert.equal(f.recovery.status(site.url).phase,'needed','a new request supersedes the old error display');
+});
+
+test('persistent access failures remind again after the configured interval even when an earlier notice was accepted',t=>{
+ const f=fixture(t);f.recovery.checkFailed(site,'failure');f.next();f.recovery.checkFailed(site,'failure');
+ const first=f.recovery.pendingNotices()[0];f.recovery.noticeResult(first.id,true);
+ f.next(4);f.recovery.checkFailed(site,'failure');assert.equal(f.recovery.pendingNotices().length,0);
+ f.next(1);f.recovery.checkFailed(site,'failure');assert.equal(f.recovery.pendingNotices().length,1);assert.notEqual(f.recovery.pendingNotices()[0].id,first.id);
+});

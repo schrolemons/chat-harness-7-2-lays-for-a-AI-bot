@@ -1,5 +1,6 @@
 // Canonical E-layer pages; declarations stay internal.
 export default {
+  "obs-cost-policy": {"page":"environment-presets","presentation":"internal"},
   "env-bridge": {
     "page": "environment-chat",
     "presentation": "internal"

@@ -12,7 +12,7 @@ test('owner ordinary chat follows v2 until admin is enabled; mappings are whole-
   rows=presetBindings({...base,admin:{enabled:true,preset:'qq-admin'}});
   assert.equal(rows.find(r=>r.key==='owner').preset,'qq-admin');
   rows=presetBindings({...base,admin:{enabled:true,preset:''}});
-  assert.equal(rows.find(r=>r.key==='owner').preset,'cordis');
+  assert.equal(rows.find(r=>r.key==='owner').preset,'qq-admin');
   assert(rows.filter(r=>['task','learning','summary'].includes(r.key)).every(r=>!r.edit));
 });
 test('safe configuration summary reads tool/compaction facts without returning prompts or arbitrary config',()=>{

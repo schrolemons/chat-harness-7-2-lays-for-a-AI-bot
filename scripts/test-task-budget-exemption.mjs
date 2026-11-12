@@ -105,3 +105,9 @@ test('a direct time-qualified instruction is a calendar task, personal plans and
  for(const text of ['我十点半后去安慰同事','我想，十点半后我去问候他','今晚十点再聊吧'])
   assert.equal(api.taskExemption({text,reason:'private'}).eligible,false,text);
 });
+
+test('explicit group replies are relay requests; observations, questions and negations are not',()=>{
+ const api=createPlugin({config:{},state:{get:()=>({}),set(){}}}).services.tokenBudget;
+ for(const text of ['去群里回复一下A2示例猫猫','请去群里回应一下测试群友','帮我去群聊回一下测试朋友'])assert.deepEqual(api.taskExemption({text,reason:'private'}),{eligible:true,kind:'relay'});
+ for(const text of ['群里回复好慢','你去群里回复了吗？','别去群里回复测试群友','去群里回复一下','去群里回复他'])assert.equal(api.taskExemption({text,reason:'private'}).eligible,false,text);
+});

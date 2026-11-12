@@ -1,6 +1,8 @@
 // Explain recoverable source failures separately from terminal exhaustion.
 export function describeSendRejection(message) {
  const text=String(message||'');
+ if(/\bgroup_context_pending\b/.test(text))return {code:'GROUP_CONTEXT_PENDING',retryable:true,
+  hint:'先用 qq_get_recent_messages 读取所答消息附近的连续历史（limit=100，必要时 offset 分页），截断的正文通过消息详情补齐。结合话题、说话人和引用再回答；普通历史只作上下文，不要求逐条回复。不要原样重试发送。'};
  if(/\bcontent_required\b/.test(text))return {code:'REPLY_CONTENT_REQUIRED',retryable:true,
   hint:'先用本回合已完整读入的 seq 按完整含义调用 qq_reply_contents 分组，取得 contentId，再在发送工具中显式携带对应 contentId。若尚未读全，先补齐正文和引用；不要原样重试发送，也不要自行生成 contentId。'};
  if(/\bsource_not_admitted\b/.test(text))return {code:'REPLY_SOURCE_NOT_ADMITTED',retryable:true,

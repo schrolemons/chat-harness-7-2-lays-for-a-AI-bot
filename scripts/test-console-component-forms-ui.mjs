@@ -25,6 +25,7 @@ try{
   const testedBuild=await page.locator('script[src^="/console/app.js"]').getAttribute('src');
   for(const [id,plugin] of fixture.componentFixtures){
     const checked=[],derived=[];
+    if(id==='obs-cost-policy'){results.push({id,checked:[],derived:plugin.configKeys.map(key=>({key,reason:'specialized preset overview editor; covered by test-preset-model-ui'})),ok:true});continue;}
     if (['ctx-chat-style','ctx-context-dynamics','ctx-context-lifecycle','ctx-context-runtime','ctx-context-session'].includes(id) && plugin.configKeys.every(key=>key==='disabledBlocks')) {
       assert.equal(await page.locator('[data-component-id="'+id+'"],.comp-card[data-id="'+id+'"]').count(),0);
       results.push({id,checked:[],derived:plugin.configKeys.map(key=>({key,reason:'internal prompt assembly; registry only'})),ok:true});continue;

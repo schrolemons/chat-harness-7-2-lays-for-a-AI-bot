@@ -1,6 +1,16 @@
 import {classifySnapshot} from './web-watch-browser-session.mjs';
 import crypto from 'node:crypto';
 const origin=url=>{try{return new URL(url).origin;}catch{return '';}};
+export async function resumeWaitingLogin({target,recovery,request}){
+ if(!target||recovery.get(target.url).phase!=='waiting')return false;
+ return await request([target])===true;
+}
+export async function focusLoginPage(browser,page,{owned=false}={}){
+ await page.bringToFront().catch(()=>{});
+ if(owned)for(const other of await browser.pages()){
+  if(other!==page&&!other.isClosed()&&other.url()==='about:blank')await other.close().catch(()=>{});
+ }
+}
 export async function reuseLoginPage(browser,target,{owned=false}={}){
  const pages=(await browser.pages()).filter(page=>!page.isClosed()),matching=pages.filter(page=>origin(page.url())===origin(target.url));
  const selected=matching.at(-1)||await browser.newPage();

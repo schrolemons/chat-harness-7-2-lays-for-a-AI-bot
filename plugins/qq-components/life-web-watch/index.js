@@ -44,7 +44,7 @@ export function createPlugin(ctx) {
         return { path: script, description, health: cfg.scriptCollabEnabled === false || !scriptPaths.includes(script) ? 'paused' : recent ? (beat.ok === false ? 'red' : beat.mode === 'fallback' ? 'fallback' : 'green') : Number(beat.at)>0 ? 'stale' : 'unknown', checkedAt: beat.at || null, hint: beat.hint || (recent ? '最近有运行心跳' : '尚未接入运行心跳') };
       });
       const sites = knownSites().map(site => ({ ...site, health: state.monitorHealth?.[site.url] || null }));
-      return { ok: true, sites:sites.map(site=>{const entry=recovery.get(site.url),health={...(site.health||{})};if(['waiting','paused'].includes(entry.phase))health.auth='red';else if(entry.phase==='needed')health.auth='unknown';else if(entry.recoveredAt>Number(health.checkedAt||0))health.auth='green';return {...site,health,loginRecovery:{...entry,...recovery.policy}};}), scripts };
+      return { ok: true, sites:sites.map(site=>{const entry=recovery.status(site.url),health={...(site.health||{})};if(['waiting','paused'].includes(entry.phase))health.auth='red';else if(entry.phase==='needed')health.auth='unknown';else if(entry.phase==='error')Object.assign(health,{fetch:'red',auth:'unknown',checkedAt:entry.checkedAt,hint:entry.checkError});else if(entry.recoveredAt>Number(health.checkedAt||0))health.auth='green';return {...site,health,loginRecovery:{...entry,...recovery.policy}};}), scripts };
     }
   });
   // Admin intent travels through the existing admin-only config route, never an AI tool.
@@ -68,10 +68,12 @@ export function createPlugin(ctx) {
       void (async()=>{for(const item of recovery.pendingNotices()){if(!recovery.pendingNotices().some(current=>current.id===item.id))continue;try{const key='private:'+String(ctx.capabilities.getOwnerQQ?.()||'');const result=await ctx.capabilities.sendNotificationDetailed(key,item.text,{id:item.id,sourceAt:item.sourceAt,expiresAt:item.expiresAt});recovery.noticeResult(item.id,result?.ok===true,result?.reason||'');}catch(error){recovery.noticeResult(item.id,false,error.message);break;}}})().catch(error=>ctx.warn?.('登录提示处理失败：'+error.message));
     }
     const hasWebWork = cfg.webWatchEnabled !== false && watchUrls.some(site=>recovery.canCheck(site.url,now));
-    if (!hasWebWork) return;
+    const waiting=knownSites().find(site=>recovery.get(site.url).phase==='waiting');
+    if (!hasWebWork&&!waiting) return;
     const spawn = ctx.capabilities?.spawnWebWatch;
     if (typeof spawn !== 'function') return;
     if (leaseActive(path.join(ctx.root, 'state', 'login-window.lock')) || leaseActive(path.join(ctx.root, 'state', 'web-watch.lock'))) return;
+    if(waiting)return requestSpawn(['--force','--retry-url',waiting.url]);
     const pending=knownSites().find(site=>{const entry=recovery.get(site.url);return entry.phase==='needed'&&entry.requestedAt&&entry.requestedUrl===site.url;});
     if(pending)return requestSpawn(['--force','--retry-url',pending.url]);
     const s = ctx.state.get(), t = Number(now) || Date.now();

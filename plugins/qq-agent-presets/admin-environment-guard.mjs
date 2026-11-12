@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isAdminEnvironmentAuthorized} from '../../src/tools/admin-policy.js';
+import {adminPresetConfig} from '../../src/preset-policy.js';
 
 export const name='admin-environment-guard';
 export const inject=['tools','agents'];
@@ -16,7 +17,7 @@ export function adminToolPermission(base,sessionId,{agent,agents}={}) {
     const cfg=read(base,'config.json'),state=read(base,'state/sessions.json');
     const policy=loadInstanceSessionPolicy({root:base,env:{}});
     const ownerKey='private:'+String(cfg.ownerQQ||''),loaded=String(state.sessionPresets?.[ownerKey]||'');
-    const admin=cfg.socialV2?.adminDev||{},selected=policy.resolvePreset(String(admin.preset||loaded));
+    const admin=adminPresetConfig(cfg.socialV2?.adminDev),selected=policy.resolvePreset(admin.preset);
     if(!isAdminEnvironmentAuthorized({owner:true,enabled:admin.enabled,selectedPreset:selected,loadedPreset:loaded,
       hasSession:!!state.sessions?.[ownerKey],knownPresets:[loaded],presetMap:policy.presetMap}))return '管理员环境未启用或预设已降权，已拒绝执行';
     if(sessionId && sessionId===state.sessions[ownerKey])return;
