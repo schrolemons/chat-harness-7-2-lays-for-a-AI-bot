@@ -1,5 +1,9 @@
 # Chat Bridge for DeepSeek Harness
 
+![项目封面](docs/assets/project-cover.svg)
+
+[安装与启停](#windows-安装与启停) · [正式发布包](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/latest) · [维护与检查](docs/MAINTENANCE.md) · [问题反馈](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/issues)
+
 一个面向 QQ 私聊与群聊的有状态 Agent harness，以 DeepSeek Harness（DSH）为模型、会话与工具宿主，通过 SnowLuma 接入 QQ。它在消息收发之外，管理上下文装填、记忆、人物身份、发送计划、等待、主动行为和运行观测。
 
 Chat Bridge 源自 QQ Bridge，基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.5.1**，通过独立运行目录接入 DSH；二代工具驱动聊天是主路径，一代聊天保留兼容入口。

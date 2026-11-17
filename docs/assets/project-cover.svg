@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+<rect width="1280" height="640" fill="#111B24"/><rect x="0" y="0" width="12" height="640" fill="#8DC4AD"/>
+<path d="M824 0v640M0 533h1280" stroke="#2A3741"/>
+<g font-family="Segoe UI,Microsoft YaHei,sans-serif">
+<text x="66" y="76" fill="#DFE4E3" font-size="23" letter-spacing="3">SCHROLEMONS / PROJECTS</text>
+<text x="1207" y="78" fill="#8DC4AD" text-anchor="end" font-size="28">02</text>
+<rect x="66" y="169" width="42" height="3" fill="#8DC4AD"/>
+<text x="66" y="213" fill="#8DC4AD" font-size="20" letter-spacing="2">AI / CHAT SYSTEM</text>
+<text x="62" y="305" fill="#F6F1E7" font-weight="600" font-size="65">Chat Bridge</text>
+<text x="66" y="365" fill="#BEC9CD" font-size="29">连接会话、工具与聊天的有状态框架</text>
+<text x="66" y="488" fill="#82959F" font-size="19">chat-harness-7-2-lays-for-a-AI-bot</text>
+<text x="66" y="591" fill="#C8D2D6" font-size="21">代码 · 工具 · 可复用的实践</text>
+<text x="1207" y="591" fill="#8DC4AD" text-anchor="end" font-size="21">github.com/schrolemons</text>
+</g><g fill="none" stroke="#8DC4AD" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><rect x="880" y="210" width="230" height="117" rx="14"/><rect x="940" y="350" width="230" height="117" rx="14"/><path d="M910 250L1077 250"/><path d="M910 284L1035 284"/><path d="M970 390L1137 390"/><path d="M970 425L1095 425"/></g></svg>
