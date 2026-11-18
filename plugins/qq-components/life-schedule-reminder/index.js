@@ -154,6 +154,7 @@ function view(item, cfgObj) {
       : Math.max(remindAt, Date.now());
   return {
     id: item.id,
+    ...(item.exampleId ? { exampleId: item.exampleId } : {}),
     key: item.key,
     title: item.title,
     dueAt: item.dueAt,
@@ -216,7 +217,7 @@ export function createPlugin(ctx) {
     return 'sch-' + Date.now().toString(36) + '-' + idSeed.toString(36) + Math.random().toString(36).slice(2, 5);
   }
 
-  function addItem(payload = {}) {
+  function addItem(payload = {}, exampleId = '') {
     const key = normalizeKey(payload.key);
     if (!key) return { ok: false, error: 'key 必须是 private:QQ号 或 group:群号' };
     const title = String(payload.title ?? '').trim().slice(0, 120);
@@ -247,6 +248,7 @@ export function createPlugin(ctx) {
       intervalMinutes: interval.minutes,
       createdAt: Date.now()
     };
+    if (exampleId) item.exampleId = exampleId;
     // 只在调用方明确给了提前量时才落盘：未指定 = 跟随全局默认，旧数据/新数据都不多写字段。
     if (lead.explicit) item.leadMinutes = lead.minutes;
     st.items.push(item);
@@ -262,6 +264,21 @@ export function createPlugin(ctx) {
       leadClamped: !!lead.clamped,
       message: '已登记，' + fmtLocal(dueAt) + ' 的事，从提前 ' + lead.minutes + ' 分钟开始，每 ' + interval.minutes + ' 分钟提醒一次，直到你明确说“我已经去做这事了”' + note
     };
+  }
+
+  // Console examples must never use the ordinary add path's oldest-item eviction.
+  // This synchronous service inspects the entire current state before adding.
+  function appendIfAbsent(payload = {}) {
+    const key = normalizeKey(payload.key);
+    const exampleId = String(payload.exampleId ?? '').trim();
+    if (!key) return { ok: false, error: 'key 必须是 private:QQ号 或 group:群号' };
+    if (!/^[a-z][a-z0-9-]{0,63}:v[1-9]\d{0,3}$/.test(exampleId)) return { ok: false, error: 'exampleId 必须是稳定的模板名:v版本号' };
+    const st = state();
+    const existing = st.items.find(item => item.key === key && (item.exampleId === exampleId || (!item.exampleId && String(item.detail || '').includes('[example:' + exampleId + ']'))));
+    if (existing) return { ok: true, added: 0, duplicated: true, item: viewOf(existing) };
+    if (st.items.length >= maxItems()) return { ok: false, error: 'SCHEDULE_CAPACITY', limit: maxItems(), count: st.items.length };
+    const result = addItem(payload, exampleId);
+    return result.ok ? { ...result, added: result.duplicated ? 0 : 1 } : result;
   }
 
   function findItem(st, key, id, match) {
@@ -494,6 +511,7 @@ export function createPlugin(ctx) {
     services: {
       schedules: {
         add: (payload = {}) => addItem(payload),
+        appendIfAbsent: (payload = {}) => appendIfAbsent(payload),
         update: (payload = {}) => updateItem(payload),
         complete: (payload = {}) => completeItem(payload),
         list: (payload = {}) => listItems(payload),

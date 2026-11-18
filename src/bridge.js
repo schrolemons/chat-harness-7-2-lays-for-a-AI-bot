@@ -5565,6 +5565,32 @@ async function main() {
           const body = await readBody();
           const key = String(body.key ?? '').trim();
           if (!/^(group|private):\d+$/.test(key)) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
+          if (Object.hasOwn(body, 'appendSlots')) {
+            // Append-only console operation: no await between reading the latest state and saving.
+            // Existing IDs/times always win; this operation cannot edit or unlock old slots.
+            const proposed = body.appendSlots;
+            if (!Array.isArray(proposed) || proposed.length > 20 || body.reset === true || Object.hasOwn(body, 'slots')
+              || proposed.some(slot => !slot || typeof slot !== 'object' || !Number.isInteger(slot.hour) || slot.hour < 0 || slot.hour > 23 || !Number.isInteger(slot.minute) || slot.minute < 0 || slot.minute > 59)) {
+              sendJson({ ok: false, error: 'appendSlots 必须是最多 20 个有效时段的数组，且不能与 slots/reset 同时使用' }, 400); return;
+            }
+            const current = allTimeBubbleSlotsV2(key);
+            if (timeBubbleLocksByKey.get(key) === true) { sendJson({ ok: false, error: 'LOCKED_SCHEDULE', allLocked: true, all: current }, 409); return; }
+            const merged = [...current], addedSlots = [];
+            for (const slot of sanitizeTimeBubbleSlotsV2(proposed)) {
+              if (merged.some(existing => existing.id === slot.id || (existing.hour === slot.hour && existing.minute === slot.minute))) continue;
+              merged.push(slot);
+              addedSlots.push(slot);
+            }
+            const configured = Number(pluginHost.get('life-proactive-time-bubble')?.config?.maxBubblesPerDay);
+            const cap = Math.min(20, Number.isFinite(configured) ? Math.max(0, Math.round(configured)) : 3);
+            if (addedSlots.length && merged.length > cap) {
+              sendJson({ ok: false, error: 'TIME_BUBBLE_CAPACITY', limit: cap, count: current.length, all: current }, 409); return;
+            }
+            const updated = addedSlots.length ? setTimeBubbleSlotsV2(key, merged, { actor: 'console' }) : { slots: current, allLocked: false };
+            if (updated.rejected) { sendJson({ ok: false, error: 'LOCKED_SCHEDULE', allLocked: true, all: updated.slots }, 409); return; }
+            sendJson({ ok: true, key, added: addedSlots.length, addedSlots, all: updated.slots, slots: updated.slots.filter(slot => slot.enabled !== false), allLocked: updated.allLocked });
+            return;
+          }
           if (body.reset === true) {
             const current = allTimeBubbleSlotsV2(key);
             if (timeBubbleLocksByKey.get(key) === true || current.some((slot) => slot.locked)) { sendJson({ ok: false, error: 'LOCKED_SCHEDULE', allLocked: timeBubbleLocksByKey.get(key) === true, slots: current }, 409); return; }
@@ -7672,17 +7698,19 @@ async function main() {
             sendJson({ ok: true, conversations });
             return;
           }
-          // 日程动作：add / list / update / complete / cancel。
-          const method = action === 'add' ? 'add' : action === 'cancel' ? 'cancel' : action === 'list' ? 'list' : action === 'update' ? 'update' : action === 'complete' ? 'complete' : '';
+          // appendIfAbsent is console-only and never evicts existing schedule records.
+          if (action === 'appendIfAbsent' && agentCall) { sendJson({ ok: false, error: '示例追加仅控制台可用' }, 403); return; }
+          const method = action === 'appendIfAbsent' ? 'appendIfAbsent' : action === 'add' ? 'add' : action === 'cancel' ? 'cancel' : action === 'list' ? 'list' : action === 'update' ? 'update' : action === 'complete' ? 'complete' : '';
           if (!validKey) { sendJson({ ok: false, error: 'key 必须是 private:QQ号 或 group:群号' }, 400); return; }
           if (!method || !pluginHost.hasService('schedules', method)) {
-            sendJson({ ok: false, error: method ? '日程组件未启用（life-schedule-reminder）' : 'action 必须是 add / list / update / complete / cancel' }, method ? 503 : 400);
+            sendJson({ ok: false, error: method ? '日程组件未启用（life-schedule-reminder）' : 'action 必须是 add / appendIfAbsent / list / update / complete / cancel' }, method ? 503 : 400);
             return;
           }
           let out = null;
-          if (method === 'add') {
-            out = await pluginHost.callService('schedules', 'add', {
+          if (method === 'add' || method === 'appendIfAbsent') {
+            out = await pluginHost.callService('schedules', method, {
               key, title: body.title, when: body.when, dueAt: body.dueAt,
+              ...(method === 'appendIfAbsent' ? { exampleId: body.exampleId } : {}),
               place: body.place, detail: body.detail, repeat: body.repeat,
               leadMinutes: body.leadMinutes ?? body.remindBeforeMinutes,
               intervalMinutes: body.intervalMinutes
@@ -7703,7 +7731,7 @@ async function main() {
             });
           }
           const ok = !!(out && typeof out === 'object' && out.ok !== false);
-          sendJson(out && typeof out === 'object' ? out : { ok: false, error: '日程组件没有返回结果' }, ok ? 200 : 400);
+          sendJson(out && typeof out === 'object' ? out : { ok: false, error: '日程组件没有返回结果' }, ok ? 200 : (out?.error === 'SCHEDULE_CAPACITY' ? 409 : 400));
           return;
         }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/memory-update') {

@@ -17,7 +17,23 @@ window.__ModuleLoader__.load({
     var exports = module.exports;
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
 
-    const SERVICE = 'http://127.0.0.1:3199';
+    const DEFAULT_PORTS = { dsh: 3080, console: 3100, snowHttp: 3000, snowWs: 3001, launcher: 3199, snowWebui: 5099 };
+    const PORT_LABELS = { dsh: 'DSH HTTP 端口', console: '桥接控制台端口', snowHttp: 'SnowLuma HTTP 端口',
+      snowWs: 'SnowLuma WebSocket 端口', launcher: '启动器服务端口', snowWebui: 'SnowLuma WebUI 端口' };
+    function localServiceUrl(value) {
+      try {
+        const url = new URL(value);
+        const port = url.port === '' ? 80 : Number(url.port);
+        if (url.protocol === 'http:' && url.hostname === '127.0.0.1' && !url.username && !url.password &&
+          url.pathname === '/' && !url.search && !url.hash && port >= 1 && port <= 65535) return url.origin;
+      } catch {}
+      return '';
+    }
+    let SERVICE = localServiceUrl(window.__qqLauncherServiceUrl) || 'http://127.0.0.1:3199';
+    function adoptService(data) {
+      const next = localServiceUrl(data.serviceUrl);
+      if (next) { SERVICE = next; window.__qqLauncherServiceUrl = next; }
+    }
     const POLL_MS = 3000;
     const TITLEBAR_HEIGHT = 40;
     let consoleUrl = 'http://127.0.0.1:3100';
@@ -155,7 +171,7 @@ window.__ModuleLoader__.load({
       };
       const restart = actionButton('qq-launcher-restart', '重启', '重启 bot（先停止守护和桥接）', 'restart');
       const stop = actionButton('qq-launcher-stop', '关闭', '关闭 bot（保留 QQ 和 DSH）', 'stop');
-      const settings = actionButton('qq-launcher-settings', '设置', '机器人 QQ、管理员和白名单设置', 'settings');
+      const settings = actionButton('qq-launcher-settings', '设置', '机器人 QQ、管理员、白名单和本机端口设置', 'settings');
       settings.setAttribute('aria-expanded', 'false');
       settings.setAttribute('aria-controls', 'qq-launcher-settings-panel');
       return { el, btn, d, txt, restart, stop, settings };
@@ -189,7 +205,13 @@ window.__ModuleLoader__.load({
       const owner = field('qq-launcher-owner-qq', '管理员 QQ');
       const privates = field('qq-launcher-allow-private', '私聊白名单', true);
       const groups = field('qq-launcher-allow-groups', '群白名单', true);
-      const hint = document.createElement('div'); hint.textContent = '多个 QQ / 群号可用空格、逗号或换行分隔。机器人 QQ 为必填。';
+      const ports = {};
+      for (const key of Object.keys(DEFAULT_PORTS)) {
+        const input = field('qq-launcher-port-' + key, PORT_LABELS[key]);
+        input.required = true; input.pattern = '[0-9]{1,5}';
+        ports[key] = input;
+      }
+      const hint = document.createElement('div'); hint.textContent = '多个 QQ / 群号可用空格、逗号或换行分隔。机器人 QQ 为必填。端口为 1–65535，实例内不能重复；同时运行的其他实例也需使用不同端口。修改连接端口将切换对应本机服务；未修改的远程地址保持不变。DSH、QQ / SnowLuma 和桥接端口需在相应服务重启后生效。';
       Object.assign(hint.style, { marginTop: '8px', color: '#667080', fontSize: '12px' });
       settingsMessage = document.createElement('div'); settingsMessage.id = 'qq-launcher-settings-message';
       settingsMessage.setAttribute('role', 'status'); settingsMessage.setAttribute('aria-live', 'polite');
@@ -206,7 +228,7 @@ window.__ModuleLoader__.load({
       smallButton('qq-launcher-settings-cancel', '关闭').addEventListener('click', closeSettings);
       form.addEventListener('submit', saveSettings);
       form.append(hint, settingsMessage, actions); panel.append(title, form);
-      settingsFields = { bot, owner, privates, groups };
+      settingsFields = { bot, owner, privates, groups, ports };
       return panel;
     }
 
@@ -214,6 +236,7 @@ window.__ModuleLoader__.load({
       const res = await fetch(SERVICE + '/config', { cache: 'no-store', signal: AbortSignal.timeout(6000) });
       const data = await res.json();
       if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+      adoptService(data);
       return data;
     }
 
@@ -240,6 +263,7 @@ window.__ModuleLoader__.load({
         settingsFields.owner.value = String(data.ownerQQ ?? '');
         settingsFields.privates.value = (data.allow?.private || []).join('\n');
         settingsFields.groups.value = (data.allow?.groups || []).join('\n');
+        for (const key of Object.keys(DEFAULT_PORTS)) settingsFields.ports[key].value = String(data.ports?.[key] ?? DEFAULT_PORTS[key]);
         settingsRevision = data.revision || '';
         settingsMessage.textContent = action && !data.botUin ? '请先填写机器人 QQ；保存后继续。'
           : data.live ? '已连接当前运行配置。管理员和白名单保存后实时更新。' : '已读取 config.json；保存后供下次启动使用。';
@@ -257,16 +281,28 @@ window.__ModuleLoader__.load({
       if (!/^[1-9]\d{4,19}$/.test(botUin)) {
         settingsMessage.textContent = '请填写有效的机器人 QQ 号（必填）'; settingsFields.bot.focus(); return;
       }
+      const ports = {}, used = new Set();
+      for (const key of Object.keys(DEFAULT_PORTS)) {
+        const input = settingsFields.ports[key];
+        const raw = input.value.trim(), value = Number(raw);
+        if (!/^\d+$/.test(raw) || !Number.isInteger(value) || value < 1 || value > 65535 || used.has(value)) {
+          settingsMessage.textContent = PORT_LABELS[key] + '必须为 1–65535 的整数，且不能与本实例其他端口重复';
+          input.focus(); return;
+        }
+        used.add(value); ports[key] = value;
+      }
       settingsSaving = true; settingsSave.disabled = true;
       const split = value => value.split(/[\s,，;；]+/u).filter(Boolean);
       try {
         const res = await fetch(SERVICE + '/config', { method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ botUin, ownerQQ: settingsFields.owner.value.trim(), revision: settingsRevision,
+          body: JSON.stringify({ botUin, ownerQQ: settingsFields.owner.value.trim(), revision: settingsRevision, ports,
             allow: { private: split(settingsFields.privates.value), groups: split(settingsFields.groups.value) } }),
           signal: AbortSignal.timeout(12000) });
         const data = await res.json();
         if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
         if (disposed) return;
+        // The host returns this only after arranging an after-response rebind.
+        adoptService(data);
         settingsRevision = data.revision || '';
         settingsMessage.textContent = data.message || '已保存到真实配置';
         const action = pendingAction;

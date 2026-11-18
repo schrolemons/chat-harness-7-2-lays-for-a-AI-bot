@@ -1,0 +1,108 @@
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { createInstancePresetWrapper } from './dsh-instance-preset.mjs';
+
+const instancesKey = Symbol.for('qq-bridge.dsh-instance-scopes.v1');
+
+function canonicalRoot(root) {
+  if (typeof root !== 'string' || !path.isAbsolute(root)) throw new Error('Instance root must be an absolute directory path');
+  const normalized = path.normalize(root).replace(/[\\/]+$/, '');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+/** Resolve through the live host loader; the loader.import second argument is NOT a URL. */
+async function importHost(ctx, name, hostImport) {
+  const loader = ctx.loader;
+  const baseUrl = ctx.root.baseUrl || loader.config?.baseUrl || loader.ctx?.baseUrl;
+  if (hostImport) return hostImport(name, baseUrl);
+  if (loader.internal?.import) {
+    if (!baseUrl) throw new Error('The active DSH host loader has no host baseUrl');
+    return loader.internal.import(name, baseUrl, {});
+  }
+  if (typeof loader.import === 'function') return loader.import(name);
+  throw new Error('The active DSH host loader cannot import runtime modules');
+}
+
+/**
+ * Own only an instance scope and its preset registrations. No profile/session/filesystem writes.
+ * Caller context must inject loader, tools and agentPresets. Definitions are native parsed
+ * preset definitions. Explicit presetIdMap entries can preserve existing private preset IDs.
+ * Starts closed: await all MCP attachments through result.ctx, then call result.activate().
+ * Disabling closes retained agents before disposing tools; a later activation of the same
+ * instance ID and directory restores their stable scope parent and shared guard state.
+ */
+export async function createInstanceScope(ctx, { instanceId, root, label = instanceId, definitions = [], presetIdMap = {}, hostImport } = {}) {
+  if (typeof instanceId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(instanceId)) throw new Error('Invalid instanceId');
+  if (!Array.isArray(definitions)) throw new Error('Preset definitions must be an array');
+  const directory = canonicalRoot(root);
+  const presetMap = Object.create(null);
+  const usedIds = new Set();
+  for (const definition of definitions) {
+    if (typeof definition?.id !== 'string' || !definition.id.trim() || !Array.isArray(definition.plugins)) throw new Error('Invalid preset definition');
+    if (Object.hasOwn(presetMap, definition.id)) throw new Error('Duplicate source preset ID');
+    const id = Object.hasOwn(presetIdMap, definition.id) ? presetIdMap[definition.id] : `${instanceId}:${definition.id}`;
+    if (typeof id !== 'string' || !id.trim() || usedIds.has(id)) throw new Error('Invalid or duplicate mapped preset ID');
+    presetMap[definition.id] = id; usedIds.add(id);
+  }
+  const hostRoot = ctx.root;
+  if (!Object.hasOwn(hostRoot, instancesKey)) Object.defineProperty(hostRoot, instancesKey, { value: new Map() });
+  const instances = hostRoot[instancesKey];
+  let state = instances.get(instanceId);
+  if (state?.root !== undefined && state.root !== directory) throw new Error('Instance root changed; retained conversations require their original root');
+  if (state?.active) throw new Error(`Instance is already active: ${instanceId}`);
+  if (!state) { state = { root: directory, key: {}, enabled: false, active: null }; instances.set(instanceId, state); }
+  const token = {};
+  state.active = token; state.enabled = false;
+  // Retained generations outlive the declaring plugin's service access context.
+  const builtins = ctx.loader.builtins;
+  let scope, wrapper, wrapperName, retained = 0, closing = false, disposal;
+  const unregisters = [];
+  const cleanBuiltin = () => {
+    if (closing && retained === 0 && wrapperName && builtins[wrapperName] === wrapper) delete builtins[wrapperName];
+  };
+  const dispose = () => {
+    if (disposal) return disposal;
+    closing = true; state.enabled = false;
+    disposal = (async () => {
+      const results = await Promise.allSettled(unregisters.map(unregister => unregister()));
+      try { await scope?.dispose(); } catch (error) { results.push({ status: 'rejected', reason: error }); }
+      cleanBuiltin();
+      const errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
+      // Failed teardown must not admit a replacement while old services might remain.
+      if (errors.length) throw new AggregateError(errors, 'Instance disposal failed');
+      if (state.active === token) state.active = null;
+    })();
+    return disposal;
+  };
+  try {
+    const [scopeApi, loaderApi] = await Promise.all([
+      importHost(ctx, '@deepseek-ai/dsh-scope', hostImport),
+      importHost(ctx, '@deepseek-ai/cordis-plugin-loader', hostImport),
+    ]);
+    scope = scopeApi.createScope(ctx, state.key);
+    wrapperName = `qq-instance-${randomUUID()}`;
+    wrapper = createInstancePresetWrapper({ ...loaderApi, ...scopeApi }, {
+      state, retain: () => retained++, release: () => { retained--; cleanBuiltin(); },
+    });
+    builtins[wrapperName] = wrapper;
+    for (const definition of definitions) {
+      const plugins = structuredClone(definition.plugins);
+      unregisters.push(await ctx.agentPresets.register({
+        ...definition, id: presetMap[definition.id], name: `${label} · ${definition.name || definition.id}`,
+        plugins: [{ id: 'instance', name: `cordis:${wrapperName}`, config: { plugins } }],
+      }));
+    }
+    ctx.effect(() => dispose, 'bot-instance.scope');
+    return {
+      ctx: scope.ctx, presetMap: Object.freeze(presetMap),
+      activate() {
+        if (closing || state.active !== token) throw new Error('Instance is disposed');
+        state.enabled = true;
+      },
+      dispose,
+    };
+  } catch (error) {
+    try { await dispose(); } catch (cleanupError) { throw new AggregateError([error, cleanupError], 'Instance setup and rollback failed'); }
+    throw error;
+  }
+}

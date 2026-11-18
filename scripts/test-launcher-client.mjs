@@ -4,11 +4,12 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 async function page(t, options = {}) {
-  const nodes = new Map(), requests = [], opened = [];
+  const nodes = new Map(), requests = [], opened = [], payloads = [], allRequests = [];
   const roots = [], timers = new Set(), resizeListeners = new Set();
   let status = { light: 'red', starting: false, checks: {} }, api;
   let settings = { configured: !options.unconfigured, botUin: options.unconfigured ? '' : '123456789', ownerQQ: 234567890,
-    allow: { private: [345678901], groups: [456789012] }, revision: 'fixture' };
+    allow: { private: [345678901], groups: [456789012] }, revision: 'fixture',
+    ports: { dsh: 3080, console: 3100, snowHttp: 3000, snowWs: 3001, launcher: 3199, snowWebui: 5099 }, ...options.settings };
   const element = () => ({ style: {}, dataset: {}, handlers: {}, isConnected: true,
     children: [],
     focus() {},
@@ -21,16 +22,19 @@ async function page(t, options = {}) {
   body.append = host => { roots.push(host); };
   const document = { createElement: element, body, documentElement: element(), querySelector: () => element(),
     querySelectorAll: () => roots.filter(host => host.isConnected) };
-  const context = vm.createContext({ document, AbortSignal, Date, console, MutationObserver: class { observe() {} disconnect() {} },
+  const context = vm.createContext({ document, AbortSignal, Date, URL, console, MutationObserver: class { observe() {} disconnect() {} },
     setInterval: () => { const id = {}; timers.add(id); return id; }, clearInterval(id) { timers.delete(id); },
     window: { __ModuleLoader__: { load: mod => { api = mod.factory(() => ({})); } },
       open: (...args) => opened.push(args), addEventListener(event, fn) { resizeListeners.add(fn); },
       removeEventListener(event, fn) { resizeListeners.delete(fn); } },
     fetch: async (url, options = {}) => {
+      allRequests.push(url);
       if (url.endsWith('/config')) {
         if (options.method === 'POST') {
           requests.push(url);
-          settings = { ...JSON.parse(options.body), configured: true, ok: true };
+          payloads.push(JSON.parse(options.body));
+          settings = { ...JSON.parse(options.body), configured: true, ok: true,
+            serviceUrl: `http://127.0.0.1:${JSON.parse(options.body).ports?.launcher || 3199}` };
         }
         return { ok: true, json: async () => settings };
       }
@@ -56,7 +60,7 @@ async function page(t, options = {}) {
   await reload();
   t.after(() => { dispose?.(); });
   const click = async id => { await nodes.get(id).handlers.click(); await flush(); };
-  return { nodes, requests, opened, click, reload, dispose: () => dispose?.(), roots, timers, resizeListeners,
+  return { nodes, requests, opened, payloads, allRequests, click, reload, dispose: () => dispose?.(), roots, timers, resizeListeners,
     setStatus: async value => { status = value; await reload(); },
     submit: async () => { await nodes.get('qq-launcher-settings-form').handlers.submit({ preventDefault() {} }); await flush(); } };
 }
@@ -146,4 +150,48 @@ test('启动、等待登录、关闭和就绪各状态只显示一份对应文�
     assert.equal(live.length, 1);
     assert.equal(live[0].children[0].children[1].textContent, expected);
   }
+});
+
+test('设置显示六个端口，提交数字端口并在保存响应后使用新的本机服务地址', async t => {
+  const p = await page(t);
+  await p.click('qq-launcher-settings');
+  for (const [key, expected] of Object.entries({ dsh: '3080', console: '3100', snowHttp: '3000',
+    snowWs: '3001', launcher: '3199', snowWebui: '5099' })) {
+    assert.equal(p.nodes.get('qq-launcher-port-' + key)?.value, expected);
+  }
+  p.nodes.get('qq-launcher-port-launcher').value = '4199';
+  await p.submit();
+  assert.equal(p.requests[0], 'http://127.0.0.1:3199/config');
+  assert.equal(p.payloads[0].ports.launcher, 4199);
+  assert.equal(p.payloads[0].botUin, '123456789');
+  await p.click('qq-launcher-stop');
+  assert.equal(p.requests.at(-1), 'http://127.0.0.1:4199/stop');
+  await p.reload();
+  assert.equal(p.allRequests.at(-1), 'http://127.0.0.1:4199/status');
+});
+
+test('非法或重复端口在界面阻止保存，保持表单可修改', async t => {
+  const p = await page(t);
+  await p.click('qq-launcher-settings');
+  const input = p.nodes.get('qq-launcher-port-launcher');
+  assert.ok(input);
+  for (const invalid of ['0', '65536', '3000', '12.5', '4e3', '']) {
+    input.value = invalid;
+    await p.submit();
+    assert.equal(p.requests.length, 0);
+    assert.match(p.nodes.get('qq-launcher-settings-message').textContent, /端口/);
+    assert.equal(p.nodes.get('qq-launcher-settings-save').disabled, false);
+  }
+});
+
+test('启动器端口 80 保存后及热重载后均连接 HTTP 默认端口', async t => {
+  const p = await page(t);
+  await p.click('qq-launcher-settings');
+  p.nodes.get('qq-launcher-port-launcher').value = '80';
+  await p.submit();
+  assert.equal(p.payloads[0].ports.launcher, 80);
+  await p.click('qq-launcher-stop');
+  assert.equal(p.requests.at(-1), 'http://127.0.0.1/stop');
+  await p.reload();
+  assert.equal(p.allRequests.at(-1), 'http://127.0.0.1/status');
 });

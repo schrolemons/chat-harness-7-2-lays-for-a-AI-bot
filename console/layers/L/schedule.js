@@ -1,10 +1,11 @@
 
 import { api, esc } from '../../shared/api.js';
-import { loadV2FollowupSessionLimits } from './time-bubbles.js';
+import { loadV2FollowupSessionLimits, appendExampleTimeBubbleRows } from './time-bubbles.js';
+import { initializeProactiveExamples, updateExampleConversations } from './proactive-examples-ui.js';
 // layers/L/schedule: explicit imports; initialize is called in the application startup order.
 
 
-async function refreshV2Schedule() {
+async function refreshV2Schedule({ preserveDrafts = false } = {}) {
   const msg = document.getElementById('v2ScheduleMsg');
   const listEl = document.getElementById('v2ScheduleList');
   const sel = document.getElementById('v2ReminderKey');
@@ -15,6 +16,7 @@ async function refreshV2Schedule() {
       api('/api/socialV2/schedules', 'POST', { action: 'list' })
     ]);
     const convs = r.conversations || [];
+    updateExampleConversations(convs);
     const schMap = new Map();
     for (const c of (sch && sch.conversations) || []) schMap.set(c.key, c);
     // 填充各自功能的会话下拉；跟进覆盖值仅适用于私聊。
@@ -36,8 +38,9 @@ async function refreshV2Schedule() {
         ? privateConvs.map((c) => '<option value="' + esc(c.key) + '">' + esc(c.key) + '</option>').join('')
         : '<option value="">（暂无私聊会话）</option>';
       if (previous && privateConvs.some((c) => c.key === previous)) followupKey.value = previous;
-      if (followupKey.value) await loadV2FollowupSessionLimits(followupKey.value);
-      else await loadV2FollowupSessionLimits('');
+      if (!preserveDrafts || followupKey.value !== previous) {
+        await loadV2FollowupSessionLimits(followupKey.value || '');
+      }
     }
     const cur = sel.value;
     sel.innerHTML = convs.length
@@ -101,7 +104,22 @@ async function refreshV2Schedule() {
       }
       rows.push('</section>');
     }
+    // Capture at render time so typing while the refresh request is pending also survives.
+    const drafts = new Map();
+    if (preserveDrafts) listEl.querySelectorAll('input[data-lead-id]').forEach(input => {
+      drafts.set(JSON.stringify([input.dataset.leadKey, input.dataset.leadId]), {
+        lead: input.value,
+        interval: input.closest('.schedule-card-lead')?.querySelector('input[data-interval-id]')?.value
+      });
+    });
     listEl.innerHTML = rows.join('') || '<div class="schedule-empty">暂无待办日程。选择会话并填写时间与内容即可添加。</div>';
+    if (preserveDrafts) listEl.querySelectorAll('input[data-lead-id]').forEach(input => {
+      const draft = drafts.get(JSON.stringify([input.dataset.leadKey, input.dataset.leadId]));
+      if (!draft) return;
+      input.value = draft.lead;
+      const interval = input.closest('.schedule-card-lead')?.querySelector('input[data-interval-id]');
+      if (interval && draft.interval !== undefined) interval.value = draft.interval;
+    });
     listEl.querySelectorAll('[data-sch-delete]').forEach((btn) => btn.addEventListener('click', async () => {
       if (!confirm('删除日程「' + decodeURIComponent(btn.dataset.schTitle || '') + '」？')) return;
       const res = await api('/api/socialV2/schedules', 'POST', { action: 'cancel', key: decodeURIComponent(btn.dataset.schKey), id: btn.dataset.schId });
@@ -147,7 +165,10 @@ async function refreshV2Schedule() {
 }
 
 export function initialize() {
-
+initializeProactiveExamples(async ({ key, template, result }) => {
+  if (template.kind === 'bubbles') appendExampleTimeBubbleRows(key, result.slots);
+  await refreshV2Schedule({ preserveDrafts: true });
+});
 
 document.getElementById('v2ScheduleRefresh').addEventListener('click', refreshV2Schedule);
 document.getElementById('v2ReminderAdd').addEventListener('click', async () => {
