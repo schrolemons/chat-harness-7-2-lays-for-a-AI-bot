@@ -43,3 +43,14 @@ test('a staged image can be the content for an in progress relay request', async
   assert.equal(sends.length, 1);
   assert.deepEqual(sends[0].imageIds, imageIds);
 });
+
+test('ordinary chat never waits for deferred image refs; explicit relay resolves raw cached refs without analysis', async () => {
+  const {plugin,sends}=fixture();let loads=0;
+  const imageIds=[{imageId:'a6d52e93-901f-4c93-9b0f-58802a1d02bb',name:'QQ暂存图片-1.png',source:'qq-incoming'}];
+  const loadImageIds=async()=>{loads++;return imageIds;};
+  assert.equal(await plugin.hooks.relayIncoming({key:'private:1001',plainContent:'看看这个，一张图片',allowed:true,loadImageIds}),null);
+  assert.equal(loads,0);
+  const result=await plugin.hooks.relayIncoming({key:'private:1001',plainContent:'给小群带句话，晚点到',allowed:true,loadImageIds});
+  assert.equal(result.action,'relay');await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(loads,1);assert.deepEqual(sends[0].imageIds,imageIds);
+});

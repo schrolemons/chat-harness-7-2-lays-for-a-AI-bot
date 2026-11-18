@@ -1,11 +1,12 @@
 // Token 用量账本：把 DSH 会话事件里的 provider usage 落成「按会话 × 按回合」的可查明细，
-// 并在读取时用价目表折算成金额。
+// 读取时仅将供应商与模型精确匹配价目表的逐次用量折算成金额。
 //
 // 为什么这样设计（三条约束决定了实现形态）：
 //
-// 1. **权威总量来自 DSH 的 tokenUsage 投影，不来自桥接自己累加。**
+// 1. **普通请求总量来自 DSH 的 tokenUsage 投影。**
 //    `session/follow` 的 snapshot 帧带 `projections.values.tokenUsage`，是**整条会话日志**的
-//    累计桶（含桥接启动之前的历史）。桥接只补「基线之后」的增量，所以总量是精确的，
+//    普通请求累计桶（含桥接启动之前的历史）；它不含独立摘要调用。桥接补基线之后
+//    的普通增量，并单独保留 compaction/summary 的真实 usage，所以总量是精确的，
 //    不需要重放全部历史。
 //
 // 2. **逐轮明细靠事件折叠，且必须幂等。**
@@ -84,6 +85,7 @@ export function usageFromStream(stream) {
  */
 export function usageOfEvent(event) {
   if (!event || typeof event !== 'object') return undefined;
+  if (event.type === 'compaction/summary' && event.data?.llmStreamCall === true) return event.data.usage;
   if (event.type === 'assistant/message' && event.data?.usage !== undefined) return event.data.usage;
   if (event.type !== 'assistant/message' && event.type !== 'assistant/attempt') return undefined;
   return usageFromStream(event.data?.stream);
@@ -117,6 +119,7 @@ export function createTokenLedger({
   const retryAxis = new Map();
   /** sessionId -> 最近一次见到的会话 key（会话退役后仍可归属到原 QQ 会话） */
   const sessionKeys = new Map();
+  const sessionRoutes = new Map();
   /** sessionId -> 被淘汰（只剩累计值、无法再拆到某一轮）的采样汇总 */
   const evicted = new Map();
   let evictedDirty = false;
@@ -127,6 +130,16 @@ export function createTokenLedger({
   let lastIngestAt = 0;
   let lastCompactedAt = 0;
   let droppedLines = 0;
+
+  function evictionPrice(entry) {
+    const result={cost:0,byTier:{peak:0,off:0}};
+    // Legacy aggregates have no provider/model evidence: retain tokens, not guessed money.
+    for(const item of entry?.pricing || []){
+      const p=priceUsage(item.buckets,{provider:item.provider,model:item.model,at:item.at,table:priceTable});
+      result.cost+=p.cost.total;result.byTier[p.rates.tier]+=p.cost.total;
+    }
+    return result;
+  }
 
   function keyOf(sessionId) {
     let key;
@@ -160,12 +173,11 @@ export function createTokenLedger({
         sessionId: sid,
         key: record.key,
         buckets,
-        cost: Number(record.cost) || 0,
-        byTier: {
-          peak: Number(record.peak) || 0,
-          off: Number(record.off) || 0
-        },
-        estimated: record.estimated === true,
+        auxiliaryBuckets:normalizeUsage(record.auxiliaryBuckets),
+        maxAuxiliarySeq:Number.isFinite(Number(record.maxAuxiliarySeq))?Number(record.maxAuxiliarySeq):-1,
+        pricing: Array.isArray(record.pricing) ? record.pricing : [],
+        ...evictionPrice(record),
+        estimated: false,
         dropped: Number(record.dropped) || 0,
         maxSeq: Number.isFinite(Number(record.maxSeq)) ? Number(record.maxSeq) : -1
       });
@@ -210,10 +222,11 @@ export function createTokenLedger({
         retry,
         model: record.model,
         provider: record.provider,
+        ...(record.kind==='compaction'?{kind:'compaction',callId:record.callId}:{}),
         buckets
       });
       const axis = retryAxis.get(sid);
-      if (!axis || axis.seq <= seq) retryAxis.set(sid, { turn, step, retry, seq });
+      if (record.kind!=='compaction'&&(!axis || axis.seq <= seq)) retryAxis.set(sid, { turn, step, retry, seq });
       if (t > (sessionSeen.get(sid) ?? 0)) sessionSeen.set(sid, t);
       return true;
     }
@@ -225,6 +238,7 @@ export function createTokenLedger({
     samples.clear();
     retryAxis.clear();
     sessionKeys.clear();
+    sessionRoutes.clear();
     sessionSeen.clear();
     journalLines = 0;
     droppedLines = 0;
@@ -282,13 +296,16 @@ export function createTokenLedger({
       out.push({
         k: 'turn', t: s.t, sid: s.sessionId, key: s.key, seq: s.seq,
         turn: s.turn, step: s.step, retry: s.retry,
-        model: s.model, provider: s.provider, b: s.buckets
+        model: s.model, provider: s.provider, b: s.buckets,
+        ...(s.kind==='compaction'?{kind:s.kind,callId:s.callId}:{})
       });
     }
     for (const e of evicted.values()) {
       out.push({
         k: 'evict', t: sessionSeen.get(e.sessionId) ?? 0, sid: e.sessionId, key: e.key,
         b: e.buckets, cost: e.cost, peak: e.byTier.peak, off: e.byTier.off,
+        pricing: e.pricing,
+        auxiliaryBuckets:e.auxiliaryBuckets||ZERO_BUCKETS,maxAuxiliarySeq:e.maxAuxiliarySeq??-1,
         estimated: e.estimated, dropped: e.dropped, maxSeq: Number(e.maxSeq) >= 0 ? Number(e.maxSeq) : -1
       });
     }
@@ -329,6 +346,8 @@ export function createTokenLedger({
         sessionId: sample.sessionId,
         key: sample.key,
         buckets: { ...ZERO_BUCKETS },
+        auxiliaryBuckets:{...ZERO_BUCKETS},maxAuxiliarySeq:-1,
+        pricing: [],
         cost: 0,
         byTier: { peak: 0, off: 0 },
         estimated: false,
@@ -337,15 +356,18 @@ export function createTokenLedger({
         // 基线里了，再相加就是重复计费（见 evictionCovered()）。
         maxSeq: -1
       };
-      acc.buckets = addBuckets(acc.buckets, sample.buckets);
+      if(sample.kind==='compaction')acc.auxiliaryBuckets=addBuckets(acc.auxiliaryBuckets,sample.buckets);
+      else acc.buckets = addBuckets(acc.buckets, sample.buckets);
       const sampleSeq = Number(sample.seq);
       if (Number.isFinite(sampleSeq) && sampleSeq >= 0) {
-        acc.maxSeq = Math.max(Number(acc.maxSeq) >= 0 ? Number(acc.maxSeq) : -1, sampleSeq);
+        if(sample.kind==='compaction')acc.maxAuxiliarySeq=Math.max(acc.maxAuxiliarySeq??-1,sampleSeq);
+        else acc.maxSeq = Math.max(Number(acc.maxSeq) >= 0 ? Number(acc.maxSeq) : -1, sampleSeq);
       }
-      const p = priceUsage(sample.buckets, { model: sample.model, at: sample.t || now(), table: priceTable });
-      acc.cost += p.cost.total;
-      acc.byTier[p.rates.tier] += p.cost.total;
-      acc.estimated ||= p.rates.estimated;
+      const at=sample.t || now(),tier=isPeakAt(at,priceTable)?'peak':'off';
+      let priced=acc.pricing.find(row=>row.provider===sample.provider&&row.model===sample.model&&row.tier===tier);
+      if(!priced){priced={provider:sample.provider,model:sample.model,tier,at,buckets:{...ZERO_BUCKETS}};acc.pricing.push(priced);}
+      priced.buckets=addBuckets(priced.buckets,sample.buckets);
+      Object.assign(acc,evictionPrice(acc));
       acc.dropped += 1;
       if (sample.key) acc.key = sample.key;
       evicted.set(sample.sessionId, acc);
@@ -397,8 +419,12 @@ export function createTokenLedger({
     const t = Number.isFinite(Number(at)) ? Number(at)
       : (Number.isFinite(Number(event.time)) ? Number(event.time) : now());
     const seq = Number.isFinite(Number(event.seq)) ? Number(event.seq) : -1;
-    const eventModel = model ?? event.data?.model ?? event.data?.usage?.model;
-    const eventProvider = provider ?? event.data?.provider;
+    if(event.type==='model/selection'||event.type==='request/header'){
+      const route=event.type==='model/selection'?event.data:event.data?.header?.config;
+      if(route&&typeof route==='object')sessionRoutes.set(sessionId,{...(sessionRoutes.get(sessionId)||{}),...route});
+      return false;
+    }
+    const route=origin==='snapshot'?{}:sessionRoutes.get(sessionId)||{};
 
     if (event.type === 'llm/retry-started') {
       const turn = Number(event.data?.turn);
@@ -411,11 +437,19 @@ export function createTokenLedger({
       return false; // 轴本身不入账
     }
 
-    if (event.type !== 'assistant/message' && event.type !== 'assistant/attempt') return false;
+    const auxiliary=event.type==='compaction/summary'&&event.data?.llmStreamCall===true;
+    if (event.type !== 'assistant/message' && event.type !== 'assistant/attempt'&&!auxiliary) return false;
+    if(auxiliary&&seq<1)return false;
     const raw = usageOfEvent(event);
     if (!raw) return false;
-    const turn = Number(event.data?.turn);
-    const step = Number(event.data?.step);
+    const eventModel = auxiliary?event.data.model:raw.model ?? event.data?.model ?? model ?? route.model;
+    const eventProvider = auxiliary?event.data.provider:raw.provider ?? event.data?.provider ?? provider ?? route.provider;
+    const retiredThrough=Number(auxiliary?evicted.get(sessionId)?.maxAuxiliarySeq:evicted.get(sessionId)?.maxSeq);
+    if(seq>=0&&Number.isFinite(retiredThrough)&&retiredThrough>=seq)return false;
+    // A negative internal axis keeps an auxiliary call distinct from every
+    // ordinary reply/retry. UI labels it explicitly, never as a QQ reply turn.
+    const turn = auxiliary?-seq:Number(event.data?.turn);
+    const step = auxiliary?1:Number(event.data?.step);
     if (!Number.isFinite(turn) || !Number.isFinite(step)) return false;
     const axis = retryAxis.get(sessionId);
     const retry = axis && axis.turn === turn && axis.step === step ? axis.retry : 0;
@@ -432,11 +466,12 @@ export function createTokenLedger({
       turn, step, retry,
       model: eventModel ?? prev?.model,
       provider: eventProvider ?? prev?.provider,
+      ...(auxiliary?{kind:'compaction',callId:event.data.compactionId}:{}),
       b: buckets
     };
     samples.set(sk, {
       sessionId, key, seq, t, turn, step, retry,
-      model: record.model, provider: record.provider, buckets
+      model: record.model, provider: record.provider, ...(auxiliary?{kind:'compaction',callId:record.callId}:{}), buckets
     });
     if (t > (sessionSeen.get(sessionId) ?? 0)) sessionSeen.set(sessionId, t);
     lastIngestAt = now();
@@ -484,11 +519,13 @@ export function createTokenLedger({
   /** 摄入 snapshot 的全部历史记录（逐轮明细回填）。 */
   function ingestSnapshotRecords({ sessionId, records, at } = {}) {
     if (!Array.isArray(records)) return 0;
-    let n = 0;
+    let n = 0, route = {};
     for (const entry of records) {
       const event = entry?.type === 'event' ? entry.event : entry;
       if (!event || typeof event !== 'object') continue;
-      if (ingestEvent({ sessionId, event, origin: 'snapshot', at })) n += 1;
+      if(event.type==='model/selection')route={...route,...event.data};
+      if(event.type==='request/header')route={...route,...event.data?.header?.config};
+      if (ingestEvent({ sessionId, event, origin: 'snapshot', at, model:route.model, provider:route.provider })) n += 1;
     }
     return n;
   }
@@ -504,8 +541,8 @@ export function createTokenLedger({
    * 而且 sessionTotals/sessionCost/turnRows 各扫一遍 = 3 倍），几千条采样、几十个会话
    * 就是百万级迭代。这里压成单遍 O(采样数)。
    *
-   * 基线单独计价（它没有逐时明细，只能整体按快照时刻的峰谷算），并只把
-   * `seq > 基线 seq` 的采样算进「权威累计」，避免和基线重复计费。
+   * token 总量仅将 `seq > 基线 seq` 的采样加到基线上；金额单独按所有可核验
+   * 逐次来源计价，不能把混合供应商的累计 token 按快照最后选择的模型重新定价。
    */
   function buildIndex() {
     const index = new Map();
@@ -525,8 +562,8 @@ export function createTokenLedger({
         index.set(s.sessionId, entry);
       }
       const base = baselines.get(s.sessionId);
-      const isLive = !base || s.seq > base.seq;
-      const p = priceUsage(s.buckets, { model: s.model, at: s.t || now(), table: priceTable });
+      const isLive = s.kind==='compaction'||!base || s.seq > base.seq;
+      const p = priceUsage(s.buckets, { model: s.model, provider:s.provider, at: s.t || now(), table: priceTable });
       entry.estimated ||= p.rates.estimated;
       entry.allCost += p.cost.total;
       entry.allByTier[p.rates.tier] += p.cost.total;
@@ -541,6 +578,7 @@ export function createTokenLedger({
           sessionId: s.sessionId,
           key: s.key,
           turn: s.turn,
+          ...(s.kind==='compaction'?{kind:s.kind,callId:s.callId}:{}),
           steps: 0,
           attempts: 0,
           startedAt: s.t,
@@ -592,19 +630,15 @@ export function createTokenLedger({
       const gone = evictionCovered(rawGone) ? null : rawGone;
       const liveBuckets = entry?.liveBuckets ?? { ...ZERO_BUCKETS };
       const cumulative = addBuckets(base?.buckets ?? ZERO_BUCKETS, gone?.buckets ?? ZERO_BUCKETS);
-      const total = addBuckets(cumulative, liveBuckets);
+      const total = addBuckets(addBuckets(cumulative, liveBuckets),rawGone?.auxiliaryBuckets);
       view.buckets = addBuckets(view.buckets, total);
 
-      let cost = (entry?.liveCost ?? 0) + (gone?.cost ?? 0);
-      view.byTier.peak += (entry?.liveByTier.peak ?? 0) + (gone?.byTier.peak ?? 0);
-      view.byTier.off += (entry?.liveByTier.off ?? 0) + (gone?.byTier.off ?? 0);
+      // Cumulative token baselines may span providers; only identified calls price money.
+      const oldPrice=evictionPrice(rawGone);
+      let cost = (entry?.allCost ?? 0) + oldPrice.cost;
+      view.byTier.peak += (entry?.allByTier.peak ?? 0) + oldPrice.byTier.peak;
+      view.byTier.off += (entry?.allByTier.off ?? 0) + oldPrice.byTier.off;
       view.estimated ||= (entry?.estimated ?? false) || (gone?.estimated ?? false);
-      if (base) {
-        const p = priceUsage(base.buckets, { model: base.model, at: base.t || now(), table: priceTable });
-        cost += p.cost.total;
-        view.byTier[p.rates.tier] += p.cost.total;
-        view.estimated ||= p.rates.estimated;
-      }
       view.cost += cost;
       if (entry) {
         for (const model of entry.models) models.add(model);
@@ -613,7 +647,7 @@ export function createTokenLedger({
           if (!view.firstAt || row.startedAt < view.firstAt) view.firstAt = row.startedAt;
           if (row.endedAt > view.lastAt) view.lastAt = row.endedAt;
         }
-        view.turns += entry.turns.size;
+        view.turns += [...entry.turns.values()].filter(row=>row.kind!=='compaction').length;
       }
       // 能拆到具体某一轮的花费 = 所有采样的花费之和；差额是只剩累计值的历史。
       const attributed = entry?.allCost ?? 0;
@@ -664,13 +698,13 @@ export function createTokenLedger({
         if (row.endedAt < start || row.endedAt >= end) continue;
         cost += row.cost;
         tokens += totalTokensOf(row.buckets);
-        turns += 1;
+        if(row.kind!=='compaction')turns += 1;
         steps += row.steps;
         if (conversationKey) {
           const item = byKey[conversationKey] ||= { cost: 0, tokens: 0, turns: 0, steps: 0, partial: false };
           item.cost += row.cost;
           item.tokens += totalTokensOf(row.buckets);
-          item.turns += 1;
+          if(row.kind!=='compaction')item.turns += 1;
           item.steps += row.steps;
         }
       }
@@ -681,7 +715,8 @@ export function createTokenLedger({
       const conversationKey = keyOf(sid);
       if (key && conversationKey !== key) continue;
       const unknownPeriod = (baselines.get(sid)?.t >= start && baselines.get(sid)?.t < end)
-        || (!evictionCovered(evicted.get(sid)) && evicted.has(sid));
+        || (!evictionCovered(evicted.get(sid)) && evicted.has(sid))
+        || totalTokensOf(evicted.get(sid)?.auxiliaryBuckets)>0;
       if (!unknownPeriod) continue;
       partial = true;
       if (conversationKey) (byKey[conversationKey] ||= { cost: 0, tokens: 0, turns: 0, steps: 0, partial: false }).partial = true;
@@ -743,7 +778,7 @@ export function createTokenLedger({
         peakWindows: priceTable.peakWindows,
         peakWeekdays: priceTable.peakWeekdays,
         holidayCount: (priceTable.holidays ?? []).length,
-        models: Object.fromEntries(Object.entries(priceTable.models).map(([name, m]) => [name, { label: m.label, off: m.off }]))
+        models: Object.fromEntries(Object.entries(priceTable.models).map(([name, m]) => [name, { provider:m.provider, label: m.label, off: m.off }]))
       },
       totals: {
         ...totals,
@@ -828,28 +863,26 @@ export function createTokenLedger({
     // 图上标的「轮次」其实一直是「请求数」，且这层去重是纯粹的死代码。
     const turnSeen = new Set();
     const rowTurnSeen = rows.map(() => new Set());
-    // 权威总额（含窗口之外）的三个组成部分，按 summary() 的同一口径在**同一次遍历**里累加：
-    //   ① 被淘汰采样的累计（evicted）② 投影基线自身 ③ 仍然逐轮可拆、且没被基线覆盖的采样（seq > 基线 seq）。
-    // 非 live 采样绝不能计入：基线已经包含了它的历史，再算一次就是重复计费，offChartCost 会凭空变大。
+    // 金额按 summary() 的同一口径累计可核验的逐次调用及来源明确的压缩桶。
+    // token 使用投影基线、未被覆盖的压缩桶和基线之后的采样，避免重复累计。
     let ledgerCost = 0;
     let ledgerBuckets = { ...ZERO_BUCKETS };
     for (const e of evicted.values()) {
-      if (evictionCovered(e)) continue; // 已被投影基线覆盖：再加一次就是重复计费
-      ledgerCost += Number(e.cost) || 0;
-      ledgerBuckets = addBuckets(ledgerBuckets, e.buckets);
+      ledgerCost += evictionPrice(e).cost;
+      if (!evictionCovered(e)) ledgerBuckets = addBuckets(ledgerBuckets, e.buckets);
+      ledgerBuckets=addBuckets(ledgerBuckets,e.auxiliaryBuckets);
     }
     for (const base of baselines.values()) {
-      // 与 sessionView() 同口径：基线没有逐时明细，按快照时刻（缺失时取当前）整体计价。
-      ledgerCost += priceUsage(base.buckets, { model: base.model, at: base.t || now(), table: priceTable }).cost.total;
+      // 基线只补 token 总量，不推断其中各供应商、模型的历史费用。
       ledgerBuckets = addBuckets(ledgerBuckets, base.buckets);
     }
     for (const s of samples.values()) {
       // 这条采样的计价只算一次：窗口内的桶与窗口外的"总额"共用同一个 p。
-      const p = priceUsage(s.buckets, { model: s.model, at: s.t || endAt, table: priceTable });
+      const p = priceUsage(s.buckets, { model: s.model, provider:s.provider, at: s.t || endAt, table: priceTable });
       const tokens = totalTokensOf(s.buckets);
       const base = baselines.get(s.sessionId);
-      if (!base || s.seq > base.seq) {
-        ledgerCost += p.cost.total;
+      ledgerCost += p.cost.total;
+      if (s.kind==='compaction'||!base || s.seq > base.seq) {
         ledgerBuckets = addBuckets(ledgerBuckets, s.buckets);
       }
       if (s.t < start || s.t >= end) continue;
@@ -865,12 +898,12 @@ export function createTokenLedger({
       row.tier = row.tier === null || row.tier === p.rates.tier ? p.rates.tier : 'mixed';
       row.keys.add(keyOf(s.sessionId) ?? s.key ?? null);
       const turnId = `${s.sessionId}|${s.turn}`;
-      if (!rowTurnSeen[idx].has(turnId)) {
+      if (s.kind!=='compaction'&&!rowTurnSeen[idx].has(turnId)) {
         rowTurnSeen[idx].add(turnId);
         row.turns += 1;
       }
       // 窗口级轮次：跨桶的同一回合只算一次（所以各桶 turns 之和 ≥ totals.turns）。
-      if (!turnSeen.has(turnId)) {
+      if (s.kind!=='compaction'&&!turnSeen.has(turnId)) {
         turnSeen.add(turnId);
         totals.turns += 1;
       }
@@ -923,7 +956,7 @@ export function createTokenLedger({
     const all = [...samples.values()].sort((a, b) => b.t - a.t);
     const out = [];
     for (const s of all.slice(0, n)) {
-      const p = priceUsage(s.buckets, { model: s.model, at: s.t || now(), table: priceTable });
+      const p = priceUsage(s.buckets, { model: s.model, provider:s.provider, at: s.t || now(), table: priceTable });
       out.push({
         time: s.t,
         key: keyOf(s.sessionId) ?? s.key ?? null,
@@ -931,7 +964,10 @@ export function createTokenLedger({
         turn: s.turn,
         step: s.step,
         retry: s.retry,
+        ...(s.kind==='compaction'?{kind:s.kind,callId:s.callId}:{}),
         model: s.model ?? null,
+        provider: s.provider ?? null,
+        priced: p.rates.matched,
         tokens: totalTokensOf(s.buckets),
         ...s.buckets,
         cost: p.cost.total,
@@ -963,6 +999,7 @@ export function createTokenLedger({
     samples.clear();
     retryAxis.clear();
     sessionKeys.clear();
+    sessionRoutes.clear();
     sessionSeen.clear();
     // 被淘汰采样汇总是「权威累计」的一部分：漏清它，控制台点完重置仍会报出旧花费，
     // 用户以为没清掉。更隐蔽的是 evictedDirty 若保持 true，下一次 maybeCompact() 会走

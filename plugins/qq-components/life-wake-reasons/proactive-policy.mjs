@@ -7,6 +7,7 @@ export const DEFAULT_PROACTIVE_POLICY = Object.freeze({
   probabilityMax: .85, checkMinMinutes: 15, checkMaxMinutes: 30, intervalStepMinutes: -1,
   checkFloorMinutes: 1, minActiveGapMinutes: 30, maxSilenceMinutes: 180,
   initialWillingness: 60,
+  unansweredAfterMinutes:20,unansweredStepMinutes:60,unansweredPenalty:15,minimumWillingness:1,
   curfewEnabled: true, curfewDirectOnlyInGroups: false, curfewStartHour: 23, curfewEndHour: 8
 });
 const ranges = {
@@ -14,6 +15,7 @@ const ranges = {
   checkMinMinutes: [1, 10080], checkMaxMinutes: [1, 10080], intervalStepMinutes: [-10080, 10080],
   checkFloorMinutes: [1, 10080], minActiveGapMinutes: [0, 10080], maxSilenceMinutes: [1, 10080],
   initialWillingness: [0, 100],
+  unansweredAfterMinutes:[1,1440],unansweredStepMinutes:[1,1440],unansweredPenalty:[0,100],minimumWillingness:[.01,100],
   curfewStartHour: [0, 23], curfewEndHour: [0, 23]
 };
 export function validateProactivePolicy(raw = {}) {
@@ -43,7 +45,8 @@ export function normalizeProactivePolicy(raw = {}) {
   return { ...p, disabledReasons: Array.isArray(raw.disabledReasons) ? raw.disabledReasons.map(String) : [] };
 }
 export function effectiveProactiveStage(p, stage = 0, willingness = p.initialWillingness, mood = {}) {
-  const e = engagementFactors(mood,willingness).factor, n = Math.max(0, Math.floor(stage));
+  // Wake opportunities use a gentler curve; sending quotas keep their original factor.
+  const e = Math.sqrt(engagementFactors(mood,willingness).factor), n = Math.max(0, Math.floor(stage));
   return { effectiveProbability: Math.min(p.probabilityMax, p.initialProbability + n * p.probabilityStep) * e,
     effectiveInterval: { minMinutes: Math.max(p.checkFloorMinutes, (p.checkMinMinutes + n * p.intervalStepMinutes) * (2 - e)),
       maxMinutes: Math.max(p.checkFloorMinutes, (p.checkMaxMinutes + n * p.intervalStepMinutes) * (2 - e)) } };

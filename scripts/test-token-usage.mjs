@@ -3,7 +3,7 @@
 // 覆盖点（每一条都对应一个曾经容易写错的地方）：
 // 1. 峰谷分时判定按北京时间，且排除中国法定节假日；
 // 2. 四个计费桶互不重叠，金额 = Σ(桶 token × 单价)；
-// 3. 未知模型走兜底价并标记 estimated；
+// 3. 供应商与模型精确匹配，未知调用只统计 token；
 // 4. 同一 (turn, step, retry) 的采样「后到覆盖先到」，不是累加；
 // 5. 重连重放同一批 snapshot 记录不会让用量翻倍（幂等）；
 // 6. `llm/retry-started` 之后同一步骤的第二次请求另算一次；
@@ -64,8 +64,8 @@ assert(isPeakAt(Date.parse('2026-10-08T10:00:00+08:00')) === true, '2026-10-08�
 assert(CN_HOLIDAYS_2026.length === 33, `2026 法定节假日共 33 天（实得 ${CN_HOLIDAYS_2026.length}）`);
 
 // ── 2. 单价与金额 ───────────────────────────────────────────────────────
-const offRates = ratesAt('deepseek-flash', mon('20:00'), DEFAULT_PRICE_TABLE);
-const peakRates = ratesAt('deepseek-flash', mon('10:00'), DEFAULT_PRICE_TABLE);
+const offRates = ratesAt('deepseek-flash', mon('20:00'), DEFAULT_PRICE_TABLE, 'deepseek-official');
+const peakRates = ratesAt('deepseek-flash', mon('10:00'), DEFAULT_PRICE_TABLE, 'deepseek-official');
 assert(offRates.tier === 'off' && peakRates.tier === 'peak', '同一模型峰谷档位判定正确');
 assert(near(peakRates.cacheMiss, offRates.cacheMiss * 2), '高峰单价为空闲单价的 2 倍');
 assert(near(offRates.cacheHit, 0.02) && near(offRates.cacheMiss, 1) && near(offRates.output, 4), 'flash 空闲单价与官方一致（0.02/1/4）');
@@ -81,11 +81,11 @@ assert(norm.cacheMiss === 100 && norm.cacheHit === 900 && norm.cacheWrite === 5 
   'normalizeUsage 四桶互不重叠（inputTokens 只算未命中）');
 assert(totalTokensOf(norm) === 1015, 'token 总量 = 四桶之和');
 
-// ── 3. 未知模型兜底 ─────────────────────────────────────────────────────
-const unknown = ratesAt('some-future-model', mon('10:00'), DEFAULT_PRICE_TABLE);
-assert(unknown.estimated === true, '未知模型标记 estimated');
-assert(near(unknown.cacheMiss, 2), '未知模型按 flash 兜底（高峰期 1×2）');
-const tbl = resolvePriceTable({ models: { 'my-model': { label: '自定义', off: { cacheHit: 0.5, cacheMiss: 3, output: 9 } } } });
+// ── 3. 未匹配调用不计费 ─────────────────────────────────────────────────
+const unknown = ratesAt('some-future-model', mon('10:00'), DEFAULT_PRICE_TABLE, 'deepseek-official');
+assert(unknown.unpriced === true && unknown.estimated === false, '未知模型标记未计价，不估算费用');
+assert(near(unknown.cacheMiss, 0), '未知模型不套用 flash 兜底价格');
+const tbl = resolvePriceTable({ models: { 'my-model': { provider:'my-relay', label: '自定义', off: { cacheHit: 0.5, cacheMiss: 3, output: 9 } } } });
 assert(tbl.models['my-model'].off.cacheWrite === 3, '自定义模型未给 cacheWrite 时跟随 cacheMiss');
 assert(tbl.models['deepseek-flash'].off.cacheMiss === 1, '自定义覆盖不影响内置模型');
 
@@ -97,7 +97,7 @@ const usage = (inputTokens, outputTokens, cacheReadTokens = 0, extra = {}) =>
 // ⇒ 这个测试会随"跑测试的时刻"时红时绿（实测：周一 17:29 会失败，12:00-16:00 通过）。
 // 这里统一钉到下面的 `at`（周一 20:00，空闲档），让期望值与任何跑测试的时刻无关。
 const at = mon('20:00');
-const evMsg = (seq, turn, step, u) => ({ seq, time: at, type: 'assistant/message', data: { turn, step, usage: u } });
+const evMsg = (seq, turn, step, u) => ({ seq, time: at, type: 'assistant/message', data: { provider:'deepseek-official', model:'deepseek-flash', turn, step, usage: u } });
 const evRetry = (seq, turn, step, retry) => ({ seq, time: at, type: 'llm/retry-started', data: { turn, step, retry } });
 
 let ledger = freshLedger({ resolveKey: (sid) => (sid === 's1' ? 'group:100' : undefined) });
@@ -218,7 +218,7 @@ const sBase = Date.parse('2026-03-02T09:00:00+08:00'); // 周一 09:00 = 高峰�
 const sAt = sBase + 6 * 3600_000;                      // 观察时刻
 const emitAt = (ms, turn, step, u) => ledger.ingestEvent({
   sessionId: 's1',
-  event: { seq: turn * 100 + step, time: ms, type: 'assistant/message', data: { turn, step, usage: u } },
+  event: { seq: turn * 100 + step, time: ms, type: 'assistant/message', data: { provider:'deepseek-official', model:'deepseek-flash', turn, step, usage: u } },
   at: ms
 });
 // 09:30、09:45（高峰）各一笔；13:00（午休空闲）一笔；中间留出 3 小时空档

@@ -1,5 +1,5 @@
 {
-  "build": "296f812c84d72d75",
+  "build": "119baf814b411fe9",
   "inputs": [
     "console/app.js",
     "console/layers/C/affairs-budget.js",
@@ -79,6 +79,8 @@
     "console/layers/L/config-save.js",
     "console/layers/L/ownership.js",
     "console/layers/L/parameter-examples.js",
+    "console/layers/L/proactive-examples-ui.js",
+    "console/layers/L/proactive-examples.js",
     "console/layers/L/proactive-preview.js",
     "console/layers/L/receipts.js",
     "console/layers/L/schedule.js",

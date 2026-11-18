@@ -1,4 +1,6 @@
 const valid = value => Number.isSafeInteger(value) && value > 0;
+const backlogURL=new URL('./wake-backlog.mjs',import.meta.url);backlogURL.search=new URL(import.meta.url).search;
+const {pruneObservedWakeBacklog}=await import(backlogURL.href);
 const bounded = (value, fallback) => Number.isFinite(Number(value)) ? Math.max(0, Math.min(100, Math.floor(Number(value)))) : fallback;
 export function createPlugin(ctx) {
   const privateReplyLimit = bounded(ctx.config?.privateReplyLimit, 5);
@@ -26,8 +28,9 @@ export function createPlugin(ctx) {
     state.doubleStampCheck={...(state.doubleStampCheck||{}),enabled:true,windowCount:count,checkedAt:now,triggerSeq,windowSeqs:window.map(m=>m.seq),receipts,pendingCount:window.length,wakeTriggerSeq:state.wakeTriggerSeq,anomalies:state.doubleStampCheck?.anomalies||[]};
     return state.doubleStampCheck;
   }
-  return { hooks: { beforePrompt() {
-    return '【群聊上下文】是否回复与是否需要阅读不同。回复群消息前先结合连续的近期群聊记录判断话题、说话人和引用，不凭最后一句或记忆摘要猜。最近聊天默认随消息快照作为历史上文带入，不必重复调用近期消息工具。contextPartial=true 只表示部分历史未带入；仅当理解当前所答消息确实需要缺失内容时按需补读，不能机械补齐整个窗口。窗口外或图片实际不可读的内容如实说明。'+'\n\n'+'【历史与待答资格】双戳只记录实际已读与真实发送，待答资格另行判断。只有双戳窗口内 replyRequirement=required 且 needsReply=true 的消息必须按收件 seq 从小到大回应；相关连续片段可合并，并可结合紧挨其后的普通补充一并回复；一次发送须明确绑定全部所答seq，不得跳过更早的必答消息去答更晚的必答消息。群聊以首条实际触发唤醒的消息作为本次输入，后来的消息不替换它；初始回查窗为空，后续只由必答消息占位置，普通自由消息不计数。自主概率增长、定时冒泡与日常唤醒可自行决定是否回应历史。私聊新来信默认全部必答；窗口内普通消息、replyDisposition=history 的上文、未压缩的近期历史都可自由选择是否回复，不形成逐条补答义务；久远内容按需参考摘要。群聊已读但决定不参与的普通消息可报 context 并说明原因，不写回复戳；不能用 context 跳过窗口内的必答消息。私聊最多保留最近 '+privateReplyLimit+' 条旧未处理消息可答。所有聊天历史只能从 bridge 或 SnowLuma 本地缓存获得；缓存缺失即如实说明，不调用 QQ 历史、漫游或远程消息详情 API。';
+  return { hooks: { beforePrompt(payload={}) {
+    pruneObservedWakeBacklog(payload.st);
+    return '【群聊上下文】结合最新来信、相邻群聊和引用判断话题与对象；完整正文已在历史或快照中就直接参考，contextPartial=true时仅按需补读所答内容，不机械补齐整窗。历史可自由选答；旧助手独白不是群友的新话题。'+'\n\n'+'【历史与待答资格】仅入栈tag标为required且仍在双戳窗口内的待答消息按收件seq升序回应，相关连续片段可合并并明确绑定所答seq。普通新消息与历史均选答，不按未读数补答；群聊首条实际触发输入不被后续普通消息替换。context仅用于未选答的普通消息，不能跳过必答或写假回复戳。私聊旧未处理消息最多保留 '+privateReplyLimit+' 条；新来信的必答资格以tag为准。所有原话只从bridge或SnowLuma本地缓存读取，缺失如实说明，不调用QQ历史、漫游或远程消息详情API。';
   } }, services: { historyContext: {
     policy() { return { privateReplyLimit, historyLimit, localHistoryEnabled: ctx.config?.localHistoryEnabled !== false }; },
     replyContext({key,state,throughSeq=Infinity,limit=20}={}) {
@@ -61,7 +64,12 @@ export function createPlugin(ctx) {
       const group=String(key).startsWith('group:');
       const required=!group||wakeAccepted===true&&requiresResponse===true;
       message.replyRequirement=required?'required':'optional';
-      if(!required){message.replyDisposition='history';message.replyDispositionReason=wakeAccepted===false?'group_not_participating':'ordinary_optional_context';message.replyDispositionAt=Date.now();}
+      if(!required){
+        // Reply optionality is independent of timely delivery of fresh ingress
+        // from wait/getUnread. Retire it to history only after model selection.
+        message.replyDisposition=wakeAccepted===true?'optional':'history';
+        message.replyDispositionReason=wakeAccepted===true?'ordinary_optional_incoming':'group_not_participating';message.replyDispositionAt=Date.now();
+      }
       if(state)refreshWindow({key,state,triggerSeq:message.seq});
       return {changed:true,required};
     },

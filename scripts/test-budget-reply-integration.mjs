@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import fs f
 import {bridgeHarness,fixtureReplyTurn} from './audit-bridge-harness.mjs';
 async function open(stage='weak',key='private:124'){
  const h=await bridgeHarness({config:{allow:{private:['124'],groups:['456']},sendDelayMs:0,socialV2:{persistentMemory:{enabled:false},dailyDiary:{enabled:false},doubleStamp:{enabled:false}}},files:{'state/plugins/config/life-token-budget.json':{sessions:{[key]:stage==='weak'?{coldLimitYuan:.1,hardLimitYuan:100,weakMinIntervalMin:30}:{hardLimitYuan:.1}},mechanicalPrivateReplies:['HARD'],mechanicalGroupReplies:['HARD']},'state/plugins/config/ctx-chat-reply-shape.json':{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0,maxSendPerMinute:100,maxSendPerHour:100}}});h.setMode('reserved2');const st=h.getSocialV2State(key);st.bootstrapSent=true;const sid=await h.ensureSession(key);
- h.tokenLedger.ingestEvent({sessionId:sid,at:Date.now()-10,model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1000000,outputTokens:100}}}});
+ h.tokenLedger.ingestEvent({sessionId:sid,at:Date.now()-10,provider:'deepseek-official',model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1000000,outputTokens:100}}}});
  const call=h.pluginHost.callService.bind(h.pluginHost);h.pluginHost.callService=(service,method,arg)=>service==='knowledgeQuota'&&method==='preflight'?{handled:false}:call(service,method,arg);
  const incoming=async (n,at=false)=>{const [kind,id]=key.split(':');await h.handleIncoming(kind,Number(id),{self_id:999,user_id:124,group_id:kind==='group'?Number(id):undefined,message_id:'m'+n,message:[...(at?[{type:'at',data:{qq:999}}]:[]),{type:'text',data:{text:'消息'+n}}]},h.cfg);};return {h,st,sid,incoming};
 }
@@ -18,7 +18,7 @@ test('distinct complete sources get distinct content identities in one action wh
   server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));
   const request=async(route,body,contentId)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+route,{method:body?'POST':'GET',headers:{'x-console-token':'fixture-console-token','x-agent-token':st.agentToken,'x-agent-call':'1',...(body?{'content-type':'application/json'}:{}),...(contentId?{'x-reply-content-id':contentId}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json()};};
   const messages=[['one','这幅画很好看'],['two','这首歌很有趣']].map(([id,text])=>h.appendSocialV2Message(key,'person',text,text,false,false,id,[],'123'));
-  const read=async()=>{const r=await request('/api/socialV2/unread?key='+key);assert.equal(r.status,200);assert.equal(r.body.messages.length,2);};
+  const read=async()=>{const r=await request('/api/socialV2/unread?key='+key);assert.equal(r.status,200);assert.equal(r.body.messages.length,messages.filter(m=>!m.repliedAt).length);};
   const declare=()=>request('/api/socialV2/reply-contents',{key,groups:messages.map(m=>({seqs:[m.seq],kind:'chat'}))});
   await read();const declared=await declare();assert.equal(declared.body.ok,true,JSON.stringify(declared.body));
   const [first,second]=declared.body.contents;assert.ok(first.id);assert.notEqual(first.id,second.id);

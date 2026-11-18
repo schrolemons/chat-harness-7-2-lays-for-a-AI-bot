@@ -1,5 +1,11 @@
 // Pure shared rule for the native projection and its Console presentation.
-export const failureText=message=>(message.content||[]).filter(block=>block.type==='text').map(block=>block.text).join('\n');
+const RUN_PREFIX='【连续工具失败 v1】';
+export function readFailureRun(message){
+ const first=message.content?.[0];if(first?.type!=='text'||!first.text.startsWith(RUN_PREFIX))return message.source?.failureRun;
+ try{const value=JSON.parse(first.text.slice(RUN_PREFIX.length).split('\n')[0]);return typeof value.name==='string'&&typeof value.code==='string'&&Number.isSafeInteger(value.count)&&value.count>=3?value:undefined;}catch{return undefined;}
+}
+export const failureText=message=>(message.content||[]).filter(block=>block.type==='text').map(block=>block.text.startsWith(RUN_PREFIX)?block.text.slice(block.text.indexOf('\n')+1):block.text).join('\n');
+export function failureRunContent(message,run){return [{type:'text',text:RUN_PREFIX+JSON.stringify(run)+'\n'+failureText(message)}];}
 export function failureCode(message){
  const value=failureText(message);let data;try{data=JSON.parse(value);}catch{}
  if(Number(data?.sent)>0||data?.success===true||data?.ok===true)return null;
@@ -27,7 +33,7 @@ export function consecutiveFailurePlan(rows,{threshold=3}={}){
   const code=result&&!interrupted&&result.index>index?failureCode(result.message):null;
   if(!code){flush();continue;}
   pairedResults.add(result.seq);failures++;
-  const saved=result.message.source?.failureRun,weight=saved&&saved.name===call.name&&saved.code===code&&Number.isSafeInteger(saved.count)&&saved.count>=3?saved.count:1;
+  const saved=readFailureRun(result.message),weight=saved&&saved.name===call.name&&saved.code===code&&Number.isSafeInteger(saved.count)&&saved.count>=3?saved.count:1;
   const item={call:row,result,callId:call.id,name:call.name,code,weight,operationIndex:row.operationIndex};
   const prior=run.at(-1),gap=prior&&Number.isSafeInteger(prior.operationIndex)&&Number.isSafeInteger(item.operationIndex)&&item.operationIndex!==prior.operationIndex+1;
   if(prior&&(prior.name!==item.name||prior.code!==code||gap))flush();run.push(item);

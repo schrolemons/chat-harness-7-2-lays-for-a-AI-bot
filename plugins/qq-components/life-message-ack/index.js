@@ -2,10 +2,10 @@
 // 话术和激活参数由组件配置；bridge 只负责计时、校验投递条件和发送。
 
 const GROUPS = {
-  privateWait: { delayMs: 10000, lines: [] },
-  privateApology: { delayMs: 30000, lines: [] },
-  groupWait: { delayMs: 8000, lines: [] },
-  groupApology: { delayMs: 8300, lines: [] }
+  privateWait: { delayMs: 30000, lines: [] },
+  privateApology: { delayMs: 120000, lines: [] },
+  groupWait: { delayMs: 30000, lines: [] },
+  groupApology: { delayMs: 120000, lines: [] }
 };
 
 function cleanLines(value) {
@@ -33,6 +33,8 @@ export function createPlugin(ctx) {
           const isPrivate = String(key).startsWith('private:');
           const first = normalizeGroup(cfg[isPrivate ? 'privateWait' : 'groupWait'], GROUPS[isPrivate ? 'privateWait' : 'groupWait']);
           const apology = normalizeGroup(cfg[isPrivate ? 'privateApology' : 'groupApology'], GROUPS[isPrivate ? 'privateApology' : 'groupApology']);
+          // Configuration order must agree with the two physical delivery stages.
+          if(first.enabled&&apology.enabled)apology.delayMs=Math.max(apology.delayMs,Math.min(600000,first.delayMs+1000));
           const choose = (lines) => lines.length ? lines[Math.floor(Math.random() * lines.length)] : '';
           return {
             wait: { enabled: first.enabled && first.lines.length > 0, delayMs: first.delayMs, text: choose(first.lines) },

@@ -6,7 +6,11 @@ const { normalizeProactivePolicy, validateProactivePolicy, effectiveProactiveSta
 const MINUTE = 60000;
 const GROUP_CHAT_WAKE = /^(message|private|probability|atMention|nameMention|question|poke|keyword|reply|replyCheck|timeout|anyMessage|speaker|bootstrap|thinkingAck|budgetWeak)$/;
 const evidenceUrl=new URL('./availability-evidence.mjs',import.meta.url);evidenceUrl.search=new URL(import.meta.url).search;
-const {resolveSleepAvailability,validAssessment}=await import(evidenceUrl.href);
+const {resolveAvailabilityEvidence,validAssessment}=await import(evidenceUrl.href);
+const assessorUrl=new URL('./availability-assessor.mjs',import.meta.url);assessorUrl.search=new URL(import.meta.url).search;
+const {createAvailabilityAssessor}=await import(assessorUrl.href);
+const unansweredUrl=new URL('./unanswered-backoff.mjs',import.meta.url);unansweredUrl.search=new URL(import.meta.url).search;
+const {observeUnanswered,unansweredBackoff}=await import(unansweredUrl.href);
 const mechanical = /^(thinking|thinkingAck|ack|messageAck|replyCheck)$/;
 const PRIVATE_UNSOLICITED = new Set(['proactiveCheck', 'timeBubble', 'startupGreeting', 'privateFollowup', 'newsShare', 'milkStock', 'careCheck', 'idleRescue', 'newFriend']);
 export function createProactive(ctx) {
@@ -18,10 +22,13 @@ export function createProactive(ctx) {
   if(Object.values(previous).some(s=>s.availabilityVersion!==1))ctx.state.set({proactiveByKey:migrated});
   const jobId = key => `proactive:${key}`;
   const get = key => ctx.state.get().proactiveByKey?.[key] || { stage: 0, willingness: p.initialWillingness, source: 'default', phase: 'idle' };
-  const put = (key, value) => ctx.state.set({ proactiveByKey: { ...(ctx.state.get().proactiveByKey || {}), [key]: value } });
+  const put = (key, value) => {const stored={...value,willingness:value.baseWillingness??value.willingness};delete stored.baseWillingness;delete stored.unansweredPaused;ctx.state.set({ proactiveByKey: { ...(ctx.state.get().proactiveByKey || {}), [key]: stored } });};
+  let service;
+  const assessor=createAvailabilityAssessor({ctx,get,put,baseline:p.initialWillingness,apply:payload=>service.setWillingness(payload)});
   const cancel = key => ctx.scheduler?.cancel(jobId(key));
   const factsFor = key => ctx.capabilities?.getProactiveFacts?.(key);
-  const available=(key,now)=>resolveSleepAvailability({key,state:get(key),now,baseline:p.initialWillingness,callService:ctx.callService});
+  const available=(key,now,facts)=>{const s=get(key),base=resolveAvailabilityEvidence({key,state:facts?{...s,lastIncomingAt:Math.max(Number(s.lastIncomingAt)||0,Number(facts.lastIncomingAt)||0)}:s,now,baseline:p.initialWillingness,callService:ctx.callService});return {...base,...unansweredBackoff(base,p,now)};};
+  const rates=(s,mood)=>{const base=effectiveProactiveStage(p,s.stage,s.baseWillingness,mood);return {...base,effectiveProbability:base.effectiveProbability*s.willingnessFactor};};
   function allowsGroupChat({key, reason='message', direct=false, now=Date.now()}={}) {
     return !String(key).startsWith('group:') || !GROUP_CHAT_WAKE.test(String(reason).split(':')[0])
       || !p.curfewDirectOnlyInGroups || !isProactiveCurfew(p,now) || direct === true;
@@ -33,6 +40,7 @@ export function createProactive(ctx) {
     if (!p.proactiveEnabled || p.disabledReasons.includes('proactiveCheck')) return 'disabled';
     if (!facts || facts.allowed !== true) return 'not_allowed';
     if (facts.transportReady === false) return 'transport';
+    if (facts.modelAvailability?.blocked) return 'model_budget';
     if (facts.paused) return 'paused';
     if (facts.quiet) return 'quiet';
     if (isProactiveCurfew(p, now)) return 'curfew';
@@ -45,7 +53,10 @@ export function createProactive(ctx) {
   function plan({ key, now = Date.now(), facts, mood, random = Math.random } = {}) {
     key = String(key || '');
     if (!/^(private|group):\d+$/.test(key)) return { allowed: false, reason: 'invalid_key' };
-    const old=get(key);let s=available(key,now);
+    const old=get(key);
+    const lastIncomingAt=Math.max(Number(old.lastIncomingAt)||0,Number(facts?.lastIncomingAt)||0),lastDeliveredAt=Math.max(Number(old.lastDeliveredAt)||0,Number(facts?.lastOutboundAt)||0);
+    if(lastIncomingAt!==(Number(old.lastIncomingAt)||0)||lastDeliveredAt!==(Number(old.lastDeliveredAt)||0))put(key,{...old,lastIncomingAt,lastDeliveredAt});
+    let s=available(key,now);
     const recovered=!!s.availabilityRecovery && s.availabilityRecovery.assessmentAt===s.lastAI?.at && !old.availabilityRecovery;
     if(recovered){s={...s,...(s.phase!=='accepted'?{nextAt:null}:{})};put(key,s);}
     const reason = blocked(facts, now, key);
@@ -53,7 +64,7 @@ export function createProactive(ctx) {
       if (reason === 'private_passive_only' && old.blockedReason !== reason) ctx.log?.('跳过私聊主动检查 ' + key + ' (' + reason + ')');
       put(key, { ...s, blockedReason: reason }); cancel(key); return { allowed: false, reason, nextAt: s.nextAt ?? null }; }
     if (s.phase === 'accepted') return { allowed: false, reason: 'accepted', intent: s.intent, nextAt: null };
-    const effective = effectiveProactiveStage(p, s.stage, s.willingness, mood || facts.mood);
+    const effective = rates(s,mood || facts.mood);
     if (!Number.isFinite(s.nextAt)) {
       const startAt = Number.isFinite(s.lastActivityAt) ? s.lastActivityAt : Number.isFinite(s.startAt) ? s.startAt : Math.max(Number(facts.lastIncomingAt) || 0, Number(facts.lastOutboundAt) || 0) || now;
       const jitter = recovered&&Number.isFinite(s.jitter)?s.jitter:Math.max(0, Math.min(1, Number(random()) || 0));
@@ -63,7 +74,7 @@ export function createProactive(ctx) {
       const gapAt = lastSent ? lastSent + p.minActiveGapMinutes * MINUTE : 0;
       const forceAt = startAt + p.maxSilenceMinutes * MINUTE;
       s = { ...s, startAt, jitter, nextAt: Math.max(gapAt, s.noSendAt ? after + intervalMinutes * MINUTE : Math.min(after + intervalMinutes * MINUTE, forceAt)),
-        intent: 'proactiveCheck', phase: 'scheduled', blockedReason: '', ...effective };
+        intent: 'proactiveCheck', phase: 'scheduled', blockedReason: '', scheduledAt:now,scheduledInterval:{...effective.effectiveInterval},scheduledProbability:effective.effectiveProbability,...effective };
       put(key, s);
     } else { s = { ...s, blockedReason: '', ...effective }; put(key, s); }
     return { allowed: true, nextAt: s.nextAt, intent: s.intent, reason: now >= s.nextAt ? 'due' : 'waiting' };
@@ -81,7 +92,8 @@ export function createProactive(ctx) {
       if (!check.allowed || check.nextAt > dueNow) return;
       let s = get(key);
       const force = dueNow - s.startAt >= p.maxSilenceMinutes * MINUTE;
-      if (!force && random() >= s.effectiveProbability) {
+      const probability=force?available(key,dueNow).willingnessFactor:s.effectiveProbability;
+      if (probability < 1 && random() >= probability) {
         put(key, { ...s, stage: s.stage + 1, checkedAt: dueNow, nextAt: null, phase: 'idle' });
         refresh({ key, now: dueNow, random }); return;
       }
@@ -94,23 +106,25 @@ export function createProactive(ctx) {
     } });
     return result;
   }
-  function observe({ key, at = Date.now(), kind, hasInteraction=false, isProactive=false, reason = '', eventId, episodeId, hasText, hasImage, isSelf, success } = {}) {
+  function observe({ key, at = Date.now(), kind, hasInteraction=false,directedAtBot=false, isProactive=false, reason = '', eventId, episodeId, hasText, hasImage, isSelf, success } = {}) {
     if (!/^(private|group):\d+$/.test(String(key || '')) || !Number.isFinite(at)) return { ok: false, reengaged: false };
     if ((kind === 'incoming' && ((!hasText && !hasImage && !hasInteraction) || isSelf)) || (kind === 'sent' && (success === false || mechanical.test(reason))) || !['incoming', 'sent'].includes(kind)) return { ok: false, reengaged: false };
     const s = get(key), events = s.events || {}, episodes = s.episodes || {};
     if (eventId && Object.hasOwn(events, eventId)) return { ok: true, duplicate: true, reengaged: false };
     if (Number.isFinite(s.lastActivityAt) && at < s.lastActivityAt) {
-      if (eventId) put(key, { ...s, events: { ...events, [eventId]: at } });
+      put(key, { ...s, ...(kind==='incoming'?{lastIncomingAt:Math.max(Number(s.lastIncomingAt)||0,at)}:{lastDeliveredAt:Math.max(Number(s.lastDeliveredAt)||0,at)}),events:eventId?{...events,[eventId]:at}:events });
       return { ok: true, stale: true, reengaged: false };
     }
     const oldActivity = Number.isFinite(s.lastActivityAt) ? s.lastActivityAt : s.startAt;
     const reengaged = kind === 'incoming' && Number.isFinite(oldActivity) && at - oldActivity >= p.silenceMinutes * MINUTE;
     const deltaKey = `${kind}:${episodeId || eventId || at}`;
+    const unansweredContact=observeUnanswered(s,{key,kind,at,directedAtBot,hasInteraction,isProactive,reason,duplicateEpisode:!!episodes[deltaKey]});
     const lastActivityAt = Math.max(Number(s.lastActivityAt) || 0, at);
     put(key, { ...s, stage: 0, checkedAt: null, noSendAt: null, nextAt: null, phase: 'idle', startAt: lastActivityAt, lastActivityAt,
+      ...(kind==='incoming'?{lastIncomingAt:Math.max(Number(s.lastIncomingAt)||0,at)}:{lastDeliveredAt:Math.max(Number(s.lastDeliveredAt)||0,at)}),
       ...(kind === 'sent' && (isProactive || ['proactiveCheck','privateFollowup'].includes(reason)) ? { lastProactiveAt:lastActivityAt,activeConversationCount:(s.activeConversationCount||0)+(episodes[deltaKey]?0:1) } : {}),
-      events: eventId ? { ...events, [eventId]: at } : events, episodes: { ...episodes, [deltaKey]: at }, blockedReason: '' });
-    cancel(key); return { ok: true, reengaged };
+      unansweredContact,events: eventId ? { ...events, [eventId]: at } : events, episodes: { ...episodes, [deltaKey]: at }, blockedReason: '' });
+    cancel(key);assessor.request({key,now:at,afterDelivery:kind==='sent'}); return { ok: true, reengaged };
   }
   function finished({ key, now = Date.now(), reason = 'no-send' } = {}) {
     const s = get(key); if (s.phase !== 'accepted') return { ok: true, released: false };
@@ -119,8 +133,8 @@ export function createProactive(ctx) {
       lifecycleHistory: [...(s.lifecycleHistory || []), { at: now, reason }].slice(-100) }); cancel(key);
     return { ok: true, released: true };
   }
-  return { policy: () => ({ ...p }), plan, refresh, observe, finished, allowsGroupChat, privatePassive,
-    availability({key,now=Date.now()}={}) { const s=available(key,now);return {willingness:s.willingness,source:s.source,lastAI:s.lastAI||null,review:s.review||null,recovery:s.availabilityRecovery||null}; },
+  return service={ policy: () => ({ ...p }), plan, refresh, observe, finished, allowsGroupChat, privatePassive,refreshAvailability:assessor.request,
+    availability({key,now=Date.now()}={}) { const s=available(key,now);return {willingness:s.willingness,baseWillingness:s.baseWillingness,willingnessFactor:s.willingnessFactor,unansweredPenalty:s.unansweredPenalty,unansweredAttempts:s.unansweredAttempts,source:s.source,lastAI:s.lastAI||null,review:s.review||null,recovery:s.availabilityRecovery||null}; },
     incoming({key,eventId,at=Date.now(),event={},blockedReason='',random=Math.random}={}){
       if(/^private:[1-9]\d*$/.test(String(key||'')))return evaluateGroupIncoming({key});
       if(!/^group:[1-9]\d*$/.test(String(key||''))||!eventId)return {accepted:false,reason:'invalid_event'};
@@ -139,6 +153,7 @@ export function createProactive(ctx) {
     cancel({key}={}) { cancel(key); return {ok:true}; },
     allowsReason({key,reason,now=Date.now(),hasPendingHuman=false}={}) {
       const r=String(reason||'').split(':')[0];
+      if(ctx.capabilities?.getModelAvailability?.({key,reason:r})?.blocked)return {allowed:false,reason:'model_budget'};
       if(privatePassive({key}) && PRIVATE_UNSOLICITED.has(r))return {allowed:false,reason:'private_passive_only'};
       if(['replyCheck','timeout'].includes(r) && !hasPendingHuman)return {allowed:false,reason:'observation_only'};
       if(['proactiveCheck','timeBubble','startupGreeting','privateFollowup','newsShare','milkStock'].includes(r) && isProactiveCurfew(p,now))return {allowed:false,reason:'curfew'};
@@ -153,10 +168,13 @@ export function createProactive(ctx) {
       return { ok: true, value };
     },
     preview({ key, now = Date.now() } = {}) {
-      const s = available(key,now), facts = factsFor(key);
-      return { conversationAwake:typeof facts?.conversationAwake==='boolean'?facts.conversationAwake:null,stage: s.stage, willingness: s.willingness, source: s.source, lastAI: s.lastAI || null,
-        ...effectiveProactiveStage(p, s.stage, s.willingness, facts?.mood), nextAt: s.nextAt ?? null,
-        blockedReason: blocked(facts, now, key) || s.blockedReason || '', intent: s.intent || 'proactiveCheck', phase: s.phase, lastFinishedReason: s.lastFinishedReason || '', lastIncomingDecision:s.lastIncomingDecision||null,
+      const facts = factsFor(key), s = available(key,now,facts);
+      return { conversationAwake:typeof facts?.conversationAwake==='boolean'?facts.conversationAwake:null,stage: s.stage, willingness: s.willingness,baseWillingness:s.baseWillingness,willingnessFactor:s.willingnessFactor,unansweredPenalty:s.unansweredPenalty,unansweredAttempts:s.unansweredAttempts, source: s.source, lastAI: s.lastAI || null,
+        ...rates(s,facts?.mood), nextAt: s.nextAt ?? null,
+        observedAt:now,modelAvailability:facts?.modelAvailability||null,incomingRoute:String(key).startsWith('private:')?'direct':facts?.conversationAwake?'active-turn':'probability',
+        lastIncomingAt:Math.max(Number(s.lastIncomingAt)||0,Number(facts?.lastIncomingAt)||0),lastDeliveredAt:Math.max(Number(s.lastDeliveredAt)||0,Number(facts?.lastOutboundAt)||0),
+        scheduledAt:s.scheduledAt||null,scheduledInterval:s.scheduledInterval||null,scheduledJob:ctx.callService?.('scheduler','inspect',{id:jobId(key)})||null,availabilityCheck:s.availabilityCheck||null,
+        blockedReason: blocked(facts, now, key), intent: s.intent || 'proactiveCheck', phase: s.phase, lastFinishedReason: s.lastFinishedReason || '',lastFinishedAt:s.lifecycleHistory?.at(-1)?.at||null, lastIncomingDecision:s.lastIncomingDecision||null,
         review:s.review||null,recovery:s.availabilityRecovery||null };
     }
   };

@@ -11,6 +11,7 @@ import { FIXED_PRESETS, adminPresetConfig, requestedPreset, simulationPreset } f
 import {ensureDialogueSequences} from './bridge-core/dialogue-sequence.mjs';
 import {readLocalConversationHistory} from './bridge-core/local-history.mjs';
 import {createReceivedMessageCache} from './bridge-core/received-history.mjs';
+import {createDeferredImageCache} from './deferred-image-cache.mjs';
 import {projectReceiptActivity, receiptStateView} from './bridge-core/receipt-index.mjs';
 import {routeLearningManagement} from './console/learning-management.js';
 import {routeFeedbackRepairs} from './console/feedback-repairs.js';
@@ -64,6 +65,8 @@ import { createImageAssetStore } from './image-asset-store.mjs';
 import { extractForwardIds, forwardIdFromData, sanitizeForwardId, formatForwardResponse } from './forward.js';
 import { resolvePriceTable } from './model-prices.js';
 import { createTokenLedger } from './token-ledger.js';
+import {runReadOnlyWorker} from './read-only-worker.mjs';
+import {createPreservingModelSelector} from './native-model-default.mjs';
 import { MULTI_MESSAGE_REPLY_POLICY, PRIVATE_FOLLOWUP_POLICY } from './qq-reply-policy.js';
 import { BILI_BV_RE, DEFAULT_BILI_KEYWORDS, isWhitelistedSession, normalizeKeywords, normalizeSessionWhitelist, normalizeTopicUploaders, pickVideos, resolveShareConfig } from './bili-share.js';
 import { mergeTimeBubbleSlots } from '../plugins/qq-components/life-proactive-time-bubble/schedule-locks.mjs';
@@ -1331,7 +1334,7 @@ async function segmentsToText(segments, options = {}) {
       case 'face': out.push(`[表情${d.id ?? ''}]`); break;
       // 市场表情（mface）在部分网关实现里出现：有 summary 就用它，别让模型只看到 "[mface]"。
       case 'mface': out.push(`[表情${d.summary ? `:${d.summary}` : ''}]`); break;
-      case 'image': out.push('[图片]'); break;
+      case 'image': out.push('[一张图片]'); break;
       case 'record': out.push('[语音]'); break;
       case 'video': out.push('[视频]'); break;
       case 'file': out.push(`[文件${d.name ?? ''}]`); break;
@@ -2067,7 +2070,7 @@ async function main() {
     if (media?.kind === 'image') {
       // 优先取图片字节转 base64，避免 SnowLuma 直接下载聊天图片 URL 失败（带签名/防盗链）。
       // 严禁把消息里的原始 media.url / media.file 直接交给 OneBot 去下载：那会绕过 SSRF/本地文件防护。
-      const img = await fetchOneBotImage(media);
+      const img = await fetchOneBotImage(media,key);
       if (img?.buffer) {
         file = 'base64://' + img.buffer.toString('base64');
       } else {
@@ -2320,12 +2323,13 @@ async function main() {
   // 权威总量取 DSH 的 tokenUsage 投影（整条会话日志累计，含桥接启动前的历史），
   // 逐轮明细由 assistant/message 的 usage 折叠而来；花费在读取时按价目表折算。
   const priceTable = resolvePriceTable(cfg.pricing);
+  const memoryWorkerSessions = new Map();
   const tokenLedger = createTokenLedger({
     file: TOKEN_USAGE_FILE,
     log: (...args) => log(...args),
     priceTable,
     // 会话 → QQ 会话归属：学习会话单独记账，其余未知会话归入「未归属」。
-    resolveKey: (sessionId) => reverse.get(sessionId)
+    resolveKey: (sessionId) => reverse.get(sessionId) ?? memoryWorkerSessions.get(sessionId)
       ?? (learnerSessions.has(sessionId) || (slangLearnerSessionId && sessionId === slangLearnerSessionId)
         ? 'internal:黑话学习'
         : undefined)
@@ -2397,6 +2401,8 @@ async function main() {
     const workerTask = workerRecord && ['running','waiting_input'].includes(workerRecord.status) && validTaskBudgetAdmission(workerRecord.budgetAdmission,workerRecord.originKey);
     const envelope = activeTurnEnvelopes.get(request?.sessionId) || (pendingTurnEnvelopes.get(request?.sessionId) || []).find(item => !item.cancelled);
     if (budget.stage === 'silent' && !workerTask && !trustedTaskEnvelope(key,envelope)) throw new Error('会话或全局额度硬上限已触发，拒绝新的模型调用');
+    const availability=pluginHost.callService('modelAvailability','status',{provider:sessionModels.get(request?.sessionId)?.provider});
+    if(availability?.blocked)throw Error('上游模型额度已耗尽，正在冷却；未提交新的模型请求');
     return rawDshPrompt(request, ...args);
   };
 
@@ -2409,7 +2415,7 @@ async function main() {
     canonicalPreset: id => instanceSessionPolicy.canonicalPreset(id),
     readPolicy: () => readCostPolicy(ROOT),
     savePolicy: async config => { const saved=pluginHost.setConfig('obs-cost-policy',config);if(saved.ok)await pluginHost.reload('obs-cost-policy');return saved; },
-    synchronize: () => taskCaps.synchronizeCostPolicy(),
+    synchronize: options => taskCaps.synchronizeCostPolicy(options),
   });
 
   function rememberModel(sessionId, selection) {
@@ -2424,6 +2430,7 @@ async function main() {
     try {
       if (event?.type === 'model/selection') rememberModel(sessionId, event.data);
       const known = sessionModels.get(sessionId);
+      if(event?.type==='turn/end'&&event.data?.reason?.kind==='error')pluginHost.callService('modelAvailability','observeError',{provider:known?.provider,error:event.data.reason.error?.message,at:event.time});
       tokenLedger.ingestEvent({
         sessionId,
         event,
@@ -5369,7 +5376,7 @@ async function main() {
           markReadCalledKeys.add(key);
           saveSocialV2State();
           log(`[reserved2] 控制台/工具标记 ${key} 未读已读：${markedCount} 条，已确认下一次唤醒配置`);
-          sendJson({ ok: true, key, markedCount, unreadCount: st.unread.length, pendingReplyCount: st.unread.length, awaitingReplyCount: awaitingReplyCountV2(st), readThroughSeq: readThroughSeqV2(st), wakeGuaranteed: computeWakeSafetyV2(st.wakeConfig, key).guaranteed, wakeSafety: computeWakeSafetyV2(st.wakeConfig, key), wakeConfig: st.wakeConfig });
+          sendJson({ ok: true, key, markedCount, unreadCount: st.unread.length, pendingReplyCount: pendingMessagesV2(st).length, awaitingReplyCount: awaitingReplyCountV2(st), readThroughSeq: readThroughSeqV2(st), wakeGuaranteed: computeWakeSafetyV2(st.wakeConfig, key).guaranteed, wakeSafety: computeWakeSafetyV2(st.wakeConfig, key), wakeConfig: st.wakeConfig });
           return;
         }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/mood') {
@@ -5445,7 +5452,7 @@ async function main() {
           cancelReplyCheckV2(key); // AI 已主动设置新的唤醒配置，取消回复检查
           setupSleepTimerV2(key);
           log(`[reserved2] 更新唤醒配置 ${key}: mode=${next.mode} infinite=${next.infinite} sleepUntil=${next.sleepUntil ?? 'null'}`);
-          sendJson({ ok: true, key, markedCount, unreadCount: st.unread.length, pendingReplyCount: st.unread.length, awaitingReplyCount: awaitingReplyCountV2(st), readThroughSeq: readThroughSeqV2(st), wakeConfig: next, wakeSafety: computeWakeSafetyV2(next, key) });
+          sendJson({ ok: true, key, markedCount, unreadCount: st.unread.length, pendingReplyCount: pendingMessagesV2(st).length, awaitingReplyCount: awaitingReplyCountV2(st), readThroughSeq: readThroughSeqV2(st), wakeConfig: next, wakeSafety: computeWakeSafetyV2(next, key) });
           return;
         }
         if (req.method === 'GET' && url.pathname === '/api/socialV2/states') {
@@ -5678,7 +5685,8 @@ async function main() {
               previousDiaryStatus: diaryStatus.previousDiaryStatus || 'unavailable',
               previousDiaryAvailable: diaryStatus.previousDiaryAvailable === true,
               previousSentAt: Number(diaryStatus.previousSentAt) || 0,
-              diaryPending: Number(st.diaryRequestedAt || 0) > Date.now() - 30 * 60 * 1000 || diaryStatus.attempts?.some(item=>item.stage==='sending') === true,
+              diaryPending: diaryStatus.diaryWorker?.status==='running' || diaryStatus.attempts?.some(item=>item.stage==='sending') === true,
+              diaryJob:diaryStatus.diaryWorker || {},
               diaryChars: diaryAvailability && diaryAvailability.ok === true
                 ? Number(diaryAvailability.chars) || 0 : extractDiaryFromMemoryV2(pm.text).length,
               diarySource: diaryAvailability?.source || ''
@@ -5699,34 +5707,8 @@ async function main() {
                   || pluginHost.callService('availability', 'canWake', { key, reason: 'memoryWrite' }) === false) {
                 sendJson({ ok: false, error: '当前会话无法刷新记忆，未启动日记发送', reason: 'wake_blocked' }, 409); return;
               }
-              const stNow = getSocialV2State(key);
-              if (stNow.diaryRequestedAt && Date.now() - Number(stNow.diaryRequestedAt) > 30 * 60 * 1000) {
-                stNow.diaryRequestedAt = 0; stNow.diaryRequestedDay = ''; stNow.diaryRequestedId = '';
-                if (stNow.pendingMemoryWrite) stNow.pendingMemoryWrite = false;
-              }
-              if (stNow.pendingMemoryWrite || stNow.diaryRequestedAt) { sendJson({ ok: false, error: '今天的记忆刷新或日记发送已在处理中', reason: 'pending' }, 409); return; }
-              const day = pluginHost.callService('memory','diaryTargetDay',{now:Date.now()})?.day || dateKeyLocalV2(new Date());
-              const delivery = await pluginHost.callService('memory','diaryStatus',{key,day});
-              if (delivery?.attempts?.some(item=>item.stage==='sending')) {
-                sendJson({ok:false,error:'日记发送已在处理中',reason:'pending'},409); return;
-              }
-              if (['claimed','unavailable'].includes(delivery?.deliveryStatus) || delivery?.attempts?.some(item=>item.receiptStatus==='claimed')
-                  || ((['uncertain','legacy_unconfirmed'].includes(delivery?.deliveryStatus) || delivery?.attempts?.some(item=>item.receiptStatus==='uncertain')) && body.confirmLegacyUnsent !== true)) {
-                sendJson({ok:false,reason:'delivery_unconfirmed',error:dailyDiaryErrorText({reason:'delivery_unconfirmed',receiptStatus:delivery.deliveryStatus==='sent'?'uncertain':delivery.deliveryStatus},day)},409); return;
-              }
-              if (stNow.pendingMemoryWrite || stNow.diaryRequestedAt) { sendJson({ok:false,error:'日记发送已在处理中',reason:'pending'},409); return; }
-              stNow.diaryRequestedAt = Date.now();
-              stNow.diaryRequestedDay = day;
-              stNow.diaryRequestedId = crypto.randomUUID();
-              stNow.pendingMemoryWrite = true;
-              saveSocialV2State();
-              pluginHost.callService('memory','noteManualDiaryRefresh',{key,day,requestId:stNow.diaryRequestedId});
-              const diaryRequestId = stNow.diaryRequestedId;
-              void sendWakePromptV2(key, 'memoryWrite').catch((error) => {
-                if (stNow.diaryRequestedId === diaryRequestId) finishDiaryRefreshFailure(key, stNow, 'refresh_failed');
-                log('[diary] 手动刷新记忆失败 ' + key + ': ' + (error?.message ?? error));
-              });
-              sendJson({ ok: true, accepted: true, pending: true, key, action: body.action, day, message: '已请求刷新并发送 '+day+' 日记；会按当前配置的日记窗口总结。' });
+              const result=await pluginHost.callService('memory','refreshDiaryAndSend',{key,confirmLegacyUnsent:body.confirmLegacyUnsent===true});
+              sendJson(result||{ok:false,error:'日记组件不可用'},result?.ok?200:409);
               return;
             }
             if (body.action === 'catchUpAll') {
@@ -5768,10 +5750,8 @@ async function main() {
           if (body.action === 'updateNow') {
             const stNow = getSocialV2State(key);
             if (stNow.pendingMemoryWrite) { sendJson({ ok: false, error: '记忆更新已在进行中' }, 409); return; }
-            stNow.pendingMemoryWrite = true;
-            saveSocialV2State();
+            if (!taskCaps.requestMemoryWrite(key,{force:true})) { sendJson({ok:false,error:'整理代理正在处理或当前不允许刷新记忆'},409);return; }
             log('控制台：手动触发持久化记忆更新 ' + key);
-            void sendWakePromptV2(key, 'memoryWrite').catch((error) => log('手动记忆更新失败 ' + key + ': ' + (error?.message ?? error)));
             sendJson({ ok: true, key, triggered: true });
             return;
           }
@@ -6846,10 +6826,19 @@ async function main() {
           const timeoutMs = Math.min(maxMs, Math.max(minMs, Math.round(Number(body.timeoutMs) || defaultMs)));
           const st = getSocialV2State(key);
           const waitEnvelope = activeTurnEnvelopes.get(state.sessions[key]);
+          // Ingress can already have allocated its seq while quote/admission
+          // work is still running. Observe visible bodies, not just a counter.
+          const readableWaitMessages = () => {
+            const view=req.headers['x-agent-token']?modelFacingStateV2(key):st;
+            return [...new Map([...(v2ToolEnabled('getUnread')?view.unread:[]),...(v2ToolEnabled('getRecent')?view.recentMessages:[])]
+              .filter(m=>m&&!m.isSelf&&isModelVisibleMessageV2(m)).map(m=>[m.seq,m])).values()];
+          };
+          const unpresentedWaitMessages = () => readableWaitMessages().filter(m=>m.replyDisposition!=='history'&&!messageFullyProcessedV2(m)
+            &&(req.headers['x-agent-token']?!messageAdmitted(waitEnvelope,m):!stampMsV2(m.seenAt)));
           if(req.headers['x-agent-token']&&(waitEnvelope?.budgetStage==='weak'||waitEnvelope?.reason==='budgetWeak')){sendJson({ok:true,key,endRound:true,arrived:false,waitedMs:0,newMessages:[],reason:'budget_batch_complete'});void finishIdleWaitTurn(key,waitEnvelope,st.lastUnreadSeq);return;}
           if (!replyWait) {
             const pendingReceipts = pendingMessagesV2(req.headers['x-agent-token'] ? modelFacingStateV2(key) : st);
-            if (pendingReceipts.length) {
+            if (pendingReceipts.length && !unpresentedWaitMessages().length) {
               sendJson({
                 ok: false,
                 error: '仍有未完成的入站消息，请先读取并处理，提交相应回执。若只需确认对方是否说完，请调用 qq_wait_for_quiet。',
@@ -6943,7 +6932,7 @@ async function main() {
             lastNewAt = incomingAt();
             arrived = (st.lastUnreadSeq || 0) > baseline;
           } else while (Date.now() - start < timeoutMs && !aborted && scopeCurrent() && activeWaits.get(leaseKey) === lease) {
-            if ((st.lastUnreadSeq || 0) > baseline) { arrived = true; lastNewAt = Date.now(); break; }
+            if ((st.lastUnreadSeq || 0) > baseline || unpresentedWaitMessages().length) { arrived = true; lastNewAt = Date.now(); break; }
             await sleep(Math.max(1, Math.min(100, timeoutMs - (Date.now() - start))));
           }
           const waitedMs = Date.now() - start;
@@ -6960,7 +6949,7 @@ async function main() {
             return;
           }
           // Recheck inbound at the timeout boundary; a fresh message always wins.
-          if (!replyWait) arrived = (st.lastUnreadSeq || 0) > baseline;
+          if (!replyWait) arrived = (st.lastUnreadSeq || 0) > baseline || unpresentedWaitMessages().length > 0;
           const quiet = replyWait && Date.now() - lastNewAt >= quietMs;
           const sameTurn = activeTurnEnvelopes.get(state.sessions[key]) === waitEnvelope;
           let verdict = pluginHost.callService('waitCycle', 'read', waitArgs());
@@ -6976,10 +6965,7 @@ async function main() {
           // through either newMessages or the watermark, so the buffer is dropped
           // before arrival is judged -- not filtered afterwards.
           const modelView = req.headers['x-agent-token'] ? modelFacingStateV2(key) : st;
-          const history = replyWait
-            ? [...(v2ToolEnabled('getUnread') ? modelView.unread : []),
-              ...(v2ToolEnabled('getRecent') ? modelView.recentMessages : [])]
-            : (Array.isArray(modelView.recentMessages) ? modelView.recentMessages : []);
+          const history = readableWaitMessages();
           // ── 漏消息窗口（2026-10-18 修）──────────────────────────────────
           //
           // 旧实现按 `seq > baseline` 取"本次等待期间新到的"，而 baseline 对普通等待是
@@ -6995,7 +6981,7 @@ async function main() {
           const watermarkAtRequest = readThroughSeqV2(st);
           const pendingFloor = Math.min(baseline, watermarkAtRequest);
           const fullPending = [...new Map(history.filter(isModelVisibleMessageV2)
-            .filter((m) => m && !m.isSelf && (m.seq || 0) > pendingFloor)
+            .filter((m) => m && !m.isSelf && m.replyDisposition!=='history'&&!messageFullyProcessedV2(m)&&(m.seq || 0) > pendingFloor)
             .map((m) => [m.seq, m])).values()].sort((a, b) => a.seq - b.seq);
           // 有上限：一次倒 30 条旧账会把上下文挤爆。**必须从最老的开始取**（连续，
           // 水位才推得动）；被截断时 partial=true，提示模型用 unread 工具续读。
@@ -7505,7 +7491,7 @@ async function main() {
           if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '转发媒体读取仅 reserved2 模式可用' }, 403); return; }
           if (!media.length) { sendJson({ ok: true, key, media: [], images: [] }); return; }
           try {
-            const images = await fetchMediaData(media);
+            const images = await fetchMediaData(media,key);
             sendJson({ ok: true, key, media, images });
           } catch (error) {
             log(`转发媒体读取失败 ${key}:`, error?.message ?? error);
@@ -8100,8 +8086,12 @@ async function main() {
             return;
           }
           try {
-            const images = await fetchMediaData(media);
-            sendJson({ ok: true, messageId, media, images });
+            const images = await fetchMediaData(media,key);
+            if(url.searchParams.get('analyze')==='1'){
+              const analysis=await pluginHost.callService('imagePerception','describe',{key,messageId,images,question:url.searchParams.get('question')||''});
+              if(!analysis?.ok){sendJson({ok:false,error:analysis?.error||'按需看图组件未启用'},503);return;}
+              sendJson({ok:true,messageId,analysis});
+            }else sendJson({ ok: true, messageId, media, images });
           } catch (error) {
             log(`图片查询失败 ${key} ${messageId}: ${error?.message ?? error}`);
             sendJson({ ok: false, error: `图片查询失败：${error?.message ?? error}` }, 500);
@@ -8564,7 +8554,12 @@ async function main() {
   }
 
   function crossSessionTaskError(targetKey, context, {kind = "text", targetUserId, replyTo} = {}) {
-    if (authorizedAdminContext(context)) return null;
+    if (authorizedAdminContext(context)) {
+      const content=context.contentId&&pluginHost.callService('replyPlan','getContent',{key:context.sourceKey,contentId:context.contentId});
+      const messages=content?.seqs?.length?content.seqs.map(seq=>findV2MessageBySeq(getSocialV2State(context.sourceKey),seq)):admittedContentMessages(context.sourceKey,context.envelope).sort((a,b)=>a.seq-b.seq).slice(-1);
+      const result=pluginHost.callService('relayTarget','validateAdminTarget',{messages:messages.filter(message=>message&&messageAdmitted(context.envelope,message)),targetKey,resolve:resolveAuthorizedRelayTarget});
+      return result?.ok===false?result.error:null;
+    }
     if (!['text','poke'].includes(kind) || replyTo || kind==='text' && targetUserId) {
       return 'CROSS_SESSION_ACTION_UNSUPPORTED：跨会话任务只支持已授权的独立文字或明确要求的拍一拍。';
     }
@@ -8644,7 +8639,7 @@ async function main() {
     contextFacts:(sourceKey,envelope,replyToMessageId,options={})=>{
       if(!sourceKey||!envelope)return {};
       const view=modelFacingStateV2(sourceKey);
-      const pending=pendingMessagesV2(view).map(m=>({seq:m.seq,required:true,complete:messageAdmitted(envelope,m)}));
+      const pending=pendingMessagesV2(view).map(m=>({seq:m.seq,required:m.replyRequirement==='required',complete:messageAdmitted(envelope,m)}));
       const target=replyToMessageId==null?null:[...view.unread,...view.recentMessages].find(m=>String(m.messageId)===String(replyToMessageId));
       const content=options.contentId?pluginHost.callService('replyPlan','getContent',{key:sourceKey,contentId:options.contentId}):null;
       const requiredSeqs=pendingMessagesV2(view).filter(m=>m.replyRequirement==='required'&&!view.receiptSendPendingSeqs?.includes(m.seq)).map(m=>m.seq);
@@ -8690,12 +8685,14 @@ async function main() {
     if (isSensitiveText(msg, cfg.security?.extraSensitiveTerms, cfg.security?.sensitiveRules)) {
       log(`⚠️ QQ 出站文本命中安全拦截 (${key})，已阻止发送`);
       appendActivity(`${key} 出站文本命中安全拦截，已阻止发送`);
+      options.onFailure?.(Object.assign(Error('出站文本命中安全拦截'),{knownFailed:true}));
       return Promise.resolve(false);
     }
     const safeMsg = redactKnownTokensOnly(msg);
     const [kind, id] = key.split(':');
     let sendChain = sendChains.get(key) || Promise.resolve();
     const parts = splitLongSegment(safeMsg, outbound.plan?.maxMessageChars || 500).slice(0, pluginHost.callService('replyPlan','remaining',{key,plan:outbound.plan}) ?? 0);
+    if(!parts.length)options.onFailure?.(Object.assign(Error('发送计划没有可发送的正文额度'),{knownFailed:true}));
     let batchFailed=false;
     lastSendFailed.delete(key);
     for (const part of parts) {
@@ -8712,6 +8709,7 @@ async function main() {
           batchFailed=true;
           lastSendFailed.set(key, true);
           log(`QQ 发送失败 (${key}):`, error?.message ?? error);
+          try{options.onFailure?.(error);}catch{/* Outcome observers cannot alter the send queue. */}
         })
         ;
     }
@@ -9045,6 +9043,7 @@ async function main() {
     return Number.isFinite(n) && n > 0 ? Math.min(64_000_000, Math.max(1_000_000, Math.round(n))) : 64_000_000;
   })(); // 单张图片像素上限，防止“图片炸弹”解码拖垮 DSH
   const MAX_MEDIA_STORE_PER_KEY = 500; // 每个会话最多缓存多少条消息的媒体元数据，防止无限增长
+  const incomingImageCache=createDeferredImageCache({store:imageAssetStore,fetchRaw:media=>fetchRemoteOneBotImage(media),onError:error=>log('[image-cache] 临时图片未缓存：'+String(error.message).slice(0,120))});
 
   // ── 喂给模型的那一份：体积与动图形态归一化 ────────────────────────────────
   //
@@ -9145,9 +9144,16 @@ async function main() {
     return { buffer: buf, mimeType: mimeFromBuffer(buf) };
   }
 
-  async function fetchOneBotImage(media) {
-    // 表情包（市场/收藏表情）优先走 CDN：get_image 对市场表情必然失败
-    // （SnowLuma 缓存里没有该文件），先试 URL 能省一次失败往返，也更可靠。
+  async function fetchOneBotImage(media,key='') {
+    if(key&&media?._imageSourceRef){
+      const cached=await incomingImageCache.read({key,media});
+      if(cached?.ok)return {buffer:cached.image.data,mimeType:cached.image.mimeType};
+      if(cached?.attempted)throw Error(cached.error);
+    }
+    return fetchRemoteOneBotImage(media);
+  }
+  async function fetchRemoteOneBotImage(media) {
+    // 优先使用真实入站携带的 URL；仅 URL 不可用时才查询 QQ 文件缓存。
     const emojiId = String(media.emojiId || emojiIdFromFileName(media.file) || '');
     const isSticker = media.kind === 'sticker' || !!emojiId || String(media.subType || '') === '1';
     const label = isSticker ? '表情' : '图片';
@@ -9215,9 +9221,7 @@ async function main() {
       return null;
     };
 
-    const result = isSticker
-      ? (await tryUrls()) ?? (await tryGetImage())
-      : (await tryGetImage()) ?? (await tryUrls());
+    const result = (await tryUrls()) ?? (await tryGetImage());
     if (result) return result;
     if (failures.length) {
       log(`[media] ${label}获取失败（${failures.length} 次尝试）：${failures.slice(0, 3).join(' | ')}`);
@@ -9284,7 +9288,7 @@ async function main() {
           parts.push({ type: 'text', text: face.text || `[表情#${media.faceId}]` });
         }
       } else {
-        const img = await fetchOneBotImage(media);
+        const img = await fetchOneBotImage(media,key);
         const sticker = media.kind === 'sticker';
         const summary = sticker && media.summary ? `:${String(media.summary).slice(0, 20)}` : '';
         const label = sticker ? (summary ? `[表情${summary}]` : `[表情${index}]`) : `[图片${index}]`;
@@ -9311,7 +9315,7 @@ async function main() {
     return parts;
   }
 
-  async function fetchMediaData(mediaList) {
+  async function fetchMediaData(mediaList,key='') {
     const out = [];
     let index = 0;
     let totalBytes = 0;
@@ -9345,7 +9349,7 @@ async function main() {
           out.push({ index, kind: 'face', faceId: media.faceId ? String(media.faceId) : undefined, text: face.text || `[表情#${media.faceId}]` });
         }
       } else {
-        const img = await fetchOneBotImage(media);
+        const img = await fetchOneBotImage(media,key);
         const kind = media.kind === 'sticker' ? 'sticker' : 'image';
         const noun = kind === 'sticker' ? '表情' : '图片';
         const base = {
@@ -9400,7 +9404,16 @@ async function main() {
           // handles instead of transport URLs, so both buffers must resolve.
           for (const messages of [st.recentMessages, st.unread]) {
             const found = (Array.isArray(messages) ? messages : []).find((m) => m && (String(m.messageId || '') === refStr || String(m.seq || '') === refStr));
-            if (found && Array.isArray(found.media) && found.media.length) return found.media;
+            if (found && Array.isArray(found.media) && found.media.length) {
+              // Earlier stored rows lacked the cache handle. Recover it only
+              // when the exact message has a complete, ordered cached image set.
+              const images=found.media.filter(media=>media.kind!=='face');
+              if(images.some(media=>!media._imageSourceRef)){
+                const cached=imageAssetStore.sourceMedia({key,messageId:found.messageId||refStr});
+                if(cached.length===images.length){let index=0;return found.media.map(media=>{if(media.kind==='face')return media;const ref=cached[index++]._imageSourceRef;return {...media,_imageSourceRef:media._imageSourceRef||ref};});}
+              }
+              return found.media;
+            }
           }
         }
       } catch {}
@@ -9415,7 +9428,8 @@ async function main() {
         if (String(storedRef) === refStr && Array.isArray(media)) return media;
       }
     }
-    return [];
+    // Persisted raw-cache handles also cover budget-held ingress and restarts.
+    return imageAssetStore.sourceMedia({key,messageId:refStr});
   }
 
   function computeGapsV2(messages,gapMode,gapMs,gaps,plan) {
@@ -9613,6 +9627,14 @@ async function main() {
 
   // The component owns selection; transport only applies and deduplicates it.
   const modelAppliedSessions = new Map();
+  const readNativeDefault=async()=>{
+    const result=unwrap(await api.settings.describe({}),'settings.describe');
+    const row=result.namespaces.find(n=>n.ns==='agent-default-model');
+    if(!row||row.applies!=='live')throw Error('DSH 全局默认模型不可在线核对');
+    return row;
+  };
+  const writeNativeDefault=(value,revision)=>api.settings.mutate({ns:'agent-default-model',expectedRevision:revision,ops:[{op:'set',path:[],value}]}).then(r=>unwrap(r,'settings.mutate'));
+  const selectSessionModel=createPreservingModelSelector({readDefault:readNativeDefault,writeDefault:writeNativeDefault,selectModel:async selection=>unwrap(await api.sessions.selectModel(selection),'session.selectModel')});
 
   // 返回 'applied' | 'not-found' | 'failed'。
   // 'not-found' 表示 DSH 侧会话已经不存在（DSH 重启、异常退出、归档竞态），
@@ -9631,8 +9653,9 @@ async function main() {
     let lastError = null;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        const result = unwrap(await api.sessions.selectModel({ sessionId, provider, model, ...(effort ? {reasoningEffort: effort} : {}) }), 'session.selectModel');
+        const result = await selectSessionModel({ sessionId, provider, model, ...(effort ? {reasoningEffort: effort} : {}) });
         modelAppliedSessions.set(sessionId, appliedKey);
+        rememberModel(sessionId,result.selected);
         log(`已设置会话模型 ${sessionId} -> ${result.selected.provider}/${result.selected.model} (${result.selected.reasoningEffort ?? '默认'})`);
         return 'applied';
       } catch (error) {
@@ -9651,14 +9674,19 @@ async function main() {
   }
 
   let costPolicySync = Promise.resolve();
-  taskCaps.synchronizeCostPolicy = () => {
+  taskCaps.synchronizeCostPolicy = (options={}) => {
     const work=costPolicySync.then(async()=>{
     modelSelectionEpoch += 1;
     const targets = new Map(Object.entries(state.sessions).map(([key,id])=>[id,{key,context:{reason:'policySync'}}]));
+    for(const [id,key] of memoryWorkerSessions)targets.set(id,{key,context:{reason:'memoryWrite',purpose:'task',preset:'qq-memory-worker'}});
     if(slangLearnerSessionId)targets.set(slangLearnerSessionId,{context:{reason:'slangLearn'}});
     for(const task of Object.values(tasksStore))if(task?.sessionId&&['running','waiting_input'].includes(task.status))targets.set(task.sessionId,{key:task.originKey,context:{task:task.task,modelSelection:task.modelSelection}});
     const failed=[];let applied=0;
     for(const [id,target] of targets){try{const result=await ensureChatModel(id,target.key,target.context);if(result==='applied')applied++;else failed.push({sessionId:id,status:result});}catch(error){failed.push({sessionId:id,status:'failed',error:String(error?.message||error)});}}
+    if(options.globalDefault){
+      const row=await readNativeDefault(),selected=options.globalDefault;
+      await writeNativeDefault({provider:selected.provider,model:selected.model,...(selected.effort?{reasoningEffort:selected.effort}:{})},row.revision);
+    }
     return {ok:failed.length===0,applied,total:targets.size,failed};
     });
     costPolicySync=work.catch(()=>{});return work;
@@ -10360,7 +10388,7 @@ async function main() {
       return { ok: false, error: guarded.reason };
     }
     const relaySource=outboundScope.getStore();
-    const relayContext=Object.freeze({...actualOutbound.capture({key:target,envelope:relaySource?.envelope,origin:'relay',reason:'relay',agent:relaySource?.agent===true}),
+    const relayContext=Object.freeze({...actualOutbound.capture({key:target,envelope:relaySource?.envelope,origin:'relay',reason:'relay',agent:relaySource?.agent===true,contentId:relaySource?.contentId||relaySource?.plan?.contentId}),
       sourceKey:from,reason:'relay'});
     const assets=[];
     for(const imageId of ids){const asset=imageAssetStore.get({key:from,imageId});if(!asset.ok)return{ok:false,error:'图片不在发起会话的暂存清单中：'+imageId};if(asset.source==='local-file')return{ok:false,error:'本机图片只能在管理员私聊发送，不能通过传话投递到其他会话'};assets.push(asset);}
@@ -10375,9 +10403,9 @@ async function main() {
       relayTimes.set(from, rTimes);
     }
     const bodyOut = guarded.text;
-    let sentImages=0, activeImageId='';
+    let sentImages=0, activeImageId='',textSent=false;
     try {
-      if(bodyOut||assets.length){const sent=await outboundScope.run(relayContext,()=>sendToQQ(target,(isOwnerRelay?'【传话】来自管理员：':'【传话】来自另一个会话：')+(bodyOut||`（附图片：${assets.map(a=>a.name).join('、')}）`)));if(!sent)throw Error('传话正文未确认送达');}
+      if(bodyOut||assets.length){let failure;const sent=await outboundScope.run(relayContext,()=>sendToQQ(target,(isOwnerRelay?'【传话】来自管理员：':'【传话】来自另一个会话：')+(bodyOut||`（附图片：${assets.map(a=>a.name).join('、')}）`),{onFailure:error=>{failure=error;}}));if(!sent)throw failure||Error('传话正文未确认送达');textSent=true;}
       for(const asset of assets){const claim=imageAssetStore.claimSend({key:from,imageId:asset.imageId});if(!claim.ok)throw new Error('图片发送已尝试或结果未知：'+asset.name);activeImageId=asset.imageId;const out=oneBotImageParams(target,{mimeType:asset.image.mimeType,data:asset.image.data.toString('base64')});await onebotHttpAction(out.action,out.params,{outbound:relayContext});imageAssetStore.finishSend({key:from,imageId:asset.imageId,success:true});activeImageId='';sentImages++;}
       await sendToQQ(from, '✅ 已转达给「' + (String(name || '') || target) + '」' + (bodyOut?'：'+bodyOut.slice(0,60)+(bodyOut.length>60?'…':''):'') + (assets.length?`；已发送图片：${assets.map(a=>a.name).join('、')}`:''));
       log('[relay] 已转达 ' + target + '：' + bodyOut.slice(0, 40));
@@ -10386,7 +10414,7 @@ async function main() {
     } catch (error) {
       if(activeImageId) imageAssetStore.finishSend({key:from,imageId:activeImageId,success:false});
       try { await sendToQQ(from, '❌ 转达失败：' + (error?.message ?? error)); } catch {}
-      return { ok: false, error: String(error?.message ?? error) };
+      return { ok: false, error: String(error?.message ?? error),delivery:textSent?'partial':error?.knownFailed===true?'not_sent':'unknown',textSent,imagesSent:sentImages };
     }
   };
   // ── 黑话组件（ctx-chat-slang）的环境能力 ─────────────────────────────
@@ -10488,12 +10516,77 @@ async function main() {
     if (currentMode !== 'reserved2' || socialV2.paused || !pluginHost.allowsWake('memoryWrite',{key})) return false;
     const stMem = getSocialV2State(key);
     if (!stMem || stMem.mutedUntilReengaged || stMem.pendingMemoryWrite) return false;
+    if(pluginHost.hasService('memoryWorker','request'))return pluginHost.callService('memoryWorker','request',{key})===true;
     // 定时强制刷新可排队等待空闲；已有记忆回合时返回 false，不能冒用手动刷新完成记录。
     if (!opts.force && isConversationBusyV2(key, stMem)) return false;
     stMem.pendingMemoryWrite = true;
     saveSocialV2State();
     void sendWakePromptV2(key, 'memoryWrite').catch((error) => log('[memory] 记忆更新唤醒异常 ' + key + ': ' + (error?.message ?? error)));
     return true;
+  };
+  taskCaps.memoryWorkerContext=key=>{
+    if(!dshReady||currentMode!=='reserved2'||socialV2.paused||cfg.socialV2?.enabled===false||!isSessionAllowedInCurrentMode(key)||!pluginHost.allowsWake('memoryWrite',{key})||tokenBudgetOf(key).stage!=='normal'||pluginHost.callService('availability','canWake',{key,reason:'memoryWrite'})===false)return null;
+    const st=modelFacingStateV2(key),messages=new Map();
+    for(const m of [...(st?.recentMessages||[]),...(st?.unread||[])])if(m&&messageContentComplete(m)){
+      const identity=String(m.messageId||'')+':'+String(m.seq||'')+':'+String(m.isSelf);
+      messages.set(identity,{seq:m.seq,userId:m.userId,sender:m.sender,isSelf:m.isSelf===true,at:m.at||m.time,text:m.text||m.plain,ownPlain:m.ownPlain,bodyComplete:true});
+    }
+    return {messages:[...messages.values()],role:currentRoleHintV2()};
+  };
+  taskCaps.availabilityAssessmentContext=key=>{
+    if(!dshReady||currentMode!=='reserved2'||socialV2.paused||cfg.socialV2?.enabled===false||!isSessionAllowedInCurrentMode(key)||tokenBudgetOf(key).stage!=='normal')return null;
+    if(taskCaps.getModelAvailability?.({key,reason:'message'})?.blocked)return null;
+    const st=modelFacingStateV2(key),messages=new Map(),now=Date.now();
+    for(const m of [...(st?.recentMessages||[]),...(st?.unread||[])])if(m&&!m.isSelf&&messageContentComplete(m)&&Number(m.at||m.time)>now-86400000){
+      const text=String(m.text||m.plain||'');if(!text||text.length>4000)continue;
+      messages.set(m.seq,{seq:m.seq,userId:m.userId,at:m.at||m.time,text});
+    }
+    const selected=[];let chars=0;
+    for(const m of [...messages.values()].sort((a,b)=>b.seq-a.seq)){if(selected.length>=12||chars+m.text.length>10000)break;selected.unshift(m);chars+=m.text.length;}
+    return {messages:selected};
+  };
+  taskCaps.runAvailabilityAssessment=({key,prompt,signal})=>{
+    if(!taskCaps.availabilityAssessmentContext(key)||typeof prompt!=='string'||prompt.length>16000)throw Error('后台忙闲评估当前未准入');
+    let workerId;
+    return runReadOnlyWorker({api,prompt,signal,timeoutMs:30000,title:'忙闲评估 · '+key,
+      onCreated:id=>{workerId=id;memoryWorkerSessions.set(id,key);},
+      prepare:async id=>{if(await ensureChatModel(id,key,{reason:'message',purpose:'conversation',preset:'qq-chat-v2'})!=='applied')throw Error('忙闲评估模型选择失败');},
+      onEvent:(id,event)=>{if(event.type==='request/header')rememberModel(id,event.data?.header?.config);recordSessionUsage(id,event);}
+    }).finally(()=>{if(workerId)memoryWorkerSessions.delete(workerId);});
+  };
+  taskCaps.runReadOnlyWorker=({key,purpose,prompt,signal})=>{
+    if(purpose!=='memory'||!taskCaps.memoryWorkerContext(key))throw Error('后台整理当前未准入');
+    let workerId;
+    return runReadOnlyWorker({api,prompt,signal,title:'记忆整理 · '+key,
+      onCreated:id=>{workerId=id;memoryWorkerSessions.set(id,key);},
+      prepare:async id=>{if(await ensureChatModel(id,key,{reason:'memoryWrite',purpose:'task',preset:'qq-memory-worker'})!=='applied')throw Error('整理代理模型选择失败');},
+      onEvent:(id,event)=>{if(event.type==='request/header')rememberModel(id,event.data?.header?.config);recordSessionUsage(id,event);}
+    }).finally(()=>{if(workerId)memoryWorkerSessions.delete(workerId);});
+  };
+  taskCaps.memoryWorkerCanCommit=key=>currentMode==='reserved2'&&cfg.socialV2?.enabled!==false&&!socialV2.paused&&isSessionAllowedInCurrentMode(key);
+  taskCaps.readImageWithModel=({key,prompt,images,selection,signal,timeoutMs=30000})=>{
+    if(!taskCaps.memoryWorkerCanCommit(key) || !Array.isArray(images) || !images.length || images.length>3
+      || images.some(image=>!/^image\/(png|jpeg|gif|webp)$/.test(image.mimeType)||typeof image.data!=='string'||image.data.length>3*1024*1024))throw Error('图片资料读取当前未准入');
+    let workerId;
+    return runReadOnlyWorker({api,signal,timeoutMs,title:'图片资料整理 · '+key,
+      content:[{type:'text',text:prompt},...images.flatMap((image,index)=>[
+        {type:'text',text:`图片${index+1}预处理说明：${String(image.text||'静态图').slice(0,1000)}`},
+        {type:'image',mediaType:image.mimeType,data:image.data}
+      ])],
+      prepare:async id=>selectSessionModel({sessionId:id,...selection}),
+      onCreated:id=>{workerId=id;memoryWorkerSessions.set(id,key);},
+      onEvent:(id,event)=>{if(event.type==='request/header')rememberModel(id,event.data?.header?.config);recordSessionUsage(id,event);}
+    }).then(result=>{if(!taskCaps.memoryWorkerCanCommit(key))throw Error('图片读取会话权限已变化');return result;})
+      .finally(()=>{if(workerId)memoryWorkerSessions.delete(workerId);});
+  };
+  taskCaps.memoryWorkerFinished=({key,ok,chars})=>{
+    const st=getSocialV2State(key);st.pendingMemoryWrite=false;
+    if(!ok){if(st.diaryRequestedAt)finishDiaryRefreshFailure(key,st,'refresh_failed');saveSocialV2State();return;}
+    st.memoryUpdatedAt=Date.now();log('[memory] 独立整理已保存 '+key+'（'+chars+' 字）');
+    if(st.diaryRequestedAt){const day=String(st.diaryRequestedDay||dateKeyLocalV2(new Date())),requestId=String(st.diaryRequestedId||'');st.diaryRequestedAt=0;st.diaryRequestedDay='';st.diaryRequestedId='';
+      void sendDailyDiaryV2(key,{catchUp:false,force:true,day,manualRequestId:requestId,allowArchiveRetry:true}).then(r=>{if(!r?.ok&&!r?.day)pluginHost.callService('memory','noteManualDiaryRefresh',{key,day,requestId,reason:r?.reason||'send_unconfirmed'});}).catch(error=>log('[diary] 独立整理后发送失败：'+error.message));
+    }
+    saveSocialV2State();
   };
   // requestReminderWake：L 层 life-schedule-reminder 到点后调用。
   // 组件负责「哪些条目、重复怎么顺延」；桥接只负责环境闸门（模式/暂停/白名单/静音）与
@@ -10567,7 +10660,7 @@ async function main() {
   taskCaps.readImageReferences = async ({key,messageId,maxImages=1,maxBytes=10485760}) => {
     const media=findMessageMedia(key,messageId).filter(item=>item?.kind==='image'||item?.kind==='sticker').slice(0,Math.min(5,Math.max(0,maxImages)));
     const out=[];let total=0;
-    for(const item of media){const image=await fetchOneBotImage(item);if(!image?.buffer)continue;total+=image.buffer.length;if(total>maxBytes)throw Error('REFERENCE_TOO_LARGE');out.push({mimeType:mimeFromBuffer(image.buffer),data:image.buffer.toString('base64')});}
+    for(const item of media){const image=await fetchOneBotImage(item,key);if(!image?.buffer)continue;total+=image.buffer.length;if(total>maxBytes)throw Error('REFERENCE_TOO_LARGE');out.push({mimeType:mimeFromBuffer(image.buffer),data:image.buffer.toString('base64')});}
     return out;
   };
   taskCaps.spawnWebWatch = (args = []) => {
@@ -10634,8 +10727,21 @@ async function main() {
   taskCaps.refreshContextModules = ({key,sessionId,scene,seed={},moduleIds=[]}) => {
     if(state.sessions[key]!==sessionId||!isSessionAllowedInCurrentMode(key))return null;
     const live=modelFacingStateV2(key),envelope=activeTurnEnvelopes.get(sessionId),mood=pluginHost.callService('mood','read',{key});
-    // Refresh descriptive state, not new conversational input. The latter is
-    // admitted only by the signed chat packet or a full message-reading tool.
+    // A signed active chat may pick up already-admitted bridge ingress at the
+    // next model boundary. No QQ read API, wake lottery or new task permission.
+    let snapshot;
+    if(envelope&&!envelope.cancelled&&envelope.key===key&&tokenBudgetOf(key).stage==='normal'
+      &&!socialV2.paused&&cfg.socialV2?.enabled!==false
+      &&/^(message|private|reply|question|atMention|nameMention|probability|anyMessage|speaker|poke|keyword|bootstrap|startupGreeting|timeBubble|proactiveCheck|careCheck|idleRescue|privateFollowup)$/.test(String(envelope.reason).split(':')[0])){
+      snapshot=buildWakeSnapshotV2(key,false,envelope);
+      if(snapshot){
+        const originals=[...live.unread,...live.recentMessages];
+        const allowed=row=>row.isSelf||originals.some(m=>m.seq===row.seq&&(m.quotaAdmission==='admitted'||messageAdmitted(envelope,m)));
+        for(const field of ['messages','recent','receiptWindow'])snapshot[field]=snapshot[field].filter(allowed);
+        snapshot.includedUnreadCount=snapshot.messages.length;
+        noteModelMessagesV2(getSocialV2State(key),[...snapshot.messages,...snapshot.recent,...snapshot.receiptWindow],key,envelope);
+      }
+    }
     const st=new Proxy(live,{get(target,field){const value=Reflect.get(target,field);return ['unread','recentMessages'].includes(field)?(value||[]).filter(m=>m.isSelf||messageAdmitted(envelope,m)):value;}});
     const admittedMessages=[...st.unread,...st.recentMessages].filter(m=>!m.isSelf);
     const modules=pluginHost.collectPromptModules({...seed,key,reason:scene,st,state:st,
@@ -10651,7 +10757,7 @@ async function main() {
       recentOwnMessages:getSocialV2State(key).recentMessages.filter(m=>m?.isSelf).slice(-6),
       isPrivate:key.startsWith('private:'),isOwnerKey:isAdminDevKey(key),isAdminEnvironment:hasAdminEnvironment(key),
     },{only:moduleIds});
-    return {modules,receiptState:receiptStateView(live),expression:pluginHost.callService('chatExpression','current',{key})};
+    return {modules,snapshot,receiptState:receiptStateView(live),expression:pluginHost.callService('chatExpression','current',{key})};
   };
 
   const forcedOwners={"reminderTimer":"life-wake-reasons","careTimer":"life-wake-reasons","newsTimer":"life-wake-reasons","idleRescueTimer":"life-wake-reasons","selfReviewTimer":"obs-self-review","userFeedbackTimer":"obs-self-review","timeBubbleTimer":"life-proactive-time-bubble","startupGreetTimer":"life-proactive-startup-greeting","rateLimitRetryTimer":null,"replyCheckTimer":"life-wake-reasons","pendingWakeTimer":null,"sleepTimer":null,"proactiveTimer":"life-wake-reasons"};
@@ -10671,11 +10777,16 @@ async function main() {
       && h.connected===true && h.accountOnline===true && h.good===true
       && Number.isFinite(h.lastPacketAgoMs) && h.lastPacketAgoMs>=0 && h.lastPacketAgoMs<=45000};
   };
+  taskCaps.getModelAvailability=({key,reason='message'}={})=>{
+    const preset=reason==='memoryWrite'?'qq-memory-worker':state.sessionPresets?.[key];
+    const selection=resolveCallPolicy(pluginHost,ROOT,{key,reason,preset:instanceSessionPolicy.canonicalPreset(preset),purpose:reason==='memoryWrite'?'task':'conversation'});
+    return pluginHost.callService('modelAvailability','status',{provider:selection.provider});
+  };
   taskCaps.getProactiveFacts=key=>{
     const st=socialV2.conversations.get(key),sid=state.sessions[key];
     const active=activeTurnEnvelopes.get(sid);
     return {allowed:outboundServicesInitialized&&pluginHost.hasService('replyPlan','reserve')&&currentMode==='reserved2'&&cfg.socialV2?.enabled!==false&&isSessionAllowedInCurrentMode(key),
-      transportReady:pluginHost.callService('scheduler','transportReady')===true,
+      transportReady:pluginHost.callService('scheduler','transportReady')===true,modelAvailability:taskCaps.getModelAvailability({key}),
       conversationAwake:!!st?.pendingWakeTimer||!!pendingTurnEnvelopes.get(sid)?.some(e=>!e.cancelled&&!e.waitRoundClosed)||!!(active&&!active.cancelled&&!active.waitRoundClosed),
       paused:socialV2.paused,busy:!!activeTurnEnvelopes.get(sid)||!!pendingTurnEnvelopes.get(sid)?.some(e=>!e.cancelled)||isConversationBusyV2(key,st)||!!queued.get(key)?.length,
       pendingPurpose:!!st?.pendingReminderItems?.length||!!st?.pendingTimeBubble||!!st?.pendingWakeReasons?.some(x=>!['replyCheck','timeout','proactiveCheck'].includes(x.reason)),
@@ -12409,27 +12520,23 @@ async function main() {
     }) || legacyContextText : legacyContextText;
     let content = [{ type: 'text', text: contextText }];
     if (Array.isArray(opts.media) && opts.media.length > 0) {
-      const imageParts = await resolveMediaList(opts.media, key, opts.messageId);
+      const imageParts = currentMode === 'chat' || currentMode === 'reserved'
+        ? await resolveMediaList(opts.media, key, opts.messageId)
+        : incomingImageCache.enqueue({key, messageId:opts.messageId || opts.media[0]?._imageSourceRef || crypto.randomUUID(), media:opts.media});
       content = [{ type: 'text', text: contextText }, ...imageParts];
     }
     if (Array.isArray(opts.recoveryMessages) && opts.recoveryMessages.length) {
       const seenImages = new Set();
-      let imageCount = 0, totalBytes = 0;
+      const availableImages = new Map(imageAssetStore.list({key}).map(image=>[image.imageId,image]));
       for (const message of opts.recoveryMessages) {
         for (const ref of Array.isArray(message.imageIds) ? message.imageIds : []) {
-          if (imageCount >= 4) break;
+          if (seenImages.size >= 4) break;
           const imageId = String(ref?.imageId || '');
           if (!imageId || seenImages.has(imageId)) continue;
           seenImages.add(imageId);
-          const asset = imageAssetStore.get({ key, imageId });
-          if (!asset.ok) { content.push({ type: 'text', text: `[恢复图片 ${String(ref?.name || imageId).slice(0, 120)} 已过期，无法查看]` }); continue; }
-          const prep = await toModelMedia(asset.image.data, asset.image.mimeType, asset.name);
-          if (!prep?.ok || totalBytes + prep.buffer.length > MAX_MEDIA_BYTES) {
-            content.push({ type: 'text', text: `[恢复图片 ${asset.name} 无法载入模型]` }); continue;
-          }
-          totalBytes += prep.buffer.length; imageCount++;
-          content.push({ type: 'text', text: `[恢复图片：消息 ${String(message.id || '')}，名称 ${asset.name}]` });
-          content.push({ type: 'image', mediaType: prep.mimeType, data: prep.buffer.toString('base64'), name: asset.name });
+          const asset = availableImages.get(imageId);
+          if (!asset) { content.push({ type: 'text', text: `[恢复图片 ${String(ref?.name || imageId).slice(0, 120)} 已过期，无法查看]` }); continue; }
+          content.push({ type: 'text', text: `[一张图片，尚未分析；消息 ${String(message.id || '')}，imageId=${imageId}，名称 ${asset.name}；需要理解画面时再读取该消息图片]` });
         }
       }
     }
@@ -13299,6 +13406,7 @@ async function main() {
       if (m?.emojiId) item.emojiId = String(m.emojiId);
       if (m?.summary) item.summary = sanitizeMediaSummary(m.summary);
       if (m?.subType) item.subType = String(m.subType);
+      if (m?._imageSourceRef) item._imageSourceRef=String(m._imageSourceRef);
       return item;
     }).filter((m) => (m.kind === 'face' ? !!m.faceId : !!(m.file || m.url || m.emojiId))) : [];
     const safeForwardIds = (Array.isArray(forwardIds) ? forwardIds : []).map(sanitizeForwardId).filter(Boolean);
@@ -13438,7 +13546,8 @@ async function main() {
       if (st) {
         if (cfg.socialV2?.doubleStamp?.enabled === false || !v2ToolEnabled('reportReceipts')) stamped += markReplyBatchV2(st);
         else {
-          registerSuccessfulReplyV2(st, {replyToMessageId:k===target?replyToMessageId:undefined,sourceSeqs:declared?.seqs});
+          const completed=pluginHost.callService('replyPlan','confirmedReplySources',{key:k,messages:[...st.unread,...st.recentMessages].filter(m=>declared?.seqs.includes(m.seq)),finalizedOnly:true});
+          registerSuccessfulReplyV2(st, {replyToMessageId:k===target?replyToMessageId:undefined,sourceSeqs:declared?.seqs,completeSeqs:completed?.seqs||[]});
         }
       }
     }
@@ -13709,7 +13818,8 @@ async function main() {
       if (status === 'replied' && !stampMsV2(msg.seenAt)) {
         return { ok: false, status: 409, error: `seq ${seq} 还没有已读戳；先确认该消息已返回给模型并提交 seen` };
       }
-      if (status === 'replied' && !st.receiptSendPendingSeqs?.includes(seq)) {
+      const durable=status==='replied'&&pluginHost.callService('replyPlan','confirmedReplySources',{key,messages:[msg]})?.seqs?.includes(seq);
+      if (status === 'replied' && current !== 'complete' && !st.receiptSendPendingSeqs?.includes(seq) && !durable) {
         return { ok: false, status: 409, error: `seq ${seq} 没有对应的成功发送记录；请勿因回执失败重复发送，先核对发送结果，再提交回执或报告 anomaly` };
       }
       updates.push({ seq, status, note: String(entry?.note || '').trim().slice(0, 300), msg, current });
@@ -13722,8 +13832,10 @@ async function main() {
         continue;
       }
       if (item.status === 'context') {
-        for(const list of [st.unread,st.recentMessages])for(const twin of list||[])if(twin?.seq===item.seq){twin.replyDisposition='history';twin.replyDispositionReason='model_context_only';twin.replyDispositionAt=now;twin.replyDispositionNote=item.note;}
-        changed++;
+        if(item.msg.replyDisposition!=='history'){
+          for(const list of [st.unread,st.recentMessages])for(const twin of list||[])if(twin?.seq===item.seq){twin.replyDisposition='history';twin.replyDispositionReason='model_context_only';twin.replyDispositionAt=now;twin.replyDispositionNote=item.note;}
+          changed++;
+        }
       }
       if (item.status === 'seen' || item.status === 'replied' || item.status === 'context') {
         if (!stampMsV2(item.msg.seenAt)) changed += stampSeenAtV2(st, item.seq, now);
@@ -13798,6 +13910,7 @@ async function main() {
     }
     for (const msg of additional) if (Number.isSafeInteger(msg?.seq) && msg.seq > 0) seen.add(msg.seq);
     const seqs = st.unread.map((m) => m.seq).filter((seq) => Number.isSafeInteger(seq) && seq > 0);
+    const retained = new Set([...st.unread,...(st.recentMessages||[])].filter(m=>!m.isSelf).map(m=>m.seq));
     const lowestBuffered = seqs.length ? Math.min(...seqs) : Infinity;
     const lastUnread = Number.isSafeInteger(st.lastUnreadSeq) ? st.lastUnreadSeq : 0;
     let through = Number.isSafeInteger(st.lastReadThroughSeq) ? st.lastReadThroughSeq : 0;
@@ -13805,7 +13918,7 @@ async function main() {
     // no longer holds it at all (evicted by unreadLimit, so it can never be displayed
     // again). Scoping the skip to the real buffer range is what keeps this from ever
     // stepping over a still-pending message.
-    const reachable = (seq) => seen.has(seq) || (seq < lowestBuffered && seq <= lastUnread);
+    const reachable = (seq) => seen.has(seq) || ((seq < lowestBuffered || !retained.has(seq)) && seq <= lastUnread);
     while (through < lastUnread && reachable(through + 1)) through += 1;
     return through;
   }
@@ -14373,6 +14486,11 @@ async function main() {
       log(`[reserved2] 跳过主动唤醒 ${key}（${reason}，${wakeDecision.reason}）`);
       return;
     }
+    if(reason==='memoryWrite'&&pluginHost.hasService('memoryWorker','request')){
+      st.pendingMemoryWrite=false;saveSocialV2State();
+      if(pluginHost.callService('memoryWorker','request',{key})!==true)throw Error('独立记忆整理正在处理或暂不可用');
+      return;
+    }
     const existingReminder = [activeTurnEnvelopes.get(state.sessions[key]), ...(pendingTurnEnvelopes.get(state.sessions[key]) || [])]
       .find(envelope => envelope?.reason === 'reminder' && !envelope.cancelled);
     if (['reminder', 'timeBubble'].includes(reason) && tokenBudgetOf(key).stage !== 'normal' && !validTaskBudgetAdmission(taskProvenanceFor(key,reason).budgetAdmission,key)
@@ -14857,6 +14975,7 @@ async function main() {
     const st = getSocialV2State(key);
     if (!dshReady || st.mutedUntilReengaged || shouldBlockSilentReply(key)) return;
     if (!pluginHost.allowsWake(reason, { key }) || pluginHost.callService('availability', 'canWake', { key, reason }) === false) return;
+    if(taskCaps.getModelAvailability({key,reason})?.blocked)return;
     const activeTurn = hasActiveMessageAckTurn(key);
     if (!activeTurn && pluginHost.callService('tokenBudget', 'canDispatch', { key, stage: tokenBudgetOf(key).stage }) === false) return;
     scheduleMessageReadAck(key, inboundAt);
@@ -15155,7 +15274,11 @@ async function main() {
     const stagedIncomingImages = [];
     let resolvedIncomingImageParts = [];
     if (mediaList.length) {
-      try { resolvedIncomingImageParts = await resolveMediaList(mediaList, key, messageRef, stagedIncomingImages); }
+      try {
+        resolvedIncomingImageParts = currentMode === 'chat' || currentMode === 'reserved'
+          ? await resolveMediaList(mediaList, key, messageRef, stagedIncomingImages)
+          : incomingImageCache.enqueue({key,messageId:messageRef,media:mediaList});
+      }
       catch (error) { log('[image-cache] 入站图片暂存失败：' + String(error?.message ?? error).slice(0, 160)); }
     }
     const seqRef = event.message_seq != null ? String(event.message_seq) : '';
@@ -15390,7 +15513,12 @@ async function main() {
               onHandled: () => markIncomingHandledV2(key, event?.message_id ?? event?.msg_id ?? event?.messageId ?? null),
               isOwner: isOwnerRelay,
               allowed: true,
-              imageIds: stagedIncomingImages.map(({imageId,name,source})=>({imageId,name,source}))
+              imageIds: stagedIncomingImages.map(({imageId,name,source})=>({imageId,name,source})),
+              loadImageIds: async () => {
+                const images = await Promise.all(mediaList.filter(media=>media.kind!=='face').slice(0,5).map(media=>incomingImageCache.read({key,media})));
+                if(images.some(image=>!image?.ok))throw Error('传话图片尚未缓存成功，本次没有发送传话');
+                return images.filter(image=>image?.ok).map(({imageId,name,source})=>({imageId,name,source}));
+              }
             });
             if (relayHandled) return;
           } catch (error) {
@@ -15866,7 +15994,7 @@ async function main() {
     const isOwner = String(senderId) === String(cfg.ownerQQ ?? '');
     const pokeEventId=String(event.message_id||event.notice_id||event.__outboundIncomingId||(event.__outboundIncomingId=crypto.randomUUID()));
     const pokeDecision=pluginHost.callService('proactive','incoming',{key,eventId:'poke:'+pokeEventId,at:incomingAt,event:{poke:true,targetIsSelf},blockedReason:tokenBudgetOf(key).stage==='silent'?'budget_silent':''});
-    pluginHost.callService('proactive','observe',{key,kind:'incoming',eventId:'poke:'+pokeEventId,at:incomingAt,hasInteraction:true});
+    pluginHost.callService('proactive','observe',{key,kind:'incoming',eventId:'poke:'+pokeEventId,at:incomingAt,hasInteraction:targetIsSelf,directedAtBot:targetIsSelf});
     pluginHost.callService('proactive','refresh',{key,now:incomingAt});
     const msg = appendSocialV2Poke(key, {
       sender,

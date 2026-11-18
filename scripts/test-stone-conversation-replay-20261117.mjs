@@ -1,0 +1,29 @@
+import fs from 'node:fs';import test from 'node:test';import assert from 'node:assert/strict';import {bridgeHarness,fixtureReplyTurn} from './audit-bridge-harness.mjs';import {createTopicActions} from '../plugins/qq-components/ctx-chat-topic-drive/topic-actions.mjs';
+const fixture=JSON.parse(fs.readFileSync(new URL('./fixtures/reply-loop-20261117.json',import.meta.url))),key=fixture.key;
+test('full incident replay merges the criticism, keeps the genuine poke actor and never replies to every input',async t=>{
+ const h=await bridgeHarness({config:{sendDelayMs:0,allow:{private:['123'],groups:[key.split(':')[1]]},socialV2:{proactive:{enabled:false},wait:{minMs:100,maxMs:200,minQuietAfterNewMs:0}}},files:{'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:1,maxMessagesCasual:1,maxSendPerMinute:0,maxSendPerHour:0,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},'state/plugins/config/life-conversation-wait.json':{endProbabilityPercent:100,probabilityStepPercent:100},'state/plugins/config/ctx-member-alias.json':{autoExtract:false,autoSemantic:false},'state/plugins/ctx-member-alias.json':{entries:[{id:'little-fish',alias:'示例昵称',qq:'10008',status:'confirmed',sourceKeys:[key]}]}}});let server;t.after(async()=>{if(server){server.closeAllConnections?.();await new Promise(r=>server.close(r));}await h.close();});
+ h.setMode('reserved2');const st=h.getSocialV2State(key);st.lastUnreadSeq=1385;const input=[],append=message=>{h.appendSocialV2Message(key,message.sender,message.text,message.plain||message.text,false,false,message.messageId,[],message.userId,[],undefined,false,{bodyComplete:true});assert.equal(st.lastUnreadSeq,message.seq);for(const list of [st.recentMessages,st.unread]){const m=list.find(m=>m.seq===message.seq);Object.assign(m,{replyRequirement:message.replyRequirement,...(message.kind?{kind:message.kind,poke:message.poke}:{})});}input.push(message.seq);};
+ server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port,headers={'content-type':'application/json','x-console-token':'fixture-console-token','x-agent-token':st.agentToken};const call=async(route,body)=>{const r=await fetch(base+route,{headers:{...headers,...(body?.contentId?{'x-reply-content-id':body.contentId}:{})},...(body?{method:'POST',body:JSON.stringify({key,...body})}:{})});return {status:r.status,body:await r.json()};};
+ let turn=0;const read=async()=>{const sid=await h.ensureSession(key);if(!h.activeTurnEnvelopes.has(sid)){await h.deliverPrompt(key,'',{wakeReason:'nameMention'});await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:++turn}}}});}const r=await call('/api/socialV2/unread?key='+key);assert.equal(r.status,200,JSON.stringify(r.body));};
+ const send=(messages,contentId)=>call('/api/socialV2/send-message',{messages,contentId});const declare=async groups=>{const r=await call('/api/socialV2/reply-contents',{groups});assert.equal(r.status,200,JSON.stringify(r.body));return r.body.contents;};
+ const context=async seqs=>{const r=await call('/api/socialV2/receipt-report',{receipts:seqs.map(seq=>({seq,status:'context',note:'已读的普通群聊背景，不插话、不冒充拍一拍，不作为机器人的年龄问题'}))});assert.equal(r.status,200,JSON.stringify(r.body));};
+ for(const m of fixture.messages.filter(m=>m.seq<=1393))append(m);h.pluginHost.callService('historyContext','beginWake',{key,state:st,triggerSeq:1386});await read();
+ const groups=await declare([{seqs:[1386,1389,1391,1392,1393],kind:'chat'},{seqs:[1388],kind:'chat'}]);
+ const quiet=await send('好，这批话AI助手听到啦，先收声。',groups[0].id);assert.equal(quiet.body.sent,1,JSON.stringify(quiet.body));
+ const repeated=await send('AI助手不插嘴了，乖乖安静待着。',groups[0].id);assert.equal(repeated.body.ok,false);
+ assert(!st.recentMessages.find(m=>m.seq===1388).repliedAt,'The criticism must not close another user’s poke');
+ const wrong=await send('示例成员甲用户这一拍，AI助手收到啦～',groups[1].id);assert.match(JSON.stringify(wrong.body),/poke_actor_mismatch/);
+ const poke=await send('示例成员丙用户，这一下收到啦～',groups[1].id);assert.equal(poke.body.sent,1,JSON.stringify(poke.body));await context([1387,1390]);
+ assert(st.recentMessages.filter(m=>[1386,1388,1389,1391,1392,1393].includes(m.seq)).every(m=>m.repliedAt>0));
+ for(const m of fixture.messages.filter(m=>m.seq>=1394&&m.seq<=1395))append(m);await read();await context([1394]);
+ const stopGroup=await declare([{seqs:[1395],kind:'chat'}]);const stop=await send('好，收声啦。',stopGroup[0].id);assert.equal(stop.body.sent,1,JSON.stringify(stop.body));
+ for(const m of fixture.messages.filter(m=>m.seq>=1396))append(m);await read();await context(fixture.messages.filter(m=>m.seq>=1396).map(m=>m.seq));
+ assert.deepEqual(input,fixture.messages.map(m=>m.seq));assert.equal(input.length,12,'Every retained incident input, including other users, must be replayed');
+ const wait=await call('/api/socialV2/wait',{purpose:'messages',timeoutMs:100});assert.equal(wait.status,200,JSON.stringify(wait.body));assert.equal(wait.body.endRound,true);
+ const sends=h.calls.http.filter(c=>/send_group_msg$/.test(c.url));assert.equal(sends.length,3,'12 inputs produce three selected semantic responses, not one response per message');assert(sends.every(c=>!JSON.stringify(c.body||c.data||{}).includes('CQ:reply')),'ordinary merged replies do not require a quote');
+ assert.equal(st.unread.filter(m=>m.replyDisposition!=='history'&&!m.repliedAt&&!m.resolvedAt).length,0);
+});
+test('group timeout never starts a monologue when group wait followups are disabled',()=>{
+ let data={};const actions=createTopicActions({state:{get:()=>data,set:p=>Object.assign(data,p)}},{groupWaitFollowupsEnabled:false,followupWeight:1,newTopicWeight:0});
+ for(let i=1;i<=7;i++)assert.equal(actions.afterWait({key,scope:'same-input',seq:1395,emptyWaits:i,endRound:false,random:()=>0}).action,'wait');
+});

@@ -72,6 +72,13 @@ export function createMilkMonitor(ctx,{query,clock=Date.now}){
    let pending=current.pendingAlert;
    if(pending&&pending.stage!==stock.stage)pending=null;
    if(c.monitorEnabled&&event)pending={id:'milk-stock:'+randomUUID(),eventId:event.id,kind:event.kind,stage:stock.stage,text:stockNotice(event),sourceAt:checkedAt,expiresAt:checkedAt+2*3600000,notBefore:event.urgent?checkedAt:Math.max(checkedAt,(current.lastNoticeAt||0)+c.notificationCooldownMin*60000)};
+   const owner=String(ctx.capabilities?.getOwnerQQ?.()||''),ownerKey='private:'+owner,missed=current.socialEvent;
+   // A suppressed old warning is not replayed. A new successful query may confirm
+   // the same current low stock and create one owner-only status notice instead.
+   if(c.monitorEnabled&&!event&&!pending&&!current.scheduledNotice&&/^[1-9]\d*$/.test(owner)
+     &&['low','critical','empty','unavailable'].includes(stock.stage)&&missed?.stage===stock.stage
+     &&current.spokenMilk?.[ownerKey]!==missed.id&&ctx.callService?.('proactive','privatePassive',{key:ownerKey})!==true)
+    pending={id:'milk-stock:'+randomUUID(),eventId:missed.id,kind:stock.stage,stage:stock.stage,text:stockNotice({kind:stock.stage,stock}),sourceAt:checkedAt,expiresAt:checkedAt+2*3600000,notBefore:Math.max(checkedAt,(current.lastNoticeAt||0)+c.notificationCooldownMin*60000)};
    const scheduledNotice=current.scheduledNotice?.stage===stock.stage&&!event?current.scheduledNotice:null;
    write({lastResult:out,lastSuccess:sample,lastError:null,failures:0,nextCheckAt:checkedAt+c.checkIntervalMin*60000,pendingAlert:pending,scheduledNotice});
    social.observe(event,checkedAt);

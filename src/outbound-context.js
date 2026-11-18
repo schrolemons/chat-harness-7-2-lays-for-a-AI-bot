@@ -43,9 +43,10 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
     // A failed observer cannot convert a completed physical operation into a retry.
     let drive; try { drive = call('conversationDrive','sent',{...fact,at:fact.sentAt,eventId:fact.deliveryId,episodeId:fact.proactiveId,kind:fact.conversationIntent}); } catch(error) { log('outbound fact conversationDrive: '+error.message); }
     const active = drive?.isProactive === true || ['followup','newTopic'].includes(fact.conversationIntent) || ['privateFollowup','timeBubble','reminder','milkStock'].includes(fact.originReason);
+    const conversational=drive?.isProactive===true||['followup','newTopic'].includes(fact.conversationIntent)||['privateFollowup','timeBubble','startupGreeting','proactiveCheck','careCheck','idleRescue'].includes(fact.originReason);
     for(const [service,method,payload] of [
       ['proactive','observe',{...fact,isProactive:active,at:fact.sentAt,kind:'sent',reason:fact.wakeReason,eventId:'sent:'+fact.deliveryId,episodeId:drive?.episodeId||fact.proactiveId}],
-      ['mood','sent',fact],
+      ['mood','sent',{...fact,expectsReply:fact.expectsReply||conversational,wakeReason:conversational&&fact.wakeReason==='message'?'proactiveCheck':fact.wakeReason}],
       ['biliRecommendations','sent',fact],
       ['proactive','refresh',{key:fact.key,now:fact.sentAt}]
     ])try{call(service,method,payload);}catch(error){log('outbound fact '+service+': '+error.message);}
@@ -84,7 +85,7 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
     const scope=c.envelope?.sessionId && c.envelope?.turn!=null ? c.envelope.sessionId+':'+c.envelope.turn : undefined;
     const topicLease=call('conversationDrive','reserve',{key,scope,operationId,kind:c.conversationIntent,topicId:c.topicId,text,episodeId:c.actionId,origin:c.origin,originReason:c.reason,now:clock()});
     if(topicLease?.ok===false){const e=Error('话题动作拒绝：'+topicLease.reason+(topicLease.hint?'；'+topicLease.hint:''));e.knownFailed=true;throw e;}
-    const plan=topicLease?.timeoutAction ? call('replyPlan','resolve',{key,turnId:topicLease.episodeId,incomingText:'',mood:call('mood','read',{key})||c.envelope?.mood,agent:c.agent})||c.plan : c.plan;
+    const plan=topicLease?.timeoutAction ? call('replyPlan','resolve',{key,turnId:topicLease.episodeId,autonomousSource:{kind:'proactiveCheck',id:'wait-topic:'+topicLease.episodeId},incomingText:'',mood:call('mood','read',{key})||c.envelope?.mood,agent:c.agent})||c.plan : c.plan;
     if(plan && String(text).length>plan.maxMessageChars){call('conversationDrive','release',{lease:topicLease});const e=Error('发送计划拒绝：message_length');e.knownFailed=true;throw e;}
     const policyGuard=guard(key,{...c,transportKind:kind,transportTargetUserId:targetUserId,transportReplyTo:replyToMessageId});
     const assertGuard=()=>{assertAllowed?.();return policyGuard();};

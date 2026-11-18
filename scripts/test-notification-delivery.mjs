@@ -30,7 +30,7 @@ test('each completed manual diary refresh can send the latest same-day summary w
  const h=await bridgeHarness();try{h.setMode('reserved2');const now=Date.now(),d=new Date(now),day=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),key='private:123';
   h.pluginHost.callService('memory','write',{key,text:'【日记】\nLATEST_MANUAL_DIARY'});
   const first=await h.pluginHost.callService('memory','sendDiaryDetailed',{key,now,day,allowArchiveRetry:true,manualRequestId:'manual-click-1'});
-  h.pluginHost.callService('memory','write',{key,text:'【日记】\nLATEST_MANUAL_DIARY_V2'});
+  const current=h.pluginHost.callService('memory','diaryCurrent',{key,day,now});assert.equal(h.pluginHost.callService('memory','updateDiary',{key,day,now,text:'LATEST_MANUAL_DIARY_V2',revision:current.revision}).ok,true);
   const second=await h.pluginHost.callService('memory','sendDiaryDetailed',{key,now:now+1000,day,allowArchiveRetry:true,manualRequestId:'manual-click-2'});
   assert.equal(first.ok,true,JSON.stringify(first));
   assert.equal(second.ok,true,JSON.stringify(second));
@@ -41,25 +41,22 @@ test('each completed manual diary refresh can send the latest same-day summary w
   assert.equal(archive.text.split('## '+key+' ·').length-1,1,'同一天同一会话只保留最新的一份归档');
  }finally{await h.close();}
 });
-test('diary API requests a fresh memory turn before sending only today',async()=>{
- const h=await bridgeHarness({config:{socialV2:{dailyDiary:{hour:0,minute:0}}}});let server;try{
-  h.setMode('reserved2');const now=Date.now(),d=new Date(now),day=h.pluginHost.callService('memory','diaryTargetDay',{now}).day,key='private:123';
-  h.getSocialV2State(key);h.pluginHost.callService('memory','write',{key,text:'【日记】\nAPI_DIARY_FIXTURE'});
-  server=h.startConsoleServer();if(!server.listening)await new Promise(resolve=>server.once('listening',resolve));
-  const url='http://127.0.0.1:'+server.address().port+'/api/socialV2/daily-diary?token=fixture-console-token';
-  const post=async()=>{const response=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'sendNow',key,day})});return {status:response.status,body:await response.json()};};
-  const first=await post();assert.equal(first.status,200);assert.equal(first.body.pending,true);assert.equal(first.body.day,day);
-  const firstRequestId=String(h.getSocialV2State(key).diaryRequestedId||'');assert.match(firstRequestId,/^[a-f0-9-]{36}$/);
-  const get=await fetch(url,{method:'GET'}),status=await get.json(),conversation=status.conversations.find(c=>c.key===key);assert.equal(conversation.diaryPending,true);assert.equal(conversation.targetDate,day);
-  const second=await post();assert.equal(second.status,409);assert.equal(second.body.reason,'pending');
-  const firstSend=await h.pluginHost.callService('memory','sendDiaryDetailed',{key,now,day,allowArchiveRetry:true,manualRequestId:firstRequestId});assert.equal(firstSend.ok,true);
-  const st=h.getSocialV2State(key);st.pendingMemoryWrite=false;st.diaryRequestedAt=0;st.diaryRequestedDay='';st.diaryRequestedId='';
-  h.pluginHost.callService('memory','write',{key,text:'【日记】\nAPI_DIARY_FIXTURE_V2'});
-  const third=await post();assert.equal(third.status,200);const nextRequestId=String(st.diaryRequestedId||'');assert.match(nextRequestId,/^[a-f0-9-]{36}$/);assert.notEqual(nextRequestId,firstRequestId);
-  const secondSend=await h.pluginHost.callService('memory','sendDiaryDetailed',{key,now:now+1000,day,allowArchiveRetry:true,manualRequestId:nextRequestId});assert.equal(secondSend.ok,true);
-  assert.equal(h.calls.sent.filter(x=>x.text.includes('API_DIARY_FIXTURE')).length,2);
- }finally{if(server?.listening)await new Promise(resolve=>server.close(resolve));await h.close();}
+test('diary API uses an isolated writer, rejects duplicate work and sends each completed refresh once',async()=>{
+ const h=await bridgeHarness({config:{socialV2:{dailyDiary:{hour:23,minute:59}}}});let server;try{
+  h.setMode('reserved2');const key='private:123',day=h.pluginHost.callService('memory','diaryTargetDay',{now:Date.now()}).day,resolvers=[];
+  h.appendSocialV2Message(key,'fixture user','今天把小程序修好了。','今天把小程序修好了。',false,true,'human-diary-source',[],'123',[],undefined,false,{bodyComplete:true});
+  h.taskCaps.runReadOnlyWorker=()=>new Promise(resolve=>resolvers.push(resolve));
+  server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));const url='http://127.0.0.1:'+server.address().port+'/api/socialV2/daily-diary?token=fixture-console-token';
+  const post=async()=>{const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'sendNow',key,day})});return {status:r.status,body:await r.json()};};
+  const first=await post();assert.equal(first.status,200,JSON.stringify(first.body));assert.equal(first.body.pending,true);const firstId=h.pluginHost.callService('diaryWorker','status',{key}).id;
+  const get=await fetch(url),status=await get.json();assert.equal(status.conversations.find(c=>c.key===key).diaryPending,true);
+  const duplicate=await post();assert.equal(duplicate.status,409);assert.equal(duplicate.body.reason,'pending_or_unavailable');assert.equal(resolvers.length,1);
+  resolvers.shift()({text:'API_DIARY_FIXTURE'});await h.pluginHost.callService('diaryWorker','whenIdle',{key});assert.equal(h.calls.sent.length,1);
+  const next=await post();assert.equal(next.status,200,JSON.stringify(next.body));assert.notEqual(h.pluginHost.callService('diaryWorker','status',{key}).id,firstId);resolvers.shift()({text:'API_DIARY_FIXTURE_V2'});await h.pluginHost.callService('diaryWorker','whenIdle',{key});assert.equal(h.calls.sent.length,2);
+  assert.match(h.pluginHost.callService('memory','diaryArchiveRead',{date:day}).text,/API_DIARY_FIXTURE_V2/);
+ }finally{server?.closeAllConnections?.();if(server?.listening)await new Promise(r=>server.close(r));await h.close();}
 });
+
 test('diary archive-only state is visible and manual catch-up requires explicit action',async()=>{
  const h=await bridgeHarness({config:{socialV2:{dailyDiary:{hour:0,minute:0}}}});let server;try{
   h.setMode('reserved2');const now=Date.now(),d=new Date(now),day=h.pluginHost.callService('memory','diaryTargetDay',{now}).day,key='private:123';
@@ -116,12 +113,12 @@ test('a partial diary transport is audited with progress and cannot be marked se
   let count=0;h.bot.sendPrivateMessage=async()=>{if(++count>1)return {status:'failed',retcode:1,wording:'fixture error contains NO_AUDIT_SECRET'};};
   const input={key,now,day,manualRequestId};
   const outcome=await h.pluginHost.callService('memory','sendDiaryDetailed',input);
-  assert.equal(outcome.ok,false);assert.equal(outcome.reason,'send_unconfirmed');
+  assert.equal(outcome.ok,false);assert.ok(['send_unconfirmed','delivery_unconfirmed'].includes(outcome.reason));
   assert.equal(count,2,'stop after first uncertain part');
   await h.pluginHost.reload('ctx-memory-store');
   const status=await h.pluginHost.callService('memory','diaryStatus',{key,day,now});
   assert.equal(status.deliveryStatus,'uncertain');
-  assert.equal(status.attempts[0].reason,'send_unconfirmed');
+  assert.equal(status.attempts[0].reason,'delivery_unconfirmed');
   assert.equal(status.attempts[0].partsSent,1);
   assert(status.attempts[0].partsTotal>1);
   assert.doesNotMatch(JSON.stringify(status.attempts),/NO_AUDIT_SECRET|甲/);

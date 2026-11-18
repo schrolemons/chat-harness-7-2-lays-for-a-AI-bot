@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 // Break caught: singleton ownership, address adoption without instance/epoch checks,
 // and the HTML snapshot being mistaken for a live registry.
-export async function clientFixture(t) {
+export async function clientFixture(t, {source} = {}) {
   const nodes = new Map(), requests = [], opened = [], timers = new Set(), events = new Map();
   function element() {
     const node = { style: {}, dataset: {}, children: [], handlers: {}, isConnected: true,
@@ -44,7 +44,7 @@ export async function clientFixture(t) {
       }
       return { ok: true, json: async () => data };
     } });
-  vm.runInContext(fs.readFileSync(new URL('../plugins/qq-launcher/lib/client.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(source ?? fs.readFileSync(new URL('../plugins/qq-launcher/lib/client.js', import.meta.url), 'utf8'), context);
   const scopes = [], flush = () => new Promise(resolve => setTimeout(resolve, 12));
   const discovery={read:async()=>({ok:true,value:structuredClone(registry)})};
   function add(id, port, moduleId = 'module-' + id) {

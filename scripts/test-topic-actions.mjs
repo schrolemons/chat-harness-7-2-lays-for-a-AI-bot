@@ -6,6 +6,13 @@ function fixture(createTopicActions, config = {}) {
   const ctx = { config, state: { get: () => data, set: p => Object.assign(data, p) } };
   return { ctx, actions: createTopicActions(ctx, config), state: () => data };
 }
+
+test('a followup statement is not a question and preserves the single-question guard',async()=>{
+ const {createTopicActions}=await load(),f=fixture(createTopicActions),key='private:1',now=10000000;
+ const statement=f.actions.reserve({key,operationId:'share',episodeId:'same',kind:'followup',text:'刚才说到乌龙茶，我也想闻闻那股香味。',now});assert.equal(statement.ok,true);assert.equal(statement.asksQuestion,false);
+ const question=f.actions.reserve({key,operationId:'question',episodeId:'same',kind:'followup',text:'今天喝的是什么茶？',now});assert.equal(question.ok,true);assert.equal(question.asksQuestion,true);
+ assert.equal(f.actions.reserve({key,operationId:'second-question',episodeId:'same',kind:'followup',text:'好喝吗？',now}).reason,'question_already_asked');
+});
 test('a=.5/b=.2 chooses followup/newTopic/wait once for the same timeout; end/new input never draw', async () => {
   const { createTopicActions } = await load();
   for (const key of ['private:1', 'group:2']) for (const [roll, expected] of [[.2, 'followup'], [.6, 'newTopic'], [.9, 'wait']]) {

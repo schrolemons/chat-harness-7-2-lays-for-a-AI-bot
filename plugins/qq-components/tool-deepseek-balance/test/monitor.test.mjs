@@ -9,6 +9,20 @@ function fixture(config={},seed={}){
  const monitor=createMilkMonitor(ctx,{query:async()=>{requests++;return result;},clock:()=>now});
  return {monitor,ctx,notices,state:()=>state,requests:()=>requests,next(value,minutes=5){result=value;now+=minutes*60000;},now:()=>now};
 }
+
+test('a fresh low-stock check restores a missed owner notice after private passive mode ends',async()=>{
+ const f=fixture({reminderScope:'admin'});let passive=true;
+ f.ctx.callService=(service,method)=>service==='proactive'&&method==='privatePassive'?passive:undefined;
+ const accept=f.ctx.capabilities.requestScheduledConversation;
+ f.ctx.capabilities.requestScheduledConversation=(key,meta)=>passive?{ok:false,reason:'private_passive_only'}:accept(key,meta);
+ await f.monitor.tick();f.next(account('0.50'));await f.monitor.tick();
+ assert.equal(f.notices.length,0);assert.equal(f.state().milk.pendingAlert,null);
+ passive=false;f.next(account('0.50'));await f.monitor.tick();
+ assert.equal(f.notices.length,1,'fresh verified low stock must reach the owner after resuming');
+ assert.equal(f.notices[0].key,'private:123');
+ assert.equal(f.state().milk.lastResult.milk.change,null,'unchanged stock is not a new refill or drop');
+ f.next(account('0.50'));await f.monitor.tick();assert.equal(f.notices.length,1,'accepted notice is never blindly replayed');
+});
 test('ordinary use stays quiet; real changes request one scheduled owner conversation instead of fixed notifications',async()=>{
  const f=fixture();await f.monitor.tick();assert.equal(f.notices.length,0);
  f.next(account('9.99'));await f.monitor.tick();assert.equal(f.notices.length,0);

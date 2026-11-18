@@ -11,17 +11,18 @@ function createEditor(root,overview){
  const status=root.querySelector('[data-model-status]'),grid=root.querySelector('[data-model-rows]');
  const defaults=root.querySelector('[data-model-defaults]');
  const tabs=root.querySelector('[data-preset-tabs]');
- const labels={'qq-admin':'管理员','qq-chat':'一代聊天','qq-chat-v2':'二代聊天','qq-learning':'后台学习','campus-summary':'网页整理','qq-task-worker':'独立任务'};
- function buildViews(){const get=key=>overview?.bindings?.find(b=>b.key===key)?.preset;
+ const labels={'qq-admin':'管理员','qq-chat':'一代聊天','qq-chat-v2':'二代聊天','qq-learning':'后台学习','qq-memory-worker':'记忆整理','campus-summary':'网页整理','qq-task-worker':'独立任务'};
+ const sourceId=id=>state?.presets?.find(p=>p.runtimeId===id||p.id===id)?.id||id;
+ function buildViews(){const get=key=>sourceId(overview?.bindings?.find(b=>b.key===key)?.preset);
   const chat=get('v1'),admin=get('admin');return [
    ...[['chat','聊天模式',chat],['closed-agent','封闭 Agent',overview?.adminEnabled?admin:chat],['reserved','一代仿真',chat],['reserved2','二代仿真',get('v2')]].map(([key,label,id])=>({key,label,id,active:overview?.mode===key})),
    {key:'admin',label:'管理员环境',id:admin,active:overview?.adminEnabled===true},
-   ...[['task','独立任务'],['learning','后台学习'],['summary','网页整理']].map(([key,label])=>({key,label,id:get(key)}))];}
+   ...[['task','独立任务'],['learning','后台学习'],['memory','记忆整理'],['summary','网页整理']].map(([key,label])=>({key,label,id:get(key)}))];}
  function selectRow(key){activeKey=key;const view=views.find(v=>v.key===key);for(const row of rows){row.el.hidden=row.scope!=='global'&&row.id!==view?.id;if(row.id&&!row.el.hidden)describe(row,view);}for(const button of tabs.children)button.setAttribute('aria-selected',String(button.dataset.presetSelect===key));defaults.hidden=false;grid.hidden=false;}
  function addTabs(){for(const view of views){const button=document.createElement('button');button.type='button';button.role='tab';button.textContent=view.label;button.dataset.presetSelect=view.key;button.addEventListener('click',()=>selectRow(view.key));tabs.append(button);}}
  function describe(row,view){
   if(!row.id)return;
-  const bindings=(overview?.bindings||[]).filter(b=>b.preset===row.id),primary=bindings.find(b=>b.key==='admin')||bindings.find(b=>!['owner','default'].includes(b.key))||bindings[0];
+  const bindings=(overview?.bindings||[]).filter(b=>sourceId(b.preset)===row.id),primary=bindings.find(b=>b.key==='admin')||bindings.find(b=>!['owner','default'].includes(b.key))||bindings[0];
   const title=primary?.label||row.label.replace(/^Chat Bridge\s*[·・]\s*/,'').replace(/^AI助手/,'');
   row.el.querySelector('h4').textContent=title+(row.range?' · 模型范围':'');
   row.el.dataset.presetBinding=primary?.key||row.id;
@@ -33,7 +34,7 @@ function createEditor(root,overview){
   info.innerHTML='<div class="preset-selected-heading"><strong>'+esc(row.label)+'</strong><code>'+esc(row.id)+'</code><span class="preset-state">'+phase+'</span></div>'+(description?'<p class="preset-selected-description">'+esc(description)+'</p>':'');
  }
  const refresh=root.querySelector('[data-model-refresh]'),read=root.querySelector('[data-model-read]');
- const purpose=id=>['qq-task-worker','qq-learning','campus-summary'].includes(id)?'task':'conversation';
+ const purpose=id=>['qq-task-worker','qq-learning','qq-memory-worker','campus-summary'].includes(id)?'task':'conversation';
  const inherited=row=>row.range?asRange(state.config.task):state.config[purpose(row.id)];
  const asRange=value=>value.allowed?value:{allowed:[{provider:value.provider,model:value.model,efforts:[value.effort]}]};
  const choice=row=>{

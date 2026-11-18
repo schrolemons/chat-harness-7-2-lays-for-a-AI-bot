@@ -27,7 +27,7 @@ export function createPlugin(ctx) {
     const current = state.get(), drive = { ...(current.driveByKey?.[key] || {}), ...(topicId ? {currentTopicId:String(topicId)} : {}) }, receipts = drive.receipts || {}, episodes = drive.episodes || {};
     const id = String(eventId || episodeId || ''), episode = String(episodeId || eventId || '');
     if (!id || receipts[id]) return { ok: false, duplicate: !!receipts[id] };
-    const actualQuestion = actual.asksQuestion ?? (/[?？]|(?:吗|么|呢)[呀啊嘛]?[。！!]*$/.test(String(text).trim()) || kind === 'followup');
+    const actualQuestion = actual.asksQuestion ?? /[?？]|(?:吗|么|呢)[呀啊嘛]?[。！!]*$/.test(String(text).trim());
     if (!['followup', 'newTopic'].includes(kind) && !actualQuestion) return { ok: true, recorded: false };
     const seen = typeof episodes[episode] === 'object' ? episodes[episode] : {};
     const semantic = kind === 'newTopic' ? 'newTopic' : 'followup';

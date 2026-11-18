@@ -2,7 +2,8 @@ export const validKey = key => /^(group|private):\d+$/.test(String(key));
 export const validUser = userId => /^\d+$/.test(String(userId));
 export const validScore = score => typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 100;
 export const clamp = value => Math.max(0, Math.min(100, value));
-export const DAILY_FLOOR = 60;
+export const DAILY_FLOOR = 100;
+export const MINIMUM_SCORE = 60;
 export const UNANSWERED_PENALTY = 10;
 export const DAILY_RECOVERY_HOUR = 4;
 
@@ -32,7 +33,8 @@ export function moodPolicy(config = {}) {
   const used = new Set();
   return {
     enabled: config.enabled !== false,
-    initial: DAILY_FLOOR,
+    initial: Math.max(validScore(config.minimumScore)?config.minimumScore:MINIMUM_SCORE,validScore(config.dailyFloor)?config.dailyFloor:DAILY_FLOOR),
+    minimumScore: validScore(config.minimumScore)?config.minimumScore:MINIMUM_SCORE,
     noReplyAfterMinutes: typeof config.noReplyAfterMinutes === 'number' && Number.isFinite(config.noReplyAfterMinutes) && config.noReplyAfterMinutes >= 1 && config.noReplyAfterMinutes <= 1440 ? config.noReplyAfterMinutes : 20,
     modeThreshold: validScore(config.modeThreshold) ? config.modeThreshold : 40,
     normalName: shortText(config.normalName, '普通', 40),
@@ -51,7 +53,7 @@ export function moodPolicy(config = {}) {
 }
 
 export function moodSnapshot(entry, policy, now = Date.now()) {
-  const score = validScore(entry?.score) ? entry.score : policy.initial;
+  const score = Math.max(policy.enabled?policy.minimumScore||0:0,validScore(entry?.score) ? entry.score : policy.initial);
   const unansweredStreak = Math.max(0, Math.floor(Number(entry?.unansweredStreak) || 0));
   const normal = score >= policy.modeThreshold;
   const pleading = !normal && score === 0 && unansweredStreak > 0;
@@ -75,7 +77,8 @@ export function moodSnapshot(entry, policy, now = Date.now()) {
 
 export function validateMoodConfig(raw={}) {
   const errors=[],ids=new Set();
-  for(const field of ['dailyFloor','noReplyPenalty'])if(raw[field]!==undefined&&!validScore(raw[field]))errors.push(field+' 必须为0–100的数值');
+  for(const field of ['minimumScore','dailyFloor','noReplyPenalty'])if(raw[field]!==undefined&&!validScore(raw[field]))errors.push(field+' 必须为0–100的数值');
+  if(validScore(raw.minimumScore)&&validScore(raw.dailyFloor)&&raw.dailyFloor<raw.minimumScore)errors.push('每日恢复值不能低于心情下限');
   if(raw.dailyRecoveryHour!==undefined&&(!Number.isInteger(raw.dailyRecoveryHour)||raw.dailyRecoveryHour<0||raw.dailyRecoveryHour>23))errors.push('dailyRecoveryHour 必须为0–23的整数小时（上海时间）');
   for(const field of ['normalStyle','criticalStyle'])if(raw[field]!==undefined&&(typeof raw[field]!=='string'||raw[field].length>2400))errors.push(field+' 必须为不超过2400字的文本');
   for(const [field,sign] of [['positiveRules',1],['negativeRules',-1]]) {

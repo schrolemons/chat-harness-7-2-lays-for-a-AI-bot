@@ -2,7 +2,7 @@
 export function buildWakeGuidance(w={}, proactive=null) {
  const n=(key,fallback)=>Number.isFinite(Number(w[key]))?Number(w[key]):fallback;
  const stage=proactive?['静默主动：双方停止聊天 '+proactive.silenceMinutes+' 分钟进入静默；阶段初始概率 '+proactive.initialProbability+'，每阶段增加 '+proactive.probabilityStep+'，上限 '+proactive.probabilityMax+'。',
- '检验间隔从 '+proactive.checkMinMinutes+'～'+proactive.checkMaxMinutes+' 分钟开始，每阶段变化 '+proactive.intervalStepMinutes+' 分钟，最短 '+proactive.checkFloorMinutes+' 分钟；实际概率与间隔还受心情和聊天意愿共同缩放。',
+ '检验间隔从 '+proactive.checkMinMinutes+'～'+proactive.checkMaxMinutes+' 分钟开始，每阶段变化 '+proactive.intervalStepMinutes+' 分钟，最短 '+proactive.checkFloorMinutes+' 分钟；唤醒概率与间隔采用共同系数 F 的平方根缩放，减弱心情和聊天意愿对唤醒的影响；发送额度仍使用 F。',
  '主动最小间距 '+proactive.minActiveGapMinutes+' 分钟；最大静默 '+proactive.maxSilenceMinutes+' 分钟兜底，但不能绕过宵禁、免打扰和预算。用户来信及实际日程、冒泡等发送会重置静默阶段。'].join('\n'):'';
  const q=proactive||{};
  const nq=(key,fallback)=>Number.isFinite(Number(q[key]))?Number(q[key]):fallback;

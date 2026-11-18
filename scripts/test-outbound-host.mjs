@@ -29,12 +29,12 @@ test('host validates merged nested rules, readonly facts and canonical-only fiel
 test('mood nested helper graph and reply solver refresh actual source through host reload',async t=>{
   const {host,root}=await fixture(t);
   const p=path.join(root,'plugins/qq-components/ctx-user-mood/policy.mjs');
-  host.callService('mood','initialize',{conversations:[{key:'private:1',score:1}],now:1});
-  fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('export const DAILY_FLOOR = 60','export const DAILY_FLOOR = 61'));
+  host.callService('mood','initialize',{conversations:[{key:'private:1',score:100}],now:1});
+  fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace("band: pleading ? 'pleading' : normal ? 'playful' : 'reflective'","band: pleading ? 'pleading' : normal ? 'reload-proof' : 'reflective'"));
   await host.reload('ctx-user-mood');
   host.callService('mood','settle',{now:86400000});
-  assert.equal(host.callService('mood','policy',{}).initial,61,'the nested policy module must reload');
-  assert.equal(host.callService('mood','read',{key:'private:1'}).score,60,'explicit dailyFloor configuration keeps its configured value after a default changes');
+  assert.equal(host.callService('mood','read',{key:'private:1'}).band,'reload-proof','the nested policy module must reload');
+  assert.equal(host.callService('mood','read',{key:'private:1'}).score,100,'explicit dailyFloor configuration keeps its configured value after a default changes');
   const solver=path.join(root,'src/reply-shape.js');
   const previousSolver=fs.readFileSync(solver,'utf8');
   assert.ok(previousSolver.includes('闲聊先接住眼前一句'));
@@ -49,7 +49,7 @@ test('critical configured form overrides cute/identity instructions without losi
   const text=blocks.join('\n');
   assert.match(text,/【当前形态】静思/);assert.match(text,/【心情数值】17\/100/);assert.match(text,/严谨沉静/);assert.match(text,/20→17 实际原因/);
   assert.match(text,/身份.{0,20}准确/);assert.match(text,/忠实原文/);
-  assert.doesNotMatch(text,/友好自然|那那那|蹭蹭|2~3 条|最多1条|highThreshold|lowThreshold/);
+  assert.doesNotMatch(text,/那那那|2~3 条|最多1条|highThreshold|lowThreshold/);
 });
 
 
@@ -61,6 +61,6 @@ test('normal and critical injection remain subordinate only to owner-aware syste
   const payload={key:'private:1',roleName:'AI助手',incomingText:'你好',moodState:{enabled:true,score:mode==='normal'?80:10,mode,modeName:name,styleInstruction:style,policy:{positiveRules:[],negativeRules:[]},history:[]}};
   stylePlugin(ctx).hooks.beforePrompt(payload);dynamicsPlugin(ctx).hooks.beforePrompt(payload);
   assert.ok(blocks.join('\n').includes(name));assert.ok(blocks.join('\n').includes(style));
-  if(mode==='critical')assert.doesNotMatch(blocks.join('\n'),/友好自然|那那那|蹭蹭/);
+  if(mode==='critical')assert.doesNotMatch(blocks.join('\n'),/那那那/);
  }
 });

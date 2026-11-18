@@ -1,7 +1,5 @@
-// 视觉/图片链路自检脚本：
-// 1. 校验配置默认模型为 DeepSeek-V4-Flash-Vision-Exp
-// 2. 校验 safe-fetch 的 SSRF 防护（本机地址应被拒绝）
-// 3. 若桥接运行中，校验 /api/images/message 端点可用（用二代 agent token）
+// 隔离图片入站、按需视觉读取和 SSRF 回归。不凭模型名称推断多模态能力，
+// 不要求聊天模型开 max 思考。真实模型识别另用 verify-on-demand-vision.mjs。
 // 运行：node scripts/test-vision-media.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,12 +29,7 @@ function check(name, cond, extra = '') {
   }
 }
 
-// 1. 配置
-// 多模态模型清单：DSH 0.1.5 的 llm-deepseek 里声明 inputModalities 含 image 的模型。
-// deepseek-flash（DeepSeek-V41-Flash）是当前默认；deepseek-v4-flash-vision-exp 为历史默认。
-const MULTIMODAL_MODELS = ['deepseek-flash', 'deepseek-v4-flash-vision-exp'];
-check('config.dsh.model 为多模态模型', MULTIMODAL_MODELS.includes(config.dsh?.model), `当前 ${config.dsh?.model}`);
-check('config.dsh.reasoningEffort 为 max', config.dsh?.reasoningEffort === 'max', `当前 ${config.dsh?.reasoningEffort}`);
+// 1. 工具开关；普通聊天模型可以是纯文字模型。
 check('config.socialV2.tools.getImages 默认开启', config.socialV2?.tools?.getImages !== false);
 
 // 2. safe-fetch SSRF
@@ -47,10 +40,11 @@ try {
   check('safe-fetch 拒绝本机地址', /内网|本机|禁止/.test(String(error?.message ?? error)), error?.message);
 }
 
-// 3. 桥接端点（可选）
+// 3. 真实桥接端点（仅显式 --live 才访问）。默认执行临时根目录中的真实路由。
+if(!process.argv.includes('--live'))await import('./test-image-ingress.mjs');
 const consoleTokenFile = path.join(ROOT, 'state', 'console-token');
 const socialV2File = path.join(ROOT, 'state', 'social-v2.json');
-if (fs.existsSync(consoleTokenFile) && fs.existsSync(socialV2File)) {
+if (process.argv.includes('--live') && fs.existsSync(consoleTokenFile) && fs.existsSync(socialV2File)) {
   try {
     const consoleToken = fs.readFileSync(consoleTokenFile, 'utf8').trim();
     const social = JSON.parse(fs.readFileSync(socialV2File, 'utf8'));
@@ -72,7 +66,7 @@ if (fs.existsSync(consoleTokenFile) && fs.existsSync(socialV2File)) {
     console.log(`⚠️ 桥接端点检查跳过：${error?.message ?? error}`);
   }
 } else {
-  console.log('⚠️ 跳过桥接端点检查：缺少 state/console-token 或 state/social-v2.json');
+  console.log('真实QQ端点不作为默认离线回归；隔离路由已单独检查。');
 }
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);

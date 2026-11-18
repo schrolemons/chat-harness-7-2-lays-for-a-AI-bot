@@ -1,3 +1,5 @@
 # ctx-context-lifecycle
 
+活跃聊天只注入执行所需的短规则，不重复程序已经计算的概率公式、阶段参数和名称匹配表；Console的wakeGuidance服务仍提供完整当前配置说明。管理员recommendedHint原文保留。每次请求刷新本组件，剩余静默按真实lastIncomingAt重算，不重复沿用首轮等待数值。收到来信先回应；只有缺少说完的内容才等quiet，不能用wait_for_messages延后现成的答复。
+
 回复前确需确认对方是否说完时，按最后来信时间调用 qq_wait_for_quiet，已过去的静默计入；不同语义分别引用、相近内容合并一波并逐条提交回执。回复及回执完成、对方可能还想聊但此刻未接话时，按需调用 qq_wait_for_messages 等新互动，无人回复时按 life-conversation-wait 返回的 endRound、action 和 guidance 收尾、继续等待、延续旧话题或开启新话题；私聊与群聊一致。旧固定沉睡前观察已退役。组件只产出提示，概率与终止状态归 life-conversation-wait，DSH取消与消息队列保留归桥接环境。

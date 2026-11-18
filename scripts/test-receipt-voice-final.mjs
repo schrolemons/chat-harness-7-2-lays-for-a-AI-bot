@@ -11,12 +11,13 @@ import {bridgeHarness} from './audit-bridge-harness.mjs';
 import {createPlugin as replyShape} from '../plugins/qq-components/ctx-chat-reply-shape/index.js';
 import {REFRESH_MODULE_IDS} from '../plugins/qq-components/obs-context-assembly/refill.mjs';
 
-function ledger(state={}){return {state,service:createSendLedger({state:{get:()=>state,set:p=>Object.assign(state,p)}},()=>({}))};}
+function ledger(state={}){return {state,service:replyShape({config:{maxMessagesNormal:10,maxMessagesCasual:10,maxSendPerMinute:100,maxSendPerHour:100,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},state:{get:()=>state,set:p=>Object.assign(state,p)}}).services.replyPlan};}
 const plan=()=>planReplyShape({key:'private:1',turnId:'t1',config:{maxMessagesNormal:10,maxMessagesCasual:10,maxSendPerMinute:100,maxSendPerHour:100}});
+const sourcePlan=(service,seq=5)=>service.resolve({key:'private:1',turnId:'t1',messages:[{seq,messageId:'m'+seq,text:'实际来信'+seq,isSelf:false,bodyComplete:true}]});
 
 test('the current reply context refreshes real delivery progress without renewing the send allowance',()=>{
  const state={},plugin=replyShape({config:{},state:{get:()=>state,set:p=>Object.assign(state,p)}}),service=plugin.services.replyPlan;
- const p=service.resolve({key:'private:1',turnId:'progress-1',incomingText:'小猫真可爱'});
+ const p=service.resolve({key:'private:1',turnId:'progress-1',messages:[{seq:1,messageId:'actual-cat',text:'小猫真可爱',bodyComplete:true,isSelf:false}]});
  assert.ok(REFRESH_MODULE_IDS.includes('ctx-chat-reply-shape'));
  assert.match(plugin.hooks.beforePrompt({key:p.key,replyPlan:p}),/已成功发送 0 条/);
  service.reserve({key:p.key,plan:p,operationId:'first',kind:'text',text:'呜，好可爱。'});
@@ -24,17 +25,17 @@ test('the current reply context refreshes real delivery progress without renewin
  service.commit({key:p.key,operationId:'first',deliveryId:'actual-success'});
  const text=plugin.hooks.beforePrompt({key:p.key,replyPlan:p});assert.match(text,/已成功发送 1 条/);assert.match(text,/不要换说法再次发送/);
  assert.equal(service.remaining({key:p.key,plan:p}),p.maxMessages-1);
- assert.match(plugin.hooks.beforePrompt({key:p.key,replyPlan:{...p,turnId:'next'}}),/已成功发送 0 条/);
+ assert.match(plugin.hooks.beforePrompt({key:p.key,replyPlan:{...p,turnId:'next'}}),/已成功发送 1 条/,'a new turn cannot erase the same source delivery progress');
 });
 
 test('same delivered text and incoming generation cannot send twice, including after reload',()=>{
- const {state,service}=ledger(),p=plan(),a={key:p.key,plan:p,inputSeq:5,text:'我在呀。',kind:'text',now:100};
+ const {state,service}=ledger(),p=sourcePlan(service),a={key:p.key,plan:p,inputSeq:5,text:'我在呀。',kind:'text',now:100};
  assert.equal(service.reserve({...a,operationId:'one'}).ok,true);service.commit({key:p.key,operationId:'one',deliveryId:'sent:one',sentAt:101});
  assert.equal(ledger(state).service.reserve({...a,operationId:'two'}).reason,'duplicate_delivery');
- assert.equal(service.reserve({...a,inputSeq:6,operationId:'new-input'}).ok,true);
+ assert.equal(service.reserve({...a,plan:sourcePlan(service,6),inputSeq:6,operationId:'new-input'}).ok,true);
 });
 test('parallel and uncertain copies remain blocked; known failed attempts can retry',()=>{
- const {service}=ledger(),p=plan(),a={key:p.key,plan:p,inputSeq:5,text:'我在呀。',kind:'text',now:100};
+ const {service}=ledger(),p=sourcePlan(service),a={key:p.key,plan:p,inputSeq:5,text:'我在呀。',kind:'text',now:100};
  service.reserve({...a,operationId:'one'});
  assert.equal(service.reserve({...a,operationId:'parallel'}).reason,'duplicate_delivery');
  service.release({key:p.key,operationId:'one',knownFailed:false});assert.equal(service.reserve({...a,operationId:'uncertain'}).reason,'duplicate_delivery');
@@ -53,13 +54,13 @@ test('text style protection and recent tail evidence stay active when sticker me
  const p=dynamics({config:{disabledBlocks:['sticker']},addPromptBlock:t=>blocks.push(t)});
  p.hooks.beforePrompt({key:'group:1',reason:'budgetWeak',st:{recentMessages:[]},recentOwnMessages:own,stickerConfig:{enabled:false},moodState:{enabled:true,score:60,mode:'normal',modeName:'普通',styleInstruction:'完整示范'}});
  assert.match(blocks.join('\n'),/近期表达去重/);assert.match(blocks.join('\n'),/本轮表达校准/);
-  assert.match(blocks.join('\n'),/【交流目标】.*陪聊/);
+ assert.match(blocks.join('\n'),/【交流目标】.*先接住眼前一句/);
  assert.equal(p.services.chatExpression.validate({key:'group:1',kind:'text',text:'你又输了吧 (￣▽￣)'}).ok,false);
  assert.equal(p.services.chatExpression.validate({key:'group:1',kind:'text',text:'诶，这么大的枪呀，我都要抱不动了。'}).ok,true);
 });
 
 test('actual outbound transport rejects repeated style and duplicate text before physical delivery',async()=>{
- const {service}=ledger(),p=plan();let sends=0;
+ const {service}=ledger(),p=sourcePlan(service);let sends=0;
  const voice=dynamics({config:{},addPromptBlock(){}});
  voice.hooks.beforePrompt({key:p.key,reason:'budgetWeak',recentOwnMessages:[{isSelf:true,text:'好 (￣▽￣)'},{isSelf:true,text:'嗯 (￣▽￣)'}]});
  const transport=createOutboundTransport({sleep:async()=>{},callService:(s,m,a)=>s==='replyPlan'&&typeof service[m]==='function'?service[m](a):s==='chatExpression'&&m==='validate'?voice.services.chatExpression.validate(a):null});
@@ -68,7 +69,9 @@ test('actual outbound transport rejects repeated style and duplicate text before
  await assert.rejects(transport.perform({key:p.key,context,text:'我来啦 (￣▽￣)',send}),/repeated_expression_tail/);assert.equal(sends,0);
  await transport.perform({key:p.key,context,text:'诶，我来啦。',send});
  await assert.rejects(transport.perform({key:p.key,context,text:'诶，我来啦。',send}),/duplicate_delivery/);assert.equal(sends,1);
- envelope.replyGrantThroughSeq=6;await transport.perform({key:p.key,context,text:'诶，我来啦。',send});assert.equal(sends,2);
+ const nextEnvelope={...envelope,actionId:'wave2',replyGrantThroughSeq:6,replyPlan:sourcePlan(service,6)};
+ const nextContext=transport.capture({key:p.key,envelope:nextEnvelope,agent:true,origin:'conversation',conversationIntent:'reply'});
+ await transport.perform({key:p.key,context:nextContext,text:'诶，我来啦。',send});assert.equal(sends,2);
 });
 
 test('mechanical and scheduled notices retain independent delivery semantics',()=>{
@@ -87,20 +90,21 @@ test('a fresh context excludes pre-cutover chat replay while retaining pending i
 test('tail reinforcement repeats selected administrator examples verbatim and separates both forms',()=>{
  const normal='私聊：原句 A\n群聊接梗：调侃 B\n被夸：原句 C\n关心：原句 D';
  const n=currentDialogueExamples(normal,'normal');assert.match(n,/原句 A/);assert.match(n,/原句 C/);assert.match(n,/原句 D/);assert.doesNotMatch(n,/调侃 B/);
- assert.match(n,/有意重复/);assert.match(n,/请勿.*去重/);assert.match(n,/管理员原有示范优先/);
+ assert.match(n,/管理员原有示范优先/);assert.doesNotMatch(n,/请勿.*去重|有意重复/);
  const critical='【普通回应示例】安静 E\n【身份思考示例】内省 F';
  assert.doesNotMatch(currentDialogueExamples(critical,'critical'),/原句 A|调侃 B/);assert.match(currentDialogueExamples(critical,'critical'),/安静 E/);
 });
 
-test('the system voice prioritizes tenderness over teasing and repeats literal gentle examples',()=>{
+test('the system preserves the complete selected voice once and keeps only a small literal cue in the tail',()=>{
  const blocks=[],p=dynamics({config:{},addPromptBlock:t=>blocks.push(t)});
  const style='私聊：温柔原句 A\n被夸：害羞原句 B\n关心：关心原句 C\n群聊接梗：调侃原句 D';
  p.hooks.beforePrompt({key:'group:1',moodState:{enabled:true,score:60,mode:'normal',modeName:'普通',styleInstruction:style}});
  const system=p.services.chatExpression.current({key:'group:1'}).text;
- assert.match(system,/温和.*底色/);assert.match(system,/偶尔.*调皮/);assert.match(system,/不揣测.*动机/);
- assert.equal(system.split('温柔原句 A').length-1,2,'full administrator style plus literal gentle reinforcement');
- assert.match(system,/短接话示范/);assert.match(system,/句号.*我在/);
- assert.equal(blocks.filter(text=>text.includes('短接话示范')).length,2,'short-turn voice is visible at the system prefix and current tail');
+ assert(system.includes(style),'the selected administrator style remains byte-for-byte intact');
+ assert.equal(system.split('温柔原句 A').length-1,1,'no duplicate full/selected examples inside the system voice');
+ assert.doesNotMatch(system,/短接话示范/);
+ assert.equal(blocks.filter(text=>text.includes('短接话示范')).length,0,'no second generated style overlaps the selected voice');
+ assert(blocks.some(text=>text.startsWith('【本轮对话示范')&&text.includes('温柔原句 A')));
  const critical=dynamics({config:{},addPromptBlock(){}});
  critical.hooks.beforePrompt({key:'private:2',moodState:{enabled:true,score:20,mode:'critical',modeName:'AI',styleInstruction:'安静原句'}});
  assert.doesNotMatch(critical.services.chatExpression.current({key:'private:2'}).text,/温和.*底色|温柔原句 A/);

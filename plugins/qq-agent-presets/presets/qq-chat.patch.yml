@@ -42,14 +42,12 @@
               toolResultPruner: true
             config:
               - id: compaction-basic
-                name: '@deepseek-ai/dsh-compaction-basic'
+                name: qq-agent-presets/default-compaction.mjs
                 config:
                   thresholdRatio: 0.65
                   retainTokens: 12000
                   headroomTokens: 8192
                   maxTokens: 4096
-                  summarizationProvider: deepseek-official
-                  summarizationModel: deepseek-flash
                   compactionRetries: 0
                   maxOverflowRetries: 1
               - id: command-compact

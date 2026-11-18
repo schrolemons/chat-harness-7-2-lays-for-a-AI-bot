@@ -18,3 +18,5 @@
 验收：test-profile-extraction-policy.mjs（证据流/重试/隔离/截断/定时提示）、test-memory-profile-promotion.mjs（接口兼容）、test-profile-sharing.mjs（真实工具读写及权限）、test-memory-context.mjs（四栏目与宿主注入）。不把离线规则测试视为真实模型提取验收。
 
 主动维护专项：`node --test scripts/test-memory-initiative-policy.mjs`，覆盖私聊/群聊、聊天/整理、共享提示去重与边界约束；模型是否确实自主选择写入仍以之后的真实请求和工具结果为准。
+
+2026-11-12：普通聊天仍展示约250字的提炼规则，保留本人来源、稳定性、群聊字段范围、先读再合并、成功后确认等约束；有独立后台整理能力时不重复打印完整提炼细则与同一份入站原话。专门记忆整理仍带完整规则和证据。候选队列不因展示而消费，聊天仍可按需提炼与写档案。

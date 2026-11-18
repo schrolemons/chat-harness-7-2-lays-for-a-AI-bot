@@ -9,6 +9,11 @@ export async function declareReplyContents({key,sourceKey,envelope,groups,messag
   if(!Array.isArray(group.seqs)||group.seqs.some(seq=>!bySeq.has(seq)))continue;
   const policy=adminAuthorized && group.kind==='task' ? {eligible:true,kind:'admin'} : callService('tokenBudget','taskExemption',{text:[...group.seqs].sort((a,b)=>a-b).map(seq=>bySeq.get(seq).plain??bySeq.get(seq).text??'').join('\n'),reason:envelope.reason});
   if(policy?.eligible===true)for(const seq of group.seqs)taskEligible[seq]={...policy,sourceSeq:seq};
+  if(group.kind==='auto'){
+    const eligible=group.seqs.map(seq=>taskEligible[seq]?.eligible===true);
+    if(eligible.some(Boolean)&&!eligible.every(Boolean))return {status:409,body:{ok:false,error:'mixed_task_chat_sources',hint:'任务指令与普通闲聊请分别选取准确来源'}};
+    group.kind=eligible.every(Boolean)?'task':'chat';
+  }
  }
  envelope.taskSources=taskEligible;
  const result=callService('replyPlan','declareContents',{key,plan:envelope.replyPlan,groups:normalized,messages,taskEligible});

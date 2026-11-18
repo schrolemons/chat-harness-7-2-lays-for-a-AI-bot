@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createPlugin } from '../plugins/qq-components/life-token-budget/index.js';
 import { bridgeHarness } from './audit-bridge-harness.mjs';
 
-const billedEvent = (sessionId) => ({ sessionId, at: Date.now() - 10, model: 'deepseek-flash', event: {
+const billedEvent = (sessionId) => ({ sessionId, at: Date.now() - 10, provider:'deepseek-official',model:'deepseek-flash', event: {
   type: 'assistant/message', seq: 1, data: { turn: 1, step: 1, usage: { inputTokens: 1_000_000, outputTokens: 100 } }
 } });
 
@@ -205,7 +205,7 @@ test('bridge restores only the latest configured messages after the cap is lifte
   } finally { await h.close(); }
 });
 
-test('recovery attaches a still-staged incoming image to the model turn', async () => {
+test('recovery retains a staged image placeholder for selective analysis', async () => {
   const h = await bridgeHarness({ config:{socialV2:{persistentMemory:{enabled:false},dailyDiary:{enabled:false}}},files: { 'state/plugins/config/life-token-budget.json': {
     sessions: { 'private:123': { hardLimitYuan: 0.1 } },recoveryWindows:{privateMessages:1,groupMessages:5,groupAtMessages:5}
   } } });
@@ -226,7 +226,7 @@ test('recovery attaches a still-staged incoming image to the model turn', async 
     await h.pluginHost.reload('life-token-budget');
     await h.pluginHost.tick();
     assert.equal(h.calls.prompts.length, 1);
-    assert.ok(h.calls.prompts[0].content.some((part) => part.type === 'image'));
+    assert.ok(!h.calls.prompts[0].content.some((part) => part.type === 'image'));assert.match(JSON.stringify(h.calls.prompts[0].content),/图片|image/);
   } finally { await h.close(); }
 });
 

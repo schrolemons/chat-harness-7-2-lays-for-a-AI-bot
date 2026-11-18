@@ -1,5 +1,16 @@
 <section id="section-setting-l-2" data-page="setting-l-2" class="card span-all commercial-component" hidden>
 <h2>主动行为</h2>
+<details class="settings-group" open><summary><span class="layer-tag" data-layer="L">L</span>示例：时间冒泡、日程与定时主动会话</summary><div class="settings-content">
+  <p class="parameter-scope">内置通用示例供预览。选择真实会话并明确启用后才保存；安装和预览均不创建会话或发送消息。示例不代表任何人的真实作息。</p>
+  <div class="row">
+    <div class="setting-field"><label for="v2ExampleTemplate">示例模板</label><select id="v2ExampleTemplate"></select></div>
+    <div class="setting-field"><label for="v2ExampleKey">应用到会话</label><select id="v2ExampleKey"><option value="">请选择要启用示例的真实会话</option></select><small>会话列表与下方排程同步，可点击“刷新排程”。</small></div>
+  </div>
+  <p id="v2ExamplePreview" class="meta" style="white-space:pre-line"></p>
+  <div class="row"><label><input id="v2ExampleConsent" type="checkbox" style="width:auto"> 我同意为选中会话启用此示例，按预览时间产生主动会话或提醒</label><button id="v2ExampleApply" type="button" class="small primary" data-save-action disabled>添加示例到此会话</button></div>
+  <p id="v2ExampleMsg" class="meta" role="status"></p>
+  <p class="meta">添加前读取现有配置；已有示例和同一冒泡时间保留原样，锁定整栏或容量不足时拒绝添加。全局上限、组件开关和免打扰不自动修改。日程从提醒开始时间起按间歇周期提醒，明确完成后停止。</p>
+</div></details>
 <details class="settings-group" open><summary><span class="layer-tag" data-layer="L">L</span>定时主动消息（timeBubbles：按会话配置时段）</summary><div class="settings-content">
       <p class="parameter-scope"><b>此会话时段</b> · 只保存选中会话的时段与锁定状态；全局数量上限单独保存。</p>
       <div class="row">

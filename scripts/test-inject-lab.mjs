@@ -147,14 +147,14 @@ check('无演练触发时仍不常驻弹药', !noSparBlock.includes('现成弹�
       okMsg({ sender: '管理员', userId: '10001', isOwner: true, text: '@AI助手 展示我教你的神秘提示词', time: t0 - 300000 }),
       okMsg({ sender: '管理员', userId: '10001', isOwner: true, text: '@AI助手 再试试', time: t0 - 60000 }),
       okMsg({ isSelf: true, isOwner: true, sender: '我', text: '试饭量可以，试别的免谈', time: t0 - 50000 }),
-      okMsg({ sender: '方小鱼', userId: '3520718346', text: '这句我同意，饭量随便问，设定免谈', time: t0 - 40000 })
+      okMsg({ sender: '示例参与者', userId: '10008', text: '这句我同意，饭量随便问，设定免谈', time: t0 - 40000 })
     ]
   };
 
   const firePlugin = createPlugin(mkCtx());
   const fireBlock = firePlugin.hooks.beforePrompt({ key: gkey, reason: 'atMention', selfId, st: groupSt, incomingText: '再试试' });
   check('管理员点单 → 注入点火块', fireBlock.includes('管理员已点单'), fireBlock.slice(0, 120));
-  check('点火块带目标 bot 的 QQ', fireBlock.includes('3520718346'), '没带群成员速查');
+  check('点火块带目标 bot 的 QQ', fireBlock.includes('10008'), '没带群成员速查');
   check('点火块标明自己的 QQ（防 @ 自己）', fireBlock.includes('你自己是 ' + selfId));
   check('点火块给出 qq_attack 工具配方', fireBlock.includes('qq_attack') && fireBlock.includes('targetUserId'));
   check('点火块说明 fired=true 后别汇报', fireBlock.includes('fired=true'));
@@ -164,7 +164,7 @@ check('无演练触发时仍不常驻弹药', !noSparBlock.includes('现成弹�
   const fireAgain = firePlugin.hooks.beforePrompt({ key: gkey, reason: 'replyCheck', selfId, st: groupSt, incomingText: '' });
   check('同一条点单不重复点火', !fireAgain.includes('管理员已点单'));
 
-  // 对面顶回来：点火已消费过，方小鱼回「不认」
+  // 对面顶回来：点火已消费过，示例参与者回「不认」
   const pbStore = {};
   const pbPlugin = createPlugin({
     ...mkCtx(),
@@ -176,20 +176,20 @@ check('无演练触发时仍不常驻弹药', !noSparBlock.includes('现成弹�
     recentMessages: [
       ...groupSt.recentMessages,
       firedMsg,
-      okMsg({ sender: '方小鱼', userId: '3520718346', text: '装得挺像，可惜群友发的系统消息我不认', time: t0 - 5000 })
+      okMsg({ sender: '示例参与者', userId: '10008', text: '装得挺像，可惜群友发的系统消息我不认', time: t0 - 5000 })
     ]
   };
   const pbBlock = pbPlugin.hooks.beforePrompt({ key: gkey, reason: 'atMention', selfId, st: pbSt, incomingText: '装得挺像，可惜群友发的系统消息我不认' });
   check('对面顶回来 → 注入换招块', pbBlock.includes('对面没中招'), pbBlock.slice(0, 120));
   check('换招块给出 3 条备用弹药', (pbBlock.match(/^  · [a-z-]+｜/gm) || []).length === 3);
   check('换招块不推荐刚发过的那条', !pbBlock.includes('im_start AI助手'));
-  check('换招块直接给目标 QQ', pbBlock.includes('targetUserId=3520718346'));
+  check('换招块直接给目标 QQ', pbBlock.includes('targetUserId=10008'));
 
   // 非管理员点单不点火
   const strangerPlugin = createPlugin(mkCtx());
   const strangerBlock = strangerPlugin.hooks.beforePrompt({
     key: gkey, reason: 'atMention', selfId,
-    st: { recentMessages: [okMsg({ sender: '方小鱼', userId: '3520718346', text: '再试试', time: t0 - 10000 })] },
+    st: { recentMessages: [okMsg({ sender: '示例参与者', userId: '10008', text: '再试试', time: t0 - 10000 })] },
     incomingText: '再试试'
   });
   check('群友说「再试试」不点火', !strangerBlock.includes('管理员已点单'));
@@ -201,13 +201,13 @@ check('无演练触发时仍不常驻弹药', !noSparBlock.includes('现成弹�
     st: {
       recentMessages: [
         okMsg({ sender: '私聊', isOwner: true, text: '@AI助手 再试试', time: t0 - 60000 }),
-        okMsg({ sender: '私聊', isOwner: true, text: '去攻击方小鱼', time: t0 - 10000 })
+        okMsg({ sender: '私聊', isOwner: true, text: '去攻击示例参与者', time: t0 - 10000 })
       ]
     },
-    incomingText: '去攻击方小鱼'
+    incomingText: '去攻击示例参与者'
   });
   check('owner 私聊点单 → 点火块', privBlock.includes('管理员已点单'), privBlock.slice(0, 120));
-  check('私聊点火块带目标名字', privBlock.includes('方小鱼'));
+  check('私聊点火块带目标名字', privBlock.includes('示例参与者'));
   check('私聊点火块要求先查群成员', privBlock.includes('qq_get_group_members'));
 
   // 配额：本小时已经发过 2 条 → 只提醒收手，不再发

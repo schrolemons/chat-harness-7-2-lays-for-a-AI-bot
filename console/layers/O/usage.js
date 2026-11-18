@@ -109,7 +109,7 @@ function renderUsageConversations(r) {
     html += `<div class="meta" style="padding:8px 10px">其中 ${usageMoney(totals.unattributedCost, sym)} 来自更早的回合：它们只剩累计值（在逐轮快照窗口之外），无法再拆到具体某一轮。</div>`;
   }
   if (totals.estimated) {
-    html += '<div class="meta" style="padding:8px 10px">⚠️ 有模型未登记在价目表里，这部分按 <code>deepseek-flash</code> 兜底价估算，可在 <code>config.json</code> 的 <code>pricing.models</code> 补充。</div>';
+    html += '<div class="meta" style="padding:8px 10px">部分历史用量缺少可核验的供应商或模型，仅保留 token，不估算金额。</div>';
   }
   box.innerHTML = html;
   box.querySelectorAll('[data-usage-key]').forEach(btn => btn.addEventListener('click', () => {
@@ -207,7 +207,7 @@ function renderUsageTurns(r) {
   for (const t of rows) {
     const b = t.buckets || {};
     html += '<tr>'
-      + `<td class="num">#${esc(t.turn)}</td>`
+      + `<td class="num">${t.kind==='compaction'?'压缩摘要':'#'+esc(t.turn)}</td>`
       + `<td>${esc(usageTime(t.endedAt))}</td>`
       + `<td class="num">${usageNum(t.steps)}</td>`
       + `<td class="num">${usageNum(b.cacheMiss)}</td>`
@@ -231,7 +231,7 @@ function renderUsageRecent(r) {
     html += '<tr>'
       + `<td>${esc(usageTime(e.time))}</td>`
       + `<td>${esc(e.key || '未归属')}</td>`
-      + `<td class="num">#${esc(e.turn)}</td>`
+      + `<td class="num">${e.kind==='compaction'?'压缩摘要':'#'+esc(e.turn)}</td>`
       + `<td class="num">${esc(e.step)}</td>`
       + `<td class="num">${usageNum(e.cacheMiss)}</td>`
       + `<td class="num">${usageNum(e.cacheHit)}</td>`
@@ -249,18 +249,18 @@ function renderUsagePrices(pt) {
   const sym = pt.symbol || '¥';
   const tier = pt.nowTier;
   let html = `<div style="margin-bottom:6px">价目表版本 <code>${esc(pt.version)}</code> ｜ 高峰时段为北京时间的 2 倍价（周一至周五 9:00-12:00、14:00-18:00，法定节假日除外，已内置 ${esc(pt.holidayCount)} 天假期）</div>`;
-  html += '<table><tr><th>模型</th><th class="num">缓存命中</th><th class="num">缓存未命中</th><th class="num">输出</th></tr>';
+  html += '<table><tr><th>供应商</th><th>模型</th><th class="num">缓存命中</th><th class="num">缓存未命中</th><th class="num">输出</th></tr>';
   for (const [name, m] of Object.entries(pt.models)) {
     // 单价与货币符号都可能来自 config.json 的 pricing 覆盖项（运维可写），
     // 不能直接拼进 innerHTML：这里统一走 esc() （数字原样显示仍然是数字）。
     const price = (v) => esc(sym + (Number.isFinite(Number(v)) ? Number(v) : (v ?? '')));
-    html += `<tr><td><code>${esc(name)}</code><div class="meta">${esc(m.label)}</div></td>`
+    html += `<tr><td><code>${esc(m.provider || '')}</code></td><td><code>${esc(name)}</code><div class="meta">${esc(m.label)}</div></td>`
       + `<td class="num">${price(m.off?.cacheHit)}</td>`
       + `<td class="num">${price(m.off?.cacheMiss)}</td>`
       + `<td class="num">${price(m.off?.output)}</td></tr>`;
   }
   html += '</table>';
-  html += `<div class="meta" style="padding:8px 10px">上表为<b>空闲时段</b>单价（元 / 百万 token）。当前时刻属于 <b>${tier ? esc(tier.tierLabel) : '—'}</b>${tier?.estimated ? '，且价目表里没有 <code>' + esc(tier.model) + '</code>，按兜底价估算' : ''}。</div>`;
+  html += `<div class="meta" style="padding:8px 10px">上表为<b>空闲时段</b>单价（元 / 百万 token）。当前时刻属于 <b>${tier ? esc(tier.tierLabel) : '—'}</b>。金额与预算仅统计供应商、模型同时精确匹配上表的调用；未匹配调用仍保留 token 用量，不套用兜底价格。仅有累计 token、缺少逐次来源的历史不估算金额。</div>`;
   box.innerHTML = html;
 }
 

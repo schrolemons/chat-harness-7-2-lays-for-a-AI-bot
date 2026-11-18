@@ -47,8 +47,8 @@ async function fixture(t,reason='message',key='group:456'){
  h.bot.getMessage=async()=>{throw Error('QQ history API must not be used');};
  await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:1}}}});
  const server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));
- t.after(async()=>{await new Promise(r=>server.close(r));await h.close();});
- const request=async(route,body,agent=true)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+route,{method:body?'POST':'GET',headers:{'x-console-token':'fixture-console-token',...(body?{'content-type':'application/json'}:{}),...(agent?{'x-agent-token':st.agentToken,'x-agent-call':'1'}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json()};};
+ t.after(async()=>{server.closeAllConnections?.();await new Promise(r=>server.close(r));await h.close();});
+ const request=async(route,body,agent=true)=>{if(agent&&body&&['/api/socialV2/send-message','/api/send/reply'].includes(route)&&!body.sourceSeqs)body={...body,sourceSeqs:body.replyToMessageId?st.recentMessages.filter(m=>m.messageId===body.replyToMessageId&&!m.isSelf).map(m=>m.seq):st.unread.filter(m=>!m.isSelf).map(m=>m.seq)};let contentId;if(body?.sourceSeqs?.length){const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:body.sourceSeqs,kind:'chat'}]},agent);if(!declared.body.ok)return declared;contentId=declared.body.contents[0].id;}const r=await fetch('http://127.0.0.1:'+server.address().port+route,{method:body?'POST':'GET',headers:{'x-console-token':'fixture-console-token',...(contentId?{'x-reply-content-id':contentId}:{}),...(body?{'content-type':'application/json'}:{}),...(agent?{'x-agent-token':st.agentToken,'x-agent-call':'1'}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json()};};
  const append=()=>h.appendSocialV2Message(key,'乙',quoted,'谁👀',false,false,'101',[],'789');
  return {h,key,sid,st,request,append};
 }
@@ -58,13 +58,13 @@ test('running group cannot reply through either send entrance until complete inc
  const fresh=h.taskCaps.refreshContextModules({key,sessionId:sid,scene:'replyCheck',moduleIds:['ctx-memory-profile-facts','ctx-memory-context','ctx-context-dynamics']});
  assert.ok(!JSON.stringify(fresh.modules).includes('谁👀'),'unadmitted raw text must not leak through dynamic components');
  for(const [route,body]of [['/api/socialV2/send-message',{key,messages:'premature generic'}],['/api/send/reply',{groupId:'456',replyToMessageId:'101',message:'premature quote',token:st.agentToken}]]){
-  const r=await request(route,body);assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+  const r=await request(route,body);assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending|source_not_admitted/);
  }
  assert.equal(h.pluginHost.callService('replyPlan','preview',{key}).successful,0);
  const read=await request('/api/socialV2/unread?key='+encodeURIComponent(key));
  assert.equal(read.body.ok,true);assert.ok(JSON.stringify(read.body).includes('有人最近在跟我说你的坏话'));
  const admitted=h.taskCaps.refreshContextModules({key,sessionId:sid,scene:'replyCheck',moduleIds:['ctx-memory-profile-facts']});
- assert.ok(JSON.stringify(admitted.modules).includes('有人最近在跟我说你的坏话'));
+ assert.ok(JSON.stringify(admitted.snapshot).includes('有人最近在跟我说你的坏话'),'the live snapshot retains the admitted full quote without duplicating it in profile rules');
  const sent=await request('/api/send/reply',{groupId:'456',replyToMessageId:'101',message:'接住引用中的问题',token:st.agentToken});
  assert.equal(sent.body.ok,true,JSON.stringify(sent.body));
 });
@@ -75,6 +75,16 @@ test('memoryWrite on a private session refuses its own legacy private send entra
  assert.equal(r.body.ok,false);assert.match(r.body.error,/maintenance_send_forbidden/);
 });
 
+test('a completed greeting cannot be rephrased through either send entrance in the same long turn',async t=>{
+ const {key,st,request,append}=await fixture(t);const message=append();
+ await request('/api/socialV2/unread?key='+encodeURIComponent(key));
+ const first=await request('/api/socialV2/send-message',{key,messages:'祈昕来啦，先打个招呼'});assert.equal(first.body.ok,true,JSON.stringify(first.body));
+ const receipt=await request('/api/socialV2/receipt-report',{key,receipts:[{seq:message.seq,status:'replied'}]});assert.equal(receipt.body.ok,true,JSON.stringify(receipt.body));
+ for(const [route,body]of [['/api/socialV2/send-message',{key,messages:'祈昕来啦，群里好久没人说话了'}],['/api/send/reply',{groupId:'456',replyToMessageId:'101',message:'换个工具再打一次招呼',token:st.agentToken}]]){
+  const second=await request(route,body);assert.equal(second.body.ok,false,JSON.stringify(second.body));assert.match(second.body.error,/source_already_replied/);
+ }
+});
+
 test('a newly arrived body during send delay cancels the reserved send without consuming quota',async()=>{
  let state={},incomplete=false,sends=0;
  const svc=replyPlugin({config:{},state:{get:()=>state,set:s=>state={...state,...s}},isPluginEnabled:()=>false}).services.replyPlan;
@@ -82,7 +92,7 @@ test('a newly arrived body during send delay cancels the reserved send without c
  const key='group:456',plan=svc.resolve({key,turnId:'delay',incomingText:'',autonomousSource:{id:'actual-delay-admission',kind:'directMessage'}});
  const context=transport.capture({key,envelope:{key,actionId:'delay',reason:'replyCheck',replyPlan:plan},agent:true,origin:'conversation'});
  await transport.perform({key,context,text:'first',send:async()=>({message_id:1})});
- await assert.rejects(transport.perform({key,context,text:'delayed',requestedDelay:5000,send:async()=>{sends++;return {message_id:1};}}),/message_context_pending/);
+ await assert.rejects(transport.perform({key,context,text:'delayed',requestedDelay:5000,send:async()=>{sends++;return {message_id:1};}}),/message_context_pending|source_not_admitted/);
  assert.equal(sends,0);assert.equal(svc.preview({key}).inflight,0);assert.equal(svc.preview({key}).successful,1);
 });
 
@@ -135,7 +145,7 @@ test('an empty local cache detail never promotes a missing current body into com
  h.readCachedMessage=async id=>({message_id:id,group_id:456,user_id:789,message:[]});
  const detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=202');
  assert.equal(detail.body.info.textTruncated,true);
- const r=await request('/api/socialV2/send-message',{key,messages:'不能凭空补出当前正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+ const r=await request('/api/socialV2/send-message',{key,messages:'不能凭空补出当前正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending|source_not_admitted/);
 });
 test('a resolvable quote alone never repairs the missing current body through detail readback',async t=>{
  const {h,key,st,request}=await fixture(t);
@@ -144,7 +154,7 @@ test('a resolvable quote alone never repairs the missing current body through de
  const detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=202');
  assert.equal(detail.body.info.bodyComplete,false);assert.equal(detail.body.info.textTruncated,true);
  assert.equal(st.unread.find(m=>m.messageId==='202').bodyComplete,false);assert.equal(st.recentMessages.find(m=>m.messageId==='202').bodyComplete,false);
- const r=await request('/api/socialV2/send-message',{key,messages:'不能把被引用者正文当作本条正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+ const r=await request('/api/socialV2/send-message',{key,messages:'不能把被引用者正文当作本条正文'});assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending|source_not_admitted/);
 });
 test('a quote-only arrival directed at the bot retains its missing own-body status',async t=>{
  const {h,key,st,request}=await fixture(t);h.socialV2.paused=true;
@@ -198,7 +208,7 @@ test('omitting unknown references preserves known quotes and media and accepts a
  const stored=st.unread.at(-1);assert.match(stored.text,/可靠引用/);assert.match(stored.text,/全{200}\[表情14\]/);
  assert.deepEqual(read.body.messages[0].omittedReplyIds,['404']);assert.equal(stored.hasMedia,true);assert.equal(stored.media[0].faceId,'14');
  assert.equal((await request('/api/socialV2/send-message',{key,messages:'当前正文和媒体已完整收到'})).body.ok,true);
- for(const [type,data,expected]of [['image',{},'[图片]'],['record',{},'[语音]'],['file',{name:'a.txt'},'[文件a.txt]']]){
+ for(const [type,data,expected]of [['image',{},'[一张图片]'],['record',{},'[语音]'],['file',{name:'a.txt'},'[文件a.txt]']]){
   assert.equal(await h.segmentsToText([{type:'reply',data:{id:'404'}},{type,data}],{resolveReply:async()=>null,omitUnknownReplies:true}),expected);
  }
 });
@@ -211,7 +221,7 @@ test('a queued later wake cannot grant its new input to an older still-running t
  const {h,key,request,append}=await fixture(t);append();
  await h.deliverPrompt(key,'new input queued behind current turn',{wakeReason:'message'});
  const r=await request('/api/socialV2/send-message',{key,messages:'old turn must not use later packet'});
- assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+ assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending|source_not_admitted/);
 });
 test('memoryWrite refuses generic and legacy/private sends, but operator send remains available',async t=>{
  const {h,key,request,st}=await fixture(t,'memoryWrite');
@@ -240,7 +250,7 @@ test('a clipped wake excerpt never authorizes replying until a full body includi
  await h.deliverPrompt(key,'clipped synthetic window',{wakeReason:'message'});
  await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:2}}}});
  let r=await request('/api/socialV2/send-message',{key,messages:'incomplete reply'});
- assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+ assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending|source_not_admitted/);
  const detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=102');
  assert.equal(detail.body.info.text,body);assert.equal(detail.body.info.textTruncated,false);
  r=await request('/api/socialV2/send-message',{key,messages:'full context is now available'});assert.equal(r.body.ok,true,JSON.stringify(r.body));
@@ -253,7 +263,7 @@ test('a wake with no inline message window must read pending input before replyi
  await h.deliverPrompt(key,'no body inline',{wakeReason:'message'});
  await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:2}}}});
  const r=await request('/api/socialV2/send-message',{key,messages:'no hidden backlog bypass'});
- assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+ assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending|source_not_admitted/);
 });
 
 test('a complete initial snapshot permits an ordinary reply without a redundant tool read',async t=>{
@@ -274,7 +284,7 @@ test('legacy 200-character previews require local cache recovery and do not beco
  let detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=204');
  assert.equal(detail.body.info.textTruncated,true);
  let r=await request('/api/socialV2/send-message',{key,messages:'legacy body still incomplete'});
- assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending/);
+ assert.equal(r.body.ok,false);assert.match(r.body.error,/message_context_pending|source_not_admitted/);
  h.readCachedMessage=async id=>({message_id:id,group_id:456,user_id:789,message:[{type:'text',data:{text:'旧'.repeat(240)+'完整结尾'}}]});
  detail=await request('/api/socialV2/message-detail?key='+encodeURIComponent(key)+'&messageId=204');
  assert.equal(detail.body.info.textTruncated,false);assert.match(detail.body.info.text,/完整结尾/);

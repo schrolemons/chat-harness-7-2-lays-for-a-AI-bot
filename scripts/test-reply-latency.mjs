@@ -16,9 +16,9 @@ test('action receipts and failed read results are never excerpted',()=>{
 });
 test('model selects a deferred tool; schemas remain scoped, refreshable and isolated across agents',async()=>{
  const hooks={},registry=[];const ctx={tools:{register:t=>registry.push(t)},on:(n,f)=>hooks[n]=f};installDynamicChatTools(ctx);
- const selector=registry[0],a={},b={},core={name:'mcp__snowluma__qq_send_message'},optional={name:'mcp__snowluma__qq_diary',description:'日记'};
+ const selector=registry[0],a={},b={},core={name:'mcp__snowluma__qq_send_message'},optional={name:'mcp__snowluma__qq_list_voices',description:'语音库'};
  const assemble=(agent,tools=[core,optional,{name:selector.name}])=>hooks['system-prompt/assemble']({},{agent},async()=>({tools,sections:[]}));
- let result=await assemble(a);assert(!result.tools.includes(optional));assert(result.sections[0].text.includes(optional.name));
+ let result=await assemble(a);assert(!result.tools.includes(optional));assert(result.sections[0].text.includes(optional.name.split('__').at(-1)));
  assert.deepEqual(await selector.execute({query:optional.name},{agent:a}),{loaded:[optional.name]});
  assert((await assemble(a)).tools.includes(optional));assert(!(await assemble(b)).tools.includes(optional));
  assert(!(await assemble(a,[core])).tools.includes(optional),'removed permission never returns through selection');
@@ -34,5 +34,5 @@ test('historical results shrink with durable replacement while recent results an
  assert.equal(compactHistoricalToolResults(session).count,0,'bounded projection is idempotent');
 });
 test('chat pressure threshold leaves room above retained history and limits repeated summary attempts',()=>{
- for(const name of ['qq-chat','qq-chat-v2','qq-admin']){const text=fs.readFileSync(new URL('../plugins/qq-agent-presets/presets/'+name+'.patch.yml',import.meta.url),'utf8');assert.match(text,/thresholdRatio: 0\.65/);assert.match(text,/retainTokens: 12000/);assert.match(text,/compactionRetries: 0/);}
+ for(const name of ['qq-chat','qq-chat-v2','qq-admin']){const text=fs.readFileSync(new URL('../plugins/qq-agent-presets/presets/'+name+'.patch.yml',import.meta.url),'utf8');assert.match(text,/thresholdRatio: 0\.65/);assert.match(text,new RegExp('retainTokens: '+(name==='qq-chat'?12000:6000)));assert.match(text,/compactionRetries: 0/);}
 });

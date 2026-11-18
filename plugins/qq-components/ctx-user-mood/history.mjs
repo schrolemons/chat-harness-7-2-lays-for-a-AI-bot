@@ -1,4 +1,4 @@
-const { clamp, DAILY_FLOOR, UNANSWERED_PENALTY, validScore } = await import((()=>{const u=new URL('./policy.mjs',import.meta.url);u.search=new URL(import.meta.url).search;return u.href;})());
+const { clamp, UNANSWERED_PENALTY, validScore } = await import((()=>{const u=new URL('./policy.mjs',import.meta.url);u.search=new URL(import.meta.url).search;return u.href;})());
 
 const effectiveTime = event => event.effectiveAt ?? (event.source === 'unanswered' ? event.dueAt ?? event.at : event.at);
 
@@ -21,9 +21,10 @@ export function replayHistory(entry) {
     item.effectiveAt ??= effectiveTime(item);
     item.recordedAt ??= item.at;
     item.before = score;
-    if (item.source === 'daily-first' || item.source === 'daily-recovery') score = Math.max(score, validScore(item.dailyFloor) ? item.dailyFloor : DAILY_FLOOR);
-    else if (item.source === 'unanswered') score = item.voided === true ? score : clamp(score - (validScore(item.noReplyPenalty) ? item.noReplyPenalty : UNANSWERED_PENALTY));
-    else if (item.source === 'model-adjustment') score = clamp(score + (item.action === 'add' ? item.value : -item.value));
+    if (item.source === 'daily-first' || item.source === 'daily-recovery') score = Math.max(score, validScore(item.dailyFloor) ? item.dailyFloor : 60);
+    else if(item.source==='policy-floor')score=Math.max(score,item.minimumScore);
+    else if (item.source === 'unanswered') score = item.voided === true ? score : Math.max(item.minimumScore??0,clamp(score - (validScore(item.noReplyPenalty) ? item.noReplyPenalty : UNANSWERED_PENALTY)));
+    else if (item.source === 'model-adjustment') score = Math.max(item.minimumScore??0,clamp(score + (item.action === 'add' ? item.value : -item.value)));
     else score = clamp(score + previousDelta);
     item.after = score;
     item.delta = score - item.before;

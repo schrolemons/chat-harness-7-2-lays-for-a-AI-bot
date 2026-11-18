@@ -9,5 +9,5 @@ test('unwritable temp returns a truthful small-image fallback and rejects oversi
 });
 test('bridge image normalization uses its instance temp directory, independent of system TEMP',async()=>{
  const seen=[];const h=await bridgeHarness({globals:{normalizeImageForModel:async(buffer,mimeType,opts)=>{seen.push(opts.tmpDir);return {ok:true,buffer,mimeType};}}});
- try{h.setMode('reserved2');h.socialV2.paused=true;await h.handleIncoming('private',123,{message_id:301,user_id:123,self_id:9,sender:{nickname:'fixture'},message:[{type:'image',data:{file:'fixture.png'}}]},h.cfg);assert(seen.length);for(const root of seen)assert.equal(root,path.join(h.temp,'state','tmp','model-media'));}finally{await h.close();}
+ try{h.setMode('reserved2');h.socialV2.paused=true;await h.handleIncoming('private',123,{message_id:301,user_id:123,self_id:9,sender:{nickname:'fixture'},message:[{type:'image',data:{file:'fixture.png'}}]},h.cfg);assert.equal(seen.length,0,'ingress must not normalize images');await h.resolveMediaList([{kind:'image',file:'fixture.png'}],'private:123','301');assert(seen.length);for(const root of seen)assert.equal(root,path.join(h.temp,'state','tmp','model-media'));}finally{await h.close();}
 });

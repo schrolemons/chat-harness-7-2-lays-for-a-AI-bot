@@ -24,10 +24,12 @@ function safeName(value, fallback, extension) {
 }
 
 function publicAsset(item) {
+  const incoming=item.source==='qq-incoming'?/^qq:(-?\d+):([1-9]\d*)$/.exec(item.sourceRef||''):null;
   return {
     imageId: item.id,
     name: item.name,
     source: item.source,
+    ...(incoming?{sourceMessageId:incoming[1],sourceImageIndex:Number(incoming[2])}:{}),
     mimeType: item.mimeType,
     sizeBytes: item.sizeBytes,
     createdAt: item.createdAt,
@@ -106,7 +108,7 @@ export function createImageAssetStore({
     return kept.length;
   }
 
-  function stage({ key, name, source, sourceRef, data } = {}) {
+  function stage({ key, name, source, sourceRef, data, ttlMs } = {}) {
     prune();
     const sessionKey = String(key ?? '');
     if (!validSession.test(sessionKey)) return { ok: false, error: 'INVALID_SESSION' };
@@ -135,7 +137,7 @@ export function createImageAssetStore({
       ext: image.extension,
       sizeBytes: bytes.length,
       createdAt,
-      expiresAt: createdAt + Math.max(1000, Number(retentionMs) || DEFAULT_RETENTION_MS),
+      expiresAt: createdAt + Math.max(1000, Math.min(Number(retentionMs) || DEFAULT_RETENTION_MS, Number(ttlMs) || Number(retentionMs) || DEFAULT_RETENTION_MS)),
       delivery: null
     };
     fs.writeFileSync(path.join(assetsDir, `${id}.${image.extension}`), bytes, { flag: 'wx', mode: 0o600 });
@@ -203,5 +205,19 @@ export function createImageAssetStore({
   }
 
   prune();
-  return { stage, stageToolResult, list, get, claimSend, finishSend, prune };
+  return { stage, stageToolResult, list, get, claimSend, finishSend, prune,
+    sourceMedia({key,messageId}={}) {
+      prune();
+      if(!validSession.test(String(key)) || !messageId)return [];
+      const prefix=`qq:${messageId}:`;
+      return state.assets.filter(item=>item.key===key && item.source==='qq-incoming' && String(item.sourceRef||'').startsWith(prefix))
+        .sort((a,b)=>Number(a.sourceRef.split(':').at(-1))-Number(b.sourceRef.split(':').at(-1)))
+        .slice(0,5).map(item=>({kind:'image',_imageSourceRef:item.sourceRef}));
+    },
+    findSource({key,source='qq-incoming',sourceRef}={}){
+      prune();if(!validSession.test(String(key))||!sourceRef)return {ok:false,error:'IMAGE_NOT_FOUND'};
+      const item=state.assets.find(x=>x.key===key&&x.source===source&&x.sourceRef===sourceRef);
+      return item?get({key,imageId:item.id}):{ok:false,error:'IMAGE_NOT_FOUND'};
+    }
+  };
 }

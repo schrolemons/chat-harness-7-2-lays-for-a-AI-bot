@@ -11,6 +11,14 @@ import { describeAge } from '../../../src/qq-model-view.js';
 import { looksLikeUnfinished } from '../../../src/v2-wait.js';
 const interactionURL = new URL('./interaction-state.mjs', import.meta.url); interactionURL.search = new URL(import.meta.url).search;
 const {buildInteractionState} = await import(interactionURL.href);
+const addresseesURL=new URL('./addressees.mjs',import.meta.url);addresseesURL.search=new URL(import.meta.url).search;
+const {ADDRESSEE_RULE,createAddresseeContext}=await import(addresseesURL.href);
+const cardsURL=new URL('./share-cards.mjs',import.meta.url);cardsURL.search=new URL(import.meta.url).search;
+const {createShareCardContext}=await import(cardsURL.href);
+const participantsURL=new URL('./participants.mjs',import.meta.url);participantsURL.search=new URL(import.meta.url).search;
+const {PARTICIPANT_IDENTITY_RULE,createParticipantIdentityContext}=await import(participantsURL.href);
+const evidenceURL=new URL('./interaction-evidence.mjs',import.meta.url);evidenceURL.search=new URL(import.meta.url).search;
+const {createInteractionEvidence}=await import(evidenceURL.href);
 
 function buildIdentity(selfName, selfId) {
   const name = String(selfName || '').trim();
@@ -19,9 +27,9 @@ function buildIdentity(selfName, selfId) {
   const label = name ? `「${name}」` : '（昵称未取到）';
   const idText = id ? `（QQ ${id}）` : '';
   const callBits = name
-    ? `消息里出现「@${name}」、有人叫「${name}」、或引用你的消息，指的都是你 —— 不要当成别人`
-    : '被 @、被叫到你的昵称、或引用你的消息，指的都是你 —— 不要当成别人';
-  return `【你的身份】你在 QQ 上的昵称是${label}${idText}。${callBits}；群名片可能与昵称不同，at/引用段里带${id ? ` ${id} ` : '你的 QQ 号'}就是在叫你。`;
+    ? `当前正文直接@${name}、叫「${name}」或引用你本人的发言，是与你互动的线索，不能覆盖本句@他人的收话对象`
+    : '当前正文直接@你、叫你的昵称或引用你本人的发言时，结合正文判断说话对象';
+  return `【你的身份】你在 QQ 上的昵称是${label}${idText}。私聊默认是对你说；群聊${callBits}。群名片可能不同，顶层at目标ID${id ? ` ${id} ` : '与你的QQ号相同'}可确认@你；他人引用的旧内容里出现@你，不代表本句又在叫你。`;
 }
 
 function buildStatus(st, now = Date.now()) {
@@ -44,20 +52,33 @@ export function createPlugin(ctx) {
   const cfg = ctx.config || {};
   const disabled = new Set(Array.isArray(cfg.disabledBlocks) ? cfg.disabledBlocks.map(String) : []);
   const on = (name) => !disabled.has(name);
+  const addresseeContext=createAddresseeContext(input=>ctx.capabilities?.readLocalConversationHistory?.(input));
+  const shareCardContext=createShareCardContext(input=>ctx.capabilities?.readLocalConversationHistory?.(input));
+  const participantContext=createParticipantIdentityContext({readHistory:input=>ctx.capabilities?.readLocalConversationHistory?.(input),getAliases:key=>ctx.callService?.('aliases','injectionPreview',{key})?.selected||[]});
+  const interactionEvidence=createInteractionEvidence();
 
   return {
+    services:{interactionEvidence},
     hooks: {
       beforePrompt(payload = {}) {
+        interactionEvidence.observe(payload);
         const st = payload.st;
         if (on('role') && payload.roleName) ctx.addPromptBlock('【当前角色】' + String(payload.roleName) + '。自我介绍使用当前角色名与实际昵称；历史自称、自我介绍和群友绰号不改变当前身份，不把旧称呼重新补成身份设定。');
         if (on('identity')) {
           const id = buildIdentity(payload.selfName, payload.selfId);
           if (id) ctx.addPromptBlock(id);
+          if(String(payload.key||'').startsWith('group:')){
+            ctx.addPromptBlock(PARTICIPANT_IDENTITY_RULE,{placement:'stable'});
+            const people=participantContext(payload);if(people)ctx.addPromptBlock(people);
+            ctx.addPromptBlock(ADDRESSEE_RULE,{placement:'stable'});
+            const addressed=addresseeContext(payload);if(addressed)ctx.addPromptBlock(addressed);
+          }
         }
         if (on('token') && payload.agentToken) {
           ctx.addPromptBlock('【会话令牌】' + String(payload.agentToken) + '（调用二代状态工具时请在参数中带上此令牌）');
         }
         if (on('status')) {
+          const cards=shareCardContext(payload);if(cards)ctx.addPromptBlock(cards);
           // The scheduled alert supplies its own verified balance facts and configured wording.
           const milk = payload.reason === 'milkStock' ? '' : ctx.callService?.('milkStock','context',{key:payload.key});
           if (typeof milk === 'string' && milk) ctx.addPromptBlock(milk);

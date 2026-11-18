@@ -4,7 +4,7 @@ import { bridgeHarness } from './audit-bridge-harness.mjs';
 
 const file = 'state/plugins/config/life-token-budget.json';
 async function enableAdmin(h){h.setMode('reserved2');h.setPresets(['standard','qq-chat','qq-chat-v2','qq-admin']);h.cfg.socialV2.adminDev={enabled:true,preset:'qq-admin'};await h.ensureSession('private:123');}
-const billed = sid => ({ sessionId: sid, at: Date.now() - 10, model: 'deepseek-flash', event: {
+const billed = sid => ({ sessionId: sid, at: Date.now() - 10, model: 'deepseek-flash', provider:'deepseek-official', event: {
   type: 'assistant/message', seq: 1, data: { turn: 1, step: 1, usage: { inputTokens: 1_000_000, outputTokens: 100 } }
 } });
 

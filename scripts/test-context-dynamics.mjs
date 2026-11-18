@@ -1,7 +1,7 @@
 // 心情/表情策略组件回归测试：node scripts/test-context-dynamics.mjs
 import fs from 'node:fs';
 import { createPlugin } from '../plugins/qq-components/ctx-context-dynamics/index.js';
-import { createPluginHost } from '../src/plugin-host.js';
+import { bridgeHarness } from './audit-bridge-harness.mjs';
 
 let failed = 0;
 const check = (name, ok, detail) => {
@@ -42,7 +42,8 @@ check('表情关闭：不注入', !build({ stickerConfig: { ...stickerCfg, enabl
 const disabled = build({ moodState: { score: 85, enabled: true, modeName: '明亮', styleInstruction: '可以活跃点' }, st, stickerEntries: entries, stickerConfig: stickerCfg, stickerRoll: true }, { disabledBlocks: ['mood', 'sticker'] });
 check('disabledBlocks 生效', disabled === '');
 
-const host = createPluginHost({ root: process.cwd(), capabilities: {} });
+const harness = await bridgeHarness();
+const host = harness.pluginHost;
 const summary = await host.loadAll();
 check('插件宿主加载（至少 27 个）', summary.count >= 27, 'count=' + summary.count);
 check('宿主加载无警告', summary.warnings.length === 0, JSON.stringify(summary.warnings));
@@ -58,5 +59,6 @@ for (const marker of ['let moodLine', 'const stickerTurnLine', 'const stickerLin
 }
 check('bridge payload 带 dynamics 事实', ['moodState:', 'stickerConfig:'].every((k) => seg.includes(k)));
 
+await harness.close();
 if (failed) { console.error(`\n${failed} 项失败`); process.exit(1); }
 console.log('\n心情/表情策略组件测试通过');

@@ -10,7 +10,7 @@ test('token budget blocks DSH prompt and outgoing reply after a billed round',as
    h.setMode('reserved2');
    const sid=await h.ensureSession('private:123');
    const billedAt=Date.now();
-   assert.equal(h.tokenLedger.ingestEvent({sessionId:sid,at:billedAt,model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1_000_000,outputTokens:100}}}}),true);
+   assert.equal(h.tokenLedger.ingestEvent({sessionId:sid,at:billedAt,provider:'deepseek-official',model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1_000_000,outputTokens:100}}}}),true);
    assert.equal(h.tokenBudgetOf('private:123',billedAt).stage,'silent');
    assert.equal(h.shouldBlockSilentReply('private:123'),true);
    const result=await h.deliverPrompt('private:123','MUST_NOT_REACH_DSH');
@@ -24,7 +24,7 @@ test('one real wake preserves reminder and unmute data through actual DSH delive
  try{h.setMode('reserved2');const st=h.getSocialV2State('private:123');st.pendingReminderItems=[{text:'FIXTURE_REMINDER'}];st.mutedJustCleared=true;await h.sendWakePromptV2('private:123','reminder');assert.equal(h.calls.prompts.length,1);const text=JSON.stringify(h.calls.prompts[0].content);assert.ok(text.includes('FIXTURE_REMINDER'));assert.ok(text.includes('刚解除静音'));assert.ok(text.includes('会话令牌'));}finally{await h.close();}
 });
 test('preset routing ignores incoming keywords and keeps saved configuration when disabled',async()=>{
- const h=await bridgeHarness({config:{dsh:{authToken:'fixture-only',model:'deepseek-flash',reasoningEffort:'low'}}});const selected=[];h.api.sessions.selectModel=async p=>{selected.push(p);return {result:{ok:true,value:{selected:p}}};};
+ const h=await bridgeHarness({config:{dsh:{authToken:'fixture-only',provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'low'}}});const selected=[];h.api.sessions.selectModel=async p=>{selected.push(p);return {result:{ok:true,value:{selected:p}}};};
  try{h.setMode('reserved2');h.pluginHost.emitIncoming({key:'private:123',text:'请重构代码并修复并发死锁'});await h.ensureSession('private:123');assert.equal(selected.at(-1).model,'deepseek-flash');await h.ensureSession('private:123',{reason:'memoryWrite'});assert.equal(selected.at(-1).model,'deepseek-flash');assert.equal(selected.at(-1).reasoningEffort,'low');h.pluginHost.setEnabled('obs-cost-policy',false);await h.ensureSession('private:123');assert.equal(selected.at(-1).model,'deepseek-flash');}finally{await h.close();}
 });
 test('disabling context layer retains protocol token; disabling memory update blocks inference',async()=>{
@@ -33,10 +33,11 @@ test('disabling context layer retains protocol token; disabling memory update bl
 test('plugin askAI uses real serialized transport queue, stopped generation is rejected',async()=>{
  const h=await bridgeHarness();try{h.setMode('reserved2');const signal=new AbortController();assert.equal(h.taskCaps.requestPluginPrompt('FIXTURE_PLUGIN_PROMPT',{plugin:'gov-policy',key:'private:123',signal:signal.signal}),true);for(let i=0;i<100&&h.calls.prompts.length===0;i++)await new Promise(r=>setTimeout(r,5));assert.equal(h.calls.prompts.length,1);assert.ok(JSON.stringify(h.calls.prompts[0].content).includes('FIXTURE_PLUGIN_PROMPT'));signal.abort();assert.equal(h.taskCaps.requestPluginPrompt('stale',{plugin:'gov-policy',key:'private:123',signal:signal.signal}),false);}finally{await h.close();}
 });
-test('real maintenance dispatch after a complex request selects Flash low',async()=>{
- const h=await bridgeHarness();const selected=[];h.api.sessions.selectModel=async p=>{selected.push(p);return {result:{ok:true,value:{selected:p}}};};
- try{h.setMode('reserved2');h.pluginHost.emitIncoming({key:'private:123',text:'请重构代码并修复并发死锁'});await h.sendWakePromptV2('private:123','memoryWrite');assert.equal(h.calls.prompts.length,1);assert.equal(selected.at(-1).model,'deepseek-flash');assert.equal(selected.at(-1).reasoningEffort,'low');}finally{await h.close();}
+test('real maintenance dispatch uses an isolated writer instead of the complex chat turn',async()=>{
+ const h=await bridgeHarness();let worker;h.taskCaps.runReadOnlyWorker=async p=>{worker=p;return {text:JSON.stringify({memory:'<MEMORY>【重要事实】\n- 本人说修好了小程序。\n【用户画像】\n【日记】\n</MEMORY>',profileUpdates:[]})};};
+ try{h.setMode('reserved2');const key='private:123';h.appendSocialV2Message(key,'fixture user','今天修好了小程序。','今天修好了小程序。',false,true,'memory-source',[],'123',[],undefined,false,{bodyComplete:true});await h.sendWakePromptV2(key,'memoryWrite');await h.pluginHost.callService('memoryWorker','whenIdle',{key});assert.equal(h.calls.prompts.length,0);assert(worker);assert.equal(worker.purpose,'memory');assert.equal(h.pluginHost.callService('memoryWorker','status',{key}).status,'completed');}finally{await h.close();}
 });
+
 test('queued plugin prompt obeys pause and revoked offline generation',async()=>{
  for(const mode of ['pause','offline']){
   const h=await bridgeHarness();try{h.setMode('reserved2');let release,entered;const ready=new Promise(r=>entered=r);h.api.sessions.prompt=async p=>{if(JSON.stringify(p.content).includes('BLOCK')){entered();await new Promise(r=>release=r);}h.calls.prompts.push(p);return {result:{ok:true,value:{}}};};

@@ -20,26 +20,20 @@ test('configured Beijing boundary changes the current window at the exact minute
 
 function scheduledFixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'diary-bell-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- const sent=[],requests=[],now=Date.parse('2026-11-01T18:30:00+08:00'),state={lastWriteAt:{[key]:now}};
- const capabilities=withDiaryDelivery(root,{runtimeStartedAt:now-3600000,memoryConfig:()=>({enabled:true,dailyDiary:{enabled:true,hour:18,minute:30}}),listConversationKeys:()=>[key],requestMemoryWrite:(key,opts)=>{requests.push({key,opts});return true;},sendNotification:(key,body,meta)=>{sent.push({key,body,meta});return true;}},{now:()=>now});
+ const sent=[],requests=[],now=Date.parse('2026-11-01T18:30:00+08:00'),state={lastWriteAt:{[key]:now},lastIncomingAt:{[key]:now-60000}};
+ const capabilities=withDiaryDelivery(root,{now:()=>now,memoryWorkerContext:()=>({messages:[{seq:1,userId:'123',text:'今天修好了小程序。',at:now-60000}]}),runReadOnlyWorker:async()=>({text:'BEFORE_SCHEDULE'}),runtimeStartedAt:now-3600000,memoryConfig:()=>({enabled:true,dailyDiary:{enabled:true,hour:18,minute:30}}),listConversationKeys:()=>[key],requestMemoryWrite:(key,opts)=>{requests.push({key,opts});return true;},sendNotification:(key,body,meta)=>{sent.push({key,body,meta});return true;}},{now:()=>now});
  const ctx={root,config:{},state:{get:()=>state,set:patch=>Object.assign(state,patch)},log:()=>{},warn:()=>{},registerTool:()=>{},capabilities};
  return {root,state,sent,requests,now,ctx,plugin:createPlugin(ctx)};
 }
 
-test('any number of manual sends leaves the scheduled refresh and delivery intact across reload',async t=>{
+test('manual delivery receipts do not consume the independent scheduled bell across reload',async t=>{
  const f=scheduledFixture(t),memory=f.plugin.services.memory;
- for(let i=0;i<3;i++){memory.write({key,text:'【日记】\nMANUAL_'+i});assert.equal((await memory.sendDiaryDetailed({key,day,now:f.now-60000,manualRequestId:'manual-click-'+i})).ok,true);}
+ memory.updateDiary({key,day,now:f.now-60000,text:'PREPARED_DRAFT'});
+ for(let i=0;i<3;i++)assert.equal((await memory.sendDiaryDetailed({key,day,now:f.now-60000,manualRequestId:'manual-click-'+i})).ok,true);
  assert.equal((await memory.diaryStatus({key,day})).scheduledDeliveryStatus,'absent');
- await f.plugin.hooks.onTick({now:f.now});assert.equal(f.requests.length,1,'manual receipts and archives must not suppress the bell');assert.equal(f.sent.length,3,'wait for refreshed content');
- await f.plugin.hooks.onTick({now:f.now+1000});assert.equal(f.requests.length,1,'do not queue duplicate refreshes');
- memory.capture({key,text:'<MEMORY>【日记】\nSCHEDULED_FRESH</MEMORY>'});
- // A later manual refresh may update the next open window before the scheduler runs.
- memory.write({key,text:'【日记】\nNEXT_WINDOW_MANUAL'});
- assert.equal((await memory.sendDiaryDetailed({key,day:'2026-11-02',now:f.now+2000,manualRequestId:'manual-after-boundary'})).ok,true);
- const reloaded=createPlugin(f.ctx);await reloaded.hooks.onTick({now:f.now+3000});
- assert.equal(f.sent.length,5);assert.match(f.sent.at(-1).body,/SCHEDULED_FRESH/);assert.equal(f.sent.at(-1).meta.id,'diary:'+key+':'+day+':scheduled');
- const status=await reloaded.services.memory.diaryStatus({key,day});assert.equal(status.scheduledDeliveryStatus,'sent');assert(status.scheduledSentAt>0);
- await createPlugin(f.ctx).hooks.onTick({now:f.now+4000});assert.equal(f.sent.length,5,'restart must not ring the same bell twice');assert.equal(f.requests.length,1);
+ await f.plugin.hooks.onTick({now:f.now});await f.plugin.services.diaryWorker.whenIdle({key});assert.equal(f.requests.length,0,'the bell never queues a general memory refresh');assert.equal(f.sent.length,4);
+ await createPlugin(f.ctx).hooks.onTick({now:f.now+1000});assert.equal(f.sent.length,4);
+ assert.equal((await memory.diaryStatus({key,day})).scheduledDeliveryStatus,'sent');
  assert(diaryReceiptIds({key,day,notes:'凭据：'+f.sent.at(-1).meta.id}).includes(f.sent.at(-1).meta.id));
 });
 
@@ -50,16 +44,15 @@ test('an uncertain scheduled delivery is not retried or displayed as sent',async
  const status=await plugin.services.memory.diaryStatus({key,day});assert.equal(status.scheduledDeliveryStatus,'uncertain');assert.equal(status.scheduledSentAt,0);
 });
 
-test('scheduled capture survives midnight before the next configured boundary',async t=>{
- const f=scheduledFixture(t);await f.plugin.hooks.onTick({now:f.now});
- f.plugin.services.memory.capture({key,text:'<MEMORY>【日记】\nBEFORE_MIDNIGHT</MEMORY>'});
+test('late completion stays archived after midnight and waits for an explicit catch-up',async t=>{
+ const f=scheduledFixture(t);f.plugin.services.memory.updateDiary({key,day,now:f.now-1000,text:'BEFORE_MIDNIGHT'});
  await createPlugin(f.ctx).hooks.onTick({now:Date.parse('2026-11-02T00:01:00+08:00')});
- assert.equal(f.sent.length,1);assert.match(f.sent[0].body,/2026-11-01 日日记/);
+ assert.equal(f.sent.length,0);assert.match(f.plugin.services.memory.diaryArchiveRead({date:day}).text,/BEFORE_MIDNIGHT/);
 });
 
 test('a success-shaped sender response without central confirmation cannot mark a diary sent',async t=>{
  const f=fixture(t);f.ctx.capabilities.sendDiaryDelivery=async()=>({ok:true});
- f.plugin.services.memory.write({key,text:'【日记】\nNOT_CONFIRMED'});
+ f.plugin.services.memory.updateDiary({key,day,now:Date.parse(day+'T12:00:00+08:00'),text:'NOT_CONFIRMED'});
  const result=await f.plugin.services.memory.sendDiaryDetailed({key,day,manualRequestId:'manual-false-success'});
  assert.equal(result.reason,'delivery_unconfirmed');assert.equal(f.state.lastDiaryDate?.[key],undefined);
 });
@@ -78,7 +71,7 @@ test('the committed transport receipt is sufficient even if a subsequent lookup 
  let committed=false;
  const f=fixture(t,{lookup:async()=>{if(committed)throw Error('receipt read unavailable');return {ok:true,status:'absent'};}});
  f.ctx.capabilities.sendDiaryDelivery=async()=>{committed=true;return {ok:true,receiptStatus:'sent',partsSent:1,partsTotal:1};};
- f.plugin.services.memory.write({key,text:'【日记】\nONE_CONFIRMED_MESSAGE'});
+ f.plugin.services.memory.updateDiary({key,day,now:Date.parse(day+'T12:00:00+08:00'),text:'ONE_CONFIRMED_MESSAGE'});
  const result=await f.plugin.services.memory.sendDiaryDetailed({key,day,manualRequestId:'committed-transport'});
  assert.equal(result.ok,true);
  assert.equal(f.state.lastDiaryDate[key],day);
@@ -87,7 +80,7 @@ test('the committed transport receipt is sufficient even if a subsequent lookup 
 test('starting after the boundary exposes a missed previous diary without automatically refreshing or sending it',async t=>{
  const f=scheduledFixture(t);f.ctx.capabilities.runtimeStartedAt=f.now+60000;
  f.plugin.services.memory.write({key,text:'【重要事实】\nKEEP_FACT\n【日记】\nEXISTING_PREVIOUS'});
- await f.plugin.services.memory.sendDiaryDetailed({key,day,now:f.now-60000,manualRequestId:'manual-early-morning'});
+ f.plugin.services.memory.updateDiary({key,day,now:f.now-60000,text:'EXISTING_PREVIOUS'});
  f.sent.length=0;const plugin=createPlugin(f.ctx);
  await plugin.hooks.onTick({now:f.now+120000});
  assert.equal(f.requests.length,0);assert.equal(f.sent.length,0);
@@ -101,21 +94,19 @@ test('starting after the boundary exposes a missed previous diary without automa
  await plugin.services.memory.catchUpDiaries({key,now:f.now+130000,confirmLegacyUnsent:true});assert.equal(f.sent.length,1);
 });
 
-test('scheduled diary remains in permanent memory through transport and retires only after a confirmed send',async t=>{
+test('an ended diary retires only after a confirmed physical send',async t=>{
  const f=scheduledFixture(t),memory=f.plugin.services.memory;
  memory.updateDiary({key,day,text:'BEFORE_SCHEDULE',now:f.now-1000});
- await f.plugin.hooks.onTick({now:f.now});assert.equal(memory.diaryText({key}),'BEFORE_SCHEDULE');
- memory.capture({key,text:'<MEMORY>【日记】\nFRESH_BEFORE_RECEIPT</MEMORY>',now:f.now});
  const send=f.ctx.capabilities.sendDiaryDelivery;
- f.ctx.capabilities.sendDiaryDelivery=async(...args)=>{assert.equal(memory.diaryText({key}),'FRESH_BEFORE_RECEIPT');return send(...args);};
- await f.plugin.hooks.onTick({now:f.now+1000});assert.equal(f.sent.length,1);assert.equal(memory.diaryText({key}),'');
+ f.ctx.capabilities.sendDiaryDelivery=async(...args)=>{assert.equal(memory.diaryText({key}),'BEFORE_SCHEDULE');return send(...args);};
+ await f.plugin.hooks.onTick({now:f.now});await f.plugin.services.diaryWorker.whenIdle({key});assert.equal(f.sent.length,1);assert.equal(memory.diaryText({key}),'');
 });
 
 test('unconfirmed scheduled transport keeps the ended diary and cannot silently erase it',async t=>{
- const f=scheduledFixture(t);await f.plugin.hooks.onTick({now:f.now});
- f.plugin.services.memory.capture({key,text:'<MEMORY>【日记】\nKEEP_UNCONFIRMED_BODY</MEMORY>',now:f.now});
+ const f=scheduledFixture(t),m=f.plugin.services.memory;m.updateDiary({key,day,text:'KEEP_UNCONFIRMED_BODY',now:f.now-1000});
  f.ctx.capabilities.sendDiaryDelivery=async()=>({ok:false,reason:'send_unconfirmed',receiptStatus:'uncertain'});
- await f.plugin.hooks.onTick({now:f.now+1000});assert.equal(f.plugin.services.memory.diaryText({key}),'KEEP_UNCONFIRMED_BODY');
+ await f.plugin.hooks.onTick({now:f.now});await f.plugin.services.diaryWorker.whenIdle({key});
+ assert.equal(m.diaryText({key}),'KEEP_UNCONFIRMED_BODY');const audit=await m.diaryStatus({key,day});assert(audit.attempts.some(a=>a.receiptStatus==='uncertain'));
 });
 
 test('diary drafting distinguishes prior-day history from this window and does not inherit the chat count cap',()=>{

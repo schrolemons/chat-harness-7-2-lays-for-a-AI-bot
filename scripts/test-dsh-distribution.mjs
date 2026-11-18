@@ -39,7 +39,7 @@ test('root DSH bundle declares one controller and ships all instance preset defi
  assert.deepEqual(rows,[{id:pkg.qqBridge.instance.entryId,name:pkg.name,config:{}}]);
  const {INSTANCE_PRESETS,patchFileFor}=await import('./build-agent-preset-patches.mjs');
  const presets=INSTANCE_PRESETS.flatMap(id=>yaml.load(fs.readFileSync(patchFileFor(id),'utf8')).flatMap(p=>p.insert||[]));
- assert.deepEqual(presets.map(r=>r.config.id).sort(),['campus-summary','qq-admin','qq-chat','qq-chat-v2','qq-learning','qq-task-worker']);
+ assert.deepEqual(presets.map(r=>r.config.id).sort(),['campus-summary','qq-admin','qq-chat','qq-chat-v2','qq-learning','qq-memory-worker','qq-task-worker']);
  assert.equal(new Set(rows.map(r=>r.id)).size,rows.length);
  for(const preset of presets)for(const row of preset.config.plugins||[])if(row.name?.startsWith('qq-agent-presets/'))assert.ok(fs.existsSync(path.join(root,'plugins',row.name)),row.name);
  assert.ok(!rows.some(row=>row.id.startsWith('mcp-')||row.id.startsWith('preset-')));
@@ -69,7 +69,7 @@ test('bundled MCP entries derive local entrypoints and mount through the DSH loa
 
 // Break caught: package graph injection is not a Cordis service-name dependency.
 test('native module arrival loads the Connection package before either launcher consumer',async()=>{
- const vm=await import('node:vm'),hostRequire=createRequire(createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json'));
+ const vm=await import('node:vm'),hostRequire=createRequire(process.env.DSH_HOST_ROOT?path.join(process.env.DSH_HOST_ROOT,'package.json'):createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json'));
  const entry=hostRequire.resolve('@deepseek-ai/dsh-client-modules/client');let exports;
  vm.runInNewContext(fs.readFileSync(entry,'utf8'),{window:{__ModuleLoader__:{load(mod){exports=mod.factory(()=>({}));}}},console,URL});
  const connectionId='@deepseek-ai/dsh-client-connection';

@@ -4,6 +4,8 @@
 
 `services.scheduler.schedule({id, owner, type, at, run, expiresAt, intervalMs})` 返回带代际的句柄；cancel(handleOrId)、cancelOwner(id) 撤销任务。概率判断留在业务组件中。
 
+已到时的 pendingWakeTimer 在同一调度中心的微任务中执行，省去最多一秒轮询等待；未来任务仍按原时钟处理。即时执行与时钟共用代际、取消、owner启用、过期及传输稳定检查；系统长暂停后先经过恢复时钟，不绕过30秒连接稳定保护，不增加独立业务定时器。
+
 热加载保留运行期任务，同 ID 注册替换旧任务。停用中心会暂停定时业务，聊天收发继续。跨进程不序列化函数，各业务组件从持久记录重新注册有效任务，过期通知不集中补发。
 
 睡眠恢复：中心时钟间隔超过60秒时标记待恢复；从环境能力 `getTransportReadiness` 读取当前连接事实，连续正常30秒后重新安排各会话的未来冒泡和一次起床问候机会。问候仍经过原冷却、近期来信、宵禁和免打扰检查。普通插件热载只修复未来冒泡，不制造睡醒事件。`requiresTransport:true` 的任务在连接未就绪时留在队列，过期清理和维护任务照常执行；不重放已发送或结果不明的消息。
@@ -27,3 +29,8 @@
 隔离行为验证：`node --test scripts/test-proactive-priority.mjs`。采用临时状态、桩 QQ/DSH，不发送真实消息。
 
 详见 `docs/guides/PLUGIN_RUNTIME_CONTRACT.md`；验证 `scripts/test-scheduler.mjs` 和 `scripts/test-notification-delivery.mjs`。
+
+2026-11-12：真实private/message/@/引用/提问等来信可抢占startupGreeting、proactiveCheck、idleRescue、careCheck、newsShare、privateFollowup、timeBubble普通主动回合；不抢占正常来信处理与reminder。沿用bridge取消及发送凭据流程，热加载保留调度任务。
+
+
+2026-11-12 状态与回复流程：scheduler.inspect({id})只读返回任务id/owner/type/at/busy/generation或null，不返回回调或执行权限，供Console核对实际排队状态。

@@ -29,6 +29,14 @@ test('browser close failure retains uncertainty and never claims stopped',async 
  let closeCount=0;const f=await fixture(t,{connectBrowser:async()=>({close:async()=>{closeCount++;throw Error('close failed');}})});
  await f.monitor.open(true);await assert.rejects(f.monitor.stop(),/close failed/);assert.equal(f.monitor.status().uncertain,true);assert.equal(f.children[0].exitCode,null);assert.equal(closeCount,1);
 });
+
+test('an exact browser child that exits during admission leaves no permanent shutdown uncertainty',async t=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'monitor-exit-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));let child;
+ const monitor=api.createOwnedMonitorBrowser({root,instanceId:'fixture',nonce:'dead-browser',executablePath:process.execPath,
+  spawnProcess:(_file,_args,options)=>{child=spawn(process.execPath,['-e','process.exit(0)'],options);return child;},
+  probeProcess:async()=>{if(child.exitCode===null&&child.signalCode===null)await once(child,'exit');return null;},updateProcess:async()=>{},timeoutMs:1000});
+ await assert.rejects(monitor.open(true),/does not belong|MONITOR_CHILD_EXITED/);assert.equal(monitor.status().uncertain,false);await monitor.stop();
+});
 test('browser request racing disable drains its registration and refuses later admission',async t=>{
  let entered,release;const at=new Promise(r=>entered=r),gate=new Promise(r=>release=r);let f;
  f=await fixture(t,{updateProcess:async()=>{entered();await gate;}});

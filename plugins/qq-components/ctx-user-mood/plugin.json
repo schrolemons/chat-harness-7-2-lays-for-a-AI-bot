@@ -24,7 +24,8 @@
     "noReplyAfterMinutes": 20,
     "noReplyPenalty": 10,
     "dailyRecoveryHour": 4,
-    "dailyFloor": 60,
+    "dailyFloor": 100,
+    "minimumScore": 60,
     "modeThreshold": 40,
     "normalName": "普通",
     "criticalName": "AI",
@@ -101,12 +102,13 @@
       "label": "每日恢复时刻（上海时间，0–23点）",
       "example": "填4：每天04:00恢复一次；填8：每天08:00恢复一次。只接受整数小时，停机错过时恢复运行后补做。"
     },
+    "minimumScore": {"type":"number","min":0,"max":100,"label":"心情下限（0–100）","example":"当前设为60；任何扣分最多降到此值，已有更低分数按下限校正，原扣分历史保留。"},
     "dailyFloor": {
       "type": "number",
       "min": 0,
       "max": 100,
       "label": "每日恢复保底分数（0–100）",
-      "example": "设为60：每日恢复时，低于60升到60，高于60保持。此项不改变初始分数或形态阈值。"
+      "example": "默认100：每天到恢复时刻回到100；新会话也从此值开始。不得低于心情下限。"
     },
     "modeThreshold": {
       "type": "number",

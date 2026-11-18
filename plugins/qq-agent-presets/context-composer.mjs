@@ -1,10 +1,13 @@
 import {compactFailedToolHistory} from '../qq-components/obs-context-assembly/failure-history.mjs';
+import {compactHistoricalChatNarration} from '../qq-components/obs-context-assembly/chat-narration-history.mjs';
 const snapshotURL=new URL('../qq-components/obs-context-assembly/message-snapshot.mjs',import.meta.url);snapshotURL.search=new URL(import.meta.url).search;
 const {splitMessageSnapshot}=await import(snapshotURL.href);
 import {orderProjectedDialogue} from '../qq-components/obs-context-assembly/dialogue-order.mjs';
 import {historyBackfillRows} from '../qq-components/obs-context-assembly/history-backfill.mjs';
 import {compactHistoricalToolResults} from '../qq-components/obs-context-assembly/tool-history.mjs';
-import {installDynamicChatTools} from './dynamic-tools.mjs';
+import {compactGroundedMessageResults} from '../qq-components/obs-context-assembly/grounded-tool-history.mjs';
+const toolsURL=new URL('./dynamic-tools.mjs',import.meta.url);toolsURL.search=new URL(import.meta.url).search;
+const {installDynamicChatTools}=await import(toolsURL.href);
 import {previewRequestMessage,previewRequestBlocks,previewRequestToolResults} from '../qq-components/obs-context-assembly/request-view.mjs';
 import {observeModuleDelivery} from '../qq-components/obs-context-assembly/knowledge.mjs';
 import path from 'node:path';
@@ -39,7 +42,7 @@ function projectDialogue(message,packet,snapshot,seen,seenDialogue){
 }
 function retireCurrent(session,position,replace=replaceSurface){for(const seq of [...session.surface.nodes]){const e=session.eventAt(seq);if(e?.type==='user/message'&&[OWN,'qq-context-update','qq-context-latest','qq-context-task'].includes(e.data.source?.kind))replace(session,seq,{...e.data,content:[],source:{...e.data.source,kind:'qq-context-retired'}},position);}}
 export function apply(ctx,config={}) {
- installDynamicChatTools(ctx);
+ installDynamicChatTools(ctx,{contextFor:agent=>states.get(agent.session.id)});
  installSendFailureGuard(ctx);
  const root=config.root||path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
  const secret=secretFor(root),states=new Map(),agents=new Map(),resumed=new Set(),tombstones=new Map(),activities=new Map();
@@ -79,7 +82,10 @@ export function apply(ctx,config={}) {
  };
  ctx.on('agent/request',async({agent,turn,step},next)=>{
   const session=agent?.session;if(session){const queued=tombstones.get(session.id);tombstones.delete(session.id);for(const [seq,message] of queued||[]){if(session.surface.nodes.includes(seq))replaceSurface(session,seq,message,{turn,step});}}
-  if(session)compactFailedToolHistory(session,{turn,step},replaceSurface);
+  if(session){
+   if(states.get(session.id))compactHistoricalChatNarration(session,{turn,step},{keepRecentTurns:0});
+   compactFailedToolHistory(session,{turn,step},replaceSurface);
+  }
   return next();
  });
  const ready=agent=>{if(!agent?.session?.id)return;agents.set(agent.session.id,agent);try{recordEvidence(root,agent.session.id,'consumer',{sessionId:agent.session.id,pid:process.pid,at:Date.now(),version:3});}catch{/* No readiness acknowledgement: bridge keeps its working fallback. */}};
@@ -161,9 +167,17 @@ export function apply(ctx,config={}) {
    if(current&&projected.split)state.appliedModules=state.compiled.modules.map(row=>row.id==='message-snapshot'?{...row,parts:[projected.split.parts[0],{...projected.split.parts[1],text:projected.messageData}]}:row);
    if(projected.message){state.currentInputMessageIds.push(message.id);messages.push(projected.message);}
   }
+  // Refresh may carry new bridge-observed ingress during a long tool round.
+  // Project its full bodies once; receipt indexes alone never admit content.
+  const latestSnapshot=state.compiled.selected.find(row=>row.id==='message-snapshot');
+  if(latestSnapshot){
+   const update=projectDialogue(messageText('',{kind:'qq-context-dialogue'}),state,latestSnapshot,seen,seenDialogue);
+   if(update.message){state.currentInputMessageIds.push(update.message.id);messages.push(update.message);}
+  }
   const backfill=historyBackfillRows({session:agent.session,messages,key:state.key,seen,seenDialogue});
   if(backfill.length)messages.push(messageText('【历史 QQ 消息数据】\n'+JSON.stringify(backfill),{kind:'qq-context-dialogue',key:state.key,nonce:state.nonce,reason:'local-history-backfill',seqs:backfill.map(row=>row.seq).filter(Number.isSafeInteger),dialogueSeqs:backfill.map(row=>row.dialogueSeq).filter(Number.isSafeInteger)}));
-  compactHistoricalToolResults(agent.session,config.toolHistory);
+  compactGroundedMessageResults(agent.session,{key:state.key,messages});
+  compactHistoricalToolResults(agent.session,{maxChars:800,...config.toolHistory,keepRecent:4,currentTurn:position.turn,currentStep:position.step,keepCurrentSteps:2});
   retireCurrent(agent.session,position,replaceBeforeStep);
   retireDialogueTasks(agent.session,position,replaceBeforeStep);
   const refill=refillContext({session:agent.session,compiled:state.compiled,key:state.key,nonce:state.nonce,scene:state.scene,position,messages});
@@ -179,6 +193,8 @@ export function apply(ctx,config={}) {
  });
  // Observer only: loop requests are frozen and must reconstruct from durable events.
  ctx.on('llm/stream',(options,next)=>{
+  // Auxiliary compaction is not a new QQ reply request or latency sample.
+  if(options.purpose==='compaction')return next();
   const agent=agents.get(options.sessionId);if(!agent)return next();
   try {
   const state=states.get(options.sessionId);

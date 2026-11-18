@@ -25,7 +25,7 @@ const cfg = {
   enabled: true,
   updateIntervalMin: 60,
   maxChars: 4000,
-  dailyDiary: { enabled: true, hour: 0, minute: 0, maxChars: 500 }
+  dailyDiary: { enabled: true, hour: 22, minute: 0, maxChars: 500 }
 };
 const ctx = {
   root: tmpRoot,
@@ -37,6 +37,9 @@ const ctx = {
     set: (patch) => { store = { ...store, ...patch }; fs.writeFileSync(stateFile, JSON.stringify(store)); }
   },
   capabilities: {
+    now:()=>t0,
+    memoryWorkerContext:()=>({messages:[{seq:1,userId:'1',text:'今天修好了小程序。',at:t0-60000}]}),
+    runReadOnlyWorker:async()=>({text:'刷新后的日记'}),
     isConsoleConversationExcluded: key => key === 'group:40001',
     memoryConfig: () => cfg,
     listConversationKeys: () => ['private:1'],
@@ -61,17 +64,21 @@ check('捕获后写盘', plugin.services.memory.read({ key: 'private:1' }).text.
 check('无 <MEMORY> 不写', plugin.services.memory.capture({ key: 'private:1', text: '普通回复' }).matched === false);
 
 // 调度：首次 tick（已到日记点）先强制刷新记忆，刷新未完成前不立即发日记
-const t0 = Date.now();
+const t0=Date.parse(new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'})+'T22:00:00+08:00');
+ctx.capabilities.runtimeStartedAt=t0-3600000;
 const pad2n = (n) => String(n).padStart(2, '0');
 const dayOf = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + pad2n(d.getMonth() + 1) + '-' + pad2n(d.getDate()); };
 const today = dayOf(t0);
 const priorDay = dayOf(t0 - 86_400_000);
+store.lastIncomingAt={'private:1':t0-60000};
+plugin.services.memory.updateDiary({key:'private:1',day:today,now:t0-60000,text:'刷新后的日记'});
 await plugin.hooks.onTick({ now: t0 });
-check('到点强制刷新记忆（1 次唤醒）', wakes.length === 1 && wakes[0] === 'private:1');
-check('刷新未完成前不立即发旧日记', sent.length === 0);
+await plugin.services.diaryWorker.whenIdle({key:'private:1'});
+check('到点不再启动普通记忆整理回合', wakes.length === 0);
+check('到点发送已准备的日记', sent.length === 1);
 
 // 模拟记忆回合写盘（AI 捕获 <MEMORY> 后由桥接调 memory.capture，刷新 mtime）
-plugin.services.memory.capture({ key: 'private:1', text: '<MEMORY>【日记】\n刷新后的日记</MEMORY>' });
+// The dated draft has already been prepared before the bell.
 
 // 下一次 tick：记忆已刷新，发当日日记
 await plugin.hooks.onTick({ now: t0 + 30_000 });
@@ -85,7 +92,7 @@ plugin.services.memory.write({ key: 'private:1', text: '【日记】\nYESTERDAY_
 const memFile = path.join(tmpRoot, 'state', 'memory', 'private_1.md');
 const priorNoon = new Date(priorDay + 'T12:00:00');
 fs.utimesSync(memFile, priorNoon, priorNoon);
-const olderCatchUp = await plugin.services.memory.sendDiaryDetailed({ key: 'private:1', now: t0 + 40_000, day: priorDay });
+const olderCatchUp = await plugin.services.memory.sendDiaryDetailed({ key: 'private:1', now: t0 + 40_000, day: priorDay,allowArchiveRetry:true });
 check('较新的发送日期不会压掉更早缺失日记的补发', olderCatchUp.ok === true && sent.length === 2 && store.lastDiaryDate['private:1'] === today);
 
 // 设定时间前的凌晨不得把“昨天”当成目标日记发送。

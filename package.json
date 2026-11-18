@@ -86,7 +86,7 @@
     "test:memory-context": "node scripts/test-memory-context.mjs",
     "test:memory-management": "npm run build:console && node --test scripts/test-memory-responsibilities.mjs scripts/test-memory-routes.mjs scripts/test-memory-context.mjs scripts/test-memory-reload.mjs scripts/test-component-config-delivery.mjs scripts/test-profile-extraction-policy.mjs && node scripts/test-memory-console.mjs",
     "test:context-session": "node scripts/test-context-session.mjs",
-    "test:context-dynamics": "node scripts/test-context-dynamics.mjs",
+    "test:context-dynamics": "node scripts/test-context-dynamics.mjs && node --test scripts/test-chat-protocol-markers.mjs",
     "test:context-lifecycle": "node scripts/test-context-lifecycle.mjs",
     "test:context-runtime": "node scripts/test-context-runtime.mjs",
     "test:role-card-component": "node scripts/test-role-card-component.mjs",
@@ -98,7 +98,7 @@
     "test:followup-bubble": "node --test scripts/test-conversation-drive.mjs scripts/test-opening-topic.mjs plugins/qq-components/ctx-chat-topic-drive/followup-policy.test.mjs plugins/qq-components/ctx-chat-topic-drive/private-followup.test.mjs plugins/qq-components/life-proactive-time-bubble/schedule-locks.test.mjs",
     "test:scheduler": "node --test scripts/test-scheduler.mjs scripts/test-sleep-recovery.mjs scripts/test-availability.mjs scripts/test-notification-delivery.mjs",
     "audit:cost": "node scripts/audit-cost.mjs",
-    "test:cost": "node --test scripts/test-cost-audit.mjs scripts/test-cost-optimization.mjs scripts/test-cost-policy.mjs",
+    "test:cost": "node --test scripts/test-cost-audit.mjs scripts/test-cost-optimization.mjs scripts/test-cost-policy.mjs scripts/test-price-provider-scope.mjs",
     "test:task-isolation": "node --test scripts/test-task-isolation.mjs scripts/test-task-tool-guard.mjs scripts/test-session-concurrency.mjs",
     "build:console": "node scripts/build-console.mjs",
     "lint:console": "eslint console",
@@ -130,7 +130,8 @@
     "privacy:check": "node scripts/privacy-check.mjs",
     "build:presets": "node scripts/build-dsh-bundle.mjs",
     "check:presets": "node scripts/build-dsh-bundle.mjs --check && node --test scripts/test-admin-preset-permissions.mjs scripts/test-preset-module-resolution.mjs",
-    "test:admin-permissions": "node --test scripts/test-admin-environment-permissions.mjs scripts/test-admin-preset-permissions.mjs scripts/test-admin-private-boundary.mjs"
+    "test:admin-permissions": "node --test scripts/test-admin-environment-permissions.mjs scripts/test-admin-preset-permissions.mjs scripts/test-admin-private-boundary.mjs",
+    "test:memory-worker": "node --test scripts/test-memory-worker.mjs scripts/test-memory-worker-profile.mjs scripts/test-read-only-worker.mjs scripts/test-memory-preset.mjs scripts/test-memory-preset-native.mjs scripts/test-chat-performance-regressions.mjs"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
@@ -384,7 +385,23 @@
       "scripts/test-task-model-mcp.mjs",
       "scripts/test-task-model-range.mjs",
       "scripts/test-tool-loading-guidance.mjs",
-      "scripts/test-web-watch-public-http.mjs"
+      "scripts/test-web-watch-public-http.mjs",
+      "scripts/test-proactive-examples-ui.mjs",
+      "scripts/test-proactive-examples.mjs",
+      "scripts/test-diary-willingness-policy-20261118.mjs",
+      "scripts/test-unanswered-backoff-20261118.mjs",
+      "scripts/test-diary-cycle-20261118.mjs",
+      "scripts/test-owner-diary-tools-20261118.mjs",
+      "scripts/test-diary-mcp.mjs",
+      "scripts/test-diary-chat-continuity.mjs",
+      "scripts/test-budget-diary-direct.mjs",
+      "scripts/test-memory-worker.mjs",
+      "scripts/test-memory-worker-profile.mjs",
+      "scripts/test-availability-assessor.mjs",
+      "scripts/test-reply-loop-recovery-20261117.mjs",
+      "scripts/test-interaction-evidence-20261117.mjs",
+      "scripts/test-stone-conversation-replay-20261117.mjs",
+      "scripts/test-relay-admin-target-20261118.mjs"
     ]
   }
 }

@@ -94,6 +94,12 @@ export function createSendLedger(ctx,policy) {
       const inflight=Object.values(s.conversations).flatMap(e=>Object.values(e.reservations||{})).filter(r=>r.contentId===content.id).length;
       return {contentId:content.id,seqs:content.seqs,kind:content.kind,maxParts:content.maxParts,successful,inflight,remaining:content.taskExempt?Number.MAX_SAFE_INTEGER:Math.max(0,content.maxParts-successful-inflight),taskExempt:content.taskExempt,taskPending:content.taskPending,taskGroupAdmission:content.taskGroupAdmission};
     },
+    turnProgress({plan}={}){
+      if(!plan?.agent||!plan.turnId)return [];
+      const s=load(),e=s.conversations[plan.key];if(!e)return [];
+      const ids=new Set([...e.receipts,...Object.values(e.reservations)].filter(r=>r.turnId===plan.turnId&&r.contentId).map(r=>r.contentId));
+      return [...ids].map(contentId=>this.progress({plan,contentId})).filter(Boolean);
+    },
     delay({plan,requested,random=Math.random}={}) {
       const d=plan.delayPlan;
       if(Number.isFinite(requested))return Math.max(d.min,Math.min(Math.max(d.max,d.longProbability>0?d.longMax:0),requested));
@@ -114,6 +120,10 @@ export function createSendLedger(ctx,policy) {
       if(!taskExempt&&plan.scheduledGrant&&!scheduledId)return {ok:false,reason:'scheduled_grant_spent_or_expired'};
       if(contentId&&!content)return {ok:false,reason:'content_not_found'};
       if(plan.agent&&!taskExempt&&!scheduledId&&!content)return {ok:false,reason:'content_required'};
+      if(plan.agent&&!taskExempt&&!scheduledId&&key===(plan.sourceKey||plan.key)){
+        const checked=ctx.callService?.('interactionEvidence','validateReply',{key,kind,text,sourceSeqs:content?.seqs||[],successful:s.contentCounts?.[content?.id]||0});
+        if(checked?.ok===false)return checked;
+      }
       const textScope=content?.id||taskAdmission?.groupId||(Number.isSafeInteger(inputSeq)&&inputSeq>0?'seq:'+inputSeq:null);
       const crossTaskPoke=kind==='poke'&&taskExempt&&key!==plan.sourceKey;
       const dedupeBody=crossTaskPoke?'[poke]':kind==='text'?String(text).replace(/\s+/g,' ').trim():'';

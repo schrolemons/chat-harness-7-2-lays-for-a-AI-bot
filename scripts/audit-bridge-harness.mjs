@@ -55,12 +55,15 @@ import * as sensitive from '../src/sensitive.js';
 import * as wait from '../src/v2-wait.js';
 import * as safeFetch from '../src/safe-fetch.js';
 import * as imageAssetStore from '../src/image-asset-store.mjs';
+import * as imageTransport from '../src/image-generation-transport.mjs';
+import {createDeferredImageCache} from '../src/deferred-image-cache.mjs';
 import * as mediaNormalize from '../src/media-normalize.js';
 import * as forward from '../src/forward.js';
 import * as slang from '../src/slang-learner.js';
 import * as sticker from '../src/sticker-lib.js';
 import * as modelPrices from '../src/model-prices.js';
 import * as tokenLedger from '../src/token-ledger.js';
+import {createPreservingModelSelector} from '../src/native-model-default.mjs';
 import * as voiceLib from '../src/send-voice-lib.js';
 import * as presetPrompt from '../src/preset-prompt.js';
 import * as stateAcl from '../src/state-acl.mjs';
@@ -86,6 +89,10 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     consoleToken: 'fixture-console-token', slang: { enabled: false }, ...config,
   }));
   if (savedState) fs.writeFileSync(path.join(temp, 'state/sessions.json'), JSON.stringify(savedState));
+  // Legacy behavioral fixtures explicitly keep their old 0..100 / daily-60
+  // policy; new minimum-score tests opt into the current production defaults.
+  fs.mkdirSync(path.join(temp,'state/plugins/config'),{recursive:true});
+  fs.writeFileSync(path.join(temp,'state/plugins/config/ctx-user-mood.json'),JSON.stringify({minimumScore:0,dailyFloor:60}));
   // 额外状态文件（用于测试"启动时读到损坏/旧版文件"这类路径）。
   for (const [rel, content] of Object.entries(files)) {
     const target = path.join(temp, rel);
@@ -141,12 +148,18 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     return { ok: true, status: 200, json: async () => ({ status: 'ok', retcode: 0, data: { message_id: 9001 + calls.http.length } }) };
   };
   const success = (value) => ({ result: { ok: true, value } });
+  let nativeDefault={provider:'fixture',model:'fixture'},nativeDefaultRevision=0;
   const api = {
     events: { follow: (id) => calls.follows.push(id) },
     // settings.describe 的默认桩：没有 qq-mode 命名空间 ⇒ refreshMode() 回退到本地 mode.json。
     // 测试可覆盖它来验证「DSH 设置里的空 ownerQQ 不得覆盖 config.json」等契约。
     settings: {
-      describe: async () => success({ namespaces: [] }),
+      describe: async () => success({ namespaces: [{ns:'agent-default-model',applies:'live',revision:nativeDefaultRevision,value:{...nativeDefault}}] }),
+      mutate: async ({ns,expectedRevision,ops}) => {
+        if(ns!=='agent-default-model'||expectedRevision!==nativeDefaultRevision)throw Error('Fixture default revision conflict');
+        nativeDefault={...ops[0].value};nativeDefaultRevision++;
+        return success({ns,applies:'live',revision:nativeDefaultRevision,value:{...nativeDefault}});
+      },
       update: async () => success({ updated: true })
     },
     workspace: {
@@ -155,7 +168,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     },
     sessions: {
       create: async (params) => { calls.created.push(params); return success({ sessionId: `fixture-${calls.created.length}` }); },
-      selectModel: async () => success({ selected: { provider: 'fixture', model: 'fixture' } }),
+      selectModel: async ({provider,model,reasoningEffort}) => {nativeDefault={provider,model,...(reasoningEffort?{reasoningEffort}:{})};nativeDefaultRevision++;return success({selected:{...nativeDefault}});},
       prompt: async (params) => { calls.prompts.push(params); return success({}); },
     },
     respond: async () => success({}),
@@ -287,9 +300,11 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     NodeApiClient: class { constructor() { return api; } },
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
+    createPreservingModelSelector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...imageAssetStore, ...forward, ...slang, ...sticker, ...directTimedNotices, ...outboundTransport, ...replyContentsRoute, migrateOutboundMood, migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...contentGuard, ...conversationDrive, ...roleCard, ...biliShare, ...replyPolicy, ...scheduleLocks, ...gamesStore, ...modeSettings, ...mediaSegments, ...receiptState, ...contextLimits, ...dialogueSequence, ...localHistory, ...receiptIndex, ...costPolicy, createModelPolicyController, ...consoleDocument, ...toolCatalog,
     createRuntimeIpcClient, bindInstanceSnowConfig, bindInstanceDshConfig, ...instanceSessionPolicy, ...sessionRecovery, ...presetPolicy, ...adminToolPolicy, ...presetOverview,buildDshBundle,validateCatalogSelection,createReceivedMessageCache,
+    createDeferredImageCache,...imageTransport,
     createPluginHost: opts=>createPluginHost({...opts,startTimers:false}),
     routePluginManagement,
     routeMemoryManagement,routeDiaryManagement,routeLearningManagement,routeContextManagement,routeFeedbackRepairs,

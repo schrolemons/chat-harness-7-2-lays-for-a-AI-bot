@@ -1,0 +1,6 @@
+import{NodeApiClient,unwrap}from'../src/dsh-client.js';import{runReadOnlyWorker}from'../src/read-only-worker.mjs';import{loadInstanceSessionPolicy}from'../src/instance-session-policy.mjs';import fs from'node:fs';import path from'node:path';
+const root=JSON.parse(fs.readFileSync('workspace.local.json')).runtimeRoot,c=new NodeApiClient(process.argv[2],10000,{}),p=loadInstanceSessionPolicy({root,env:{}});
+const create=c.sessions.create;c.sessionPolicy={...c.sessionPolicy,resolvePreset:p.resolvePreset};c.sessions.create=(x,s)=>create({...x,agentPreset:p.resolvePreset(x.agentPreset)},s);
+const report={at:Date.now(),events:[]};
+try{const r=await runReadOnlyWorker({api:c,prompt:'这是只读连通验收。只输出 OK，不调用工具，不写资料。',title:'官方API连通验收（无QQ发送）',timeoutMs:30000,prepare:async sessionId=>unwrap(await c.sessions.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'off'}),'model'),onEvent:(id,e)=>{if(e.type==='turn/end')report.events.push(e.data.reason);}});Object.assign(report,{ms:Date.now()-report.at,reply:r.text,sessionId:r.sessionId});}catch(e){Object.assign(report,{ms:Date.now()-report.at,error:e.message});process.exitCode=1;}
+fs.writeFileSync(path.join(root,'state/audits/response-flow-20261112/official-live-probe.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));

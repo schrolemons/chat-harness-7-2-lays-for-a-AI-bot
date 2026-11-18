@@ -404,7 +404,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
     {id:'magpie-responses',name:'Magpie · Responses',models:[{id:'codex/gpt-6.1-sol',name:'GPT-6.1-Sol',reasoning:{efforts:['low','medium','high','xhigh','max'].map(id=>({id}))}}]}
   ],failures:[]};
   const modelController=createModelPolicyController({fetchCatalog:async()=>modelCatalog,
-    fetchPresets:async()=>['qq-chat','qq-chat-v2','qq-admin','qq-task-worker','qq-learning','campus-summary','custom-agent'].map(id=>({id,name:id})),
+    fetchPresets:async()=>['qq-chat','qq-chat-v2','qq-admin','qq-task-worker','qq-learning','qq-memory-worker','campus-summary','custom-agent'].map(id=>({id,name:id})),
     readPolicy:()=>normalizeModelPolicy(componentFixtures.get('obs-cost-policy').config),
     savePolicy:async config=>{componentFixtures.get('obs-cost-policy').config=structuredClone(config);return {ok:true};},synchronize:async()=>({ok:true,applied:0})});
   const server = http.createServer(async (req, res) => {
@@ -500,7 +500,7 @@ export async function startConsoleFixture({ port = 0, htmlPath, logWrites = fals
             }));
             return json({ ok: true, mode: state.mode, defaultPreset, adminEnabled: admin.enabled === true, bindings });
           }
-          case '/api/presets': return json({ presets: ['standard','ptc','minimal','cordis','qq-chat','qq-chat-v2','qq-chat-dev','qq-task-worker','qq-learning','campus-summary'].map(id=>({id,trust:'user'})) });
+          case '/api/presets': return json({ presets: ['standard','ptc','minimal','cordis','qq-chat','qq-chat-v2','qq-chat-dev','qq-task-worker','qq-learning','qq-memory-worker','campus-summary'].map(id=>({id,trust:'user'})) });
           case '/api/roles': return json({
             roles: state.roles.slice(),
             summaries: state.roles.map((name) => {

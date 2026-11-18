@@ -66,7 +66,7 @@ test('queued-only prompts also arm; hard-capped active turns remain silent', asy
     h.v2TurnStartAt.set(sid, Date.now());
     h.pluginHost.setConfig('life-token-budget', { globalHardLimitYuan: 0.01 });
     await h.pluginHost.reload('life-token-budget');
-    h.tokenLedger.ingestEvent({ sessionId: sid, at: Date.now(), model: 'deepseek-flash', event: {
+    h.tokenLedger.ingestEvent({ sessionId: sid, at: Date.now(), model: 'deepseek-flash', provider:'deepseek-official', event: {
       type: 'assistant/message', seq: 1, data: { turn: 1, step: 1, usage: { inputTokens: 1000000 } } } });
     inbound(h);
     assert.equal(h.messageAckArmed.get(key), undefined);

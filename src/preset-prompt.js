@@ -53,7 +53,8 @@ export function presetPromptBlockers(content, preset = 'v2') {
     return blockers;
   }
   for (const needle of presetBlockingSubstrings(preset)) {
-    if (!text.includes(needle)) {
+    const present=needle==='不会自动发送到 QQ'?/不会自动(?:发送到|发到)\s*QQ/.test(text):text.includes(needle);
+    if (!present) {
       blockers.push(`缺少安全不变量「${needle}」：删除它会让 AI 的权限边界失效，并使 npm run test:audit 失败`);
     }
   }

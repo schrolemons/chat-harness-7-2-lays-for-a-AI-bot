@@ -44,7 +44,11 @@
     "groupNameBonus": 0.4,
     "groupQuestionBonus": 0.3,
     "groupPokeBonus": 0.6,
-    "groupNames": ""
+    "groupNames": "",
+    "unansweredAfterMinutes": 20,
+    "unansweredStepMinutes": 60,
+    "unansweredPenalty": 15,
+    "minimumWillingness": 1
   },
   "configSchema": {
     "disabledReasons": {
@@ -199,6 +203,30 @@
       "type": "text",
       "label": "群聊名字与别称（逗号分隔）",
       "example": "填“AI助手,DS”：消息出现这些管理员名字时提供名字加成。已唤醒后不再按名字判断是否接收。"
+    },
+    "unansweredAfterMinutes": {
+      "type": "number",
+      "min": 1,
+      "max": 1440,
+      "label": "未回应后开始降低意愿（分钟）"
+    },
+    "unansweredStepMinutes": {
+      "type": "number",
+      "min": 1,
+      "max": 1440,
+      "label": "之后每隔多久继续降低（分钟）"
+    },
+    "unansweredPenalty": {
+      "type": "number",
+      "min": 0,
+      "max": 100,
+      "label": "每次未回应退避降低意愿"
+    },
+    "minimumWillingness": {
+      "type": "number",
+      "min": 0.01,
+      "max": 100,
+      "label": "聊天意愿最低正值（不因未回复禁言）"
     }
   }
 }

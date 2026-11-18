@@ -31,7 +31,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-token-budget-'));
 const file = path.join(dir, 'usage.jsonl');
 try {
   const ledger = createTokenLedger({ file, resolveKey: (sid) => sid === 'a' ? 'private:1' : 'group:2' });
-  const add = (sid, seq, at, turn = seq, step = 1) => ledger.ingestEvent({ sessionId: sid, at, model: 'deepseek-flash', event: {
+  const add = (sid, seq, at, turn = seq, step = 1) => ledger.ingestEvent({ sessionId: sid, at, model: 'deepseek-flash', provider:'deepseek-official', event: {
     type: 'assistant/message', seq, data: { turn, step, usage: { inputTokens: 1_000_000, outputTokens: 100 } }
   } });
   add('a', 1, clock('21:59'));

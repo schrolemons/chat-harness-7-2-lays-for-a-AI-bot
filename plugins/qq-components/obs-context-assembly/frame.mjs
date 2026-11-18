@@ -1,4 +1,5 @@
-import {COMMON_CHAT_PROTOCOL} from '../life-wake-reasons/chat-entry-guidance.mjs';
+const guidanceURL=new URL('../life-wake-reasons/chat-entry-guidance.mjs',import.meta.url);guidanceURL.search=new URL(import.meta.url).search;
+const {COMMON_CHAT_PROTOCOL}=await import(guidanceURL.href);
 // Source attribution at the transport seam; business prompts remain with their owners.
 export function frameModules({modules=[],extras=[],roleText='',backgroundText='',prompt='',snapshot,slangText=''}){
  const out=[];let rest=prompt;

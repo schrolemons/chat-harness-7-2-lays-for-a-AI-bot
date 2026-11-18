@@ -41,6 +41,9 @@ test('group context receipt closes reply eligibility while keeping a true read s
  append('unrelated group topic');await fixtureReplyTurn(h,key);assert.equal((await call('/api/socialV2/unread')).status,200);
  const result=await call('/api/socialV2/receipt-report',{receipts:[{seq:1,status:'context',note:'群友之间的话题，不参与'}]});
  assert.equal(result.status,200,JSON.stringify(result.data));assert.equal(pendingMessagesV2(st).length,0);assert(st.unread[0].seenAt>0);assert.equal(st.unread[0].repliedAt,undefined);assert.equal(h.calls.sent.length,0);
+ const at=st.unread[0].replyDispositionAt;
+ const repeat=await call('/api/socialV2/receipt-report',{receipts:[{seq:1,status:'context',note:'换一种说法核对上文'}]});
+ assert.equal(repeat.status,200);assert.equal(repeat.data.updated,0);assert.equal(st.unread[0].replyDispositionAt,at,'repeated context report does not pretend to make progress');
 }));
 
 test('unawakened group input becomes optional context without either receipt stamp',async()=>{
@@ -58,14 +61,14 @@ test('only explicitly required group input in the receipt window enters the orde
  h.pluginHost.callService('historyContext','classifyIncoming',{key,state:st,message:first,wakeAccepted:true,requiresResponse:true,windowSeqs:[1]});
  h.pluginHost.callService('historyContext','beginWake',{key,state:st,triggerSeq:first.seq});
  const ordinary=h.appendSocialV2Message(key,'peer','among others','among others',false,false,'b');h.pluginHost.callService('historyContext','classifyIncoming',{key,state:st,message:ordinary,wakeAccepted:true,requiresResponse:false,windowSeqs:[1,2]});
- assert.deepEqual(Array.from(pendingMessagesV2(st),m=>m.messageId),['a']);assert.equal(first.replyRequirement,'required');assert.equal(ordinary.replyRequirement,'optional');
- const third=h.appendSocialV2Message(key,'peer','new bot request','new bot request',false,false,'c');h.pluginHost.callService('historyContext','classifyIncoming',{key,state:st,message:third,wakeAccepted:true,requiresResponse:true,windowSeqs:[2,3]});assert.deepEqual(Array.from(pendingMessagesV2(st),m=>m.messageId),['c']);assert.equal(first.repliedAt,undefined);
+ assert.deepEqual(Array.from(pendingMessagesV2(st).filter(m=>m.replyRequirement==='required'),m=>m.messageId),['a']);assert.equal(first.replyRequirement,'required');assert.equal(ordinary.replyRequirement,'optional');assert.equal(ordinary.replyDisposition,'optional','fresh optional input remains visible to the waiter');
+ const third=h.appendSocialV2Message(key,'peer','new bot request','new bot request',false,false,'c');h.pluginHost.callService('historyContext','classifyIncoming',{key,state:st,message:third,wakeAccepted:true,requiresResponse:true,windowSeqs:[2,3]});assert.deepEqual(Array.from(pendingMessagesV2(st).filter(m=>m.replyRequirement==='required'),m=>m.messageId),['c']);assert.equal(first.repliedAt,undefined);
  }finally{await h.close();}
 });
 
 test('ordered required replies cannot skip an older required item, while optional context remains free',()=>{
  const facts={agent:true,requiredSeqs:[5,7],pending:[]};
- assert.equal(validateContextSend({...facts,selectedSeqs:[7]}).ok,false);assert.equal(validateContextSend({...facts,requiredSeqs:[5,6,7],selectedSeqs:[5,7]}).ok,false);assert.equal(validateContextSend({...facts,selectedSeqs:[5]}).ok,true);assert.equal(validateContextSend({...facts,selectedSeqs:[2]}).ok,true);
+ assert.equal(validateContextSend({...facts,selectedSeqs:[7]}).ok,false);assert.equal(validateContextSend({...facts,requiredSeqs:[5,6,7],selectedSeqs:[5,7]}).ok,true);assert.equal(validateContextSend({...facts,selectedSeqs:[5]}).ok,true);assert.equal(validateContextSend({...facts,selectedSeqs:[2]}).ok,true);
 });
 
 test('first accepted trigger stays the input; optional arrivals never occupy or evict required window slots',async()=>{
@@ -84,7 +87,7 @@ test('all new private input remains required across a wake; probability-waking o
  const h=await bridgeHarness();try{
  h.setMode('reserved2');const key='private:123',st=h.getSocialV2State(key);for(let i=0;i<8;i++){const m=h.appendSocialV2Message(key,'peer','new'+i,'new'+i,false,false,String(i));h.pluginHost.callService('historyContext','classifyIncoming',{key,state:st,message:m,wakeAccepted:false});}
  h.pluginHost.callService('historyContext','beginWake',{key,state:st,triggerSeq:1});assert.equal(pendingMessagesV2(st).length,8);assert(st.unread.every(m=>m.replyRequirement==='required'));
- const group=h.getSocialV2State('group:456'),m=h.appendSocialV2Message('group:456','peer','ordinary','ordinary',false,false,'g');h.pluginHost.callService('historyContext','classifyIncoming',{key:'group:456',state:group,message:m,wakeAccepted:true,requiresResponse:false});h.pluginHost.callService('historyContext','beginWake',{key:'group:456',state:group,triggerSeq:m.seq});assert.equal(m.replyRequirement,'optional');assert.equal(pendingMessagesV2(group).length,0);
+ const group=h.getSocialV2State('group:456'),m=h.appendSocialV2Message('group:456','peer','ordinary','ordinary',false,false,'g');h.pluginHost.callService('historyContext','classifyIncoming',{key:'group:456',state:group,message:m,wakeAccepted:true,requiresResponse:false});h.pluginHost.callService('historyContext','beginWake',{key:'group:456',state:group,triggerSeq:m.seq});assert.equal(m.replyRequirement,'optional');assert.equal(pendingMessagesV2(group).filter(m=>m.replyRequirement==='required').length,0);assert.equal(pendingMessagesV2(group).length,1,'optional current input must still reach the model');
  }finally{await h.close();}
 });
 

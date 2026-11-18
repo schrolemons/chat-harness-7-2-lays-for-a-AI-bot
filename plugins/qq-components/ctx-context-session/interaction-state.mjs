@@ -19,6 +19,7 @@ export function buildInteractionState(st) {
   const pokes = messages.filter(m => isPoke(m) && m.poke?.targetIsSelf === true);
   const pending = pokes.filter(m => m.replyDisposition !== 'history' && receiptStateV2(m) !== 'complete').map(m => m.seq);
   const completed = pokes.filter(m => receiptStateV2(m) === 'complete').map(m => m.seq);
+  const actors=pokes.map(m=>({seq:m.seq,userId:String(m.userId||''),sender:String(m.sender||'').slice(0,80),receiptState:receiptStateV2(m),contextOnly:m.replyDisposition==='history'}));
   const kind = isPoke(latest) ? latest.poke?.targetIsSelf === true ? '拍一拍bot' : '拍一拍（其他或未知目标）' : '消息';
-  return `【交互事件事实】最新入站seq=${latest.seq}，类型=${kind}；窗口内未回应拍一拍seq=${JSON.stringify(pending)}；已回应拍一拍seq=${JSON.stringify(completed)}。同一seq只是一件事，已回应的不再当新戳；空@、点名不是新的拍一拍。唤醒原因是本轮起点，重复出现不表示又发生一次；只有新结构化poke事件才可说“又戳”。`;
+  return `【交互事件事实】最新入站seq=${latest.seq}，类型=${kind}；窗口内未回应拍一拍seq=${JSON.stringify(pending)}；已回应拍一拍seq=${JSON.stringify(completed)}。拍一拍来源=${JSON.stringify(actors)}。来源userId才是动作发起人，不把最后发言者、称呼表lastSpeaker或被引用的人当戳你的人。同一seq只是一件事，已回应的不再当新戳；空@、点名和省略号不是新的拍一拍。唤醒原因是本轮起点，重复出现不表示又发生一次；只有新结构化poke事件才可说“又戳”。`;
 }

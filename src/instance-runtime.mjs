@@ -272,7 +272,7 @@ export function createInstanceRuntime(options = {}) {
       spawnWorker:async(workerKind,workerArgs)=>{await ready;return spawnWorker(entry,workerKind,workerArgs);},
       openMonitor:['web-watch','login-window'].includes(kind)?async headless=>{
         await ready;if(!admission)throw fail('RUNTIME_CLOSING');
-        try{return await monitor.open(headless);}catch(error){uncertain=true;admission=false;state='failed';remember(error);throw error;}
+        try{return await monitor.open(headless);}catch(error){if(monitor.status().uncertain){uncertain=true;admission=false;state='failed';}remember(error);throw error;}
       }:undefined});
     // Keep asynchronous OS spawn failures handled while the start transaction waits.
     const spawned = new Promise((resolve, reject) => {

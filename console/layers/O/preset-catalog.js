@@ -9,6 +9,7 @@ const DEFINITIONS = {
   'qq-chat-v2': {label:'AI助手二代仿真',group:'按模式自动使用',description:'二代仿真专用，自主读消息、用工具发言和等待；由桥接按模式选择。'},
   'qq-task-worker': {label:'独立任务执行',group:'后台专用',description:'AI助手处理委派任务时创建的独立工作会话，不是日常聊天入口。'},
   'qq-learning': {label:"后台学习（黑话／词条／绰号）",group:'后台专用',description:"黑话、词条和绰号学习共用 qq-learning 预设及同一个后台学习会话，串行执行各自任务；各组件的素材、审核规则与数据独立管理。仅允许后台抽取、分类和公开资料检索，不发送 QQ 或执行本机命令。"},
+  'qq-memory-worker': {label:'记忆整理',group:'后台专用',description:'独立整理所属会话的事实、画像和日记，不占用聊天回合；代理无工具或QQ发送权限，草稿由存储组件校验写入。'},
   'campus-summary': {label:'网页更新整理',group:'后台专用',description:'整理监控网页差异；无工具，不发送消息，不读取聊天历史。'}
 };
 export function presetInfo(preset) {

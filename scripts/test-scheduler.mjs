@@ -1,4 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
+test('real incoming messages preempt casual openings, while reminder and chat turns remain protected',async()=>{
+ const {createPlugin}=await import('../plugins/qq-components/life-scheduler/index.js');
+ const policy=createPlugin({runtime:{},config:{}}).services.scheduler.wakePolicy;
+ for(const activeReason of ['startupGreeting','timeBubble','proactiveCheck','idleRescue','careCheck','newsShare','privateFollowup'])for(const incomingReason of ['private','message','message:670','atMention','reply','poke'])assert.equal(policy({incomingReason,activeReason}).preempt,true,activeReason+' / '+incomingReason);
+ for(const activeReason of ['reminder','message','private','memoryWrite','taskDone'])assert.equal(policy({incomingReason:'private',activeReason}).preempt,false,activeReason);
+ assert.equal(policy({incomingReason:'proactiveCheck',activeReason:'timeBubble'}).preempt,true);
+ assert.equal(policy({incomingReason:'proactiveCheck',activeReason:'startupGreeting'}).preempt,false);
+});
 test('central scheduler runs one due task, skips expired notifications, and cancels an owner',async()=>{
  const {createPlugin}=await import('../plugins/qq-components/life-scheduler/index.js');let state={},runs=0;const runtime={};
  const ctx={runtime,config:{},isActive:()=>true,isPluginEnabled:()=>true,state:{get:()=>state,set:p=>state={...state,...p}},warn(){}};

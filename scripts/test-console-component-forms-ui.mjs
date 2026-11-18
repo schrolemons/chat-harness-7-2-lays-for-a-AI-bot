@@ -11,6 +11,7 @@ const executablePath=[path.join(process.env.PROGRAMFILES||'','Google/Chrome/Appl
 const fixture=await startConsoleFixture();
 const browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});
 const results=[],errors=[];
+const only=process.argv.slice(2).find(arg=>arg.startsWith('--only='))?.slice(7);
 const customControls={
   'ctx-member-alias':{autoExtract:'aliasAutoExtract',autoSemantic:'aliasAutoSemantic',minMessages:'aliasMinMessages',cooldownMs:'aliasCooldown',maxCallsPerHour:'aliasMaxCalls'},
   'ctx-interest-terms':{autoExtract:'termsAutoExtract',autoResearch:'termsAutoResearch',minMessages:'termsMinMessages',cooldownMs:'termsCooldown',maxCallsPerHour:'termsMaxCalls',injectMax:'termsInjectMax'}
@@ -24,6 +25,7 @@ try{
   await page.waitForFunction(()=>document.getElementById('v2ContextRecentLimit')?.value==='100');
   const testedBuild=await page.locator('script[src^="/console/app.js"]').getAttribute('src');
   for(const [id,plugin] of fixture.componentFixtures){
+    if(only&&id!==only)continue;
     const checked=[],derived=[];
     if(id==='obs-cost-policy'){results.push({id,checked:[],derived:plugin.configKeys.map(key=>({key,reason:'specialized preset overview editor; covered by test-preset-model-ui'})),ok:true});continue;}
     if (['ctx-chat-style','ctx-context-dynamics','ctx-context-lifecycle','ctx-context-runtime','ctx-context-session'].includes(id) && plugin.configKeys.every(key=>key==='disabledBlocks')) {
@@ -93,5 +95,5 @@ try{
   const output=process.argv.slice(2).find(arg=>arg.startsWith('--output='))?.slice(9);
   if(output){fs.mkdirSync(path.dirname(output),{recursive:true});fs.writeFileSync(output,JSON.stringify({testedBuild,total:results.length,passed:results.filter(result=>result.ok).length,results,errors},null,2));}
   assert.deepEqual(errors,[]);assert.deepEqual(fixture.unknownRequests,[]);
-  assert.equal(results.filter(result=>result.ok).length,fixture.componentFixtures.size,'All current component fields must be reachable and loaded');
+  assert.equal(results.filter(result=>result.ok).length,only?1:fixture.componentFixtures.size,'All selected component fields must be reachable and loaded');
 }finally{await browser.close();await fixture.close();}

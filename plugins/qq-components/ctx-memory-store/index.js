@@ -16,6 +16,9 @@ const memoryModule = relative => { const url = new URL(relative, import.meta.url
 const { createAffairStore } = await memoryModule('./affairs.mjs');
 const {diaryTargetDay,diaryWindow,diaryPreviousDay,diaryHeading,diaryPartLimit,diaryDraftLimit,resolveDiaryDelivery}=await memoryModule('./diary-delivery.mjs');
 const { parseMemoryDocument, renderPersistentDocument, mergePersistentDocument } = await memoryModule('./sections.mjs');
+const {createMemoryWorker}=await memoryModule('./worker.mjs');
+const {createDiaryWorker}=await memoryModule('./diary-worker.mjs');
+const {diarySchedule,humanActiveOnDay}=await memoryModule('./diary-schedule.mjs');
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const dateKey = (d = new Date()) => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
@@ -279,6 +282,8 @@ export function createPlugin(ctx) {
     catch(error){ctx.warn('日记草稿归档失败 '+key+' '+day+': '+error.message);return {ok:false,error:error.message};}
   }
   function contentForDay(key,day){
+    const archived=diaryFromArchive(root,day,key);
+    if(archived)return {text:archived,source:'archive'};
     const text=extractDiary(readMemory(root,key).text),stamp=state().diaryContentDates[key];
     return diaryForDay(root,key,day,stamp?.hash===diaryDigest(text)?stamp.day:undefined);
   }
@@ -287,7 +292,7 @@ export function createPlugin(ctx) {
     const contentDay=stamp?.hash===diaryDigest(text)?stamp.day:dateKey(new Date(mem.updatedAt));
     if(!text||!ARCHIVE_DATE_RE.test(contentDay)||contentDay>=currentDay)return;
     // Stage the ended diary without clearing it. Actual retirement follows the confirmed QQ receipt.
-    if(diaryFromArchive(root,contentDay,key)!==text)writeDiaryArchive({root,key,day:contentDay,text,now,maxChars:diaryArchiveMaxChars(cfg()),replaceExisting:true});
+    if(!diaryFromArchive(root,contentDay,key))writeDiaryArchive({root,key,day:contentDay,text,now,maxChars:diaryArchiveMaxChars(cfg()),replaceExisting:true});
   }
   function retireConfirmedDiary(key,day,now){
     const mem=readMemory(root,key),text=extractDiary(mem.text),st=state(),stamp=st.diaryContentDates[key];
@@ -316,21 +321,22 @@ export function createPlugin(ctx) {
   }
   async function diaryAttemptAudit(key, day, now) {
     return Promise.all(diaryAttempts(key,day,now).map(async attempt => {
-      if (attempt.stage !== 'sending' && attempt.receiptStatus !== 'claimed') return attempt;
+      if (attempt.stage !== 'sending' && !['claimed','uncertain'].includes(attempt.receiptStatus)) return attempt;
       let receipt;
       try { receipt = await cap.deliveryStatus?.(attempt.id); } catch {}
       if (receipt?.ok === true && receipt.status === 'sent') return {...attempt, stage:'finished', reason:'', receiptStatus:'sent', updatedAt:receipt.finishedAt || attempt.updatedAt};
       if (receipt?.ok === true && receipt.status === 'uncertain') return {...attempt, stage:'finished', reason:'delivery_unconfirmed', receiptStatus:'uncertain'};
       if (now - attempt.updatedAt <= 30 * 60000) return attempt;
-      if (receipt?.ok === true && receipt.status === 'absent') return {...attempt, stage:'finished', reason:'delivery_not_started'};
+      if (receipt?.ok === true && receipt.status === 'absent') return {...attempt, stage:'finished', reason:'delivery_not_started',receiptStatus:'absent'};
       return {...attempt, stage:'finished', reason:'delivery_unconfirmed', receiptStatus:receipt?.status || 'unavailable'};
     }));
   }
   async function finalDeliveryForDay(key,day){
     if(typeof cap.deliveryStatus!=='function')return {sentForDay:false,deliveryStatus:'unavailable',sentAt:0};
     const prefix='diary:'+key+':'+day,endAt=Date.parse(diaryWindow(day,cfg().dailyDiary).end.replace(' ','T')+':00+08:00');
-    const records=await Promise.all([prefix+':scheduled',prefix+':catchup',prefix].map(async id=>{try{return {id,...await cap.deliveryStatus(id)};}catch{return {id,ok:false};}}));
-    const sent=records.filter(r=>r.ok===true&&r.status==='sent'&&(r.id!==prefix||Number(r.finishedAt)>=endAt)).sort((a,b)=>Number(b.finishedAt)-Number(a.finishedAt))[0];
+    const result=await deliveryForDay(key,day);
+    const sent=result.sentForDay?{id:result.deliveryId,finishedAt:result.sentAt}:null;
+    const records=[{ok:true,status:result.deliveryStatus}];
     if(sent)return {sentForDay:true,deliveryStatus:'sent',sentAt:Number(sent.finishedAt)||0,deliveryId:sent.id};
     const pending=records.find(r=>r.status==='claimed')||records.find(r=>r.status==='uncertain');
     return {sentForDay:false,deliveryStatus:pending?.status||(records.some(r=>r.ok!==true)?'unavailable':diaryDateRecorded({key,day,st:state(),notes:receiptNotes(key)})?'legacy_unconfirmed':'absent'),sentAt:0};
@@ -364,23 +370,21 @@ export function createPlugin(ctx) {
     if(existing.sentForDay){rememberDelivery(targetKey,day,existing.deliveryId,existing.sentAt);return {ok:false,reason:'already_sent',day,lastDiaryDate:day,receiptStatus:'sent',reconciled:true};}
     if(['claimed','uncertain'].includes(existing.deliveryStatus)||(existing.deliveryStatus==='legacy_unconfirmed'&&confirmLegacyUnsent!==true))return {ok:false,reason:'delivery_unconfirmed',day,receiptStatus:existing.deliveryStatus};
     if(existing.deliveryStatus==='unavailable'||receipt.status!=='absent')return {ok:false,reason:'receipt_unavailable',day};
-    if(manualId){
-      const text=extractDiary(readMemory(root,targetKey).text),st=state();
-      if(text)saveState({diaryContentDates:{...st.diaryContentDates,[targetKey]:{day,hash:diaryDigest(text)}}});
-    }
     const archiveOnly = diaryArchiveHasDay(targetKey, day);
     if (archiveOnly && allowArchiveRetry !== true && !manualId && !scheduled) return { ok: false, reason: 'archive_only', day, receiptStatus: 'archive_only' };
-    const refreshed=state().scheduledDiaryRefresh[targetKey];
-    const availability = scheduled&&refreshed?.day===day&&refreshed.completedAt
-      ? {text:refreshed.diary||'',source:'scheduled_refresh',updatedAt:refreshed.completedAt}
-      : contentForDay(targetKey, day);
+    const schedule=diarySchedule(now,cfg().dailyDiary);
+    if(scheduled&&(day!==schedule.day||now<schedule.at||now>=schedule.expiresAt))return finish({ok:false,reason:'schedule_expired'});
+    const final=diaryWorker.status({key:targetKey});
+    const availability=scheduled&&final.day===day&&final.purpose==='scheduled'&&final.diary
+      ?{text:final.diary,source:'scheduled_refresh',updatedAt:final.finishedAt}
+      :catchup?{text:diaryFromArchive(root,day,targetKey),source:'archive'}:contentForDay(targetKey,day);
     const { text: diary } = availability;
     if(!diary)return finish({ok:false,reason:'missing_diary'});
     const config=cfg().dailyDiary;
     const body=diaryHeading(day,config)+diary;
     let sourceAt = availability.updatedAt;
     if (availability.source === 'archive') { try { sourceAt = fs.statSync(diaryArchiveFile(root, day)).mtimeMs; } catch { sourceAt = Date.parse(day + 'T00:00:00'); } }
-    const meta={id:receiptId,sourceAt,partMaxChars:diaryPartLimit(config),expiresAt:new Date(new Date(now).getFullYear(),new Date(now).getMonth(),new Date(now).getDate()+1).getTime()};
+    const meta={id:receiptId,sourceAt,partMaxChars:diaryPartLimit(config),expiresAt:scheduled?schedule.expiresAt:now+10*60000};
     rememberDiaryAttempt({...attempt, stage:'sending'});
     let outcome;try{outcome=await cap.sendDiaryDelivery(targetKey,body,meta);}catch{outcome={ok:false,reason:'send_unconfirmed'};}
     if(outcome?.ok!==true)return finish({ok:false,reason:outcome?.reason||'send_unconfirmed',receiptStatus:outcome?.receiptStatus||'',partsSent:outcome?.partsSent,partsTotal:outcome?.partsTotal});
@@ -411,8 +415,7 @@ export function createPlugin(ctx) {
     for (const day of allDiaryArchiveDays(root)) {
       if (day < today && diaryArchiveHasDay(targetKey, day)) candidates.add(day);
     }
-    const previousDay=diaryPreviousDay(now,cfg().dailyDiary);
-    if(contentForDay(targetKey,previousDay).text)candidates.add(previousDay);
+
     const results = [];
     for (const day of [...candidates].sort()) {
       const result = await sendDiaryDetailed({ key: targetKey, now, day, allowArchiveRetry: true, confirmLegacyUnsent,purpose:'catchup' });
@@ -516,8 +519,35 @@ export function createPlugin(ctx) {
       }
     });
   }
+  function diaryView({key,day,now=Date.now()}={}){
+    const currentDay=diaryTargetDay(now,cfg().dailyDiary);day=day||currentDay;
+    if(!/^(?:private|group):\d+$/.test(String(key))||!ARCHIVE_DATE_RE.test(String(day)))return {ok:false,error:'会话或日记日期不正确'};
+    const text=contentForDay(key,day).text;
+    const history=allDiaryArchiveDays(root).filter(d=>diaryArchiveHasDay(key,d)).sort().reverse().slice(0,30).map(d=>({day:d,chars:diaryFromArchive(root,d,key).length}));
+    return {ok:true,key,...diaryWindow(day,cfg().dailyDiary),currentDay,maxDiaryChars:diaryDraftLimit(day,cfg().dailyDiary),text,revision:diaryDigest(day+'\0'+text),history};
+  }
+  function saveDiary({key,day,text,revision,now=Date.now(),prepared=false}={}){
+    const view=diaryView({key,day,now});if(!view.ok)return view;
+    if(day!==view.currentDay&&(!view.text&&!prepared||!revision))return {ok:false,error:'请先读取本会话已有的该日日记',day:view.currentDay};
+    if(revision&&revision!==view.revision)return {ok:false,error:'日记已被更新，请重新读取后修改',day};
+    if(typeof text!=='string'||!text.trim())return {ok:false,error:'请提交日记正文'};
+    const body=text.trim(),lengthError=diaryLengthError(body,view.maxDiaryChars);if(lengthError)return lengthError;
+    const submitted=parseMemoryDocument('【日记】\n'+body);
+    if(submitted.facts.length||submitted.portrait.length||submitted.unfinished.length)return {ok:false,error:'只提交日记正文，不能夹带其他记忆栏目'};
+    const archive=saveDiaryDraft(key,day,body,now);if(!archive.ok)return archive;
+    // Historical edits stay in their dated archive; never overwrite a newer window.
+    if(day===view.currentDay){
+      rollDiaryWindow(key,now);const parts=parseMemoryDocument(readMemory(root,key).text);
+      writeMemory(root,key,renderPersistentDocument({...parts,diary:body.split(/\r?\n/)}));
+      const st=state();saveState({diaryContentDates:{...st.diaryContentDates,[key]:{day,hash:diaryDigest(body)}}});
+    }
+    return {ok:true,saved:true,archiveSaved:true,day,chars:body.length,sent:false};
+  }
+  const diaryWorker=createDiaryWorker(ctx,{context:diaryView,save:saveDiary,afterSave:sendDiaryDetailed});
   return {
     services: {
+      memoryWorker:createMemoryWorker(ctx),
+      diaryWorker,
       affairs: affairsService,
       memory: {
         sendDiary,
@@ -528,31 +558,16 @@ export function createPlugin(ctx) {
         },
         catchUpDiaries,
         diaryTargetDay({now=Date.now()}={}){const day=diaryTargetDay(now,cfg().dailyDiary);return {ok:true,...diaryWindow(day,cfg().dailyDiary)};},
-        diaryDraftContext({key,now=Date.now()}={}){
-          const refresh=state().scheduledDiaryRefresh[key];
-          const day=refresh&&!refresh.completedAt?refresh.day:diaryTargetDay(now,cfg().dailyDiary);
-          const config=cfg().dailyDiary;
-          return {ok:true,...diaryWindow(day,config),maxDiaryChars:diaryDraftLimit(day,config),sameWindowDiary:contentForDay(key,day).text};
-        },
-        diaryCurrent({key,now=Date.now()}={}){
-          const config=cfg().dailyDiary,day=diaryTargetDay(now,config);
-          return {ok:true,...diaryWindow(day,config),maxDiaryChars:diaryDraftLimit(day,config),text:contentForDay(key,day).text};
-        },
-        updateDiary({key,day,text,now=Date.now()}={}){
-          if(!/^(?:private|group):\d+$/.test(String(key)))return {ok:false,error:'会话格式不正确'};
-          const currentDay=diaryTargetDay(now,cfg().dailyDiary);
-          if(day!==currentDay)return {ok:false,error:'日记已换窗，请重新读取当前日记后再更新',day:currentDay};
-          if(typeof text!=='string'||!text.trim())return {ok:false,error:'请提交日记正文'};
-          const lengthError=diaryLengthError(text.trim(),diaryDraftLimit(day,cfg().dailyDiary));
-          if(lengthError)return lengthError;
-          const submitted=parseMemoryDocument('【日记】\n'+text);
-          if(submitted.facts.length||submitted.portrait.length||submitted.unfinished.length)return {ok:false,error:'只提交日记正文，不能夹带其他记忆栏目'};
-          rollDiaryWindow(key,now);
-          const parts=parseMemoryDocument(readMemory(root,key).text);
-          const body=text.trim();writeMemory(root,key,renderPersistentDocument({...parts,diary:body.split(/\r?\n/)}));
-          const st=state();saveState({diaryContentDates:{...st.diaryContentDates,[key]:{day,hash:diaryDigest(body)}}});
-          const archive=saveDiaryDraft(key,day,body,now);
-          return {ok:archive.ok===true,saved:true,archiveSaved:archive.ok===true,...(archive.error?{error:archive.error}:{}),day,chars:body.length,sent:false};
+        diaryDraftContext(payload={}){const view=diaryView(payload);return {...view,sameWindowDiary:view.text};},
+        diaryCurrent:diaryView,
+        updateDiary:saveDiary,
+        async refreshDiaryAndSend({key,now=Date.now(),confirmLegacyUnsent=false}={}){
+          const day=diaryTargetDay(now,cfg().dailyDiary),requestId=crypto.randomUUID();
+          const delivery=await deliveryForDay(key,day),attempts=await diaryAttemptAudit(key,day,now);
+          if(['claimed','uncertain','unavailable'].includes(delivery.deliveryStatus)||attempts.some(a=>['claimed','uncertain'].includes(a.receiptStatus)))return {ok:false,reason:'delivery_unconfirmed',error:'真实投递结果尚未确认，请先核对QQ'};
+          if(delivery.deliveryStatus==='legacy_unconfirmed'&&!confirmLegacyUnsent)return {ok:false,reason:'delivery_unconfirmed',error:'旧发送记录需先核对QQ'};
+          const accepted=diaryWorker.request({key,day,now,manualRequestId:requestId,confirmLegacyUnsent});
+          return {ok:accepted,accepted,pending:accepted,key,day,reason:accepted?'':diaryWorker.status({key}).status==='no_activity'?'no_activity':'pending_or_unavailable'};
         },
         async diaryStatus({key,day,now=Date.now()}={}){
           day=day||diaryTargetDay(now,cfg().dailyDiary);
@@ -568,7 +583,8 @@ export function createPlugin(ctx) {
             attempts:await diaryAttemptAudit(key,day,now),previousAttempts:await diaryAttemptAudit(key,previousDay,now),
             previousDay,previousDiaryMissing:!previous.sentForDay,previousDiaryStatus:previous.deliveryStatus,previousDiaryAvailable:!!contentForDay(key,previousDay).text,previousSentAt:previous.sentAt,
             scheduledDeliveryStatus,scheduledSentAt:scheduledDeliveryStatus==='sent'?Number(scheduledReceipt.finishedAt)||0:0,
-            scheduledRefreshing:st.scheduledDiaryRefresh[key]?.day===day&&!st.scheduledDiaryRefresh[key]?.completedAt,
+            scheduledRefreshing:diaryWorker.status({key}).status==='running'&&diaryWorker.status({key}).day===day,
+            diaryWorker:diaryWorker.status({key}),
             lastConfirmedDiaryDate,lastConfirmedSentAt:latest.sentAt||0,retryAt:Number(st.retryAt[key])||0,forceWriteAt:Number(st.forceWriteAt[key])||0};
         },
         diaryForDay({key,day}={}){
@@ -587,6 +603,11 @@ export function createPlugin(ctx) {
           const text = String(payload.text || '');
           const m = /<MEMORY>([\s\S]*?)<\/MEMORY>/i.exec(text);
           if (!m || !m[1].trim()) return { matched: false, chars: 0 };
+          if(payload.preserveDiary){
+            const before=parseMemoryDocument(readMemory(root,payload.key).text),incoming=parseMemoryDocument(m[1].trim());
+            const chars=writePersistent(payload.key,renderPersistentDocument({...incoming,diary:before.diary}),true);
+            return {matched:true,chars,diaryPreserved:true};
+          }
           const target=this.diaryDraftContext({key:payload.key,now:payload.now||Date.now()});
           const lengthError=diaryLengthError(extractDiary(m[1].trim()),target.maxDiaryChars);
           if(lengthError){
@@ -626,54 +647,26 @@ export function createPlugin(ctx) {
         if (!allKeys.length) return;
         for(const key of allKeys){try{rollDiaryWindow(key,now);}catch(e){ctx.warn('日记换窗归档失败 '+key+': '+e.message);}}
 
-        // 1) 每日日记：到点先强制刷新一次记忆（每晚一次，force 跳过「会话繁忙」），刷新完成后再发
-        const dcfg = c.dailyDiary || {};
-        if (dcfg.enabled !== false) {
-          const rawHour = Number(dcfg.hour);
-          const hour = Math.min(23, Math.max(0, Number.isFinite(rawHour) ? rawHour : 22));
-          const rawMinute = Number(dcfg.minute);
-          const minute = Math.min(59, Math.max(0, Number.isFinite(rawMinute) ? rawMinute : 0));
-          const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
-          const todayAt = Date.parse(today+'T'+pad2(hour)+':'+pad2(minute)+':00+08:00');
-          const runtimeStartedAt=Number.isFinite(Number(cap.runtimeStartedAt))?Number(cap.runtimeStartedAt):Date.now();
-          if (runtimeStartedAt<=todayAt&&(now >= todayAt || Object.values(st.scheduledDiaryRefresh).some(r=>r?.day<today))) {
-          for (const key of allKeys) {
-            const dueDay=now>=todayAt?today:st.scheduledDiaryRefresh[key]?.day;
-            if(!ARCHIVE_DATE_RE.test(String(dueDay||'')))continue;
-            if (typeof cap.deliveryStatus === 'function') {
-              let receipt;
-              try { receipt = await cap.deliveryStatus('diary:' + key + ':' + dueDay+':scheduled'); } catch { receipt = { ok: false, status: 'unavailable' }; }
-              if (receipt?.ok !== true || receipt.status === 'claimed' || receipt.status === 'uncertain') continue;
-              if (receipt.status === 'sent') {
-                st.lastDiaryDate[key] = mergeDiaryDate(st.lastDiaryDate[key], dueDay);
-                saveState({ lastDiaryDate: st.lastDiaryDate });
+        // Keep daytime summaries, then generate a fresh final diary at the bell.
+        const dcfg=c.dailyDiary||{},schedule=diarySchedule(now,dcfg);
+        if(dcfg.enabled!==false&&Number(cap.runtimeStartedAt||now)<=schedule.at){
+          for(const key of allKeys){
+            if(!humanActiveOnDay(st.lastIncomingAt[key],schedule.day))continue;
+            const job=diaryWorker.status({key}),budget=cap.budgetRecoveryStatus?.(key)?.stage||'normal';
+            if(['running','sending'].includes(job.status))continue;
+            if(now<schedule.at){
+              const interval=Math.max(1,Number(c.updateIntervalMin)||60)*60000,through=Number(job.throughAt)||0;
+              if(job.status!=='interrupted'&&job.day===schedule.day&&(through>=Number(st.lastIncomingAt[key])||now<(Number(job.nextDraftAt)||Number(job.startedAt)+interval)))continue;
+              if(!['weak','silent'].includes(budget))diaryWorker.request({key,day:schedule.day,now,purpose:'draft',nextDraftAt:now+interval*(1+.5*(ctx.capabilities?.random?.()??Math.random()))});
+            }else if(now<schedule.expiresAt){
+              const receipt=await cap.deliveryStatus?.('diary:'+key+':'+schedule.day+':scheduled');
+              if(receipt?.ok!==true||['sent','claimed','uncertain'].includes(receipt.status))continue;
+              if(job.day===schedule.day&&job.purpose==='scheduled'){
+                if(job.status==='completed'&&job.diary)await sendDiaryDetailed({key,now,day:schedule.day,purpose:'scheduled'});
                 continue;
               }
+              if(!['weak','silent'].includes(budget))diaryWorker.request({key,day:schedule.day,now,purpose:'scheduled'});
             }
-
-            const budgetStage=typeof cap.budgetRecoveryStatus==='function'?cap.budgetRecoveryStatus(key)?.stage:'normal';
-            if(['weak','silent'].includes(budgetStage)){await sendDiaryDetailed({key,now,day:dueDay,purpose:'scheduled'});continue;} // Existing dated diary only; never invoke the model to refresh it under a budget limit.
-
-
-            // 每晚到点强制刷新一次记忆（每天一次）：force=true 跳过「会话繁忙」判断，唤醒会排队等空闲再写；
-            // 这样即使白天 pendingMemoryWrite 卡过、或每小时调度因忙被跳过，到点也能把日记刷成最新。
-            const refresh=st.scheduledDiaryRefresh[key];
-            if (refresh?.day!==dueDay || (!refresh.completedAt&&now-Number(refresh.requestedAt)>30*60000)) {
-              st.forceWriteAt = st.forceWriteAt || {};
-              if (Number(st.retryAt[key]) > now) continue;
-              let fired = false;
-              try { fired = typeof cap.requestMemoryWrite === 'function' ? cap.requestMemoryWrite(key, { force: true }) === true : false; } catch { fired = false; }
-              if (fired) { st.forceWriteAt[key]=now;st.lastWriteAt[key]=now;st.scheduledDiaryRefresh[key]={day:dueDay,requestedAt:now};saveState({forceWriteAt:st.forceWriteAt,lastWriteAt:st.lastWriteAt,scheduledDiaryRefresh:st.scheduledDiaryRefresh}); }
-              else {st.retryAt[key]=now+RETRY_MS;saveState({retryAt:st.retryAt});}
-              ctx.log(fired ? '每晚强制刷新记忆 ' + key : '每晚强制刷新记忆未触发（暂停/静音）' + key);
-              continue; // 记忆回合是异步的，本轮先不发，等记忆写完再发，避免把刷新前的旧日记发出去。
-            }
-
-            // 只发送本次强制刷新捕获的快照；后续手动或小时刷新不能替换此份待发送内容。
-            if(!refresh?.completedAt)continue;
-
-            await sendDiary({key,now,day:dueDay,purpose:'scheduled'});
-          }
           }
         }
 
@@ -683,10 +676,14 @@ export function createPlugin(ctx) {
         catch (e) { ctx.warn('日记归档回填异常：' + (e?.message ?? e)); }
 
         // 3) 每小时重写持久记忆（忙/静音时桥接能力返回 false，5 分钟后重试）
+        if(dcfg.enabled!==false&&now>=schedule.at&&now<schedule.expiresAt)return;
         const intervalMin = Math.max(1, Number(c.updateIntervalMin) || 60);
         for (const key of allKeys) {
           const last = Number(st.lastWriteAt[key]) || 0;
           if (last && (now - last < intervalMin * 60000 || Number(st.lastIncomingAt[key]||0) <= last)) continue;
+          // Hourly maintenance shares the chat agent. Wait for a real quiet gap
+          // instead of taking the tiny idle slot between consecutive replies.
+          if (!cap.runReadOnlyWorker && st.lastIncomingAt[key] && now - st.lastIncomingAt[key] < 5 * 60000) continue;
           if (Number(st.retryAt[key]) > now) continue;
           let fired = false;
           try { fired = typeof cap.requestMemoryWrite === 'function' ? cap.requestMemoryWrite(key) === true : false; } catch { fired = false; }

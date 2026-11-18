@@ -77,7 +77,13 @@ export function createPlugin(ctx) {
           add(`【当前事务】还有 ${affairs.omittedIds.length} 项因预算未带入，内容仍完整保存；相关时用 qq_task_note(action="list") 查看，不能当作没有事务。`);
         }
         if (payload.key && !/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview)$/.test(String(payload.reason || ''))) {
-          if(ctx.capabilities?.isToolEnabled?.('memory')!==false)ctx.addPromptBlock('【当天日记维护】遇到有趣、在意或值得记住的新经历时，可用 qq_diary 先read再update本窗口日记的完整成稿，不需要发QQ。同一窗口重新取舍精简；换窗后另起一份。历史聊天可用于明确的昨日对比，不当作今日新事。\n'+(/日记|写下今天|记录今天/.test(String(payload.incomingText||''))?DIARY_WRITING_POLICY:'普通聊天先及时回应；日记整理可在回复之后或维护回合进行，不为写日记推迟答复。'),{placement:'stable'});
+          if(ctx.capabilities?.isToolEnabled?.('memory')!==false){
+            const explicitDiary=/日记|写下今天|记录今天/.test(String(payload.incomingText||''));
+            ctx.addPromptBlock(explicitDiary
+              ? '【用户要求的日记】当前来信问日记时先用qq_diary read核对当前窗口、history和所属日期；当前为空不能说历史从未触发。用户说历史已有正文时按history日期再次read；询问状态只读取，明确要求修改才update并沿用day、revision。写入成功后即结束本项，不为润色反复读写，不把日记写作扩展为其他维护任务。\n'+DIARY_WRITING_POLICY
+              : '【日记由后台整理】普通聊天、主动冒泡和开机问候只处理当前交流；日记交给独立后台整理或专门维护回合，不在聊天里顺带读写、润色日记。发送成功后自然结束或等待真实新来信，不额外启动记忆清理、表情试发等维护工作。',
+              {placement:'stable'});
+          }
           ctx.addPromptBlock('【事务维护｜按需复核】普通聊天先及时回应；涉及任务、承诺或随口安排时检查相关记录：先对照已有ID，优先更新同一条的现状与下一步，不重复新增。用户明确做完、取消、改期，或工具结果证实变化时，立即用 qq_task_note 按ID及expectedRevision更新；确认完成用done、取消用cancelled、被新安排替代用superseded。旧项待核实且与眼前对话相关时自然确认一次，不反复追问。缺少完成证据就保留等待，绝不把沉默、时间经过或“知道了”当完成。只在写入成功后声称已更新。',{placement:'stable'});
         }
         const pm = payload.persistentMemory && typeof payload.persistentMemory === 'object' ? payload.persistentMemory : null;

@@ -4,7 +4,7 @@ const schema=yaml.DEFAULT_SCHEMA.extend([new yaml.Type('tag:yaml.org,2002:js',{k
 export function summarizePreset(content) {
   const parsed=yaml.load(String(content||''),{schema});
   const rows=[];
-  function walk(items){for(const row of items||[]){if(!row||typeof row!=='object')continue;rows.push(row);if(row.group===true&&Array.isArray(row.config))walk(row.config);}}
+  function walk(items){for(const row of items||[]){if(!row||typeof row!=='object')continue;rows.push(row);if(row.group===true&&Array.isArray(row.config))walk(row.config);if(Array.isArray(row.config?.plugins))walk(row.config.plugins);}}
   walk(Array.isArray(parsed)?parsed:parsed?.plugins||[]);
   const names=rows.map(row=>String(row.name||'')),has=name=>names.some(value=>value.includes(name));
   const features=[];
@@ -17,9 +17,10 @@ export function summarizePreset(content) {
   if(has('task-tool-restrict'))features.push('独立任务工具边界；不直接发送 QQ');
   if(has('learning-tool-restrict'))features.push('知识学习工具边界；不发送 QQ 或执行本机命令');
   if(has('summary-tool-restrict'))features.push('网页整理边界；无可调用工具');
+  if(has('memory-tool-restrict'))features.push('独立记忆整理；无工具或QQ发送权限；存储组件校验草稿');
   if(has('context-composer'))features.push('桥接上下文与角色卡编排');
-  const compaction=rows.find(row=>row.name==='@deepseek-ai/dsh-compaction-basic')?.config;
-  if(compaction){const bits=['上下文压缩'];if(Number.isFinite(compaction.retainTokens))bits.push('保留 '+compaction.retainTokens+' tokens');if(Number.isFinite(compaction.maxTokens))bits.push('摘要上限 '+compaction.maxTokens+' tokens');features.push(bits.join('；'));}
+  const compaction=rows.find(row=>row.name==='@deepseek-ai/dsh-compaction-basic'||/\/default-compaction\.mjs$/.test(row.name))?.config;
+  if(compaction){const bits=['上下文压缩'];if(Number.isFinite(compaction.maxContextTokens))bits.push('聊天预算 '+compaction.maxContextTokens+' tokens');if(Number.isFinite(compaction.retainTokens))bits.push('保留 '+compaction.retainTokens+' tokens');if(Number.isFinite(compaction.maxTokens))bits.push('摘要上限 '+compaction.maxTokens+' tokens');features.push(bits.join('；'));}
   return {features:features.length?features:['基础会话配置'],moduleCount:rows.length};
 }
 export function presetBindings({mode,admin={},defaultPreset='',ownerLoadedPreset='',ownerHasSession=false,sessionPolicy}) {
@@ -36,6 +37,7 @@ export function presetBindings({mode,admin={},defaultPreset='',ownerLoadedPreset
     {key:'v2',label:'二代仿真',preset:fixed.reserved2,active:mode==='reserved2',description:'固定控制读消息、工具发送、等待和潜水；普通用户及未启用管理员环境的 owner 使用此预设。',edit:editor(fixed.reserved2)},
     {key:'task',label:'独立任务会话',preset:fixed.task,description:'固定用于管理员委派的工作会话；不替代聊天会话。'},
     {key:'learning',label:"后台学习（黑话／词条／绰号）",preset:fixed.learning,description:"黑话、词条和绰号学习共用 qq-learning 预设及同一个后台学习会话，串行执行各自任务；各组件的素材、审核规则与数据独立管理。仅允许后台抽取、分类和公开资料检索，不发送 QQ 或执行本机命令。"},
+    {key:'memory',label:'记忆整理',preset:fixed.memory,description:'独立整理所属会话的事实、画像和日记，提出有本人原文证据的档案更新；主聊天继续接话。代理不发送QQ或调用工具，草稿由存储组件校验，冲突时保留原数据。'},
     {key:'summary',label:'网页模型整理',preset:fixed.summary,description:'固定整理网页监控差异，不发送 QQ 或调用本机工具。'},
     {key:'default',label:'DSH 新会话默认',preset:defaultPreset,description:'由 DSH 自身的预设设置管理，与桥接一、二代运行模式独立。'}
   ];

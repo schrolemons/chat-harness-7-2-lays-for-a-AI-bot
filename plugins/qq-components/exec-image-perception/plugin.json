@@ -1,0 +1,18 @@
+{
+  "id": "exec-image-perception",
+  "name": "按需看图",
+  "version": "0.1.0",
+  "description": "聊天模型主动要求看图时，用独立无工具会话整理画面事实；不占普通聊天的图片入站路径。",
+  "category": "执行环境与沙箱",
+  "layer": "E",
+  "order": 53,
+  "main": "index.js",
+  "enabled": true,
+  "hooks": ["beforePrompt"],
+  "config": {"provider":"ustc","model":"qwen3.8-flash-next","reasoningEffort":"off"},
+  "configSchema": {
+    "provider":{"type":"string","label":"视觉供应商"},
+    "model":{"type":"string","label":"视觉模型"},
+    "reasoningEffort":{"type":"string","label":"思考档位"}
+  }
+}

@@ -1,5 +1,5 @@
 // Operational details and delegated execution belong only to the authenticated owner private session.
-const CHAT_ONLY_PRESETS=new Set(['qq-chat','qq-chat-v2','qq-learning','campus-summary']);
+const CHAT_ONLY_PRESETS=new Set(['qq-chat','qq-chat-v2','qq-learning','qq-memory-worker','campus-summary']);
 export function isAdminEnvironmentAuthorized({owner=false,enabled=false,selectedPreset='',loadedPreset='',hasSession=false,knownPresets=[],requireSession=true,presetMap={}}={}) {
   const canonical=Object.entries(presetMap).find(([,id])=>id===selectedPreset)?.[0] || selectedPreset;
   return owner===true && enabled===true && !!selectedPreset && !CHAT_ONLY_PRESETS.has(selectedPreset) && !CHAT_ONLY_PRESETS.has(canonical)

@@ -11,6 +11,8 @@ export function validateContextSend({agent,reason='',pending=[],groupContext=[],
   const selectedThrough = selectedSeqs.length ? Math.max(...selectedSeqs) : Infinity;
   if(targetIncomplete||!independent.has(base)&&pending.some(m=>m.required&&!m.complete&&m.seq<=selectedThrough))return {ok:false,reason:'message_context_pending',hint:'所答必要消息的完整正文或关键引用尚未进入当前回合。按需读取该消息详情；不能从收件索引或片段猜测。无关历史不要求补读或补答。'};
   const selected=selectedSeqs.filter(seq=>requiredSeqs.includes(seq));
-  if(selected.length&&requiredSeqs.some(seq=>seq<=Math.max(...selected)&&!selected.includes(seq)))return {ok:false,reason:'required_reply_order',hint:'双戳窗口内明确需要回应的消息须按收件seq升序回复；可合并连续必答消息及其普通补充，不得越过较早的必答消息。普通消息与历史上文不受此必答顺序约束。'};
+  // Order semantic groups by their first required source. A later same-meaning
+  // fragment may join that group even when another person's input is between.
+  if(selected.length&&requiredSeqs.some(seq=>seq<Math.min(...selected)&&!selected.includes(seq)))return {ok:false,reason:'required_reply_order',hint:'按每份完整语义最早的必答seq排序；同义补充可合并为一次回复，即使中间有其他群友发言。不要跳过尚未处理的更早语义组，普通背景不形成补答队列。'};
   return {ok:true};
 }

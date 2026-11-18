@@ -43,8 +43,9 @@ export function firstPendingMessageV2(st) {
 }
 
 // Confirmed delivery only: a resolved quote can bind a message received during
-// a running turn before its separate seen callback. Never writes receipt stamps.
-export function registerSuccessfulReplyV2(st, {replyToMessageId, sourceSeqs, at = Date.now()} = {}) {
+// a running turn before its separate seen callback. Writes completion stamps
+// only for completeSeqs supplied by the durable finished-content proof.
+export function registerSuccessfulReplyV2(st, {replyToMessageId, sourceSeqs, completeSeqs=[], at = Date.now()} = {}) {
   const pending = new Set(Array.isArray(st.receiptSendPendingSeqs) ? st.receiptSendPendingSeqs : []);
   const quoted = replyToMessageId == null ? '' : String(replyToMessageId).trim();
   for (const msg of new Map([...(st.recentMessages||[]),...(st.unread||[])].map(m=>[m.seq,m])).values()) {
@@ -57,6 +58,13 @@ export function registerSuccessfulReplyV2(st, {replyToMessageId, sourceSeqs, at 
   }
   st.receiptSendPendingSeqs = [...pending].sort((a,b) => a-b).slice(-200);
   st.receiptSendPendingAt = st.receiptSendPendingSeqs.length ? at : 0;
+  // Completion is supplied only by the confirmed delivery ledger for a fully
+  // consumed chat content; unseen, unrelated and still-multipart rows stay open.
+  const completed=new Set(completeSeqs.filter(seq=>pending.has(seq)));
+  for(const list of [st.unread,st.recentMessages])for(const m of list||[])if(completed.has(m.seq)&&stampMsV2(m.seenAt)&&!stampMsV2(m.repliedAt))m.repliedAt=Math.max(at,stampMsV2(m.seenAt));
+  st.receiptSendPendingSeqs=st.receiptSendPendingSeqs.filter(seq=>!completed.has(seq));
+  if(!st.receiptSendPendingSeqs.length)st.receiptSendPendingAt=0;
+  if(completed.size)pruneProcessedMessagesV2(st);
 }
 
 /** 已接收未回复（seenAt 有、repliedAt 没有）的条数——提示词/状态接口共用。 */

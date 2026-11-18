@@ -2,9 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createTitledSession } from './session-titles.js';
 
-export const OWNED_PRESET_SOURCES = Object.freeze(['qq-chat', 'qq-chat-v2', 'qq-admin', 'qq-learning', 'qq-task-worker', 'campus-summary']);
+export const OWNED_PRESET_SOURCES = Object.freeze(['qq-chat', 'qq-chat-v2', 'qq-admin', 'qq-learning', 'qq-task-worker', 'campus-summary','qq-memory-worker']);
 const invalid = message => Object.assign(Error(`PRESET_MAP_INVALID: ${message}`), { code: 'PRESET_MAP_INVALID' });
 const samePath = (a, b) => process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b);
+const sameWorkspace = (a,b) => {
+ if(samePath(a,b))return true;
+ // Preserved source/state junctions and DSH's canonical workspace identify
+ // the same directory. An unrelated path still fails the physical comparison.
+ try{return samePath(fs.realpathSync(a),fs.realpathSync(b));}catch{return false;}
+};
 
 /** Explicit local descriptor only. Absence is legacy; malformed/announced identity is never legacy. */
 export function loadInstanceSessionPolicy({ root, env = process.env, descriptor } = {}) {
@@ -29,6 +35,9 @@ export function readInstanceSessionPolicy({ env = {}, descriptor } = {}) {
   let map = expected;
   if (Object.hasOwn(env, 'QQ_BRIDGE_PRESET_MAP')) {
     try { map = JSON.parse(env.QQ_BRIDGE_PRESET_MAP); } catch { throw invalid('Malformed JSON'); }
+    // Version-one descriptors keep all six original identities. Only the new
+    // worker may be derived; missing/changed original mappings still fail below.
+    if(map&&typeof map==='object'&&!Array.isArray(map)&&!Object.hasOwn(map,'qq-memory-worker'))map={...map,'qq-memory-worker':expected['qq-memory-worker']};
   }
   if (active && (!map || typeof map !== 'object' || Array.isArray(map) || Object.keys(map).length !== OWNED_PRESET_SOURCES.length
     || OWNED_PRESET_SOURCES.some(id => typeof map[id] !== 'string' || !map[id].trim() || map[id]!==map[id].trim() || (OWNED_PRESET_SOURCES.includes(map[id])&&map[id]!==id) || map[id] !== expected[id])
@@ -55,7 +64,7 @@ export function readInstanceSessionPolicy({ env = {}, descriptor } = {}) {
       } catch { return null; }
     },
     equivalentPreset: (a,b) => !!a && !!b && canonicalPreset(a) === canonicalPreset(b),
-    workspaceKind: id => ({ 'qq-learning':'learning', 'qq-task-worker':'task', 'campus-summary':'summary' }[canonicalPreset(id)] || 'chat'),
+    workspaceKind: id => ({ 'qq-learning':'learning','qq-memory-worker':'learning', 'qq-task-worker':'task', 'campus-summary':'summary' }[canonicalPreset(id)] || 'chat'),
   });
 }
 
@@ -69,7 +78,7 @@ export async function createInstanceSession(api, create, payload = {}, signal, {
     fs.mkdirSync(directory, { recursive: true });
     const response = await api.workspace.create({ path: directory }, signal);
     const workspace = response.result?.ok && response.result.value?.workspace;
-    if (!workspace?.workspaceId || !samePath(workspace.path || '', directory)) throw Error('INSTANCE_WORKSPACE_MISMATCH');
+    if (!workspace?.workspaceId || !sameWorkspace(workspace.path || '', directory)) throw Error('INSTANCE_WORKSPACE_MISMATCH');
     request.workspaceId = workspace.workspaceId;
     if(response.result.value.created){
       const renamed=await api.workspace.rename({workspaceId:workspace.workspaceId,title:policy.workspaceTitle(policy.workspaceKind(request.agentPreset))},signal);

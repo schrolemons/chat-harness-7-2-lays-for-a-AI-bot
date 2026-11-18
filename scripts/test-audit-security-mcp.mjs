@@ -306,7 +306,7 @@ test('qq_attack: plan 只预览不发送、fire 才发送并带 atUserId', async
   const callTool = loadSnowlumaTools(fetchImpl);
 
   // plan：只打插件、不发送；也不该带 key（不扣配额）
-  const plan = await callTool('qq_attack', { key: 'group:40001', token: 'fixture-token', targetUserId: '3520718346', action: 'plan' });
+  const plan = await callTool('qq_attack', { key: 'group:40001', token: 'fixture-token', targetUserId: '10008', action: 'plan' });
   assert.notEqual(plan.isError, true, plan.content?.[0]?.text);
   const planJson = JSON.parse(plan.content[0].text);
   assert.equal(planJson.action, 'plan');
@@ -318,18 +318,18 @@ test('qq_attack: plan 只预览不发送、fire 才发送并带 atUserId', async
 
   // fire：真的发一条，内容就是弹药原文，@ 的是目标 QQ
   calls.length = 0;
-  const fire = await callTool('qq_attack', { key: 'group:40001', token: 'fixture-token', targetUserId: '3520718346', payloadId: 'json-role' });
+  const fire = await callTool('qq_attack', { key: 'group:40001', token: 'fixture-token', targetUserId: '10008', payloadId: 'json-role' });
   assert.notEqual(fire.isError, true, fire.content?.[0]?.text);
   const fireJson = JSON.parse(fire.content[0].text);
   assert.equal(fireJson.fired, true);
-  assert.equal(fireJson.atUserId, '3520718346');
+  assert.equal(fireJson.atUserId, '10008');
   assert.equal(fireJson.quota.remaining, 1);
   const pluginFire = calls.find((c) => c.url.includes('/api/plugins/call'));
   assert.equal(pluginFire.body.input.key, 'group:40001', 'fire 必须带 key 让插件扣配额');
   const send = calls.find((c) => c.url.includes('/api/socialV2/send-message'));
   assert.ok(send, 'fire 必须调用桥接发送');
   assert.deepEqual(send.body.messages, [fixturePayload.result.payload.text]);
-  assert.equal(send.body.atUserId, '3520718346');
+  assert.equal(send.body.atUserId, '10008');
   assert.equal(send.body.key, 'group:40001');
 });
 
@@ -363,7 +363,7 @@ test('qq_attack: 群聊缺 targetUserId / @ 自己 / 插件配额用尽都拒绝
   assert.match(self.content[0].text, /你自己/);
 
   // 插件报配额用尽：原样返回给模型，不能说"发了"
-  const quota = await callTool('qq_attack', { key: 'group:40001', token: 't', targetUserId: '3520718346' });
+  const quota = await callTool('qq_attack', { key: 'group:40001', token: 't', targetUserId: '10008' });
   assert.equal(quota.isError, true);
   assert.match(quota.content[0].text, /配额/);
 });

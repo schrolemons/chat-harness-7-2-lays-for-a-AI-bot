@@ -9,6 +9,7 @@ async function fixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'mood-daily-'));
  fs.writeFileSync(path.join(root,'package.json'),'{"type":"module"}');
  fs.cpSync(new URL('../plugins/qq-components/ctx-user-mood',import.meta.url),path.join(root,'plugins/qq-components/ctx-user-mood'),{recursive:true});
+ fs.mkdirSync(path.join(root,'state/plugins/config'),{recursive:true});fs.writeFileSync(path.join(root,'state/plugins/config/ctx-user-mood.json'),JSON.stringify({minimumScore:0,dailyFloor:60}));
  let host=createPluginHost({root,startTimers:false});await host.loadAll();
  const call=(method,args)=>host.callService('mood',method,args);
  t.after(async()=>{await host.dispose();fs.rmSync(root,{recursive:true,force:true});});

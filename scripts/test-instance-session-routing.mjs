@@ -12,6 +12,17 @@ after(()=>{assert.equal(path.dirname(testRoot),os.tmpdir());fs.rmSync(testRoot,{
 const descriptor={version:1,instanceId:'public-bot',root:testRoot,entryId:'public-bot-mode',settingsNamespace:'public-bot-mode',presetIdMap:map};
 const policyModule=()=>import('../src/instance-session-policy.mjs');
 
+test('owned workspace accepts the same physical directory through a preserved junction, but rejects another directory',async()=>{
+ const physical=path.join(testRoot,'physical-agents'),alias=path.join(testRoot,'legacy-agents'),other=path.join(testRoot,'other-agents');
+ fs.mkdirSync(physical);fs.mkdirSync(other);fs.symlinkSync(physical,alias,process.platform==='win32'?'junction':'dir');
+ const d={...descriptor,workspaces:{chat:alias,learning:alias,task:other,summary:other}};
+ const c=new NodeApiClient('http://127.0.0.1:1',1000,{}, {descriptor:d,env:{},recordCreatedSession:async()=>{}});
+ let returned=physical,created=0;
+ c.callUnary=async(method)=>({result:{ok:true,value:method==='workspace.create'?{workspace:{workspaceId:'physical',path:returned}}:{sessionId:'s'+(++created)}}});
+ const r=await c.sessions.create({agentPreset:'qq-memory-worker'});assert.equal(r.result.ok,true);
+ returned=other;await assert.rejects(c.sessions.create({agentPreset:'qq-memory-worker'}),/INSTANCE_WORKSPACE_MISMATCH/);assert.equal(created,1);
+});
+
 test('all six owned presets use the runtime map through the real Node client adapter',async()=>{
  const calls=[],recorded=[];
  const client=new NodeApiClient('http://127.0.0.1:1',1000,{}, {descriptor,env:{QQ_BRIDGE_PRESET_MAP:JSON.stringify(map)},recordCreatedSession:async row=>recorded.push(row)});

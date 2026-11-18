@@ -108,12 +108,16 @@ await test('owner activity tracks actual receipt transitions and hides receipt l
   const c = await open();
   try {
     const body = 'fixture live receipt';
+    // Keep the asynchronous auto-wake from reading the input before this test
+    // observes the initial unread state. Reenable inline snapshots afterward.
+    c.h.cfg.socialV2.context={...c.h.cfg.socialV2.context,inlineWakeMessages:false};
     await c.h.handleIncoming('private', 123, {
       user_id: 123, self_id: 999, message_id: 'activity-fixture', sender: { nickname: 'fixture' },
       message: [{ type: 'text', data: { text: body } }],
     }, c.h.cfg);
     const activity = async () => (await c.call('/api/status', { agent: false })).data.activity;
     assert.match(await activity(), /未读：fixture live receipt/);
+    c.h.cfg.socialV2.context.inlineWakeMessages=true;
     assert.equal((await c.call('unread')).status, 200);
     assert.match(await activity(), /已读未回复：fixture live receipt/);
     assert.equal((await c.call('/api/send/private', {
@@ -159,10 +163,13 @@ await test('feedback can describe missing delivery receipts and still quarantine
   } finally { await c.close(); }
 });
 
-await test('messages-purpose wait is rejected while any inbound receipt is still pending', async () => {
+await test('messages-purpose wait returns unpresented input immediately and rejects waiting once it is pending in model view', async () => {
   const c = await open();
   try {
     const seq = c.append('inbound must be answered before waiting for another user turn');
+    const arrived=await c.call('wait',{body:{purpose:'messages',timeoutMs:1000}});
+    assert.equal(arrived.status,200,JSON.stringify(arrived.data));assert.equal(arrived.data.arrived,true);
+    assert(arrived.data.waitedMs<100,'already-arrived input must not enter the requested 1000ms sleep');assert.deepEqual(seqs(arrived.data.newMessages),[seq]);
     const wait = await c.call('wait', { body: { purpose: 'messages', timeoutMs: 1000 } });
     assert.equal(wait.status, 409, JSON.stringify(wait.data));
     assert.equal(wait.data.code, 'WAIT_INBOUND_PENDING');
@@ -236,6 +243,11 @@ await test('reading stamps seenAt and a batch reply stamps repliedAt', async () 
     assert.equal(report.status, 200, `JSON receipt must succeed: ${JSON.stringify(report.data)}`);
     assert.deepEqual(seqs(c.st().unread), [], 'a replied message leaves the unread buffer');
     assert.equal(c.st().lastReadThroughSeq, 1);
+
+    const repliedAt=c.st().recentMessages.find(m=>m.seq===1).repliedAt;
+    const repeat=await c.call('/api/socialV2/receipt-report',{body:{conversationId:KEY,receipts:[{seq:1,status:'replied'}]}});
+    assert.equal(repeat.status,200,JSON.stringify(repeat.data));assert.equal(repeat.data.updated,0);
+    assert.equal(c.st().recentMessages.find(m=>m.seq===1).repliedAt,repliedAt,'an acknowledged reply remains complete without fresh send evidence');
 
     // 落盘状态就是重启后会读到的状态：已双戳的消息不应再出现在 unread 里。
     const saved = c.readSavedState().conversations[KEY];

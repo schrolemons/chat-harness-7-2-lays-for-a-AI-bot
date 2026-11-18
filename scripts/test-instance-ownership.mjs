@@ -300,6 +300,14 @@ test('registration retries a transient probe error on the same live child', asyn
   await owned.stop();
 });
 
+test('a failed registration stops blocking shutdown only after its exact child handle reports exit',async()=>{
+ const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore'});await once(child,'spawn');
+ const owner=createProcessOwnership({instanceId:'fixture',nonce:'exit-proof',probeProcess:async()=>{throw Error('unavailable');}});
+ try{await assert.rejects(owner.registerSpawn(child,{commandPath:process.execPath}),code('OWNERSHIP_UNCERTAIN'));await assert.rejects(owner.stop(),code('OWNERSHIP_UNCERTAIN'));
+ const ended=once(child,'exit');child.kill();await ended;await owner.stop();await owner.stop();
+ }finally{if(child.exitCode===null&&child.signalCode===null)child.kill();}
+});
+
 test('stopping a registered child retries a transient identity query before exact identity checks',async t=>{
  const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore'});await once(child,'spawn');t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill();});
  let failing=false,queries=0;

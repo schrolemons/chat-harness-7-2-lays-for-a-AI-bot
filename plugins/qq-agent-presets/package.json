@@ -12,6 +12,7 @@
         "./presets/qq-admin.patch.yml",
         "./presets/qq-task-worker.patch.yml",
         "./presets/qq-learning.patch.yml",
+        "./presets/qq-memory-worker.patch.yml",
         "./presets/campus-summary.patch.yml",
         "./session-titles.patch.yml"
       ]

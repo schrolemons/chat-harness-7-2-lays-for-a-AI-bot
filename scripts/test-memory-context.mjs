@@ -63,3 +63,13 @@ test('ordinary chat actively reconciles affairs even before the first item exist
 test('disabled memory tool does not leave an unavailable diary instruction in the prompt',()=>{
  assert.ok(!build({key:'private:1',st:{}},{},{isToolEnabled:()=>false}).join('').includes('qq_diary'));
 });
+
+test('ordinary chat delegates diary work while an explicit diary request retains its tool entry',()=>{
+ const ordinary=build({key:'private:1',reason:'bootstrap',incomingText:''}).join('');
+ assert.match(ordinary,/日记.*后台整理/);
+ assert.doesNotMatch(ordinary,/qq_diary/);
+ const explicit=build({key:'private:1',reason:'message',incomingText:'请写下今天的日记'}).join('');
+ assert.match(explicit,/qq_diary/);
+ assert.match(explicit,/成功后.*结束/);
+ assert.match(explicit,/不.*反复/);
+});

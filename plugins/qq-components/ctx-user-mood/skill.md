@@ -1,6 +1,8 @@
 # 心情管理
 
-本组件唯一拥有按 `group:群号` / `private:QQ` 保存的会话总心情，范围0–100，初始分数60。除每日上海时间按配置保底恢复外，不自然回升或回落，不读隐式夸骂词表。配置包括 `enabled`、`noReplyAfterMinutes`（默认20）、`noReplyPenalty`（0–100，默认10）、`dailyRecoveryHour`（上海时间0–23整数小时，默认4）、`dailyFloor`（0–100，默认60）、双形态阈值/名称/风格、行为规则与AI自主调整上限。恢复为max(当前值,dailyFloor)，不改变初始分数或形态阈值。关闭时不建立新等待、不结算，调度频率因子为1，保留已有账本。
+2026-11-18：正常聊天中明确的followup/newTopic也按真实成功发送建立未回复计时；同一主动回合多段只计一次。日记、提醒和机械等待提示不建立闲聊等待。心情扣分与聊天意愿衰减分别存储和恢复，不互相代写。
+
+本组件唯一拥有按 `group:群号` / `private:QQ` 保存的会话总心情。Console 的 `minimumScore` 为心情下限（0–100，当前默认60），`dailyFloor` 为每日恢复值和新会话初始值（默认100，不得低于下限）。主动未答或模型判断扣分都不能低于下限。已有低分在配置生效时追加 `policy-floor` 校正记录，原扣分记录保留，不伪记成用户带来的好感。除配置下限与每日上海时间按配置恢复外，不自然回升或回落，不读隐式夸骂词表。其他配置包括 `enabled`、`noReplyAfterMinutes`（默认20）、`noReplyPenalty`（0–100，当前运行2）、`dailyRecoveryHour`（上海时间0–23整数小时，默认4）、双形态阈值/名称/完整风格、行为规则与AI自主调整上限。关闭时不建立新等待、不结算，调度频率因子为1，保留已有账本。
 
 服务 `mood.initialize({conversations:[{key,score}],now})` 只导入尚未拥有的有效旧分值，0同样有效；已有分值不被导入覆盖，启动时按配置的每日周期补做尚未执行的保底恢复。`mood.policy()` 返回唯一有效配置。`mood.read({key,now})` 返回 `enabled,score,mode,modeName,styleInstruction,band,unansweredStreak,frequencyFactor,replyCeiling,detailLevel,welcomeBurstActive,cooldownUntil`，不因查询时间改变分值或持久状态。
 

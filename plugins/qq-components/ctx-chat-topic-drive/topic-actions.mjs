@@ -8,7 +8,7 @@ export function isIndependentDelivery({origin,originReason}={}) {
   return independentReasons.has(String(originReason||'').split(':')[0]) || ['operator','relay','mechanical'].includes(origin);
 }
 const directQuestion = text => /[?？]|(?:吗|么|呢)[呀啊嘛]?[。！!]*$/.test(String(text || '').trim());
-const reject = reason => ({ok:false,reason,...(reason==='question_already_asked'?{hint:'本次主动开口已经问过一个问题；不要改写重试、换话题或换发送工具，等用户真实回应后再接。'}:reason==='new_topic_already_chosen'?{hint:'本次主动开口已经选定一个话题；不要改话题ID重试，也不追加另一个开场问题。'}:{})});
+const reject = reason => ({ok:false,reason,...(reason==='unanswered_question'?{hint:'上次主动问题尚未收到新的用户来信。不要重问、换问题、把旧问题挂在新话题末尾或换工具重试；可以分享一句不索要回答的新内容，或安静等待。'}:reason==='question_already_asked'?{hint:'本次主动开口已经问过一个问题；不要改写重试、换话题或换发送工具，等用户真实回应后再接。'}:reason==='new_topic_already_chosen'?{hint:'本次主动开口已经选定一个话题；不要改话题ID重试，也不追加另一个开场问题。'}:{})});
 export function createTopicActions(ctx, raw = {}) {
   const cfg = { ...defaults, ...raw }, get = () => ctx.state.get();
   function validateConfig(patch = {}) {
@@ -54,6 +54,7 @@ export function createTopicActions(ctx, raw = {}) {
     return choice;
   }
   function afterWait({ key, scope, seq = 0, emptyWaits, endRound, originReason, now = Date.now(), random = Math.random } = {}) {
+    if(String(key).startsWith('group:')&&cfg.groupWaitFollowupsEnabled===false)return {action:'wait',reason:'group_wait_followups_disabled',guidance:'群聊答完后没有新来信，不再因等待超时补话、换题、复述旧回应或声明收声；继续等待，endRound=true时直接结束。独立主动开场由原排程决定。'};
     if (isIndependentDelivery({originReason}) || !validKey(key) || !scope || endRound !== false || !validateConfig().ok) return { action: 'wait' };
     const id = `${scope}:${seq}:${emptyWaits}`, previous = get().topicChoices?.[key];
     if (previous?.id === id && previous.generation === generation(key)) return previous;
@@ -61,7 +62,7 @@ export function createTopicActions(ctx, raw = {}) {
     let action = r < cfg.followupWeight ? 'followup' : r < cfg.followupWeight + cfg.newTopicWeight ? 'newTopic' : 'wait';
     const topicId = topic(key), reason = action === 'wait' ? '' : allowed(key, action, topicId, id, now);
     if (reason) action = 'wait';
-    const guidance = action === 'followup' ? '本轮不结束，已抽中旧话题追问：下一步优先实际发送一条具体、容易回答的问题，接着刚才尚未聊完的细节追问；尽量不要只说“还在吗”，也不要仅在内部计划追问后就直接再次等待。用 conversationIntent="followup"，保持当前形态与语气，不另起话题，不凭空补充用户经历；确认发送成功后再继续等待。若对方明确忙碌、拒绝或已结束话题，没有合适切入点，或冷却、免打扰、发送预算不允许，允许继续等待或正常收尾，不机械催问。'
+    const guidance = action === 'followup' ? '本轮不结束，已抽中旧话题延续：可以补充一句具体感想，不要求提问。此前的问题没有被回答时，不重问或换说法再问，也不在新内容末尾提及旧问题；没有自然的新内容就继续等待。用 conversationIntent="followup"，保持当前形态与语气，不另起话题，不凭空补充用户经历；确认发送成功后再继续等待。若对方明确忙碌、拒绝或已结束话题，没有合适切入点，或冷却、免打扰、发送预算不允许，允许继续等待或正常收尾，不机械催问。'
       : action === 'newTopic' ? '本轮不结束，已抽中新话题：下一步优先实际发送一条简短、自然的新话题消息，结合当前会话上下文和已确认近况，留一个容易回应的具体切入点；不要仅在内部计划换题后直接再次等待。用 conversationIntent="newTopic" 并给出稳定 topicId；保持当前形态与语气，不凭空补充事实，确认发送成功后再继续等待。若对方明确忙碌、拒绝，缺少合适话题或发送受限，允许继续等待或正常收尾。'
       : '本轮不结束，但现在应继续等待，不追加追问或新话题。';
     const choice = { id, scope, seq, action, topicId, generation: generation(key), reason, guidance, at: now };
@@ -83,8 +84,9 @@ export function createTopicActions(ctx, raw = {}) {
       && lease.generation === generation(key) && lease.episodeId === actionId && lease.kind === 'newTopic' && lease.topicId !== selectedTopic)) {
       return reject('new_topic_already_chosen');
     }
-    const asksQuestion=semantic==='followup'||directQuestion(text),episode=drive(key).episodes?.[actionId];
+    const asksQuestion=directQuestion(text)||NUDGE.test(text),episode=drive(key).episodes?.[actionId];
     if(asksQuestion&&((episode?.questionSent&&episode.questionGeneration===generation(key))||Object.values(get().topicLeases||{}).some(lease=>lease.key===key&&lease.generation===generation(key)&&lease.episodeId===actionId&&lease.asksQuestion)))return reject('question_already_asked');
+    if(!cross&&asksQuestion&&(Object.values(drive(key).episodes||{}).some(e=>e.questionSent&&e.questionGeneration===generation(key))||Object.values(get().topicLeases||{}).some(lease=>lease.key===key&&lease.generation===generation(key)&&lease.asksQuestion)))return reject('unanswered_question');
     const reason = cross ? '' : allowed(key, semantic, selectedTopic, actionId, now);
     if (reason) return reject(reason);
     const lease = { ok: true, id: operationId, key, generation: generation(key), kind: semantic, topicId: selectedTopic, episodeId: actionId, asksQuestion, isProactive: true, timeoutAction: !cross && bound };

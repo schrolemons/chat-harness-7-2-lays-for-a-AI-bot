@@ -53,9 +53,9 @@ export function summarizeSamples(samples, table = resolvePriceTable()) {
   const byModel = {}, inputs = [], turns = new Set();
   let costCny = 0, flashCounterfactualCny = 0, estimatedRequests = 0, compactions = 0;
   for (const s of samples) {
-    const p = priceUsage(s.buckets, { model: s.model, at: s.at, table });
+    const p = priceUsage(s.buckets, { model: s.model, provider:s.provider, at: s.at, table });
     costCny += p.cost.total;
-    flashCounterfactualCny += priceUsage(s.buckets, { model: 'deepseek-flash', at: s.at, table }).cost.total;
+    flashCounterfactualCny += priceUsage(s.buckets, { provider:s.provider, model: 'deepseek-flash', at: s.at, table }).cost.total;
     estimatedRequests += Number(p.rates.estimated);
     compactions += Number(s.kind === 'compaction');
     for (const k in buckets) buckets[k] += s.buckets[k] || 0;

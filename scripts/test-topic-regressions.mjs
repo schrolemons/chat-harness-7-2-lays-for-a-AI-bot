@@ -37,7 +37,7 @@ test('oversized rejected topic message releases its lease without a send', async
 test('both scores still scale proactive probability at the maximum silence stage', () => {
   const policy = normalizeProactivePolicy({}), mood = { score: 0 }, w = 0;
   const result = effectiveProactiveStage(policy, 100, w, mood);
-  assert.ok(Math.abs(result.effectiveProbability - policy.probabilityMax * engagementFactors(mood, w).factor) < 1e-10);
+  assert.ok(Math.abs(result.effectiveProbability - policy.probabilityMax * Math.sqrt(engagementFactors(mood, w).factor)) < 1e-10);
   assert.ok(result.effectiveProbability < effectiveProactiveStage(policy, 100, 100, mood).effectiveProbability);
   assert.ok(result.effectiveProbability < effectiveProactiveStage(policy, 100, 0, { score: 100 }).effectiveProbability);
 });

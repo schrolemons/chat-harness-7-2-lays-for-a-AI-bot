@@ -1,6 +1,6 @@
 <section id="section-setting-l-1" data-page="setting-l-1" class="card span-all commercial-component" hidden>
 <h2>发送与等待</h2>
-<p class="meta">聊天意愿看用户是否有空、是否有精力；心情值看 bot 主观上是否想与对方聊天。两者影响主动概率、普通聊天分钟/小时频次和深度，只有心情影响说话风格；每份内容的拆分上限不随两者缩减。缩放系数 F = (0.2 + 0.8×心情/100) × (0.2 + 0.8×聊天意愿/100)。</p>
+<p class="meta">聊天意愿看用户是否有空、是否有精力；心情值看 bot 主观上是否想与对方聊天。共同系数 F = (0.2 + 0.8×心情/100) × (0.2 + 0.8×聊天意愿/100)。唤醒概率使用 √F，检查间隔使用 2−√F，减弱两者对唤醒的抑制；普通聊天分钟/小时额度和深度仍使用 F。只有心情影响说话风格，每份内容的拆分上限不随两者缩减。</p>
 <details open class="settings-group"><summary>什么时候主动</summary><div class="settings-content">
 <div class="meta">静默阶段统一判定主动机会；最大静默是公共门槛允许时的兜底，仍受宵禁、免打扰和预算约束。</div>
 <div data-component-slot="life-wake-reasons" data-inline-fields="disabledReasons,proactiveEnabled,silenceMinutes,initialProbability,probabilityStep,probabilityMax,checkMinMinutes,checkMaxMinutes,intervalStepMinutes,checkFloorMinutes,minActiveGapMinutes,maxSilenceMinutes,initialWillingness,curfewEnabled,curfewStartHour,curfewEndHour" data-save-label="保存静默主动概率与间隔"></div>

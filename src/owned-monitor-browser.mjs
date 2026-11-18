@@ -53,7 +53,7 @@ export function createOwnedMonitorBrowser({root,instanceId,nonce,executablePath,
   function open(headless){
     if(closed)return Promise.reject(fail('MONITOR_CLOSING'));
     if(typeof headless!=='boolean')return Promise.reject(fail('MONITOR_ARGUMENT_INVALID'));
-    const operation=tail.then(()=>openNow(headless)).catch(error=>{uncertain=true;throw error;});
+    const operation=tail.then(()=>openNow(headless)).catch(error=>{uncertain=entries.some(e=>live(e.child));if(!uncertain)current=null;throw error;});
     tail=operation.catch(()=>{});return operation;
   }
   function stop(){

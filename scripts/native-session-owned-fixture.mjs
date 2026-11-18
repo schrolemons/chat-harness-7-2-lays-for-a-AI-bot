@@ -7,9 +7,10 @@ import {pathToFileURL} from 'node:url';
 import {initializeManifest} from '../src/instance-manifest.mjs';
 import {createInstanceScope} from '../src/dsh-instance-scope.mjs';
 import {readInstanceSessionPolicy} from '../src/instance-session-policy.mjs';
-export const hostPackage=createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json');
-const requireHost=createRequire(hostPackage),requireBase=createRequire(requireHost.resolve('@deepseek-ai/dsh-base/package.json'));
-export const hostImport=async name=>name.startsWith('file:')?import(name):import(pathToFileURL((()=>{try{return requireHost.resolve(name);}catch{return requireBase.resolve(name);}})()).href);
+export const hostPackage=process.env.DSH_HOST_ROOT?path.join(process.env.DSH_HOST_ROOT,'package.json'):createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json');
+const requireHost=createRequire(hostPackage),requireBase=createRequire(process.env.DSH_BASE_ROOT?path.join(process.env.DSH_BASE_ROOT,'package.json'):requireHost.resolve('@deepseek-ai/dsh-base/package.json'));
+const requireService=process.env.DSH_SERVICE_ROOT?createRequire(path.join(process.env.DSH_SERVICE_ROOT,'package.json')):requireBase;
+export const hostImport=async name=>name.startsWith('file:')?import(name):import(pathToFileURL((()=>{try{return requireHost.resolve(name);}catch{try{return requireBase.resolve(name);}catch{return requireService.resolve(name);}}})()).href);
 const modules={};for(const name of ['cordis','cordis-plugin-loader','dsh-system-prompt','dsh-tools','dsh-session','dsh-agent','dsh-session-projection','dsh-agent-preset-registry','dsh-session-persistence-jsonl','dsh-storage','dsh-storage-json','dsh-storage-domain','dsh-workspace','dsh-session-query-sqlite'])modules[name]=await hostImport('@deepseek-ai/'+name);
 export async function nativeSessionFixture(t){
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'native-session-owned-')),ctx=new modules.cordis.Context();

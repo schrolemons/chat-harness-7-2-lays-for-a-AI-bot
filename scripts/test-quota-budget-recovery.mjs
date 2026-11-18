@@ -23,7 +23,7 @@ async function open({ key = PRIVATE, dailyLimit = 1, countBy = 'session', cold =
   const st = h.getSocialV2State(key); st.bootstrapSent = true;
   st.wakeConfig.triggers = { anyMessage: false, atMention: true, nameMention: false, question: false, keywords: [], speakerIds: [], probability: 0 };
   const sid = await h.ensureSession(key);
-  assert.equal(h.tokenLedger.ingestEvent({ sessionId: sid, at: Date.now() - 10, model: 'deepseek-flash', event: {
+  assert.equal(h.tokenLedger.ingestEvent({ sessionId: sid, at: Date.now() - 10, provider:'deepseek-official', model: 'deepseek-flash', event: {
     type: 'assistant/message', seq: 1, data: { turn: 1, step: 1, usage: { inputTokens: 1_000_000, outputTokens: 100 } }
   } }), true);
   assert.equal(h.tokenBudgetOf(key).stage, 'silent');

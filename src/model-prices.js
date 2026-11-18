@@ -18,7 +18,7 @@
 // 节假日来源：国办发明电〔2025〕7 号（2026 年部分节假日安排）。
 
 /** 价目表版本标记，仅用于控制台展示与排障（改了价目表就改这里）。 */
-export const PRICE_TABLE_VERSION = '2026-11-04';
+export const PRICE_TABLE_VERSION = '2026-11-12-provider-scoped';
 
 /**
  * 2026 年中国法定节假日（放假日，含调休连休段）。
@@ -95,28 +95,16 @@ export const DEFAULT_PRICE_TABLE = {
   holidays: CN_HOLIDAYS,
   models: {
     'deepseek-flash': {
+      provider: 'deepseek-official',
       label: 'DeepSeek-V4.1-Flash',
       off: { cacheHit: 0.02, cacheMiss: 1, cacheWrite: 1, output: 4 }
     },
-    'deepseek-v4-flash': {
-      label: 'DeepSeek-V4.1-Flash（旧模型名）',
-      off: { cacheHit: 0.02, cacheMiss: 1, cacheWrite: 1, output: 4 }
-    },
-    'deepseek-v4-flash-vision-exp': {
-      label: 'DeepSeek-V4.1-Flash（视觉实验名）',
-      off: { cacheHit: 0.02, cacheMiss: 1, cacheWrite: 1, output: 4 }
-    },
     'deepseek-v4-pro': {
+      provider: 'deepseek-official',
       label: 'DeepSeek-V4-Pro-0813',
       off: { cacheHit: 0.15, cacheMiss: 4.5, cacheWrite: 4.5, output: 13.5 }
-    },
-    'deepseek-pro': {
-      label: 'DeepSeek-V4-Pro-0813（旧模型名）',
-      off: { cacheHit: 0.15, cacheMiss: 4.5, cacheWrite: 4.5, output: 13.5 }
     }
-  },
-  // 未知模型的兜底价：按 flash 计，并在返回值里标 estimated=true，控制台会提示。
-  fallbackModel: 'deepseek-flash'
+  }
 };
 
 /** 合并用户配置的价目表覆盖项（config.json 的 `pricing` 字段），失败时回落到默认表。 */
@@ -136,16 +124,16 @@ export function resolvePriceTable(override) {
     for (const [name, entry] of Object.entries(override.models)) {
       const base = DEFAULT_PRICE_TABLE.models[name];
       if (!entry || typeof entry !== 'object') continue;
+      const provider = entry.provider ?? base?.provider;
+      if (typeof provider !== 'string' || !provider.trim()) continue;
       const given = entry.off ?? {};
-      const off = { ...(base?.off ?? DEFAULT_PRICE_TABLE.models[DEFAULT_PRICE_TABLE.fallbackModel].off), ...given };
+      const off = { ...(base?.off ?? {}), ...given };
+      if (!['cacheHit','cacheMiss','output'].every(k => Number.isFinite(off[k]) && off[k] >= 0)) continue;
       // 只有用户/内置条目**自己**没写 cacheWrite 时才跟随 cacheMiss；
       // 否则会从兜底模型继承一个不相干的 cacheWrite 价（静默算错钱）。
       if (!Number.isFinite(Number(given.cacheWrite))) off.cacheWrite = off.cacheMiss;
-      merged.models[name] = { label: entry.label ?? base?.label ?? name, off };
+      merged.models[name] = { provider, label: entry.label ?? base?.label ?? name, off };
     }
-  }
-  if (typeof merged.fallbackModel !== 'string' || !merged.models[merged.fallbackModel]) {
-    merged.fallbackModel = DEFAULT_PRICE_TABLE.fallbackModel;
   }
   if (!Number.isFinite(merged.peakMultiplier) || merged.peakMultiplier <= 0) merged.peakMultiplier = 2;
   if (!Number.isFinite(merged.unit) || merged.unit <= 0) merged.unit = 1e6;
@@ -178,23 +166,26 @@ export function isPeakAt(atMs, table = DEFAULT_PRICE_TABLE) {
   return (table.peakWindows ?? []).some(([start, end]) => Number.isFinite(start) && Number.isFinite(end) && hour >= start && hour < end);
 }
 
-/** 取某模型在某一时刻生效的单价（含峰谷判定）。 */
-export function ratesAt(model, atMs, table = DEFAULT_PRICE_TABLE) {
+/** 按供应商和模型精确匹配单价；未匹配返回零金额，并标记 unpriced。 */
+export function ratesAt(model, atMs, table = DEFAULT_PRICE_TABLE, provider) {
   const key = String(model ?? '').trim();
   const entry = table.models[key];
-  const chosen = entry ?? table.models[table.fallbackModel];
-  const off = chosen.off;
+  const matched = !!entry && typeof provider === 'string' && provider === entry.provider;
+  const off = matched ? entry.off : {cacheHit:0,cacheMiss:0,cacheWrite:0,output:0};
   const peak = isPeakAt(atMs, table);
   const factor = peak ? table.peakMultiplier : 1;
   return {
-    model: key || table.fallbackModel,
-    label: chosen.label,
+    model: key,
+    provider: provider ?? null,
+    label: entry?.label ?? key,
     tier: peak ? 'peak' : 'off',
     tierLabel: peak ? '高峰时段' : '空闲时段',
     currency: table.currency,
     symbol: table.symbol,
     unit: table.unit,
-    estimated: !entry,
+    matched,
+    unpriced: !matched,
+    estimated: false,
     cacheHit: off.cacheHit * factor,
     cacheMiss: off.cacheMiss * factor,
     cacheWrite: (Number.isFinite(off.cacheWrite) ? off.cacheWrite : off.cacheMiss) * factor,
@@ -258,8 +249,8 @@ export function costOfBuckets(buckets, rates) {
 }
 
 /** 一步到位：给桶 + 时间 + 模型，直接算钱。 */
-export function priceUsage(buckets, { model, at, table = DEFAULT_PRICE_TABLE } = {}) {
-  const rates = ratesAt(model, at, table);
+export function priceUsage(buckets, { model, provider, at, table = DEFAULT_PRICE_TABLE } = {}) {
+  const rates = ratesAt(model, at, table, provider);
   return { rates, cost: costOfBuckets(buckets, rates) };
 }
 

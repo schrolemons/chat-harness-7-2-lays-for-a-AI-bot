@@ -10,6 +10,11 @@
 // 这样「传话」= 可插拔组件：能在插件管理页启停、有自己的 skill.md、改规则不用动 bridge。
 
 import { parseRelayCommand } from '../../../src/relay-intent.js';
+const targetURL=new URL('./target-context.mjs',import.meta.url);targetURL.search=new URL(import.meta.url).search;
+const {SEMANTIC_RELAY_GUIDANCE,ownerTargetFacts}=await import(targetURL.href);
+
+const adminTargetURL=new URL('./admin-target.mjs',import.meta.url);adminTargetURL.search=new URL(import.meta.url).search;
+const {validateExplicitAdminTarget}=await import(adminTargetURL.href);
 
 const PENDING_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MIN_INTERVAL_MIN = 10;
@@ -146,12 +151,20 @@ export function createPlugin(ctx) {
   }
 
   return {
+    services:{relayTarget:{validateAdminTarget:validateExplicitAdminTarget}},
     hooks: {
+      beforePrompt(payload={}) {
+        if(!String(payload.key||'').startsWith('private:')||/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview|slangLearn)$/.test(String(payload.reason||'')))return;
+        return [SEMANTIC_RELAY_GUIDANCE,ownerTargetFacts(payload,cap)].filter(Boolean).join('\n\n');
+      },
       async relayIncoming(payload) {
         if (!payload || payload.allowed !== true) return null;
         const key = String(payload.key || '');
         const text = String(payload.plainContent || '').trim();
-        const imageIds = Array.isArray(payload.imageIds) ? payload.imageIds.slice(0,5) : [];
+        let imageIds = Array.isArray(payload.imageIds) ? payload.imageIds.slice(0,5) : [];
+        const loadImages = async () => {
+          if (!imageIds.length && typeof payload.loadImageIds === 'function') imageIds = (await payload.loadImageIds()).slice(0,5);
+        };
         if (!key || (!text && !imageIds.length)) return null;
 
         const pending = readPending();
@@ -242,7 +255,9 @@ export function createPlugin(ctx) {
             if (STANDALONE_ACTION_RE.test(text)) { clearLink(); link = null; }
             else {
               if (!claim()) return duplicate();
+              await loadImages();
               link.content = text || '[图片]';
+              link.imageIds = imageIds;
               return finishLinkedRelay(link);
             }
           } else if (!parseRelayCommand(text, { resolve: (name) => !!resolveTarget(name) })) {
@@ -256,6 +271,7 @@ export function createPlugin(ctx) {
         const contacts = relayLead ? await searchContacts('') : [];
         const cmd = parseRelayText(text, contacts);
         if (cmd) {
+          await loadImages();
           const target = resolveTarget(cmd.name);
           const content = String(cmd.content || '').trim();
           const linked = isLinkedAlias(cmd.name);
@@ -332,6 +348,7 @@ export function createPlugin(ctx) {
               return null;
             }
             if (!claim()) return duplicate();
+            await loadImages();
             delete pending[key];
             writePending(pending);
             deliver(key, pr.target, pr.name, text || '[图片]', payload.isOwner === true, imageIds);

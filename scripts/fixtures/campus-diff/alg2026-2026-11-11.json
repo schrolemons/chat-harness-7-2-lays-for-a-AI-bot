@@ -1,0 +1,539 @@
+{
+  "site": {
+    "name": "算法设计与分析",
+    "url": "http://example.invalid/~wx309/lecture/alg2026/index.html"
+  },
+  "provenance": {
+    "previousFile": "git:235189b:private-data/state/campus-watch-state.json",
+    "currentFile": "C:/Example/.dsh/bot-instances/runtime/desktop/chat-bridge-private/state/campus-watch-state.json",
+    "capturedAt": "2026-11-12T07:02:38.628Z",
+    "note": "Saved page snapshots only; transport not recorded by v2. No file-content hashes were fetched.",
+    "previousCommitDate": "2026-11-05"
+  },
+  "previous": {
+    "hash": "923bdad4462db503bfa7c16434f08517afb364fb",
+    "links": [
+      "算法设计与分析",
+      "首页",
+      "课程通知",
+      "课程信息",
+      "课程课件",
+      "课程作业",
+      "首页",
+      "课程通知",
+      "课程信息",
+      "课程课件",
+      "课程作业",
+      "访问数据智能实验室",
+      "中国科学技术大学 · 课程团队所在实验室 数据智能实验室 访问主页",
+      "汪炀",
+      "徐殷",
+      "yx2024@mail.ustc.edu.cn",
+      "yjm0905@mail.ustc.edu.cn",
+      "flagger@mail.ustc.edu.cn",
+      "sanshengyemo@mail.ustc.edu.cn",
+      "zhangliwen@mail.ustc.edu.cn",
+      "geyan@mail.ustc.edu.cn",
+      "yuliheng@mail.ustc.edu.cn",
+      "jiaojingyao@mail.ustc.edu.cn",
+      "分布式算法课件一 PPT",
+      "分布式算法课件二 PPT",
+      "分布式算法课件三 PPT",
+      "分布式算法课件四 PPT",
+      "分布式算法课件五 PPT",
+      "分布式算法课件六 PPT",
+      "概率算法课件一 PPT",
+      "第一次作业：分布式算法课件三 Ex 2.1–2.5 查看详情",
+      "第二次作业：分布式算法课件四 Ex 3.1–3.2 查看详情",
+      "第三次作业：分布式算法课件五 Ex 3.9 查看详情",
+      "返回顶部"
+    ],
+    "lines": [
+      "算法设计与分析",
+      "G3-108 · 第 2–5、7–16 周",
+      "授课教师：汪炀、徐殷",
+      "一班：周一 6–7 节、周二 1–2 节 | 二班：周一 8–9 节、周二 3–4 节",
+      "中国科学技术大学 · 课程团队所在实验室",
+      "数据智能实验室",
+      "访问主页",
+      "课程通知",
+      "请同学们及时加入课程 QQ 群并关注最新通知：",
+      "一班 1102426000 二班 1125374928",
+      "课程信息",
+      "授课教师",
+      "汪炀",
+      "徐殷",
+      "上课安排",
+      "一班第 2–5、7–16 周",
+      "周一 6–7 节；周二 1–2 节",
+      "第 6 周：周六 1–2 节",
+      "二班第 2–5、7–16 周",
+      "周一 8–9 节；周二 3–4 节",
+      "第 6 周：周六 3–4 节",
+      "G3-108",
+      "课程助教（一）",
+      "于轩",
+      "yx2024@mail.ustc.edu.cn",
+      "姚金名",
+      "yjm0905@mail.ustc.edu.cn",
+      "孙铭洋",
+      "flagger@mail.ustc.edu.cn",
+      "赵卓",
+      "sanshengyemo@mail.ustc.edu.cn",
+      "课程助教（二）",
+      "张力文",
+      "zhangliwen@mail.ustc.edu.cn",
+      "葛岩",
+      "geyan@mail.ustc.edu.cn",
+      "于立恒",
+      "yuliheng@mail.ustc.edu.cn",
+      "焦婧瑶",
+      "jiaojingyao@mail.ustc.edu.cn",
+      "课程课件",
+      "本学期课程资料 · 共 7 份课件",
+      "分布式算法课件一",
+      "PPT",
+      "分布式算法课件二",
+      "分布式算法课件三",
+      "分布式算法课件四",
+      "分布式算法课件五",
+      "分布式算法课件六",
+      "概率算法课件一",
+      "课程作业",
+      "作业要求",
+      "1、证明和分析题写出证明分析过程。",
+      "2、程序题需要关键部分代码、运行结果及其分析。",
+      "3、每个模块讲解完成后一周提交，具体时间以 BB 平台为准。",
+      "4、作业提交方式：后期统一收集。",
+      "作业内容",
+      "第一次作业：分布式算法课件三 Ex 2.1–2.5",
+      "查看详情",
+      "第二次作业：分布式算法课件四 Ex 3.1–3.2",
+      "第三次作业：分布式算法课件五 Ex 3.9",
+      "返回顶部"
+    ],
+    "linkDetails": [
+      {
+        "t": "算法设计与分析",
+        "h": "#home"
+      },
+      {
+        "t": "首页",
+        "h": "#home"
+      },
+      {
+        "t": "课程通知",
+        "h": "#notices"
+      },
+      {
+        "t": "课程信息",
+        "h": "#introduction"
+      },
+      {
+        "t": "课程课件",
+        "h": "#courseware"
+      },
+      {
+        "t": "课程作业",
+        "h": "#homework"
+      },
+      {
+        "t": "",
+        "h": "#"
+      },
+      {
+        "t": "首页",
+        "h": "#home"
+      },
+      {
+        "t": "课程通知",
+        "h": "#notices"
+      },
+      {
+        "t": "课程信息",
+        "h": "#introduction"
+      },
+      {
+        "t": "课程课件",
+        "h": "#courseware"
+      },
+      {
+        "t": "课程作业",
+        "h": "#homework"
+      },
+      {
+        "t": "访问数据智能实验室",
+        "h": "https://example.invalid/"
+      },
+      {
+        "t": "中国科学技术大学 · 课程团队所在实验室 数据智能实验室 访问主页",
+        "h": "https://example.invalid/"
+      },
+      {
+        "t": "",
+        "h": "#"
+      },
+      {
+        "t": "",
+        "h": "#"
+      },
+      {
+        "t": "汪炀",
+        "h": "http://example.invalid/~angyan/"
+      },
+      {
+        "t": "徐殷",
+        "h": "https://xuyin218.github.io/"
+      },
+      {
+        "t": "yx2024@mail.ustc.edu.cn",
+        "h": "mailto:yx2024@mail.ustc.edu.cn"
+      },
+      {
+        "t": "yjm0905@mail.ustc.edu.cn",
+        "h": "mailto:yjm0905@mail.ustc.edu.cn"
+      },
+      {
+        "t": "flagger@mail.ustc.edu.cn",
+        "h": "mailto:flagger@mail.ustc.edu.cn"
+      },
+      {
+        "t": "sanshengyemo@mail.ustc.edu.cn",
+        "h": "mailto:sanshengyemo@mail.ustc.edu.cn"
+      },
+      {
+        "t": "zhangliwen@mail.ustc.edu.cn",
+        "h": "mailto:zhangliwen@mail.ustc.edu.cn"
+      },
+      {
+        "t": "geyan@mail.ustc.edu.cn",
+        "h": "mailto:geyan@mail.ustc.edu.cn"
+      },
+      {
+        "t": "yuliheng@mail.ustc.edu.cn",
+        "h": "mailto:yuliheng@mail.ustc.edu.cn"
+      },
+      {
+        "t": "jiaojingyao@mail.ustc.edu.cn",
+        "h": "mailto:jiaojingyao@mail.ustc.edu.cn"
+      },
+      {
+        "t": "分布式算法课件一 PPT",
+        "h": "ppt/courseware-1.ppt"
+      },
+      {
+        "t": "分布式算法课件二 PPT",
+        "h": "ppt/courseware-2.ppt"
+      },
+      {
+        "t": "分布式算法课件三 PPT",
+        "h": "ppt/courseware-3.ppt"
+      },
+      {
+        "t": "分布式算法课件四 PPT",
+        "h": "ppt/courseware-4.ppt"
+      },
+      {
+        "t": "分布式算法课件五 PPT",
+        "h": "ppt/courseware-5.ppt"
+      },
+      {
+        "t": "分布式算法课件六 PPT",
+        "h": "ppt/courseware-6.ppt"
+      },
+      {
+        "t": "概率算法课件一 PPT",
+        "h": "ppt/probability-1.ppt"
+      },
+      {
+        "t": "第一次作业：分布式算法课件三 Ex 2.1–2.5 查看详情",
+        "h": "#homework-detail-1"
+      },
+      {
+        "t": "第二次作业：分布式算法课件四 Ex 3.1–3.2 查看详情",
+        "h": "#homework-detail-2"
+      },
+      {
+        "t": "第三次作业：分布式算法课件五 Ex 3.9 查看详情",
+        "h": "#homework-detail-3"
+      },
+      {
+        "t": "返回顶部",
+        "h": "#"
+      },
+      {
+        "t": "",
+        "h": "#"
+      },
+      {
+        "t": "",
+        "h": "#"
+      },
+      {
+        "t": "",
+        "h": "#"
+      }
+    ],
+    "contentVersion": 2
+  },
+  "current": {
+    "hash": "06b998916346c92309da9d83dac4993bca306149",
+    "links": [
+      "算法设计与分析",
+      "首页",
+      "课程通知",
+      "课程信息",
+      "课程课件",
+      "课程作业",
+      "首页",
+      "课程通知",
+      "课程信息",
+      "课程课件",
+      "课程作业",
+      "访问数据智能实验室",
+      "中国科学技术大学 · 课程团队所在实验室数据智能实验室 访问主页",
+      "汪炀",
+      "徐殷",
+      "yx2024@mail.ustc.edu.cn",
+      "yjm0905@mail.ustc.edu.cn",
+      "flagger@mail.ustc.edu.cn",
+      "sanshengyemo@mail.ustc.edu.cn",
+      "zhangliwen@mail.ustc.edu.cn",
+      "geyan@mail.ustc.edu.cn",
+      "yuliheng@mail.ustc.edu.cn",
+      "jiaojingyao@mail.ustc.edu.cn",
+      "分布式算法课件一PPT",
+      "分布式算法课件二PPT",
+      "分布式算法课件三PPT",
+      "分布式算法课件四PPT",
+      "分布式算法课件五PPT",
+      "分布式算法课件六PPT",
+      "概率算法课件一PPT",
+      "第一次作业：分布式算法课件三 Ex 2.1–2.5查看详情",
+      "第二次作业：分布式算法课件四 Ex 3.1–3.2查看详情",
+      "第三次作业：分布式算法课件五 Ex 3.9查看详情",
+      "返回顶部"
+    ],
+    "lines": [
+      "算法设计与分析",
+      "首页",
+      "课程通知",
+      "课程信息",
+      "课程课件",
+      "课程作业",
+      "访问数据智能实验室",
+      "G3-108 · 第 2–5、7–16 周",
+      "授课教师：汪炀、徐殷",
+      "一班：周一 6–7 节、周二 1–2 节 | 二班：周一 8–9 节、周二 3–4 节",
+      "中国科学技术大学 · 课程团队所在实验室数据智能实验室 访问主页",
+      "请同学们及时加入课程 QQ 群并关注最新通知：",
+      "一班 1102426000 二班 1125374928",
+      "授课教师",
+      "汪炀",
+      "徐殷",
+      "上课安排",
+      "一班第 2–5、7–16 周",
+      "周一 6–7 节；周二 1–2 节",
+      "第 6 周：周六 1–2 节",
+      "二班第 2–5、7–16 周",
+      "周一 8–9 节；周二 3–4 节",
+      "第 6 周：周六 3–4 节",
+      "G3-108",
+      "课程助教（一）",
+      "于轩",
+      "yx2024@mail.ustc.edu.cn",
+      "姚金名",
+      "yjm0905@mail.ustc.edu.cn",
+      "孙铭洋",
+      "flagger@mail.ustc.edu.cn",
+      "赵卓",
+      "sanshengyemo@mail.ustc.edu.cn",
+      "课程助教（二）",
+      "张力文",
+      "zhangliwen@mail.ustc.edu.cn",
+      "葛岩",
+      "geyan@mail.ustc.edu.cn",
+      "于立恒",
+      "yuliheng@mail.ustc.edu.cn",
+      "焦婧瑶",
+      "jiaojingyao@mail.ustc.edu.cn",
+      "本学期课程资料 · 共 7 份课件",
+      "分布式算法课件一PPT",
+      "分布式算法课件二PPT",
+      "分布式算法课件三PPT",
+      "分布式算法课件四PPT",
+      "分布式算法课件五PPT",
+      "分布式算法课件六PPT",
+      "概率算法课件一PPT",
+      "作业要求",
+      "1、证明和分析题写出证明分析过程。",
+      "2、程序题需要关键部分代码、运行结果及其分析。",
+      "3、每个模块讲解完成后一周提交，具体时间以 BB 平台为准。",
+      "4、作业提交方式：后期统一收集。",
+      "作业内容",
+      "第一次作业：分布式算法课件三 Ex 2.1–2.5查看详情",
+      "第二次作业：分布式算法课件四 Ex 3.1–3.2查看详情",
+      "第三次作业：分布式算法课件五 Ex 3.9查看详情",
+      "×",
+      "第一次作业 · Ex 2.1–2.5",
+      "来源：分布式算法课件三，第 34 页",
+      "Ex 2.1分析在同步和异步模型下，convergecast 算法的时间复杂性。",
+      "Ex 2.2证明：在引理 2.6 中，图 G 中的处理器从 Pr 可达，当且仅当它的 parent 变量曾被赋过值。",
+      "Ex 2.3证明 Alg 2.3 构造一棵以 Pr 为根的 DFS 树。",
+      "Ex 2.4证明 Alg 2.3 的时间复杂性为 O(m)。",
+      "Ex 2.5修改 Alg 2.3，获得一个构造 DFS 树、时间复杂性为 O(n) 的新算法，并证明。",
+      "关闭",
+      "第二次作业 · Ex 3.1–3.2",
+      "来源：分布式算法课件四，第 10 页",
+      "Ex 3.1证明同步环系统中不存在匿名的、一致性的领导者选举算法。",
+      "Ex 3.2证明异步环系统中不存在匿名的领导者选举算法。",
+      "第三次作业 · Ex 3.9",
+      "来源：分布式算法课件五，第 54 页",
+      "Ex 3.9若将环划分为长度为 j（j 是 2 的方幂）的连续片段，则所有这些片段是次序等价的。",
+      "返回顶部"
+    ],
+    "linkDetails": [
+      {
+        "t": "算法设计与分析",
+        "h": "#home"
+      },
+      {
+        "t": "首页",
+        "h": "#home"
+      },
+      {
+        "t": "课程通知",
+        "h": "#notices"
+      },
+      {
+        "t": "课程信息",
+        "h": "#introduction"
+      },
+      {
+        "t": "课程课件",
+        "h": "#courseware"
+      },
+      {
+        "t": "课程作业",
+        "h": "#homework"
+      },
+      {
+        "t": "",
+        "h": "#"
+      },
+      {
+        "t": "首页",
+        "h": "#home"
+      },
+      {
+        "t": "课程通知",
+        "h": "#notices"
+      },
+      {
+        "t": "课程信息",
+        "h": "#introduction"
+      },
+      {
+        "t": "课程课件",
+        "h": "#courseware"
+      },
+      {
+        "t": "课程作业",
+        "h": "#homework"
+      },
+      {
+        "t": "访问数据智能实验室",
+        "h": "https://example.invalid/"
+      },
+      {
+        "t": "中国科学技术大学 · 课程团队所在实验室数据智能实验室 访问主页",
+        "h": "https://example.invalid/"
+      },
+      {
+        "t": "汪炀",
+        "h": "http://example.invalid/~angyan/"
+      },
+      {
+        "t": "徐殷",
+        "h": "https://xuyin218.github.io/"
+      },
+      {
+        "t": "yx2024@mail.ustc.edu.cn",
+        "h": "mailto:yx2024@mail.ustc.edu.cn"
+      },
+      {
+        "t": "yjm0905@mail.ustc.edu.cn",
+        "h": "mailto:yjm0905@mail.ustc.edu.cn"
+      },
+      {
+        "t": "flagger@mail.ustc.edu.cn",
+        "h": "mailto:flagger@mail.ustc.edu.cn"
+      },
+      {
+        "t": "sanshengyemo@mail.ustc.edu.cn",
+        "h": "mailto:sanshengyemo@mail.ustc.edu.cn"
+      },
+      {
+        "t": "zhangliwen@mail.ustc.edu.cn",
+        "h": "mailto:zhangliwen@mail.ustc.edu.cn"
+      },
+      {
+        "t": "geyan@mail.ustc.edu.cn",
+        "h": "mailto:geyan@mail.ustc.edu.cn"
+      },
+      {
+        "t": "yuliheng@mail.ustc.edu.cn",
+        "h": "mailto:yuliheng@mail.ustc.edu.cn"
+      },
+      {
+        "t": "jiaojingyao@mail.ustc.edu.cn",
+        "h": "mailto:jiaojingyao@mail.ustc.edu.cn"
+      },
+      {
+        "t": "分布式算法课件一PPT",
+        "h": "ppt/courseware-1.ppt"
+      },
+      {
+        "t": "分布式算法课件二PPT",
+        "h": "ppt/courseware-2.ppt"
+      },
+      {
+        "t": "分布式算法课件三PPT",
+        "h": "ppt/courseware-3.ppt"
+      },
+      {
+        "t": "分布式算法课件四PPT",
+        "h": "ppt/courseware-4.ppt"
+      },
+      {
+        "t": "分布式算法课件五PPT",
+        "h": "ppt/courseware-5.ppt"
+      },
+      {
+        "t": "分布式算法课件六PPT",
+        "h": "ppt/courseware-6.ppt"
+      },
+      {
+        "t": "概率算法课件一PPT",
+        "h": "ppt/probability-1.ppt"
+      },
+      {
+        "t": "第一次作业：分布式算法课件三 Ex 2.1–2.5查看详情",
+        "h": "#homework-detail-1"
+      },
+      {
+        "t": "第二次作业：分布式算法课件四 Ex 3.1–3.2查看详情",
+        "h": "#homework-detail-2"
+      },
+      {
+        "t": "第三次作业：分布式算法课件五 Ex 3.9查看详情",
+        "h": "#homework-detail-3"
+      },
+      {
+        "t": "返回顶部",
+        "h": "#"
+      }
+    ],
+    "contentVersion": 2
+  }
+}

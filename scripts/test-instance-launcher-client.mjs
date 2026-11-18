@@ -1,6 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {clientFixture} from './instance-launcher-client-fixture.mjs';
+import fs from 'node:fs';
+import {renderLauncherClient} from './build-dsh-bundle.mjs';
+
+test('the descriptor-rendered DSH entry uses the current indicator and keeps package identity',async t=>{
+ const source=renderLauncherClient(fs.readFileSync(new URL('../plugins/qq-launcher/lib/client.js',import.meta.url),'utf8'),'qq-bridge');
+ assert.match(source,/const CLIENT_MODULE_ID = "qq-bridge"/);
+ const p=await clientFixture(t,{source});p.add('a',4199,'qq-bridge');p.mount('a');await p.flush();
+ const identity={instanceId:'a',...p.registry.a};
+ p.pending.set('http://127.0.0.1:4199/status',async()=>({ok:true,json:async()=>({...identity,readiness:'ready',runtime:{state:'running',uncertain:false,lastError:{code:'PROCESS_NOT_OWNED',message:'Spawned process does not belong to this invocation'}}})}));
+ await p.tick();const button=p.nodes.get('qq-launcher-a-button');assert.equal(button.children[0].style.background,'#22c55e');assert.match(button.title,/QQ 与 DSH 已连接/);assert.match(button.title,/PROCESS_NOT_OWNED|Spawned process/);
+ assert.equal(p.requests.some(r=>r.method==='POST'),false,'rendering status never starts or restarts the bot');
+});
+
+test('healthy running transport with a recorded task error stays green; uncertainty still fails red',async t=>{
+ const p=await clientFixture(t);p.add('a',4199);p.mount('a');await p.flush();
+ const identity={instanceId:'a',...p.registry.a};let uncertain=false;
+ p.pending.set('http://127.0.0.1:4199/status',async()=>({ok:true,json:async()=>({...identity,readiness:'ready',runtime:{state:'running',uncertain,lastError:{message:'Spawned process does not belong to this invocation'}}})}));
+ await p.tick();let button=p.nodes.get('qq-launcher-a-button');assert.match(button.title,/QQ 与 DSH 已连接/);assert.match(button.title,/最近记录的任务错误/);assert.equal(button.children[0].style.background,'#22c55e');
+ uncertain=true;await p.tick();button=p.nodes.get('qq-launcher-a-button');assert.equal(button.children[0].style.background,'#ef4444');
+});
 
 test('titlebar keeps a short label and shows server startup progress while a start is pending', async t => {
   const p = await clientFixture(t);

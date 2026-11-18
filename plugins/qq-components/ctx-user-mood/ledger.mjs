@@ -52,27 +52,37 @@ export function createMoodLedger(ctx, getPolicy) {
     return result.value;
   }
 
+  function enforceMinimum(ledger,policy,now){
+    if(!policy.enabled)return 0;let changed=0;
+    for(const entry of Object.values(ledger.conversations))if(entry.score<policy.minimumScore){
+      const before=entry.score;entry.score=policy.minimumScore;entry.updatedAt=now;
+      recordHistory(entry,{at:now,source:'policy-floor',before,minimumScore:policy.minimumScore,reason:'按管理员配置的心情下限校正；不是用户互动加分，原始扣分记录保留'});changed++;
+    }
+    return changed;
+  }
+
   function settleDue(ledger, policy, now) {
     let settled = 0;
     if (!policy.enabled) return { settled, changed: false, recoveredKeys: [] };
+    const floored=enforceMinimum(ledger,policy,now);
     const due = Object.values(ledger.waits).filter(wait => wait.settledAt == null && wait.answeredAt == null && wait.dueAt <= now)
       .sort((a, b) => a.dueAt - b.dueAt || a.sentAt - b.sentAt);
     for (const wait of due) {
       const entry = conversation(ledger, wait.key, policy, now);
       const before = entry.score;
       const penalty = validScore(wait.noReplyPenalty) ? wait.noReplyPenalty : UNANSWERED_PENALTY;
-      entry.score = clamp(entry.score - penalty);
+      entry.score = Math.max(policy.minimumScore??0,clamp(entry.score - penalty));
       entry.updatedAt = now;
       wait.settledAt = now;
       wait.penalty = penalty;
-      recordHistory(entry, { at: now, source: 'unanswered', before, noReplyPenalty: penalty, reason: '会话型主动消息到期未获回应', proactiveId: wait.proactiveId, dueAt: wait.dueAt });
+      recordHistory(entry, { at: now, source: 'unanswered', before, noReplyPenalty: penalty, minimumScore:policy.minimumScore,reason: '会话型主动消息到期未获回应', proactiveId: wait.proactiveId, dueAt: wait.dueAt });
       if (wait.lateReplyAt != null) {
         wait.answeredAt = wait.lateReplyAt;
         wait.firstReplyAt ??= wait.lateReplyAt;
       }
       settled++;
     }
-    let changed = settled > 0;
+    let changed = settled > 0||floored>0;
     for (const key of Object.keys(ledger.conversations)) changed = deriveStreak(ledger, key) || changed;
     const recoveredKeys=recoverDaily(ledger,policy,now);
     return { settled, changed:changed||recoveredKeys.length>0, recoveredKeys };
@@ -80,6 +90,10 @@ export function createMoodLedger(ctx, getPolicy) {
 
   const api = {
     policy: getPolicy,
+    enforceMinimum({now=Date.now()}={}){
+      if(!timestamp(now))return {ok:false};
+      return transact((ledger,policy)=>{const changed=enforceMinimum(ledger,policy,now);return {changed:changed>0,value:{ok:true,changed}};});
+    },
     initialize({ conversations = [], now = Date.now() } = {}) {
       if (!Array.isArray(conversations) || !timestamp(now)) return { ok: false, imported: 0 };
       return transact((ledger, policy) => {
@@ -91,7 +105,8 @@ export function createMoodLedger(ctx, getPolicy) {
           entry.score = entry.baseScore = legacy.score;
           imported++;
         }
-        return { changed: imported > 0||recoveredKeys.length>0, value: { ok: true, imported, recovered:recoveredKeys.length } };
+        const floored=enforceMinimum(ledger,policy,now);
+        return { changed: imported > 0||recoveredKeys.length>0||floored>0, value: { ok: true, imported, recovered:recoveredKeys.length } };
       });
     },
     read({ key, now = Date.now() } = {}) {
@@ -117,10 +132,10 @@ export function createMoodLedger(ctx, getPolicy) {
         settleDue(ledger, policy, now);
         const entry = conversation(ledger, key, policy, now);
         const before = entry.score;
-        entry.score = clamp(before + (action === 'add' ? value : -value));
+        entry.score = Math.max(policy.minimumScore??0,clamp(before + (action === 'add' ? value : -value)));
         entry.updatedAt = now;
         entry.lastAdjustment = { action, value, reason: String(reason), at: now, ...(ruleId === undefined ? {} : { ruleId }) };
-        recordHistory(entry, { at: now, source: 'model-adjustment', before, reason: String(reason), action, value, ...(ruleId === undefined ? {} : { ruleId }) });
+        recordHistory(entry, { at: now, source: 'model-adjustment', before, minimumScore:policy.minimumScore,reason: String(reason), action, value, ...(ruleId === undefined ? {} : { ruleId }) });
         return { changed: true, value: { ok: true, before, score: entry.score, reason: String(reason) } };
       });
     },

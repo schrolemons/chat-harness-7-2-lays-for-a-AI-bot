@@ -24,6 +24,6 @@ test('objective availability changes only with a reasoned assessment, never our 
   assert.equal(service.setWillingness({ key: 'private:1', value: 20, reason: '用户明确说正在开会', now: 1000 }).ok, true);
   service.observe({ key: 'private:1', kind: 'sent', reason: 'privateFollowup', success: true, eventId: 'a', episodeId: 'a', at: 2000, isProactive: true });
   service.observe({ key: 'private:1', kind: 'incoming', hasText: true, eventId: 'b', at: 3000 });
-  assert.equal(service.availability({ key: 'private:1' }).willingness, 20);
+  assert.equal(service.availability({ key: 'private:1', now: 4000 }).willingness, 20);
   assert.equal(service.setWillingness({ key: 'private:1', value: 100, reason: '' }).ok, false);
 });

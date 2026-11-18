@@ -22,3 +22,11 @@ test('truncated snippets are marked rather than presented as complete evidence',
 test('scheduled memory refresh requires supplementing all profile fields before MD output',()=>{
  const s=memoryUpdate({config:{}}).hooks.beforePrompt({key:'private:10001',reason:'memoryWrite'});for(const x of ['profile_get','profile_update','routine_food','hobbies','relationships','catchphrases','来源','共同用餐','转述','合并','成功','【未完成事项】'])assert.ok(s.includes(x),x);assert.match(s,/不.*(?:推断|臆测)/);assert.match(s,/不要发任何 QQ 消息/);
 });
+test('ordinary chat retains brief extraction rules while full maintenance policy and raw evidence stay available',()=>{
+ let state={};const blocks=[];const p=createPlugin({config:{},capabilities:{runReadOnlyWorker(){}},state:{get:()=>state,set:x=>state={...state,...x}},addPromptBlock:x=>blocks.push(x)});
+ p.hooks.onIncoming({key:'private:10001',userId:'10001',text:'我一直喜欢游泳',seq:7,messageId:'7'});
+ const body=p.hooks.beforePrompt({key:'private:10001',reason:'message',admittedMessages:[{seq:7,messageId:'7',userId:'10001',text:'我一直喜欢游泳',bodyComplete:true}]});
+ assert(body.length<600);for(const word of ['档案提炼','本人','seq','profile_get','profile_update','成功','后台'])assert(body.includes(word),word);
+ assert.equal(blocks.length,0);assert.equal(state.pending.length,1);
+ p.hooks.beforePrompt({key:'private:10001',reason:'memoryWrite'});assert(blocks.some(x=>x.includes('共同用餐')));
+});

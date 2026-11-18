@@ -16,21 +16,28 @@ function buildWakeLine(st, autonomousNow, hasUnreadNow) {
   if (autonomousNow && !hasUnreadNow) return '【这是你主动开口】不是被谁叫醒、也不是在回谁。';
   const wc = st?.wakeConfig || {};
   const time = wc.infinite ? '不另设到时检查' : (wc.sleepUntil && Number.isFinite(Date.parse(wc.sleepUntil)) ? '明确到时唤醒：' + new Date(wc.sleepUntil).toLocaleString() : '未设时间');
-  return '【当前唤醒】'+time+'；群聊开启会话使用递增主动概率+最大唤醒加成。已经唤醒后不再逐条抽签，等待判定结束会话才恢复主动概率。私聊来信100%进入唤醒与回复。';
+  return '【当前唤醒】'+time+'；本轮已开启，不再抽签。私聊来信100%进入处理；必答以入栈tag为准。';
 }
 
 function buildReplyLine(payload) {
   const timing = payload.replyTiming || {};
   const quietMs = Number(timing.quietMs) || 8000;
-  const remaining = Math.max(0, Number(timing.remainingQuietMs) || 0);
+  const lastIncoming=Number(payload.st?.lastIncomingAt);
+  const remaining = Number.isFinite(lastIncoming)&&lastIncoming>0
+    ? Math.max(0,quietMs-(Date.now()-lastIncoming)) : Math.max(0, Number(timing.remainingQuietMs) || 0);
   if (payload.autonomousNow && !payload.hasUnreadNow) {
     return '【主动开口·不是回复】这一轮是你自己到点/想说话，不是假装对方刚找你。可以自然延续今天或上一段旧话题，按本轮话题选择追问或换题；历史消息按原来的时间理解，不复读旧回答，不把未回答的问题再问一遍。定时冒泡、日程和其他指定任务优先遵守各自内容要求。条数服从统一发送计划；说完并处理回执后，如果有理由认为对方还想聊但暂时没接话，可用 qq_wait_for_messages；否则自然结束。';
   }
-  return `【首回复节奏】先处理已有消息，完整的问题及时回答。需要确认对方是否继续补充时，用 qq_wait_for_quiet(quietMs=${quietMs})；从最后来信计时，合批和读提示词的耗时也算，目前还差约 ${Math.ceil(remaining / 1000)} 秒静默。已安静够久可直接回，工具也会立即返回并补上思考期间的新消息。仍有现成来信要处理时，先处理来信。`;
+  return `【首回复节奏】已有完整意思直接回答。确实还没说完才qq_wait_for_quiet(quietMs=${quietMs})；读消息和思考也计入静默，目前还差约 ${Math.ceil(remaining / 1000)} 秒。收到新来信先处理，不调用qq_wait_for_messages等下一句。`;
 }
 
 function buildFollowupWaitLine() {
-  return '【无人接话时的等待｜私聊与群聊共用】先完成当前来信的回复和回执。只有你判断对方还有交谈意愿、此刻暂时没接话时，才按需调用 qq_wait_for_messages；明确结束或没有继续的理由时可以收尾。等待时长受后台上下限约束。收到新消息就继续读取处理，确需确认用户是否还会补充时调用 qq_wait_for_quiet；不同问题或对象分别引用回复，意思相同或接近的内容合并成一波。无人回复且超时，由后台按 p、q 递增概率判定；endRound=true 时后台结束当前轮，不得追发或继续等待；endRound=false 时按 action 行动：wait 继续等待，followup 延续旧话题，newTopic 开启新话题，并遵守返回的 guidance 和发送限制。不要自行抽签；不要用静默工具绕过结束计数。旧的固定沉睡前观察已退役。';
+  return '【无人接话时的等待｜私聊与群聊共用】答复和回执完成后才qq_wait_for_messages；收到新消息立即接住，不先结束旧回合或复述收尾。超时按工具结果：endRound=true结束；否则action=wait继续等，followup接旧话题，newTopic换题。遵守guidance、额度和免打扰，不自行抽签或重问无人回答的问题。明确结束时可直接收尾。';
+}
+
+function activeWakeGuidance(w={}){
+  return '【唤醒分工】唤醒概率、静默阶段、间隔和限频由程序计算，模型不重算或重设。群聊已醒后与私聊共用接话流程；只在本轮结束后恢复群聊抽签。主动冒泡与收到来信后的回复分别控制，不能因冒泡冷却拒答来信；日程按原排程，不额外安排潜水检查。'
+    +(w.recommendedHint?'\n【管理员交流偏好】'+String(w.recommendedHint):'');
 }
 
 function buildReminderLine(items, key = '') {
@@ -73,7 +80,7 @@ export function createPlugin(ctx) {
       beforePrompt(payload = {}) {
         if (/^(memoryWrite|selfReview|selfOptimize|slangLearn)$/.test(String(payload?.reason||''))) return '';
         if(payload.budgetStage==='weak')return ''; // Fixed budget batches do not enter normal wake/wait loops.
-        if(on('wake'))ctx.addPromptBlock(buildWakeGuidance(payload.wakeConfig || {}, payload.proactivePolicy || null));
+        if(on('wake'))ctx.addPromptBlock(activeWakeGuidance(payload.wakeConfig || {}));
         if (on('muted') && payload.mutedJustClearedNow) {
           ctx.addPromptBlock('【刚解除静音】对方之前说过忙/别吵/等会再聊，现在他主动找你。可以正常回，但简短一点，别提“你刚才说忙”，也别借机多聊；对方没叫你时不要再主动搭话。');
         }

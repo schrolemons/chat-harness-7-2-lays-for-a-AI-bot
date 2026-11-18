@@ -37,10 +37,22 @@ test('stage math combines mood and willingness, signed intervals and positive fl
   assert.equal(typeof policyModule.effectiveProactiveStage, 'function', 'stage math exists');
   const p = policyModule.normalizeProactivePolicy({});
   const v = policyModule.effectiveProactiveStage(p, 2, 0, { frequencyFactor: .2 });
-  assert.ok(Math.abs(v.effectiveProbability - .014) < 1e-10);
-  assert.deepEqual(v.effectiveInterval, { minMinutes: 25.48, maxMinutes: 54.879999999999995 });
+  assert.ok(Math.abs(v.effectiveProbability - .07) < 1e-10);
+  assert.ok(Math.abs(v.effectiveInterval.minMinutes - 23.4) < 1e-10);
+  assert.ok(Math.abs(v.effectiveInterval.maxMinutes - 50.4) < 1e-10);
   const high = policyModule.effectiveProactiveStage(p, 100, 100, { frequencyFactor: 1 });
   assert.equal(high.effectiveProbability, .85); assert.equal(high.effectiveInterval.minMinutes, 1);
+});
+
+test('wake probability softens availability suppression without changing send quota scaling', async () => {
+  const {planReplyShape} = await import('../src/reply-shape.js');
+  const p = policyModule.normalizeProactivePolicy({initialProbability:.5});
+  const wake = policyModule.effectiveProactiveStage(p, 0, 25, {score:50});
+  assert.ok(Math.abs(wake.effectiveProbability - .2449489742783178) < 1e-10);
+  const send = planReplyShape({config:{maxSendPerMinute:16,maxSendPerHour:200},mood:{score:50},willingness:25});
+  assert.equal(send.maxSendPerMinute,4);
+  assert.equal(send.maxSendPerHour,48);
+  assert.ok(policyModule.effectiveProactiveStage(p,0,15,{score:50}).effectiveProbability < wake.effectiveProbability);
 });
 test('refresh creates one durable plan without rerolling; reload reconstructs same due', () => {
   const f = fixture(); f.service.observe({ key: 'private:1', at: noon, kind: 'incoming', hasText: true, eventId: 'a' });
@@ -97,13 +109,13 @@ test('AI willingness is explicit, strict, independent, and no-send release is no
   assert.equal(f.requests(), 1); assert.equal(f.service.preview({ key }).phase, 'accepted');
   assert.equal(f.state().proactiveByKey[key].lastActivityAt, undefined);
   f.service.finished({ key, now: p.nextAt + minute });
-  assert.notEqual(f.service.preview({ key }).phase, 'accepted'); assert.equal(f.service.preview({ key }).source, 'ai');
+  assert.notEqual(f.service.preview({ key,now:p.nextAt+minute }).phase, 'accepted'); assert.equal(f.service.preview({ key,now:p.nextAt+minute }).source, 'ai');
   assert.equal(f.service.preview({ key }).lastAI.reason, '明确等到明天');
 });
 test('actual ordinary replies preserve willingness; private and group states are separate', () => {
   const f = fixture(); f.service.setWillingness({ key: 'private:1', value: 24, reason: '等回复', now: noon });
   f.service.observe({ key: 'private:1', kind: 'sent', reason: 'message', hasText: true, at: noon });
-  assert.equal(f.service.preview({ key: 'private:1' }).willingness, 24); assert.equal(f.service.preview({ key: 'group:1' }).willingness, 60);
+  assert.equal(f.service.preview({ key: 'private:1', now:noon }).willingness, 24); assert.equal(f.service.preview({ key: 'group:1', now:noon }).willingness, 60);
 });
 test('no-send release retains true silence origin and schedules a finite fresh interval', async () => {
   const f = fixture({ maxSilenceMinutes: 30, initialProbability: 0 }); const key = 'private:3';
@@ -115,8 +127,8 @@ test('no-send release retains true silence origin and schedules a finite fresh i
   const next = f.service.refresh({ key, now: due + minute, random: () => 0 });
   assert.ok(next.nextAt > due + minute); assert.equal(f.service.preview({ key }).stage, 0);
 });
-test('maximum silence forces only at boundary; min active gap remains a hard boundary', async () => {
-  const f = fixture({ maxSilenceMinutes: 30, initialProbability: 0 }); const key = 'private:4';
+test('maximum silence keeps its original boundary before unanswered willingness decays', async () => {
+  const f = fixture({ maxSilenceMinutes: 30, initialProbability: 0,unansweredAfterMinutes:60 }); const key = 'private:4';
   f.service.observe({ key, at: noon, kind: 'sent', reason: 'proactiveCheck', hasText: true, eventId: 'out' });
   const due = f.service.refresh({ key, now: noon, random: () => .99 }).nextAt;
   assert.equal(due, noon + 30 * minute);
@@ -136,7 +148,7 @@ test('preview never mutates persisted state or random plans and disabled mood us
   const f = fixture(); const key = 'private:9'; f.facts({ mood: { enabled: false, score: 0 } });
   f.service.plan({ key, now: noon, facts: { allowed: true, budgetAllowed: true, mood: { enabled: false, score: 0 } }, random: () => .5 });
   const before = structuredClone(f.state());
-  assert.ok(Math.abs(f.service.preview({ key, now: noon }).effectiveProbability - .102) < 1e-10);
+  assert.ok(Math.abs(f.service.preview({ key, now: noon }).effectiveProbability - .1236931687685298) < 1e-10);
   f.service.preview({ key, now: noon + 100 * minute }); assert.deepEqual(f.state(), before);
 });
 test('late activity cannot reset a newer episode or spend willingness twice across reload', () => {
@@ -186,7 +198,7 @@ test('activity preserves objective availability and its AI evidence', () => {
   const f = fixture(), key = 'private:8';
   f.service.setWillingness({ key, value: 45, reason: '先等一等', now: noon });
   f.service.observe({ key, kind: 'incoming', at: noon + minute, hasText: true, eventId: 'back' });
-  const preview = f.service.preview({ key }); assert.equal(preview.willingness, 45); assert.equal(preview.source, 'ai'); assert.equal(preview.lastAI.value, 45);
+  const preview = f.service.preview({ key, now:noon+minute }); assert.equal(preview.willingness, 45); assert.equal(preview.source, 'ai'); assert.equal(preview.lastAI.value, 45);
 });
 
 

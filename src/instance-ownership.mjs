@@ -245,7 +245,7 @@ export function createProcessOwnership({ instanceId, nonce, probeProcess: probe 
   if (!text(instanceId) || !text(nonce)) throw fail('INVALID_OWNERSHIP', 'Instance ID and invocation nonce are required');
   const records = [];
   const registrations = new Set();
-  let uncertainAdmission = false;
+  const uncertainChildren = new Set();
   let closed = false;
   let registrationDrain;
   let stopping;
@@ -270,11 +270,12 @@ export function createProcessOwnership({ instanceId, nonce, probeProcess: probe 
           const record = Object.freeze({ pid: live.pid, startTime: live.startTime, executablePath: live.executablePath, commandPath, instanceId, nonce, ownership: 'spawned' });
           ownedRecords.set(record, { child, probe, terminateProcess });
           records.push(record);
+          uncertainChildren.delete(child);
           return record;
         } catch (error) {
           // Remember settled failures too: the child was already spawned, but
           // there is no verified record that shutdown can safely terminate.
-          uncertainAdmission = true;
+          uncertainChildren.add(child);
           registeredChildren.delete(child);
           throw error;
         }
@@ -286,9 +287,9 @@ export function createProcessOwnership({ instanceId, nonce, probeProcess: probe 
       closed = true;
       registrationDrain ??= Promise.allSettled([...registrations]);
       stopping ??= (async () => {
-        const outcomes = await registrationDrain;
+        await registrationDrain;
         const result = await stopOwnedProcesses(records, { probeProcess: probe, terminateProcess });
-        if (uncertainAdmission || outcomes.some(outcome => outcome.status === 'rejected')) {
+        if ([...uncertainChildren].some(child=>child.exitCode===null&&child.signalCode===null)) {
           throw fail('OWNERSHIP_UNCERTAIN', 'An admitted child could not be verified; shutdown cannot be declared complete');
         }
         return result;

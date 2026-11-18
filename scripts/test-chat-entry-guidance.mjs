@@ -5,9 +5,11 @@ import {compileModules} from '../plugins/qq-components/obs-context-assembly/poli
 import {MULTI_MESSAGE_REPLY_POLICY} from '../src/qq-reply-policy.js';
 import fs from 'node:fs';
 const plugin=()=>{let data={};return createPlugin({config:{},state:{get:()=>data,set:patch=>Object.assign(data,patch)},warn:()=>{},log:()=>{},capabilities:{}});};
-test('wake, inline and authoritative preset contracts group multiple inputs even when answering once',()=>{
- const contracts=[plugin().hooks.wakeTail({key:'group:1',reason:'probability'}),MULTI_MESSAGE_REPLY_POLICY,fs.readFileSync(new URL('../dsh/agent-presets/qq-chat-v2/agent.cordis.yml',import.meta.url),'utf8')];
- for(const text of contracts){assert.match(text,/多条来信/);assert.match(text,/只发一条/);assert.match(text,/先.*qq_reply_contents/);assert.match(text,/contentId/);}
+test('wake permits inline grouping of selected sources and retains standalone fallback contracts',()=>{
+ const wake=plugin().hooks.wakeTail({key:'group:1',reason:'probability'});assert.match(wake,/sourceSeqs/);assert.match(wake,/发送中完成分组/);assert.match(wake,/实际回应的准确seq/);assert.match(wake,/已有contentId沿用/);
+ const preset=fs.readFileSync(new URL('../dsh/agent-presets/qq-chat-v2/agent.cordis.yml',import.meta.url),'utf8');assert.match(preset,/sourceSeqs/);assert.match(preset,/已有contentId就沿用/);
+ const contracts=[MULTI_MESSAGE_REPLY_POLICY];
+ for(const text of contracts){assert.match(text,/同一人连续补充/);assert.match(text,/一条自然消息/);assert.match(text,/缺少.*qq_reply_contents/);assert.match(text,/contentId/);assert.match(text,/普通群聊可以只读不插话/);}
 });
 test('private entry guidance contains private decisions and never uses the group-only action paragraph',()=>{
  const text=plugin().hooks.wakeTail({key:'private:1',reason:'private',triggeredLine:''});assert.match(text,/私聊/);assert(!/群里在聊什么|群聊正热|没人叫你/.test(text));assert.match(text,/qq_wait_for_messages/);

@@ -35,6 +35,9 @@ export function resolveSleepAvailability({key,state:s,now,baseline,callService})
   const call=(service,method,payload)=>{try{const v=callService?.(service,method,payload);return v&&typeof v.then!=='function'?v:null;}catch{return null;}};
   const plan=call('availability','getPlan',{key});
   if(plan?.quietNow===true)return review('current-quiet-plan');
+  if(Number(s.lastIncomingAt)>s.lastAI.at){
+    return {...s,willingness:baseline,source:'incoming-after-sleep',availabilityRecovery:{assessmentAt:s.lastAI.at,at:now,source:'actual-private-incoming',previousValue:s.willingness,value:baseline},review:{required:true,reason:'new-incoming-after-sleep'}};
+  }
   const routines=call('profileStore','availabilityRoutine',{key})||{};
   const currentMinute=Math.floor(((now+OFFSET)%DAY+DAY)%DAY/60000);
   const working=(routines.work||[]).some(r=>{
@@ -58,9 +61,23 @@ export function resolveSleepAvailability({key,state:s,now,baseline,callService})
     availabilityRecovery:{assessmentAt:s.lastAI.at,at:now,boundary,source,previousValue:s.willingness,value},
     review:{required:true,reason:'sleep-evidence-expired',boundary}};
 }
+export function resolveAvailabilityEvidence(input){
+  const s=resolveSleepAvailability(input),{key,now,baseline,callService}=input;
+  // A one-off meeting/night comment is not evidence of availability days later.
+  // Private sleep retains its stronger, user-confirmed boundary requirements.
+  if(!s.lastAI||!Number.isFinite(s.lastAI.at)||now-s.lastAI.at<DAY
+    ||s.availabilityRecovery?.assessmentAt===s.lastAI.at
+    ||(/^private:/.test(String(key))&&sleepAssessment(s)))return s;
+  let plan;try{plan=callService?.('availability','getPlan',{key});}catch{}
+  if(plan?.quietNow===true)return s;
+  return {...s,willingness:baseline,source:'evidence-expired',
+    availabilityRecovery:{assessmentAt:s.lastAI.at,at:now,source:'stale-assessment',previousValue:s.willingness,value:baseline},
+    review:{required:true,reason:'availability-evidence-expired'}};
+}
 export function availabilityReviewText(a){
   if(!a?.review?.required)return '';
+  if(['evidence-expired','incoming-after-sleep'].includes(a.source))return '【聊天可用度】'+new Date(a.lastAI.at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})+' 的临时评估'+(a.source==='incoming-after-sleep'?'已被之后的真实私聊来信取代':'已过期')+'，当前使用中性值'+a.willingness+'/100。旧评估中的相对日期、没来信或忙碌描述不是今天事实。这不证明对方一直有空，已有免打扰仍有效；本轮有真实来信就先回复，不为复核先加一次模型调用。本人当前明确表达忙闲或给出新约定时，在正文发送成功后用 qq_set_wake_config 的 chatWillingness、reason、availabilityAssessment 登记新依据；没有新证据无需反复评估，不从未回复推断忙碌或冷落。';
   return '【聊天可用度复核】上次评估 '+a.lastAI.value+'/100，依据：'+String(a.lastAI.reason).slice(0,300)+'。'
-    +(a.source==='sleep-expired'?'该段睡眠依据已到已确认的结束边界，不再沿用旧睡眠降分；当前可用度不证明对方现在有空。':'该睡眠评估不能无限沿用；起床边界未确认或当前仍有忙碌/免打扰依据。')
+    +(a.source==='evidence-expired'?'该次临时忙碌/群聊时段评估已超过24小时，暂回中性值待复核；这不证明对方现在有空，已有免打扰约定继续有效。':a.source==='sleep-expired'?'该段睡眠依据已到已确认的结束边界，不再沿用旧睡眠降分；当前可用度不证明对方现在有空。':'该睡眠评估不能无限沿用；起床边界未确认或当前仍有忙碌/免打扰依据。')
     +'结合本轮真实来信、本人确认作息和最新约定复核；没有证据不要声称已醒或有空，不从未回复推断忙碌。需要更新时用 qq_set_wake_config 的 chatWillingness、reason、availabilityAssessment 登记类型和用户明确给出的结束时间；仍在休息或忙碌就保留低值。免打扰和发送限制仍生效，不因复核额外发送问候。';
 }

@@ -1,7 +1,7 @@
 // 会话事实/身份组件回归测试：node scripts/test-context-session.mjs
 import fs from 'node:fs';
 import { createPlugin } from '../plugins/qq-components/ctx-context-session/index.js';
-import { createPluginHost } from '../src/plugin-host.js';
+import { bridgeHarness } from './audit-bridge-harness.mjs';
 
 let failed = 0;
 const check = (name, ok, detail) => {
@@ -37,7 +37,7 @@ const payload = {
 const text = build(payload);
 
 check('角色名', text.includes('【当前角色】AI助手'));
-check('身份（昵称+QQ）', text.includes('AI助手') && text.includes('10002') && text.includes('不要当成别人'));
+check('身份（昵称+QQ）与引用范围', text.includes('AI助手') && text.includes('10002') && text.includes('顶层at目标ID') && text.includes('旧内容里出现@你，不代表本句又在叫你'));
 check('会话令牌', text.includes('【会话令牌】token-abc'));
 check('状态：未读', text.includes('未读 2 条'));
 check('状态：最近来信', text.includes('十二') && !text.includes('问你个事'));
@@ -51,7 +51,7 @@ check('无事实时只留状态', noSt.includes('未读 0 条') && !noSt.include
 const disabled = build(payload, { disabledBlocks: ['token', 'initialPrompt'] });
 check('disabledBlocks 生效', !disabled.includes('会话令牌') && !disabled.includes('本群氛围') && disabled.includes('当前角色'));
 
-const host = createPluginHost({ root: process.cwd(), capabilities: {} });
+const harness=await bridgeHarness();const host=harness.pluginHost;
 const summary = await host.loadAll();
 check('插件宿主加载（至少 27 个）', summary.count >= 27, 'count=' + summary.count);
 check('宿主加载无警告', summary.warnings.length === 0, JSON.stringify(summary.warnings));
@@ -66,5 +66,6 @@ check('bridge 主唤醒组装不再有 roleLine/identityLine/tokenLine/statusLin
   !/const (roleLine|identityLine|tokenLine|statusLine|initialPromptLine) =/.test(seg));
 check('bridge payload 带身份事实', ['roleName:', 'selfName:', 'selfId:', 'agentToken:', 'initialPromptText:'].every((k) => bridge.includes(k)));
 
+await harness.close();
 if (failed) { console.error(`\n${failed} 项失败`); process.exit(1); }
 console.log('\n会话事实组件测试通过');

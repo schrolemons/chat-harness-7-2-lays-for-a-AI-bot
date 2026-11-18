@@ -7,6 +7,7 @@ export function createPlugin(ctx) {
     return Math.round(clamp(base));
   }
   const mood = createMoodLedger(ctx, () => moodPolicy(ctx.config));
+  mood.enforceMinimum();
   return { validateConfig: validateMoodConfig, hooks: { onTick(payload = {}) {
     const result = mood.settle(payload);
     if (mood.policy().enabled === false) return result;

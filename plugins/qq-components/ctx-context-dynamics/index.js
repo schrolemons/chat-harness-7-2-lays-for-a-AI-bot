@@ -10,19 +10,16 @@
 import { buildStickerContext, findSticker } from '../../../src/sticker-lib.js';
 import {splitPromptUnicode} from '../../../src/prompt-unicode.js';
 const expressionURL=new URL('./expression-policy.mjs',import.meta.url);expressionURL.search=new URL(import.meta.url).search;
-const {buildStickerStrategyHint,recentExpressionHint,expressionTail,repeatedExpressionTails,currentDialogueExamples,SHORT_CHAT_EXAMPLES}=await import(expressionURL.href);
+const {buildStickerStrategyHint,recentExpressionHint,expressionTail,repeatedExpressionTails,currentDialogueExamples,validateReceiptMarker,validateRecentRepetition}=await import(expressionURL.href);
 const addressingURL=new URL('./whale-addressing.mjs',import.meta.url);addressingURL.search=new URL(import.meta.url).search;
 const {resolveWhaleAddressing,renderWhaleAddressing,nicknameRequestActive,validateWhaleAddressing,WHALE_ADDRESS_RULE}=await import(addressingURL.href);
 const softNormalForm=state=>state?.mode!=='critical'&&/普通|友好|自然/.test(String(state?.modeName||'')+'\n'+String(state?.styleInstruction||''));
 
 function buildMoodExpression(moodState,hasAddressing=false) {
   if(!moodState||moodState.enabled===false||!Number.isFinite(moodState.score))return '';
-  const emphasis=!softNormalForm(moodState)?'':
-    "【普通形态的表达重心】清晰、自然、友好。任务解释、受阻说明和收尾都保持准确、有帮助；按当前完整风格配置选择措辞。简短招呼简短回应，分享先回应具体内容；严肃任务先给结论、依据与可执行步骤。不要猜测动机、机械追问或依赖固定口头禅。";
-  return ["【交流目标】根据用户当前意图自然交流或完成任务。招呼、分享和图片先回应实际内容；明确提出任务时给出准确、完整、可核验的帮助。工具、档案与日程按需使用，不让内部流程抢占回复主体。当前形态只调整表达方式，不降低事实、任务和安全要求。",
-    '【聊天风格优先】先按人设卡与下面的完整示范决定措辞、亲疏和节奏，再执行工具与任务要求。聊天风格不能被流程说明、发送上限或历史助手口癖替代；示范校准语感，不照抄台词和经历。严肃任务保持准确，身份与安全边界保持。',
-    emphasis,'【当前形态】'+moodState.modeName+'。'+moodState.styleInstruction,
-    currentDialogueExamples(moodState.styleInstruction,moodState.mode),softNormalForm(moodState)?SHORT_CHAT_EXAMPLES:'',hasAddressing?WHALE_ADDRESS_RULE:''].filter(Boolean).join('\n');
+  return ['【交流目标】延续当前角色与管理员选定的形态，日常先接住眼前一句，不默认转成分析、检索或任务；工具和记忆按需要使用。正事保持准确，认真时仍沿用当前语气。下面完整配置是表达依据，旧助手口癖不作示范，不照抄示例事件或经历。',
+    '【当前形态】'+moodState.modeName+'。'+moodState.styleInstruction,
+    hasAddressing?WHALE_ADDRESS_RULE:''].filter(Boolean).join('\n');
 }
 
 function buildMoodBlock(moodState) {
@@ -80,33 +77,49 @@ export function createPlugin(ctx) {
   const referencePolicy = createTurnPolicy(ctx);
   const cfg = ctx.config || {};
   const disabled = new Set(Array.isArray(cfg.disabledBlocks) ? cfg.disabledBlocks.map(String) : []);
-  const expressions=new Map(),recentOwn=new Map(),addressingByKey=new Map();
+  const expressions=new Map(),recentOwn=new Map(),addressingByKey=new Map(),privateWindows=new Map();
+  const latestSeq=st=>Math.max(0,...[...(st?.recentMessages||[]),...(st?.unread||[])].filter(m=>m&&!m.isSelf&&Number.isSafeInteger(m.seq)).map(m=>m.seq));
+  const inputStamp=payload=>{
+    try{
+      const history=ctx.capabilities?.readLocalConversationHistory?.({key:payload.key,limit:20,forLookup:true});
+      const id=String(payload.key||'').split(':')[1];
+      const event=history?.ok&&history.messages?.findLast(e=>e.message_type==='private'&&String(e.user_id)===id&&(!payload.selfId||e.self_id==null||String(e.self_id)===String(payload.selfId)));
+      const messageId=event?.message_id??event?.msg_id??event?.message_seq;
+      return messageId==null?null:String(messageId);
+    }catch{return null;}
+  };
   return {
     services:{chatExpression:{current({key}={}){const value=expressions.get(key);return value?{...value}:null;},validate({key,text,kind}={}){
+      if(kind==='text'&&/示例禁词|私聊用户|群聊用户/.test(String(text||'')))return {ok:false,reason:'disallowed_chat_wording',hint:'本条尚未发送。删去被禁止的叠词或渠道标签称呼，按对方已约定的称呼或真实昵称自然接话；不要向对方解释检查过程。'};
+      const window=privateWindows.get(key);
+      const stamp=kind==='text'&&window?inputStamp(window):null;
+      if(kind==='text'&&window&&(latestSeq(window.st)>window.throughSeq||stamp!==null&&window.inputStamp!==null&&stamp!==window.inputStamp))return {ok:false,reason:'new_private_input',hint:'生成回复期间有新的私聊来信到达，本条尚未发送。先读取当前未读消息并结合最新回答重写，已经回答的问题不要再问；不要重发旧草稿。'};
+      const protocol=validateReceiptMarker({text,kind});if(!protocol.ok)return protocol;
+      const repeat=validateRecentRepetition({text,kind,messages:recentOwn.get(key)});if(!repeat.ok)return repeat;
       const addressed=validateWhaleAddressing(addressingByKey.get(key),{text,kind});if(!addressed.ok)return addressed;
       const tail=kind==='text'?expressionTail(text):'';
       return tail&&repeatedExpressionTails(recentOwn.get(key)).some(([used])=>used===tail)?{ok:false,reason:'repeated_expression_tail',hint:'这个句尾已在近期重复使用。按当前完整示范重新接话，直接自然收句；不要换一个颜文字补位，不要解释规则。'}:{ok:true};
     }}},
     hooks: {
       beforePrompt(payload = {}) {
+        if(String(payload.key||'').startsWith('private:')&&payload.st){privateWindows.set(payload.key,{key:payload.key,selfId:payload.selfId,st:payload.st,throughSeq:latestSeq(payload.st),inputStamp:inputStamp(payload)});if(privateWindows.size>256)privateWindows.delete(privateWindows.keys().next().value);}
         expressions.delete(payload.key);
         addressingByKey.delete(payload.key);
         const own=payload.recentOwnMessages||payload.st?.recentMessages||[];
         recentOwn.set(payload.key,own.filter(m=>m?.isSelf).slice(-6));if(recentOwn.size>256)recentOwn.delete(recentOwn.keys().next().value);
         if (/^(memoryWrite|selfReview|selfOptimize|userFeedbackReview|slangLearn)$/.test(String(payload?.reason||''))) return '';
         if (!disabled.has('mood')) {
-          const addressing=resolveWhaleAddressing(payload,ctx.capabilities?.getOwnerQQ?.());
+          const addressing=resolveWhaleAddressing(payload,ctx.capabilities?.getOwnerQQ?.(),ctx.capabilities?.readLocalConversationHistory);
           if(addressing){addressing.requestActive=nicknameRequestActive(payload);addressingByKey.set(payload.key,addressing);if(addressingByKey.size>256)addressingByKey.delete(addressingByKey.keys().next().value);}
           const expression=buildMoodExpression(payload.moodState,!!addressing);
           if(expression){
             ctx.addPromptBlock(expression);
             if(/^(private|group):\d+$/.test(String(payload.key||''))){expressions.set(payload.key,{kind:'selected-admin-style',text:splitPromptUnicode(expression).join('\n\n')});if(expressions.size>256)expressions.delete(expressions.keys().next().value);}
           }
-          if(payload.moodState?.enabled!==false&&Number.isFinite(payload.moodState?.score))ctx.addPromptBlock('【心情数值】'+payload.moodState.score+'/100；数值影响当前态度与节奏，表达按系统中的选定形态与示范。');
+          if(payload.moodState?.enabled!==false&&Number.isFinite(payload.moodState?.score))ctx.addPromptBlock('【心情数值】'+payload.moodState.score+'/100；当前选定'+payload.moodState.modeName+'形态。分数不是受冷落或失落的事实，语气按当前完整形态；沉默和历史余额查询不自动构成新的情绪依据。');
           if(payload.moodState?.enabled!==false&&payload.moodState?.styleInstruction){
-            ctx.addPromptBlock(payload.moodState.mode==='critical'?'【本轮表达校准】只按系统中的当前临界形态与完整示范接话，不混入普通形态台词。':!softNormalForm(payload.moodState)?'【本轮表达校准】遵循管理员当前普通形态的完整风格与示范，接住当前内容，不照搬历史口癖或无关角色语气。':"【本轮表达校准】按当前完整风格与对话示例，自然、友好地回应实际内容。闲聊简短，任务按需准确完整；不猜测动机，不机械追问，不把内部风格规则讲给用户。");
+            ctx.addPromptBlock('【本轮表达校准】使用系统中管理员选定的'+(payload.moodState.mode==='critical'?'临界':'普通')+'形态，先接住当前具体内容；历史助手回复不作示范，未分析的图片不编画面，分享状态不自动当成结束聊天。');
             const examples=currentDialogueExamples(payload.moodState.styleInstruction,payload.moodState.mode);if(examples)ctx.addPromptBlock(examples);
-            if(softNormalForm(payload.moodState))ctx.addPromptBlock(SHORT_CHAT_EXAMPLES);
           }
           if(addressing&&expression)ctx.addPromptBlock(renderWhaleAddressing(addressing,{soft:softNormalForm(payload.moodState)}));
           if(referencePolicy(payload).mode !== 'off')return '';

@@ -5,6 +5,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import { routineView, routineBlockLines, foodTaste, parseRoutine } from '../../../src/user-routines.js';
 
 const PROFILE_FIELDS = ['routine_food', 'hobbies', 'relationships', 'catchphrases'];
@@ -242,7 +243,21 @@ export function createPlugin(ctx) {
   });
 
   return {
-    services: { profileStore: { isWarmTarget, routineSlots, routineCard, availabilityRoutine } },
+    services: { profileStore: { isWarmTarget, routineSlots, routineCard, availabilityRoutine,
+      workerSnapshot({key,messages=[]}={}){
+        const ids=[...new Set(messages.filter(m=>!m.isSelf&&m.bodyComplete!==false).map(m=>String(m.userId||'')))].filter(id=>/^[1-9]\d*$/.test(id)&&(key==='private:'+id||/^group:[1-9]\d*$/.test(String(key))));
+        const all=readPersonProfiles().profiles||{},hash=p=>createHash('sha256').update(JSON.stringify(profileDoc(p||{}))).digest('hex');
+        return {profiles:ids.map(userId=>({userId,profile:visibleProfile(profileDoc(all[userId]||{}),key)})),revisions:Object.fromEntries(ids.map(id=>[id,hash(all[id])]))};
+      },
+      workerApply({key,userId,profile,evidence,messages=[],revision}={}){
+        const snapshot=this.workerSnapshot({key,messages});
+        if(!snapshot.revisions[userId])return {ok:false,reason:'speaker_out_of_scope'};
+        if(revision!==snapshot.revisions[userId])return {ok:false,reason:'profile_changed'};
+        if(!profile||typeof profile!=='object'||Array.isArray(profile)||!Object.keys(profile).length||Object.entries(profile).some(([field,value])=>typeof value!=='string'||value.length>10000||!(/^[a-z][a-z0-9_]{0,63}$/i.test(field))||(key.startsWith('group:')&&!PROFILE_FIELDS.includes(field))))return {ok:false,reason:'invalid_fields'};
+        if(!Array.isArray(evidence)||!evidence.length||evidence.some(e=>typeof e?.quote!=='string'||!e.quote.trim()||!messages.some(m=>m.seq===e.seq&&!m.isSelf&&m.bodyComplete!==false&&String(m.userId)===String(userId)&&String(m.ownPlain||m.plain||m.text||'').includes(e.quote))))return {ok:false,reason:'missing_speaker_evidence'};
+        return {ok:updatePerson(String(userId),profile)};
+      }
+    } },
     hooks: {
       onIncoming(payload) {
         const text = String(payload?.text ?? '');

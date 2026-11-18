@@ -61,6 +61,7 @@ test('diary MCP is available to private/group chat, forwards scoped calls and fo
    assert.equal(TOOL_CONFIG_FLAGS.qq_diary,'memory');assert.equal(isAdminToolName('mcp__snowluma__qq_diary'),false);
    for(const key of ['private:123','group:456']){
     const result=await client.callTool({name:'qq_diary',arguments:{key,token:'scoped-token',action:'read'}});assert(!result.isError);assert.equal(requests.at(-1).path,'/api/socialV2/diary?key='+encodeURIComponent(key));
+    const historical=await client.callTool({name:'qq_diary',arguments:{key,token:'scoped-token',action:'read',day:'2026-11-01'}});assert(!historical.isError);assert.equal(requests.at(-1).path,'/api/socialV2/diary?key='+encodeURIComponent(key)+'&day=2026-11-01');
     const write=await client.callTool({name:'qq_diary',arguments:{key,token:'scoped-token',action:'update',day:'2026-11-02',text:'NEW_DIARY'}});assert(!write.isError);assert.deepEqual(requests.at(-1).body,{key,day:'2026-11-02',text:'NEW_DIARY'});assert.equal(requests.at(-1).headers['x-agent-token'],'scoped-token');assert.equal(requests.at(-1).headers['x-agent-call'],'1');
    }
   }finally{await client.close();}

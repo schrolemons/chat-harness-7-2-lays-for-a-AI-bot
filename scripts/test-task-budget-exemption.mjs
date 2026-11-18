@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {bridgeHarness} from './audit-bridge-harness.mjs';
 import {createPlugin} from '../plugins/qq-components/life-token-budget/index.js';
 const budgetFile='state/plugins/config/life-token-budget.json';
-const billed=sessionId=>({sessionId,at:Date.now()-10,model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1_000_000,outputTokens:100}}}});
+const billed=sessionId=>({sessionId,at:Date.now()-10,model:'deepseek-flash',provider:'deepseek-official',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1_000_000,outputTokens:100}}}});
 const config={ownerBudgetEnabled:true,globalHardLimitYuan:0.1};
 function seedPaidTask(h,originKey,taskId='job'){const groupId='fixture:'+taskId,plan=h.pluginHost.callService('replyPlan','resolve',{key:originKey,turnId:taskId,taskExempt:true});const credit=h.pluginHost.callService('replyPlan','claimTaskGroup',{key:originKey,groupId,plan});assert.equal(credit.ok,true);h.tasksStore[taskId].budgetAdmission={id:taskId,originKey,admittedAt:Date.now()-1,groupId,creditId:credit.admission.id,sourceSeqs:[]};}
 async function exhaust(h,key='private:123'){const sid=await h.ensureSession(key);h.tokenLedger.ingestEvent(billed(sid));assert.equal(h.tokenBudgetOf(key).stage,'silent');return sid;}

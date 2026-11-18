@@ -1,4 +1,4 @@
-const LABELS = {'qq-chat':'AI助手一代聊天','qq-chat-v2':'AI助手二代仿真','qq-admin':'AI助手管理员','qq-chat-dev':'AI助手管理员','qq-learning':'知识与黑话学习','qq-task-worker':'独立任务','campus-summary':'网页更新整理'};
+const LABELS = {'qq-chat':'AI助手一代聊天','qq-chat-v2':'AI助手二代仿真','qq-admin':'AI助手管理员','qq-chat-dev':'AI助手管理员','qq-learning':'知识与黑话学习','qq-memory-worker':'记忆整理','qq-task-worker':'独立任务','campus-summary':'网页更新整理'};
 export function isUnnamedTitle(title) { return !String(title??'').trim() || /^(?:未命名(?:会话)?|untitled|new chat)$/i.test(String(title).trim()); }
 export function sessionTitle({sessionId='',agentPreset='',cwd='',title='',key=''}={}) {
   const clean=value=>String(value).replace(/[\x00-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g,'').replace(/\s+/g,' ').trim();

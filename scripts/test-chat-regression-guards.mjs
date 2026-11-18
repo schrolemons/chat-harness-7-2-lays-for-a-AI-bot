@@ -153,3 +153,14 @@ test('two identical token/network send errors stop blind retries, while fresh us
  await f.step([{id:'fresh',role:'user',content:[{type:'text',text:'新的问题'}]}]);assert.equal((await f.step()).decision.kind,'enter');
  f.failure('mcp__snowluma__qq_reply','网络超时');f.failure('mcp__snowluma__qq_reply','网络超时');await f.step([{role:'tool',toolCallId:'tool-result',content:[]}]);assert.equal((await f.step()).decision.kind,'reject','tool results do not impersonate new human input');
 });
+test('automatic QQ context refreshes never impersonate new human input after repeated failures',async()=>{
+ const f=await guardFixture();f.failure(undefined,'source_already_replied');f.failure(undefined,'source_already_replied');
+ for(const kind of ['qq-context-current','qq-context-task','qq-context-stable','qq-context-update','qq-context-retired'])assert.equal((await f.step([{role:'user',source:{kind},content:[{type:'text',text:'automatic state refresh'}]}])).decision.kind,'reject');
+});
+test('the same QQ source cannot reset a failure streak twice, but a genuinely new seq can',async()=>{
+ const f=await guardFixture(),message=seq=>({role:'user',source:{kind:'qq-context-dialogue',key:'group:456',seqs:[seq]},content:[{type:'text',text:'source data'}]});
+ await f.step([message(7)]);f.failure(undefined,'source_already_replied');f.failure(undefined,'source_already_replied');assert.equal((await f.step([message(7)])).decision.kind,'reject');assert.equal((await f.step([message(8)])).decision.kind,'enter');
+});
+test('receipt and wait deadlocks terminate even when their error messages alternate',async()=>{
+ const f=await guardFixture();f.failure('mcp__snowluma__qq_report_message_receipts','双戳回执更新失败：没有对应的成功发送记录');f.failure('mcp__snowluma__qq_wait_for_messages','等待失败：仍有未完成的入站消息，必须先读取并处理');assert.equal((await f.step()).decision.kind,'reject');
+});

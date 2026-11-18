@@ -34,7 +34,7 @@ export function createModelPolicyController({fetchCatalog,fetchPresets,readPolic
   if(body.revision!==modelPolicyRevision(readPolicy()))throw Object.assign(Error('模型配置在校验期间发生变化，请重新读取'),{status:409});
   const config=normalizeModelPolicy(current),result=await savePolicy(config);
   if(!result.ok)throw Object.assign(Error(result.error||'模型配置保存失败'),{status:400});
-  let sync;try{sync=await synchronize();}catch(error){sync={ok:false,error:error.message};}
+  let sync;try{sync=await synchronize({...(body.scope==='global'||body.scope==='conversation'?{globalDefault:config.conversation}:{})});}catch(error){sync={ok:false,error:error.message};}
   return {ok:sync?.ok===true,saved:true,config,revision:modelPolicyRevision(config),sync,error:sync?.ok===true?undefined:'模型配置已保存，但部分会话同步失败；请重新读取并检查同步结果'};
  }
  return {catalog,async route({req,url,readBody,sendJson}){
@@ -42,7 +42,7 @@ export function createModelPolicyController({fetchCatalog,fetchPresets,readPolic
    try{sendJson({ok:true,...await catalog(),source:'dsh'});}catch{sendJson({ok:false,error:'无法读取 DSH 模型目录，请刷新重试'},503);}return true;
   }
   if(url.pathname==='/api/presets/model-policy'&&req.method==='GET'){
-   try{const presets=await presetList(),config=normalizeModelPolicy(readPolicy());sendJson({ok:true,config,revision:modelPolicyRevision(config),presets,globalSideEffect:true,supportsGlobalDefault:true});}
+   try{const presets=await presetList(),config=normalizeModelPolicy(readPolicy());sendJson({ok:true,config,revision:modelPolicyRevision(config),presets,globalSideEffect:false,supportsGlobalDefault:true});}
    catch{sendJson({ok:false,error:'无法读取预设模型设置或 DSH 预设目录'},503);}return true;
   }
   if(url.pathname==='/api/presets/model-policy'&&req.method==='POST'){
@@ -50,7 +50,7 @@ export function createModelPolicyController({fetchCatalog,fetchPresets,readPolic
    catch(error){sendJson({ok:false,error:error.message},error.status||400);}return true;
   }
   if(req.method==='GET'&&url.pathname==='/api/dsh/model'){
-   try{const config=readPolicy(),current=selectCostPolicy(config,{purpose:'conversation'});sendJson({...current,policySource:'preset-overview',default:config.conversation.effort,globalSideEffect:true});}
+   try{const config=readPolicy(),current=selectCostPolicy(config,{purpose:'conversation'});sendJson({...current,policySource:'preset-overview',default:config.conversation.effort,globalSideEffect:false});}
    catch{sendJson({ok:false,error:'模型配置不可读'},503);}return true;
   }
   if(req.method==='POST'&&url.pathname==='/api/dsh/effort'){

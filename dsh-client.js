@@ -173,9 +173,14 @@ window.__ModuleLoader__.load({
           color = ready ? '#22c55e' : '#f59e0b';
         }
         if (state === 'stopped') { text = '已停止'; color = '#ef4444'; }
-        if (state === 'failed' || data.runtime?.lastError) {
+        if (state === 'failed' || data.runtime?.uncertain) {
           text = data.runtime.lastError?.message || '服务运行失败';
           color = '#ef4444';
+        } else if (data.runtime?.lastError) {
+          text += '\n最近记录的任务错误：' + data.runtime.lastError.message;
+          // A historical side-task failure is not the current transport state.
+          // Keep the connected indicator green; retain the diagnosis in title.
+          if (state !== 'running' || data.readiness !== 'ready') color = '#f59e0b';
         }
         if (data.needsRestart) text += '\n配置需重启后应用';
         paint(text, color);

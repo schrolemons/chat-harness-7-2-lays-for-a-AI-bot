@@ -8,7 +8,7 @@ test('scheduled milk changes do not bypass hard model budget with a mechanical n
  const h=await bridgeHarness({config:{sendDelayMs:0},files:{'state/plugins/config/life-token-budget.json':{ownerBudgetEnabled:true,globalHardLimitYuan:.1},'state/plugins/config/ctx-chat-reply-shape.json':{intervalMinMs:0,intervalMaxMs:0,longGapProbability:0,maxSendPerMinute:100,maxSendPerHour:100}}});
  try{
   h.setMode('reserved2');const key='private:123',sessionId=await h.ensureSession(key);
-  h.tokenLedger.ingestEvent({sessionId,at:Date.now()-10,model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1000000,outputTokens:100}}}});
+  h.tokenLedger.ingestEvent({sessionId,at:Date.now()-10,provider:'deepseek-official',model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1000000,outputTokens:100}}}});
   assert.equal(h.tokenBudgetOf(key).stage,'silent');
   let state={},now=Date.now(),amount='10.00';
   const monitor=createMilkMonitor({config:{},capabilities:h.taskCaps,state:{get:()=>state,set:p=>state={...state,...p}}},{clock:()=>now,query:async()=>({ok:true,is_available:amount!=='0.00',balance_infos:[{currency:'CNY',total_balance:amount,granted_balance:'0',topped_up_balance:amount}]})});

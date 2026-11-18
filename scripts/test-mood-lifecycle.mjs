@@ -14,7 +14,7 @@ async function fixture(t, config = {}, seed) {
   fs.cpSync(new URL('../plugins/qq-components/ctx-user-mood/', import.meta.url), path.join(root, 'plugins/qq-components/ctx-user-mood'), { recursive: true });
   const stateDir = path.join(root, 'state/plugins');
   fs.mkdirSync(path.join(stateDir, 'config'), { recursive: true });
-  fs.writeFileSync(path.join(stateDir, 'config/ctx-user-mood.json'), JSON.stringify(config));
+  fs.writeFileSync(path.join(stateDir, 'config/ctx-user-mood.json'), JSON.stringify({minimumScore:0,dailyFloor:60,...config}));
   if (seed) fs.writeFileSync(path.join(stateDir, 'ctx-user-mood.json'), JSON.stringify(seed));
   let host = createPluginHost({ root, startTimers: false });
   await host.loadAll();
@@ -86,11 +86,11 @@ test('adjust validates positive finite amounts, clamps scores and isolates conve
 test('policy uses one configuration owner and disabled mood leaves scheduling neutral', async t => {
   const f = await fixture(t, { enabled: false, initial: 60, noReplyAfterMinutes: 5, decayPerHour: 99, dailyFloor: 99 });
   const policy = f.call('policy');
-  assert.deepEqual({ enabled: policy.enabled, initial: policy.initial, noReplyAfterMinutes: policy.noReplyAfterMinutes }, { enabled: false, initial: 60, noReplyAfterMinutes: 5 });
+  assert.deepEqual({ enabled: policy.enabled, initial: policy.initial, noReplyAfterMinutes: policy.noReplyAfterMinutes }, { enabled: false, initial: 99, noReplyAfterMinutes: 5 });
   assert.equal('decayPerHour' in policy, false);
   assert.equal(f.read().frequencyFactor, 1);
   f.sent(); f.call('settle', { now: T + 100 * minute });
-  assert.equal(f.read().score, 60);
+  assert.equal(f.read().score, 99);
 });
 
 test('image and text no longer trigger a first-message recovery', async t => {
@@ -423,7 +423,7 @@ test('consumption preserves cooldown and a reply after cooldown still consumes i
 test('existing scheduler clears an unused welcome only after the conversation is confirmed idle', async () => {
   const {createPlugin}=await import('../plugins/qq-components/ctx-user-mood/index.js');
   let state={},facts={busy:true,conversationAwake:true};
-  const plugin=createPlugin({config:{},state:{get:()=>structuredClone(state),set:patch=>{state={...state,...structuredClone(patch)};}},capabilities:{getProactiveFacts:()=>facts}});
+  const plugin=createPlugin({config:{minimumScore:0,dailyFloor:60},state:{get:()=>structuredClone(state),set:patch=>{state={...state,...structuredClone(patch)};}},capabilities:{getProactiveFacts:()=>facts}});
   const mood=plugin.services.mood;
   mood.incoming({key,messageId:'welcome',userId:'123',at:T,hasText:true,reengaged:true});
   plugin.hooks.onTick({now:T+30*minute});

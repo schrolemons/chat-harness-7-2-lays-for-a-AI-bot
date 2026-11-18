@@ -1,4 +1,6 @@
 import {createHash} from 'node:crypto';
+const shapeURL=new URL('../../../src/reply-shape.js',import.meta.url);shapeURL.search=new URL(import.meta.url).search;
+const {planReplyShape}=await import(shapeURL.href);
 
 // Source identities survive model calls, wakes and component reloads. The caller
 // supplies only full messages already admitted by the authenticated bridge.
@@ -38,21 +40,30 @@ export function createContentUnits(ctx){
     const sources=seqs.map(seq=>{const m=admitted.get(seq),legacy='legacy:'+digest(m);return {m,key:owner.has(legacy)?legacy:sourceKey(m)};});
     if(new Set(sources.map(x=>x.key)).size!==sources.length)return {ok:false,reason:'source_overlap'};
     const keys=sources.map(x=>x.key).sort(),priorIds=[...new Set(keys.map(source=>owner.get(source)).filter(Boolean))],prior=priorIds.map(id=>s.contents[id]);
+    // One long surrounding window must not turn a short casual source group
+    // into a multipart serious answer. Classify the actual selected meaning.
+    const groupParts=planReplyShape({key,incomingText:sources.map(x=>x.m.text??x.m.plain??'').join('\n'),config:ctx.config||{}}).maxParts;
     for(const c of prior)for(const source of sources.filter(x=>c.sourceKeys.includes(x.key)))if(c.sourceBodies[source.key]!==digest(source.m))return {ok:false,reason:'source_changed'};
     const subset=prior.length===1&&keys.every(source=>prior[0].sourceKeys.includes(source));
     if(!subset&&prior.some(c=>c.sourceKeys.some(source=>!keys.includes(source))))return {ok:false,reason:'grouping_conflict'};
     if(priorIds.some(id=>selected.has(id)))return {ok:false,reason:'grouping_conflict'};
     const changedKind=prior.some(c=>c.kind!==group.kind);
-    if((!subset||changedKind)&&prior.some(c=>started(s,c.id)))return {ok:false,reason:'content_already_started'};
+    // A real owner command may already have received a chat acknowledgement.
+    // The authenticated adapter marks admin eligibility; promote the exact same
+    // complete source group, preserving its ID, deliveries and all counters.
+    // Ordinary eligibility, merges, splits and changed bodies remain rejected.
+    const adminTaskPromotion=task&&subset&&prior.length===1&&prior[0].kind==='chat'
+      &&keys.length===prior[0].sourceKeys.length&&seqs.every(seq=>taskEligible?.[seq]?.eligible===true&&taskEligible[seq].kind==='admin');
+    if((!subset||changedKind)&&!adminTaskPromotion&&prior.some(c=>started(s,c.id)))return {ok:false,reason:'content_already_started'};
     let content;
     if(subset){
-     content={...prior[0],kind:group.kind};
+     content={...prior[0],kind:group.kind,maxParts:Math.min(prior[0].maxParts,groupParts,plan.maxParts??plan.maxMessages)};
      const current=content.sourceKeys.map(source=>[...admitted.values()].find(m=>matchedKey(content,m)===source));
      if(current.every(Boolean)){content.seqs=current.map(m=>m.seq).sort((a,b)=>a-b);content.sources=Object.fromEntries(current.map(m=>[m.seq,digest(m)]));}
     }
     else {
      const id='content:'+createHash('sha256').update(JSON.stringify([key,'sources',keys])).digest('hex').slice(0,32);
-     content={id,key,seqs,sourceKeys:keys,sourceBodies:Object.fromEntries(sources.map(x=>[x.key,digest(x.m)])),kind:group.kind,maxParts:Math.min(plan.maxParts??plan.maxMessages,...prior.map(c=>c.maxParts)),sources:Object.fromEntries(seqs.map(seq=>[seq,digest(admitted.get(seq))]))};
+     content={id,key,seqs,sourceKeys:keys,sourceBodies:Object.fromEntries(sources.map(x=>[x.key,digest(x.m)])),kind:group.kind,maxParts:Math.min(plan.maxParts??plan.maxMessages,groupParts,...prior.map(c=>c.maxParts)),sources:Object.fromEntries(seqs.map(seq=>[seq,digest(admitted.get(seq))]))};
      for(const old of prior){s.contentAliases[old.id]=id;delete s.contents[old.id];}
     }
     s.contents[content.id]=content;
@@ -62,6 +73,15 @@ export function createContentUnits(ctx){
    save(s);return {ok:true,contents:out};
   },
   getContent({key,contentId}={}){const s=load(),c=s.contents[canonical(s,contentId)];return c&&c.key===key?publicContent(c):null;},
+  confirmedReplySources({key,messages=[],finalizedOnly=false}={}){
+   const s=load(),delivered=new Set(Object.values(s.conversations).flatMap(e=>(e.receipts||[]).filter(r=>r.contentId).map(r=>canonical(s,r.contentId)))),seqs=[];
+   for(const message of messages.filter(complete))for(const c of Object.values(s.contents)){
+    if(c.key!==key||!delivered.has(c.id)||!matchedKey(c,message)||c.sourceBodies[matchedKey(c,message)]!==digest(message))continue;
+    if(finalizedOnly&&(c.kind!=='chat'||(s.contentCounts?.[c.id]||0)<c.maxParts||Object.values(s.conversations).some(e=>Object.values(e.reservations||{}).some(r=>canonical(s,r.contentId)===c.id))))continue;
+    seqs.push(message.seq);break;
+   }
+   return {ok:true,seqs:[...new Set(seqs)]};
+  },
   validateReceipts({key,messages=[],receipts=[],taskSources={}}={}){
    const s=load(),admitted=messages.filter(complete),pending=[];
    for(const receipt of receipts)if(receipt?.status==='replied'){
@@ -91,9 +111,20 @@ export function createContentUnits(ctx){
    const content=this.getContent({key:sourceKey,contentId});
    if(!content)return {ok:false,reason:'content_not_found'};
    if(content.taskPending)return {ok:false,reason:'task_group_pending',content};
+   if(replyToMessageId!=null){
+    const target=key===sourceKey&&Array.isArray(messages)?messages.find(m=>String(m.messageId)===String(replyToMessageId)):undefined;
+    const imageRead=ctx.callService?.('imagePerception','validateReply',{key,replyToMessageId,message:target});
+    if(imageRead?.ok===false)return imageRead;
+    if(!imageRead&&(target?.media||[]).some(m=>['image','sticker'].includes(m?.kind)))return {ok:false,reason:'image_reply_requires_analysis',hint:'引用图片前必须先成功解析；按需看图组件当前不可用，不能根据图片占位符作答。'};
+   }
    if(Array.isArray(messages)){
     const admitted=messages.filter(complete),stored=load().contents[content.id];
     if(stored.sourceKeys.some(source=>!admitted.some(m=>matchedKey(stored,m)===source&&stored.sourceBodies[source]===digest(m))))return {ok:false,reason:'source_not_admitted'};
+    if(stored.kind==='chat'&&stored.sourceKeys.length){
+     const originals=stored.sourceKeys.map(source=>admitted.find(m=>matchedKey(stored,m)===source));
+     const completed=originals.every(m=>m&&(Number(m.repliedAt)>0||Number(m.resolvedAt)>0));
+     if(completed)return {ok:false,reason:'source_already_replied',hint:'所选来信已经回复或明确结案，同一回合也不能再次发送。分条发送须在登记回复完成前完成；读取bridge已入站的当前消息并选择新内容，没有新消息就等待，不改写补答旧话题。'};
+    }
    }
    return {ok:true,content,plan:Object.freeze({...plan,contentId:content.id,sourceKey,taskExempt:content.taskExempt,taskPending:content.taskPending,taskGroupId:content.taskGroupAdmission?.groupId,maxParts:content.maxParts,maxMessages:content.maxParts,line:plan.line.replace(/合计最多 \d+ 条/,'合计最多 '+content.maxParts+' 条')})};
   }

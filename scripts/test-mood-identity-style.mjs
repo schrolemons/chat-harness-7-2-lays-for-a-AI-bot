@@ -6,7 +6,7 @@ const collect=(factory,payload)=>{const blocks=[];factory({config:{},addPromptBl
 test('long form examples survive policy normalization and active-form selection',()=>{
  const normal='普通说明'.repeat(180)+'\n用户：回来了\n角色：我在等你分享刚才的事。END-NORMAL';
  const critical='临界说明'.repeat(180)+'\n用户：你在吗\n角色：在。刚才那个问题，我还没有想明白。END-CRITICAL';
- const p=moodPolicy({normalStyle:normal,criticalStyle:critical});
+ const p=moodPolicy({minimumScore:0,normalStyle:normal,criticalStyle:critical});
  for(const [score,end,other] of [[60,'END-NORMAL','END-CRITICAL'],[10,'END-CRITICAL','END-NORMAL']]){
   const s=moodSnapshot({score},p);assert.ok(s.styleInstruction.includes(end));assert.ok(!s.styleInstruction.includes(other));
   assert.ok(collect(dynamics,{key:'private:1',moodState:s,stickerConfig:{enabled:false}}).includes(end));
@@ -18,7 +18,7 @@ test('configured normal form has no second hardcoded cute voice',()=>{
  assert.doesNotMatch(text,/友好自然|那那那|先带一点得意|助手式想象/);
 });
 test('care topics keep selected identity even when sticker and optional style are suppressed',()=>{
- const s=moodSnapshot({score:20},moodPolicy({criticalStyle:'CUSTOM-CRITICAL'}));
+ const s=moodSnapshot({score:20},moodPolicy({minimumScore:0,criticalStyle:'CUSTOM-CRITICAL'}));
  const text=collect(dynamics,{key:'private:1',roleName:'AI助手',incomingText:'我很难过，先陪我说说',moodState:s,stickerConfig:{enabled:false}});
  assert.match(text,/CUSTOM-CRITICAL/);
 });
@@ -29,18 +29,17 @@ test('form text beyond the documented limit is rejected instead of silently clip
 });
 
 test('host preserves the selected form and the end of long examples without mixing the other form',async()=>{
- const {createPluginHost}=await import('../src/plugin-host.js');
- const host=createPluginHost({root:process.cwd(),startTimers:false});
+ const {bridgeHarness}=await import('./audit-bridge-harness.mjs');
+ const fixture=await bridgeHarness(),host=fixture.pluginHost;
  try{
-  await host.loadAll();
   const normal='日常描述'.repeat(310)+'END-HOST-NORMAL',critical='安静描述'.repeat(310)+'END-HOST-CRITICAL';
   for(const score of [60,20]){
-   const moodState=moodSnapshot({score},moodPolicy({normalStyle:normal,criticalStyle:critical}));
+   const moodState=moodSnapshot({score},moodPolicy({minimumScore:0,normalStyle:normal,criticalStyle:critical}));
    const blocks=host.collectPromptBlocks({key:'private:10001',roleName:'AI助手',incomingText:'你好',isPrivate:true,moodState,stickerConfig:{enabled:false}});
    assert.ok(blocks.some(block=>block.includes('【当前形态】')));
    const text=blocks.join('\n');assert.equal(text.split(score===60?'END-HOST-NORMAL':'END-HOST-CRITICAL').length-1,1);
    assert.ok(!text.includes(score===60?'END-HOST-CRITICAL':'END-HOST-NORMAL'));
    assert.doesNotMatch(text,/友好自然|那那那/);
   }
- }finally{await host.dispose();}
+ }finally{await fixture.close();}
 });

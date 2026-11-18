@@ -168,7 +168,9 @@ for (const terminalKind of ['aborted', 'completed']) test('unknown cancellation 
   assert.equal(h.isConversationBusyV2(KEY, st), true, 'unknown transport outcome alone is not proof the old turn ended');
   await event(h, sid, 'assistant/message', { turn: 1, message: { content: [{ type: 'text', text: 'old bubble must remain suppressed' }] } });
   await event(h, sid, 'turn/end', { turn: 1, reason: { kind: terminalKind } });
-  assert.equal(st.pendingWakeReason, 'reminder', 'real matching terminal event must release the reminder queue');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(st.lastWakeReason, 'reminder', 'the matching terminal event must dispatch the reminder without a one-second clock wait');
+  assert.equal(h.calls.prompts.length,2,'exactly one independent reminder starts after proof of old-turn completion');
   await h.pluginHost.tick(Date.now() + 2000); await new Promise(resolve => setTimeout(resolve, 30));
   await event(h, sid, 'turn/start', { turn: 2 });
   await h.sendWakePromptV2(KEY, 'careCheck');

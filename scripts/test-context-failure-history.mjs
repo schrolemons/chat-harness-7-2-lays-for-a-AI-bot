@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {failureHistoryPlan,compactFailedToolHistory} from '../plugins/qq-components/obs-context-assembly/failure-history.mjs';
 import {replaceSurface} from '../plugins/qq-components/obs-context-assembly/history.mjs';
+import {readFailureRun,failureText} from '../plugins/qq-components/obs-context-assembly/failure-runs.mjs';
 const pair=(n,error=true,name='qq_reply')=>[{seq:n*2+1,message:{id:'a'+n,role:'assistant',source:{kind:'model'},content:[{type:'tool-call',id:'c'+n,name,arguments:JSON.stringify({message:'尝试'+n})}]}},{seq:n*2+2,message:{id:'r'+n,role:'tool',source:{kind:'tool',callId:'c'+n},toolCallId:'c'+n,isError:error,content:[{type:'text',text:error?'Error: 失败'+n:'{"ok":true,"sent":1}'}]}}];
 test('only three or more consecutive failures collapse to the latest real pair',()=>{
  assert.equal(failureHistoryPlan([...pair(0),...pair(1)]).groups.length,0);
@@ -21,8 +22,8 @@ test('native reduction keeps roles and call IDs, records attempts, stays idempot
  const boundary={type:'step/start',data:{turn:1,step:1}},session={surface:{nodes},eventAt:seq=>events.get(seq),snapshotEvents:()=>[...events.values(),boundary],append(type,data,intent){const e={seq:++next,type,data,...intent};events.set(e.seq,e);nodes.splice(nodes.indexOf(intent.surfaceOp.startSeq),1,e.seq);return e;}};
  compactFailedToolHistory(session,{turn:1,step:1},replaceSurface);
  const visible=()=>nodes.map(seq=>events.get(seq)).filter(e=>(e.data.message||e.data).content.length);
- assert.deepEqual(visible().map(e=>(e.data.message||e.data).role),['assistant','tool']);assert.equal(visible()[1].data.message.toolCallId,'c2');assert.equal(visible()[1].data.message.source.failureRun.count,3);assert.equal(visible()[1].data.message.content[0].text,'Error: 失败2');assert.equal(JSON.stringify([...events.values()].slice(0,rows.length)),original);
+ assert.deepEqual(visible().map(e=>(e.data.message||e.data).role),['assistant','tool']);assert.equal(visible()[1].data.message.toolCallId,'c2');assert.equal(readFailureRun(visible()[1].data.message).count,3);assert.equal(failureText(visible()[1].data.message),'Error: 失败2');assert.deepEqual(visible()[1].data.message.source,rows[5].message.source);assert.equal(JSON.stringify([...events.values()].slice(0,rows.length)),original);
  const after=events.size;compactFailedToolHistory(session,{turn:1,step:1},replaceSurface);assert.equal(events.size,after);
  for(const row of pair(40)){events.set(row.seq,{seq:row.seq,type:row.message.role==='assistant'?'assistant/message':'tool/result',data:{message:row.message}});nodes.push(row.seq);}compactFailedToolHistory(session,{turn:1,step:1},replaceSurface);
- assert.equal(visible().length,2);assert.equal(visible()[1].data.message.source.failureRun.count,4);assert.equal(visible()[1].data.message.toolCallId,'c40');assert(!visible().some(e=>(e.data.message||e.data).source?.kind==='qq-context-tool-history'));
+ assert.equal(visible().length,2);assert.equal(readFailureRun(visible()[1].data.message).count,4);assert.equal(visible()[1].data.message.toolCallId,'c40');assert(!visible().some(e=>(e.data.message||e.data).source?.kind==='qq-context-tool-history'));
 });

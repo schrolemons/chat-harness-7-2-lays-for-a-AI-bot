@@ -18,6 +18,7 @@
     "afterSend"
   ],
   "config": {
+    "groupWaitFollowupsEnabled": true,
     "privateFollowupEnabled": true,
     "minIntervalMinutes": 180,
     "dailyLimit": 1,
@@ -30,6 +31,11 @@
   },
   "layer": "L",
   "configSchema": {
+    "groupWaitFollowupsEnabled": {
+      "type": "boolean",
+      "label": "群聊等待超时后继续补话",
+      "description": "关闭后，群聊答完但没人接话时只等待或结束；独立主动开场及新来信的回复照常。"
+    },
     "followupWeight": {
       "type": "number",
       "min": 0,

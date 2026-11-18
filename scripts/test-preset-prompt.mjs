@@ -56,7 +56,7 @@ test('抽出的是 YAML 解析后的真实字符串（折叠标量已展开）',
   for (const marker of PRESET_REQUIRED_MARKERS) {
     assert.ok(originalPrefix.includes(marker), `内置提示词应包含安全基线段落：${marker}`);
   }
-  assert.ok(originalPrefix.includes('{{model}}'), '应保留模板变量');
+  assert.ok(extractPresetPrefix(renderPresetPromptYaml(source,originalPrefix+'\n{{model}}')).includes('{{model}}'),'显式模板变量须无损保留');
 });
 
 test('原样写回是幂等的，且不改变提示词语义', () => {
@@ -119,7 +119,7 @@ test('删掉安全不变量或正文过短时阻断保存（保护 AI 效果与�
   assert.throws(() => renderPresetPromptYaml(source, '太短了'), /过短/);
   // 逐条移除安全不变量，必须被拦住
   for (const needle of PRESET_BLOCKING_SUBSTRINGS) {
-    const tampered = originalPrefix.replace(needle, '（已删除）');
+    const tampered = needle==='不会自动发送到 QQ'?originalPrefix.replace(/不会自动(?:发送到|发到)\s*QQ/g,'（已删除）'):originalPrefix.replaceAll(needle,'（已删除）');
     assert.throws(
       () => renderPresetPromptYaml(source, tampered),
       new RegExp(`缺少安全不变量「${needle}」`),

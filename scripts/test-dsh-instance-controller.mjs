@@ -16,7 +16,9 @@ import { claimInstanceRoot } from '../src/instance-descriptor.mjs';
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hostPackage = process.env.DSH_HOST_ROOT ? path.join(process.env.DSH_HOST_ROOT, 'package.json') : createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json');
 const requireHost = createRequire(hostPackage), anchor = pathToFileURL(hostPackage).href;
-const hostImport = name => import(pathToFileURL(requireHost.resolve(name)).href);
+const requireBase=createRequire(process.env.DSH_BASE_ROOT?path.join(process.env.DSH_BASE_ROOT,'package.json'):requireHost.resolve('@deepseek-ai/dsh-base/package.json'));
+const requireService=process.env.DSH_SERVICE_ROOT?createRequire(path.join(process.env.DSH_SERVICE_ROOT,'package.json')):requireBase;
+const hostImport = name => import(pathToFileURL((()=>{try{return requireHost.resolve(name);}catch{try{return requireBase.resolve(name);}catch{return requireService.resolve(name);}}})()).href);
 const [{ Context }, { default: Prompt }, { default: Tools }, { default: Loader }, { default: Projections }, { default: Registry }, MCP, scopeApi] = await Promise.all(
   ['cordis', 'dsh-system-prompt', 'dsh-tools', 'cordis-plugin-loader', 'dsh-session-projection', 'dsh-agent-preset-registry', 'dsh-mcp-client', 'dsh-scope'].map(name => hostImport('@deepseek-ai/' + name)));
 const names = ['snowluma', 'snowluma-host', 'web-search-safe', 'games', 'playwright', 'bridge-health', 'personal-core'];
@@ -170,7 +172,7 @@ test('controller start remains blocked after stop rejection until an explicit su
 test('definition loader preserves native expressions and only rewrites local plugin names', async () => {
   const { loadInstanceDefinitions } = await import('../src/dsh-instance-definitions.mjs');
   const actual = await loadInstanceDefinitions(repo, hostImport);
-  assert.equal(actual.length, 6); assert.ok(actual.some(row => row.id === 'campus-summary'));
+  assert.equal(actual.length, 7); assert.ok(actual.some(row => row.id === 'campus-summary'));assert.ok(actual.some(row=>row.id==='qq-memory-worker'));
   for (const definition of actual) {
     const original = yaml.load(await fs.readFile(path.join(repo, 'plugins/qq-agent-presets/presets', definition.id + '.patch.yml'), 'utf8'))[0].insert[0].config;
     const rewrite = rows => rows.map(row => ({ ...row, name: row.name.startsWith('qq-agent-presets/') ? pathToFileURL(path.join(repo, 'plugins', row.name)).href : row.name, ...(row.group ? { config: rewrite(row.config) } : {}) }));

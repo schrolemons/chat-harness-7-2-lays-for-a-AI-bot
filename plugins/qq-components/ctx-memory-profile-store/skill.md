@@ -1,5 +1,7 @@
 # 按 QQ 号管理 JSON 人物档案
 
+独立记忆代理经内部 `workerSnapshot/workerApply` 读写所属会话实际发言者的档案；私聊仅本人，群聊仍只有固定四字段。每项写入必须携带该人的已完整读入消息原话与 seq，并通过档案哈希校验；并发新修改、跨对象、伪造引文或越权字段均不写入。此服务不注册为 QQ 工具，不授予跨会话管理权限。
+
 ## 存储与注入
 - QQ 号是唯一主键；档案不依赖好友关系或 session。档案存放在本机 state/person-profiles.json。
 - 每人一份可扩展 JSON。固定字段为 routine_food、hobbies、relationships、catchphrases，每项都是字符串；可以增加新的字符串字段。未传入的键保留，显式传空字符串清空内容。

@@ -86,7 +86,7 @@ test('mood and willingness require exact current session token; willingness-only
   r=await post('/api/socialV2/mood',{key,action:'add',value:1,reason:'context'});assert.equal(r.body.ok,true,JSON.stringify(r));
   const before=JSON.stringify(st.wakeConfig);
   r=await post('/api/socialV2/wake-config',{key,chatWillingness:0,reason:'closing'});assert.equal(r.body.ok,true,JSON.stringify(r));assert.equal(JSON.stringify(st.wakeConfig),before);
-  assert.equal(h.pluginHost.callService('proactive','preview',{key}).willingness,0);
+  assert.equal(h.pluginHost.callService('proactive','preview',{key}).willingness,1);
   r=await post('/api/socialV2/wake-config',{key:'private:124',chatWillingness:100});assert.equal(r.status,403);
   h.cfg.socialV2.tools.mood=false;
   r=await post('/api/socialV2/mood',{key,action:'dec',value:1,reason:'context'});assert.equal(r.status,403);

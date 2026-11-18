@@ -5,8 +5,8 @@ import {randomUUID} from 'node:crypto';
 import {encodePacket,decodePacket} from './packet.mjs';
 
 
-import {REFRESH_MODULE_IDS} from './refill.mjs';
 const owned=file=>{const url=new URL(file,import.meta.url);url.search=new URL(import.meta.url).search;return import(url.href);};
+const {REFRESH_MODULE_IDS}=await owned('./refill.mjs');
 const [{prioritizeChatExpression},{moduleCatalog,completeModuleSlots},{compileModules,normalizePolicy},{readPolicy,secretFor,recordEvidence,readEvidence,listAssemblies},{enrichRequestProvenance},{frameModules},{refreshReceiptIndex}]=await Promise.all(['./chat-expression.mjs','./catalog.mjs','./policy.mjs','./store.mjs','./provenance.mjs','./frame.mjs','./message-snapshot.mjs'].map(owned));
 function consumerReadiness(consumer, sessionId) {
  if(consumer?.sessionId!==sessionId||!Number.isSafeInteger(consumer.pid)||consumer.pid<=0)return 'missing-consumer';
@@ -30,7 +30,7 @@ export function createPlugin(ctx){
     const fresh=ctx.capabilities?.refreshContextModules?.({key:packet.key,sessionId,scene:packet.scene,seed:seeds.get(packet.key),moduleIds:REFRESH_MODULE_IDS});
     if(!fresh?.modules)return {ok:false,error:'当前运行程序尚未提供逐请求刷新能力'};
     const componentIds=new Set(REFRESH_MODULE_IDS);
-    const kept=packet.modules.filter(row=>!componentIds.has(row.id)).map(row=>refreshReceiptIndex(row,fresh.receiptState));
+    const kept=packet.modules.filter(row=>!componentIds.has(row.id)).map(row=>refreshReceiptIndex(row.id==='message-snapshot'&&fresh.snapshot?{...row,text:JSON.stringify(fresh.snapshot)}:row,fresh.receiptState));
     const background=packet.modules.find(row=>row.id==='session-background')?.text;
     let modules=completeModuleSlots([...kept,...fresh.modules],catalog).map(row=>{
      if(row.id==='ctx-context-session'&&background)row={...row,text:row.text.replace(background,'').trim()};

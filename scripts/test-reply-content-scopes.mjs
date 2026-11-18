@@ -28,6 +28,10 @@ test('three grounded semantic contents each send three physical parts in one wak
  }
  assert.equal(f.svc.preview({key,now}).successful,9);
 });
+test('reducing casual parts applies to an existing group without changing its ID or erasing deliveries',()=>{
+ const f=fixture(),messages=[message(1,'普通接话')],plan=f.resolve({messages});assert.equal(send(f,plan,'first').ok,true);
+ const g=fixture({maxMessagesNormal:1,maxMessagesCasual:1},f.state()),next=g.resolve({messages});assert.equal(next.contentId,plan.contentId);assert.equal(g.svc.progress({plan:next}).successful,1);assert.equal(g.svc.progress({plan:next}).remaining,0);assert.equal(send(g,next,'another wording').reason,'content_limit');
+});
 
 test('mood and availability scale rolling rates while reference and mood ceilings preserve part caps',()=>{
  const f=fixture({maxSendPerMinute:10,maxSendPerHour:100}),factors={referenceMode:'knowledge',mood:{enabled:true,score:0,replyCeiling:1},willingness:0};

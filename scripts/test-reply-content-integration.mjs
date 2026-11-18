@@ -15,6 +15,16 @@ async function open(t,{texts=['这幅画很好看','今天天气不错','这首�
  const request=async(path,body,contentId)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method:'POST',headers:{'x-console-token':'fixture-console-token','x-agent-token':st.agentToken,'x-agent-call':'1','content-type':'application/json',...(contentId?{'x-reply-content-id':contentId}:{})},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
  return {h,key,st,sid,messages,request};
 }
+test('a real admin relay recovers after an ordinary acknowledgement and preserves one content ID',async t=>{
+ const {h,key,st,sid,messages,request}=await open(t,{admin:true,texts:['你聊过很多次了，去电一下12001'],extraConfig:{allow:{private:['123','12001']}}});
+ const envelope=h.activeTurnEnvelopes.get(sid),original=envelope.replyPlan.contentId;assert.ok(original);
+ const ack=await request('/api/socialV2/send-message',{key,messages:'这就去'},original);assert.equal(ack.body.sent,1,JSON.stringify(ack.body));
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'task'}]});
+ assert.equal(declared.status,200,JSON.stringify(declared.body));const content=declared.body.contents[0];assert.equal(content.id,original);assert.equal(content.taskExempt,true);
+ const sent=await request('/api/send/private',{userId:'12001',token:st.agentToken,message:'轻轻电一下～'},content.id);assert.equal(sent.body.sent,1,JSON.stringify(sent.body));
+ const repeat=await request('/api/send/private',{userId:'12001',token:st.agentToken,message:'轻轻电一下～'},content.id);assert.match(repeat.body.error,/duplicate_delivery/);
+ assert.equal(h.calls.http.filter(c=>/send_private_msg$/.test(c.url)).length,2,'one source acknowledgement and exactly one target send');
+});
 test('authenticated semantic declaration supports 3+3+3 sends in one actual bridge wake',async t=>{
  const {h,key,messages,request}=await open(t);
  const declared=await request('/api/socialV2/reply-contents',{key,groups:messages.map(m=>({seqs:[m.seq],kind:'chat'}))});
@@ -78,7 +88,7 @@ test('bridge lets the admitted reply group finish across its local hard cap whil
  assert.equal(declared.status,200,JSON.stringify(declared.body));
  const send=(i,message)=>request('/api/socialV2/send-message',{key,messages:message},declared.body.contents[i].id);
  assert.equal((await send(0,'第一条内容')).body.sent,1);
- h.tokenLedger.ingestEvent({sessionId:sid,at:Date.now(),model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1000000,outputTokens:100}}}});
+ h.tokenLedger.ingestEvent({sessionId:sid,at:Date.now(),provider:'deepseek-official',model:'deepseek-flash',event:{type:'assistant/message',seq:1,data:{turn:1,step:1,usage:{inputTokens:1000000,outputTokens:100}}}});
  assert.equal(h.tokenBudgetOf(key).stage,'silent');
  const continuation=await send(0,'同组第二条内容');
  assert.equal(continuation.body.sent,1,JSON.stringify(continuation.body));
@@ -201,13 +211,13 @@ test('a colloquial scheduled contact can be admitted without authorizing a guess
  assert.equal(h.calls.sent.length,0);
 });
 
-test('a newer unread message does not block a bound reply to an earlier complete source',async t=>{
+test('new private input requires refreshing a stale draft without spending its admitted content',async t=>{
  const {h,key,messages,request}=await open(t,{texts:['先前的完整问题']});
  const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'chat'}]});
  const content=declared.body.contents?.[0];assert.ok(content);
  h.appendSocialV2Message(key,'甲','之后的未读消息','之后的未读消息',false,true,'999',[],'123',[],undefined,false,{bodyComplete:true});
  const sent=await request('/api/socialV2/send-message',{key,messages:'回答上一条'},content.id);
- assert.equal(sent.body.sent,1,JSON.stringify(sent.body));
+ assert.equal(sent.body.ok,false,JSON.stringify(sent.body));assert.match(JSON.stringify(sent.body),/new_private_input/);
 });
 
 test('a Spark performance carries the originating task ID through the cross-session send',async t=>{

@@ -4,6 +4,20 @@ import {bridgeHarness} from './audit-bridge-harness.mjs';
 import {recordEvidence,secretFor} from '../plugins/qq-components/obs-context-assembly/store.mjs';
 import {decodePacket} from '../plugins/qq-components/obs-context-assembly/packet.mjs';
 import {refreshContextPacket} from '../plugins/qq-agent-presets/context-refresh.mjs';
+import {messageAdmitted}from'../src/outbound-context.js';
+
+test('an active normal chat refresh receives admitted live ingress locally without replying or spending wake quota',async()=>{
+ const h=await bridgeHarness();try{
+  h.setMode('reserved2');const key='private:123',sessionId=await h.ensureSession(key),st=h.getSocialV2State(key);
+  h.appendSocialV2Message(key,'用户','现在说乌龙茶，不再聊预算池','现在说乌龙茶，不再聊预算池',false,false,'fresh-topic');
+  for(const m of[...st.unread,...st.recentMessages]){m.quotaAdmission='admitted';m.bodyComplete=true;}
+  const envelope={key,sessionId,reason:'message',actionId:'live-test',replyPlan:h.pluginHost.callService('replyPlan','resolve',{key,turnId:'live-test',agent:true})};
+  h.activeTurnEnvelopes.set(sessionId,envelope);const wakeCount=st.wakeConfig.wakeCount;
+  const r=h.taskCaps.refreshContextModules({key,sessionId,scene:'message',moduleIds:[]});
+  assert(r.snapshot.messages.some(m=>m.text.includes('乌龙茶')));assert(messageAdmitted(envelope,st.unread[0]));assert(st.unread[0].seenAt>0);assert(!st.unread[0].repliedAt);assert.equal(st.wakeConfig.wakeCount,wakeCount);assert.equal(h.calls.sent.length,0);
+  envelope.cancelled=true;const closed=h.taskCaps.refreshContextModules({key,sessionId,scene:'message',moduleIds:[]});assert.equal(closed.snapshot,undefined);
+ }finally{await h.close();}
+});
 
 test('real bridge refresh route is signed, session-bound, read-only and does not grant Console access',async()=>{
  const h=await bridgeHarness();let server;try{

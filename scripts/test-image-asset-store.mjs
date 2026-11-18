@@ -91,6 +91,7 @@ test('the same incoming QQ image is staged only once across prompt preparation a
   await withStore(async store => {
     const first = store.stage({ key: 'private:10001', name: 'QQ图片-42-1.png', source: 'qq-incoming', sourceRef: 'qq:42:1', data: png });
     const second = store.stage({ key: 'private:10001', name: 'QQ图片-42-1.png', source: 'qq-incoming', sourceRef: 'qq:42:1', data: png });
+    assert.equal(first.sourceMessageId,'42');assert.equal(first.sourceImageIndex,1);
     assert.equal(first.imageId, second.imageId);
     assert.equal(store.list({ key: 'private:10001' }).length, 1);
   });
