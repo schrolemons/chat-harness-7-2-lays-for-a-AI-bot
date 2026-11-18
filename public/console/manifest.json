@@ -1,5 +1,5 @@
 {
-  "build": "119baf814b411fe9",
+  "build": "e51d33b746d2eec5",
   "inputs": [
     "console/app.js",
     "console/layers/C/affairs-budget.js",

@@ -1,6 +1,14 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID, createHash } from 'node:crypto';
 
+// Expose protocol facts, never arbitrary gateway wording which may echo a body
+// or credentials. This describes a failed call; it cannot prove non-delivery.
+export function describeQQDeliveryError(error){
+ const detail=String(error?.message||error),code=/(?:code|retcode|错误码)\s*[:=：]?\s*(-?\d{1,10})\b/i.exec(detail)?.[1];
+ const reason=/网络|连接|ECONN|ENET|socket|network|connection/i.test(detail)?'网络连接异常':/超时|timed?\s*out|timeout/i.test(detail)?'等待发送确认超时':'网关未确认发送结果';
+ return [reason,code?'错误码='+code:''].filter(Boolean).join('；');
+}
+
 // An action-level failed envelope can still follow a physical send. Network
 // and acknowledgement errors do not prove that QQ rejected the message.
 export function knownOneBotRejection(body,httpStatus=200){

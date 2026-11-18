@@ -17,7 +17,7 @@ import {routeLearningManagement} from './console/learning-management.js';
 import {routeFeedbackRepairs} from './console/feedback-repairs.js';
 import { migrateOutboundMood } from './migrations/outbound-mood.mjs';
 import { migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS } from './migrations/group-wake.mjs';
-import { knownOneBotRejection, createOutboundTransport, outboundScope, reportHumanIncoming, recordAdmittedMessages, messageAdmitted, messageContentComplete } from './outbound-context.js';
+import { describeQQDeliveryError, knownOneBotRejection, createOutboundTransport, outboundScope, reportHumanIncoming, recordAdmittedMessages, messageAdmitted, messageContentComplete } from './outbound-context.js';
 import {declareReplyContents} from './console/reply-contents.mjs';
 import { routePluginManagement } from './console/plugin-management.js';
 import { routeContextManagement } from './console/context-management.js';
@@ -10319,6 +10319,7 @@ async function main() {
       }
       let partsSent = 0;
       let failure = '';
+      let sendError = '';
       const id = Number(recipient[2]);
       for (const part of parts) {
         failure = canSend();
@@ -10327,9 +10328,14 @@ async function main() {
         try {
           const message = text(escapeCqText(part));
           const result = await withTimeout(recipient[1] === 'private' ? bot.sendPrivateMessage(id, message) : bot.sendGroupMessage(id, message), SEND_TIMEOUT_MS, 'QQ报告发送 '+key);
-          if (result?.status === 'failed' || (result?.retcode != null && result.retcode !== 0)) throw Error('网关拒绝发送');
+          if (result?.status === 'failed' || (result?.retcode != null && result.retcode !== 0)) throw Error('网关发送失败：'+(result?.wording||result?.message||result?.retcode||'unknown'));
           partsSent++;
-        } catch { failure = 'send_unconfirmed'; break; }
+        } catch (error) {
+          failure = 'send_unconfirmed';
+          sendError = describeQQDeliveryError(error);
+          log('[report] '+meta.id+' QQ发送未确认：'+sendError);
+          break;
+        }
       }
       const progress = { partsSent, partsTotal: parts.length };
       const sent = partsSent === parts.length;
@@ -10338,7 +10344,7 @@ async function main() {
         log('[report] 回执写入失败 ' + meta.id);
         return { ok: false, reason: 'receipt_finalize_failed', receiptStatus: 'claimed', ...progress };
       }
-      return sent ? { ok: true, receiptStatus: 'sent', ...progress } : { ok: false, reason: failure, receiptStatus: 'uncertain', ...progress };
+      return sent ? { ok: true, receiptStatus: 'sent', ...progress } : { ok: false, reason: failure, receiptStatus: 'uncertain', ...(sendError?{error:sendError}:{}), ...progress };
     });
     rememberSendChain(key, delivery.then(() => {}, () => {}));
     return delivery;

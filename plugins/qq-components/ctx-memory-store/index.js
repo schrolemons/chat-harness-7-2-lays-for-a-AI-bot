@@ -18,6 +18,7 @@ const {diaryTargetDay,diaryWindow,diaryPreviousDay,diaryHeading,diaryPartLimit,d
 const { parseMemoryDocument, renderPersistentDocument, mergePersistentDocument } = await memoryModule('./sections.mjs');
 const {createMemoryWorker}=await memoryModule('./worker.mjs');
 const {createDiaryWorker}=await memoryModule('./diary-worker.mjs');
+const {createDiaryMaterials,diaryCalendarDay}=await memoryModule('./diary-materials.mjs');
 const {diarySchedule,humanActiveOnDay}=await memoryModule('./diary-schedule.mjs');
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -308,6 +309,7 @@ export function createPlugin(ctx) {
     const attempt = {
       id, day, kind, stage, startedAt: previous?.startedAt || now, updatedAt: now,
       reason: String(outcome.reason || ''), receiptStatus: String(outcome.receiptStatus || ''),
+      ...(outcome.error?{error:String(outcome.error).slice(0,300)}:{}),
       partsSent: Number(outcome.partsSent) || 0, partsTotal: Number(outcome.partsTotal) || 0
     };
     const recent = (st.diaryAttempts[key] || []).filter(item => item.id !== id);
@@ -387,7 +389,7 @@ export function createPlugin(ctx) {
     const meta={id:receiptId,sourceAt,partMaxChars:diaryPartLimit(config),expiresAt:scheduled?schedule.expiresAt:now+10*60000};
     rememberDiaryAttempt({...attempt, stage:'sending'});
     let outcome;try{outcome=await cap.sendDiaryDelivery(targetKey,body,meta);}catch{outcome={ok:false,reason:'send_unconfirmed'};}
-    if(outcome?.ok!==true)return finish({ok:false,reason:outcome?.reason||'send_unconfirmed',receiptStatus:outcome?.receiptStatus||'',partsSent:outcome?.partsSent,partsTotal:outcome?.partsTotal});
+    if(outcome?.ok!==true)return finish({ok:false,reason:outcome?.reason||'send_unconfirmed',receiptStatus:outcome?.receiptStatus||'',...(outcome?.error?{error:outcome.error}:{}),partsSent:outcome?.partsSent,partsTotal:outcome?.partsTotal});
     // The transport only returns sent after committing the central receipt.
     if(outcome.receiptStatus!=='sent')return finish({...outcome,ok:false,reason:'delivery_unconfirmed',receiptStatus:'unavailable'});
     const confirmedAt=Date.now();
@@ -543,11 +545,13 @@ export function createPlugin(ctx) {
     }
     return {ok:true,saved:true,archiveSaved:true,day,chars:body.length,sent:false};
   }
+  const diaryMaterials=createDiaryMaterials(ctx);
   const diaryWorker=createDiaryWorker(ctx,{context:diaryView,save:saveDiary,afterSave:sendDiaryDetailed});
   return {
     services: {
       memoryWorker:createMemoryWorker(ctx),
       diaryWorker,
+      diaryMaterials,
       affairs: affairsService,
       memory: {
         sendDiary,
@@ -638,7 +642,7 @@ export function createPlugin(ctx) {
       }
     },
     hooks: {
-      onIncoming(p={}) { if(!p.key || p.isSelf)return;const st=state();st.lastIncomingAt[p.key]=Date.now();saveState({lastIncomingAt:st.lastIncomingAt}); },
+      onIncoming(p={}) { if(!p.key || p.isSelf)return;const now=cap.now?.()??Date.now(),st=state();let at=Number(p.at);if(at>0&&at<1e11)at*=1000;st.lastIncomingAt[p.key]=Math.max(Number(st.lastIncomingAt[p.key])||0,Number.isFinite(at)&&at>0?Math.min(at,now):now);saveState({lastIncomingAt:st.lastIncomingAt});if(p.userId)diaryMaterials.capture({key:p.key,day:diaryCalendarDay(now),now,messages:[p]}); },
       async onTick({ now = Date.now() } = {}) {
         const c = cfg();
         if (c.enabled === false) return;

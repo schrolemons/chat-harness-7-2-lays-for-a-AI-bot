@@ -106,7 +106,7 @@ test('a new diary sends its complete draft in one message outside the ordinary r
 });
 test('a partial diary transport is audited with progress and cannot be marked sent or retried',async()=>{
  const h=await bridgeHarness({config:{socialV2:{dailyDiary:{maxChars:300}}}});try{
-  h.setMode('reserved2');const now=Date.now(),key='private:123',day=h.pluginHost.callService('memory','diaryTargetDay',{now}).day;
+  h.setMode('reserved2');const now=Date.now(),key='private:123',day=[new Date(now).getFullYear(),String(new Date(now).getMonth()+1).padStart(2,'0'),String(new Date(now).getDate()).padStart(2,'0')].join('-');
   const diary='正文'+ '甲'.repeat(700),manualRequestId='partial-transport';
   // Seed a diary saved before the writing limit was introduced.
   h.pluginHost.callService('memory','write',{key,text:'【日记】\n'+diary});

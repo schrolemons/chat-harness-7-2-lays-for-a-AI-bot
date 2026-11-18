@@ -5847,7 +5847,7 @@ ${usageMetricLabel(metric2)}：${usageAxisValue(v, metric2, sym)}
   function diaryAttemptLabel(attempt) {
     const detail = attemptReasons[attempt.reason] || attempt.reason || (attempt.stage === "refreshing" ? "刷新记忆中" : attempt.stage === "sending" ? "等待 QQ 确认" : attempt.receiptStatus === "sent" ? "已确认发送" : "回执未确认");
     const parts = attempt.partsTotal > 0 ? " · 分段 " + attempt.partsSent + "/" + attempt.partsTotal : "";
-    return [attempt.day, attemptKinds[attempt.kind] || "投递", sentTime(attempt.updatedAt), detail + parts].join(" · ");
+    return [attempt.day, attemptKinds[attempt.kind] || "投递", sentTime(attempt.updatedAt), detail + parts, attempt.error || ""].filter(Boolean).join(" · ");
   }
   async function refreshV2Diary() {
     const listEl = document.getElementById("v2DdList");

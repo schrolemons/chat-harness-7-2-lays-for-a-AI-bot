@@ -11,7 +11,7 @@ try{
  const sentAt=Date.parse('2026-11-01T01:12:00+08:00');
  let conversations=[
   {key:'private:111',targetDate:'2026-11-02',lastDiaryDate:'2026-11-01',targetSent:true,deliveryStatus:'sent',sentAt:0,previousDay:'2026-11-01',previousDiaryMissing:true,previousDiaryAvailable:true,previousDiaryStatus:'legacy_unconfirmed'},
-  {key:'private:222',targetDate:'2026-11-01',targetSent:true,deliveryStatus:'sent',sentAt,lastConfirmedSentAt:sentAt,lastConfirmedDiaryDate:'2026-11-01',scheduledDeliveryStatus:'absent',attempts:[{id:'diary:private:222:2026-11-01:manual:fixture-123',day:'2026-11-01',kind:'manual',stage:'finished',updatedAt:sentAt,reason:'send_unconfirmed',receiptStatus:'uncertain',partsSent:1,partsTotal:2}]},
+  {key:'private:222',targetDate:'2026-11-01',targetSent:true,deliveryStatus:'sent',sentAt,lastConfirmedSentAt:sentAt,lastConfirmedDiaryDate:'2026-11-01',scheduledDeliveryStatus:'absent',attempts:[{id:'diary:private:222:2026-11-01:manual:fixture-123',day:'2026-11-01',kind:'manual',stage:'finished',updatedAt:sentAt,reason:'send_unconfirmed',receiptStatus:'uncertain',partsSent:1,partsTotal:2,error:'网络连接异常；错误码=1006507'}]},
   {key:'group:333',targetDate:'2026-11-02',previousDay:'2026-11-01',previousDiaryMissing:true,previousDiaryAvailable:true,previousDiaryStatus:'uncertain'},
  ];
  const posts=[];await page.route('**/api/socialV2/daily-diary',route=>{if(route.request().method()==='POST'){posts.push(route.request().postDataJSON());return route.fulfill({json:{ok:true,pending:posts.at(-1).action==='sendNow',sentCount:1,results:[{day:'2026-11-01',ok:true}]}});}return route.fulfill({json:{ok:true,config:{hour:18,minute:30},conversations:conversations.map(c=>({hasDiary:true,diaryChars:123,diarySource:'memory',...c}))}});});
@@ -30,6 +30,7 @@ try{
  assert.match(await cards.nth(1).innerText(),/01:12/);
  await cards.nth(1).locator('summary').filter({hasText:'投递记录'}).click();
  assert.match(await cards.nth(1).innerText(),/QQ 网关未确认全部分段，请先核对会话 · 分段 1\/2/);
+ assert.match(await cards.nth(1).innerText(),/网络连接异常；错误码=1006507/);
  assert.match(await cards.nth(1).innerText(),/2026-10-31 18:30 至 2026-11-01 18:30/);
  assert.match(await cards.nth(1).innerText(),/手动发送不抵扣/);
  assert.match(await cards.nth(1).locator('[data-dd-action="sendNow"]').innerText(),/2026-11-01/);
