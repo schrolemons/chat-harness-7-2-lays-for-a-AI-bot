@@ -34,6 +34,7 @@ names.push('test-stone-conversation-replay-20261117.mjs');
 names.push('test-diary-cycle-20261118.mjs','test-unanswered-backoff-20261118.mjs','test-owner-diary-tools-20261118.mjs','test-availability-assessor.mjs','test-diary-mcp.mjs','test-diary-chat-continuity.mjs','test-budget-diary-direct.mjs');
 names.push('test-diary-truth.mjs','test-memory-worker.mjs','test-memory-worker-profile.mjs','test-proactive-policy.mjs','test-mcp-content-carrier.mjs','test-proactive-status-truth.mjs');
 names.push('test-diary-willingness-policy-20261118.mjs');
+names.push('test-image-reply-uncertain-20261118.mjs');
 const onlyArgument=process.argv.slice(2).find(argument=>argument.startsWith('--only='));
 if(onlyArgument){const selected=new Set(onlyArgument.slice('--only='.length).split(','));if([...selected].some(name=>!names.includes(name)))throw Error('Unknown isolated audit test');names.splice(0,names.length,...names.filter(name=>selected.has(name)));}
 try{

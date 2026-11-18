@@ -401,7 +401,8 @@
       "scripts/test-reply-loop-recovery-20261117.mjs",
       "scripts/test-interaction-evidence-20261117.mjs",
       "scripts/test-stone-conversation-replay-20261117.mjs",
-      "scripts/test-relay-admin-target-20261118.mjs"
+      "scripts/test-relay-admin-target-20261118.mjs",
+      "scripts/test-image-reply-uncertain-20261118.mjs"
     ]
   }
 }

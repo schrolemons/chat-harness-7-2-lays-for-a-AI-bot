@@ -1,6 +1,13 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID, createHash } from 'node:crypto';
 
+// An action-level failed envelope can still follow a physical send. Network
+// and acknowledgement errors do not prove that QQ rejected the message.
+export function knownOneBotRejection(body,httpStatus=200){
+ const detail=[body?.wording,body?.message,body?.error].filter(v=>typeof v==='string').join(' ');
+ if(httpStatus>=500||/网络|连接|超时|回执|未确认|network|connection|socket|timed?\s*out|timeout|ECONN|ETIMEDOUT|ENET|broken pipe|unconfirmed|unknown|acknowledg/i.test(detail))return false;
+ return body?.status==='failed'||httpStatus>=400&&httpStatus<500;
+}
 const messageDigest=m=>createHash('sha256').update(JSON.stringify([String(m?.messageId??''),String(m?.text??m?.plain??'')])).digest('hex');
 export const messageContentComplete=m=>m?.truncated!==true&&m?.bodyComplete!==false&&!m?.unresolvedReplyIds?.length
   // The previous store clipped unmarked bodies at exactly 200 UTF-16 units.
@@ -108,11 +115,11 @@ export function createOutboundTransport({callService,contextFacts=()=>({}),conte
       assertRecommendation();
       if(call('conversationDrive','authorize',{key,lease:topicLease})?.ok===false){const e=Error('话题动作已因新来信失效');e.knownFailed=true;throw e;}
       started=true;result=await send();
-      if(result?.status==='failed'||(result?.retcode!=null&&result.retcode!==0)){const e=Error('网关拒绝发送');e.knownFailed=true;throw e;}
+      if(result?.status==='failed'||(result?.retcode!=null&&result.retcode!==0)){const e=Error('网关发送返回失败：'+(result?.wording||result?.message||result?.retcode||'unknown'));e.knownFailed=knownOneBotRejection(result);throw e;}
     }catch(error){
       if(metered)call('replyPlan','release',{key,operationId,knownFailed:!started||error?.knownFailed===true});
       call('conversationDrive','release',{lease:topicLease});
-      if(started&&error?.knownFailed!==true)throw Object.assign(Error(error?.message||String(error),{cause:error}),{deliveryUnknown:true});
+      if(started&&error?.knownFailed!==true)throw Object.assign(Error('delivery_unconfirmed：'+(error?.message||String(error)),{cause:error}),{deliveryUnknown:true});
       throw error;
     }
     const sentAt=clock(),gatewayMessageId=result?.data?.message_id??result?.message_id??result?.messageId;

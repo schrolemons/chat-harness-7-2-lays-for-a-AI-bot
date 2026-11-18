@@ -80,7 +80,7 @@ test('uncertain reservations consume only their content and known failure frees 
  const a=f.svc.bindContent({key,plan,contentId:declared.contents[0].id}).plan,b=f.svc.bindContent({key,plan,contentId:declared.contents[1].id}).plan;
  for(let n=0;n<3;n++)assert.equal(f.svc.reserve({key,plan:a,operationId:'unknown'+n,now}).ok,true);
  assert.equal(f.svc.release({key,operationId:'unknown0',knownFailed:false}).reason,'uncertain_delivery');
- const g=fixture({},f.state());assert.equal(send(g,a,'over').reason,'content_limit');assert.equal(send(g,b,'other').ok,true);
+ const g=fixture({},f.state());assert.equal(send(g,a,'over').reason,'delivery_unconfirmed');assert.equal(send(g,b,'other').ok,true);
  assert.equal(g.svc.release({key,operationId:'unknown0',knownFailed:true}).ok,true);assert.equal(send(g,a,'retry').ok,true);
  assert.equal(g.svc.declareContents({key,plan,messages,groups:[{seqs:[1,2],kind:'chat'}]}).reason,'content_already_started');
 });

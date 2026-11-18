@@ -950,6 +950,7 @@
   "scripts/test-image-quote-integration-20261117.mjs",
   "scripts/test-image-relay-source.mjs",
   "scripts/test-image-reply-evidence-20261117.mjs",
+  "scripts/test-image-reply-uncertain-20261118.mjs",
   "scripts/test-image-transport.mjs",
   "scripts/test-incoming-auto-reply.mjs",
   "scripts/test-initial-prompt-console.mjs",

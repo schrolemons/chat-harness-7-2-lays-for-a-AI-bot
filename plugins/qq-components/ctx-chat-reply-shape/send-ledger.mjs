@@ -91,8 +91,9 @@ export function createSendLedger(ctx,policy) {
       const content=this.getContent?.({key:plan.sourceKey||plan.key,contentId});
       if(!content)return null;
       const s=load(),successful=s.contentCounts?.[content.id]||0;
+      const uncertain=Object.values(s.conversations).flatMap(e=>Object.values(e.reservations||{})).filter(r=>r.contentId===content.id&&r.uncertain===true).length;
       const inflight=Object.values(s.conversations).flatMap(e=>Object.values(e.reservations||{})).filter(r=>r.contentId===content.id).length;
-      return {contentId:content.id,seqs:content.seqs,kind:content.kind,maxParts:content.maxParts,successful,inflight,remaining:content.taskExempt?Number.MAX_SAFE_INTEGER:Math.max(0,content.maxParts-successful-inflight),taskExempt:content.taskExempt,taskPending:content.taskPending,taskGroupAdmission:content.taskGroupAdmission};
+      return {contentId:content.id,seqs:content.seqs,kind:content.kind,maxParts:content.maxParts,successful,inflight,uncertain,remaining:content.taskExempt?Number.MAX_SAFE_INTEGER:Math.max(0,content.maxParts-successful-inflight),taskExempt:content.taskExempt,taskPending:content.taskPending,taskGroupAdmission:content.taskGroupAdmission};
     },
     turnProgress({plan}={}){
       if(!plan?.agent||!plan.turnId)return [];
@@ -124,6 +125,7 @@ export function createSendLedger(ctx,policy) {
         const checked=ctx.callService?.('interactionEvidence','validateReply',{key,kind,text,sourceSeqs:content?.seqs||[],successful:s.contentCounts?.[content?.id]||0});
         if(checked?.ok===false)return checked;
       }
+      if(content&&Object.values(e.reservations).some(r=>r.contentId===content.id&&r.uncertain===true))return {ok:false,reason:'delivery_unconfirmed',hint:'这份内容的上次投递结果未确认，不改写、不换工具重发；保留待核对状态，不标记已回复。其他独立来信仍可正常处理。'};
       const textScope=content?.id||taskAdmission?.groupId||(Number.isSafeInteger(inputSeq)&&inputSeq>0?'seq:'+inputSeq:null);
       const crossTaskPoke=kind==='poke'&&taskExempt&&key!==plan.sourceKey;
       const dedupeBody=crossTaskPoke?'[poke]':kind==='text'?String(text).replace(/\s+/g,' ').trim():'';
@@ -169,7 +171,7 @@ export function createSendLedger(ctx,policy) {
       save(s);return {ok:true};
     },
     release({key,operationId,knownFailed}={}) {
-      if(knownFailed!==true)return {ok:false,reason:'uncertain_delivery'};
+      if(knownFailed!==true){const s=load(),r=s.conversations[key]?.reservations?.[operationId];if(r){r.uncertain=true;save(s);}return {ok:false,reason:'uncertain_delivery'};}
       const s=load(),e=s.conversations[key];if(!e?.reservations?.[operationId])return {ok:false,reason:'reservation_missing'};
       const id=e.reservations[operationId].scheduledId;
       if(id&&s.scheduled?.[id]?.operationId===operationId)delete s.scheduled[id].operationId;

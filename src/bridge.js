@@ -17,7 +17,7 @@ import {routeLearningManagement} from './console/learning-management.js';
 import {routeFeedbackRepairs} from './console/feedback-repairs.js';
 import { migrateOutboundMood } from './migrations/outbound-mood.mjs';
 import { migrateGroupWake, RETIRED_GROUP_WAKE_FIELDS } from './migrations/group-wake.mjs';
-import { createOutboundTransport, outboundScope, reportHumanIncoming, recordAdmittedMessages, messageAdmitted, messageContentComplete } from './outbound-context.js';
+import { knownOneBotRejection, createOutboundTransport, outboundScope, reportHumanIncoming, recordAdmittedMessages, messageAdmitted, messageContentComplete } from './outbound-context.js';
 import {declareReplyContents} from './console/reply-contents.mjs';
 import { routePluginManagement } from './console/plugin-management.js';
 import { routeContextManagement } from './console/context-management.js';
@@ -1518,7 +1518,7 @@ async function main() {
     const body = await res.json().catch(() => ({}));
     if (!res.ok || body.status !== 'ok' || body.retcode !== 0) {
       const hint = res.status === 426 ? '（HTTP 426：snowluma.httpUrl 可能指向了 WebSocket 端口）' : '';
-      throw Object.assign(new Error(`OneBot HTTP ${action} 失败: ${body.wording || body.retcode || res.status}${hint}`), {knownFailed:body.status === 'failed'});
+      throw Object.assign(new Error(`OneBot HTTP ${action} 失败: ${body.wording || body.retcode || res.status}${hint}`), {knownFailed:physical?knownOneBotRejection(body,res.status):body.status === 'failed'});
     }
     return body;
   }

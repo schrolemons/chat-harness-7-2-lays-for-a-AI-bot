@@ -1,6 +1,7 @@
 // Explain recoverable source failures separately from terminal exhaustion.
 export function describeSendRejection(message) {
  const text=String(message||'');
+ if(/\b(?:delivery_unconfirmed|uncertain_delivery)\b/.test(text))return {code:'DELIVERY_UNCONFIRMED',retryable:false,hint:'本次发送可能已到达QQ，但没有可靠回执。不改写、不换工具、不重发同一份内容，也不把它登记为已回复或发送成功；保留待核对状态，其他独立来信可正常处理。'};
  if(/\btask_group_pending\b/.test(text))return {code:'TASK_GROUP_PENDING',retryable:true,
   hint:'当前任务组尚未接手，本次发送在QQ请求前被拒绝。先用当前原指令的已读seq声明task并取得taskPending=false的contentId；支持sourceSeqs的发送工具可合并完成。额度未准入时等待，不能换工具原样重试或把拒绝说成结果未知。'};
  if(/\bgroup_context_pending\b/.test(text))return {code:'GROUP_CONTEXT_PENDING',retryable:true,

@@ -105,7 +105,7 @@ test('an uncertain first bubble is retained and stops automatic delivery of late
  const contentId=declared.body.contents[0].id;
  const send=payload=>request('/api/socialV2/send-message',{key,messages:payload},contentId);
  assert.match((await send(['first bubble','later bubble'])).body.error,/fixture transport timeout/);
- assert.match((await send('first bubble')).body.error,/duplicate_delivery/);
+ assert.match((await send('first bubble')).body.error,/delivery_unconfirmed/);
  assert.equal(attempts,1);
  const preview=h.pluginHost.callService('replyPlan','preview',{key});
  assert.equal(preview.successful,0);

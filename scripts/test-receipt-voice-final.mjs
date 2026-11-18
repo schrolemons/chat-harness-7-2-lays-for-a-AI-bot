@@ -38,7 +38,7 @@ test('parallel and uncertain copies remain blocked; known failed attempts can re
  const {service}=ledger(),p=sourcePlan(service),a={key:p.key,plan:p,inputSeq:5,text:'我在呀。',kind:'text',now:100};
  service.reserve({...a,operationId:'one'});
  assert.equal(service.reserve({...a,operationId:'parallel'}).reason,'duplicate_delivery');
- service.release({key:p.key,operationId:'one',knownFailed:false});assert.equal(service.reserve({...a,operationId:'uncertain'}).reason,'duplicate_delivery');
+ service.release({key:p.key,operationId:'one',knownFailed:false});assert.equal(service.reserve({...a,operationId:'uncertain'}).reason,'delivery_unconfirmed');
  service.release({key:p.key,operationId:'one',knownFailed:true});assert.equal(service.reserve({...a,operationId:'retry'}).ok,true);
 });
 test('administrative closure retains raw history without inventing physical reply timestamps',()=>{
