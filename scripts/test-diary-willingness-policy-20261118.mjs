@@ -7,8 +7,8 @@ function proactiveFixture(){let state={},wakes=0;const jobs=new Map(),facts={all
 test('unanswered contact keeps a small positive willingness without a three-contact speech ban',()=>{
  const f=proactiveFixture(),start=at('09:00');for(let i=0;i<3;i++)f.api.observe({key,kind:'sent',reason:'proactiveCheck',isProactive:true,episodeId:'e'+i,eventId:'s'+i,at:start+i*60000,success:true});
  assert.equal(f.api.plan({key,now:start+3*60000,facts:f.facts,random:()=>0}).allowed,true);
- for(const reason of ['proactiveCheck','timeBubble','privateFollowup','message'])assert.equal(f.api.allowsReason({key,reason,now:start+12*3600000}).allowed,true);
- const a=f.api.availability({key,now:start+12*3600000});assert.equal(a.willingness,1);assert.equal(a.baseWillingness,60);assert.equal(a.willingnessFactor,1/60);
+ for(const reason of ['proactiveCheck','timeBubble','privateFollowup','message'])assert.equal(f.api.allowsReason({key,reason,now:start+239*60000}).allowed,true);
+ const a=f.api.availability({key,now:start+239*60000});assert.equal(a.willingness,1);assert.equal(a.baseWillingness,60);assert.equal(a.willingnessFactor,1/60);
 });
 test('probability growth is unchanged and the unanswered willingness is a separate multiplier',()=>{
  const f=proactiveFixture(),start=at('09:00'),p=normalizeProactivePolicy(f.config);
@@ -20,7 +20,7 @@ test('probability growth is unchanged and the unanswered willingness is a separa
 });
 test('the maximum-silence opportunity still draws the willingness multiplier instead of forcing a monologue',async()=>{
  const f=proactiveFixture(),start=at('09:00');f.api.observe({key,kind:'sent',reason:'proactiveCheck',isProactive:true,eventId:'s',at:start,success:true});
- const now=start+12*3600000;f.api.refresh({key,now,random:()=>.5});const j=f.jobs.get('proactive:'+key);assert(j);await j.run({now});assert.equal(f.wakes(),0);
+ const now=start+239*60000;f.api.refresh({key,now,random:()=>.5});const j=f.jobs.get('proactive:'+key);assert(j);await j.run({now});assert.equal(f.wakes(),0);
  const p=f.api.preview({key,now});assert(p.effectiveProbability>0);assert.equal(p.blockedReason,'');
 });
 function diaryFixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'day-diary-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));let state={},now=at('09:05'),messages=[],plugin,finalResolve;const prompts=[],sent=[],receipts=new Map();

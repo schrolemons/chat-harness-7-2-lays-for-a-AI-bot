@@ -22,7 +22,7 @@ export function createProactive(ctx) {
   if(Object.values(previous).some(s=>s.availabilityVersion!==1))ctx.state.set({proactiveByKey:migrated});
   const jobId = key => `proactive:${key}`;
   const get = key => ctx.state.get().proactiveByKey?.[key] || { stage: 0, willingness: p.initialWillingness, source: 'default', phase: 'idle' };
-  const put = (key, value) => {const stored={...value,willingness:value.baseWillingness??value.willingness};delete stored.baseWillingness;delete stored.unansweredPaused;ctx.state.set({ proactiveByKey: { ...(ctx.state.get().proactiveByKey || {}), [key]: stored } });};
+  const put = (key, value) => {const stored={...value,willingness:value.assessedWillingness??value.baseWillingness??value.willingness};delete stored.assessedWillingness;delete stored.baseWillingness;delete stored.unansweredPaused;ctx.state.set({ proactiveByKey: { ...(ctx.state.get().proactiveByKey || {}), [key]: stored } });};
   let service;
   const assessor=createAvailabilityAssessor({ctx,get,put,baseline:p.initialWillingness,apply:payload=>service.setWillingness(payload)});
   const cancel = key => ctx.scheduler?.cancel(jobId(key));

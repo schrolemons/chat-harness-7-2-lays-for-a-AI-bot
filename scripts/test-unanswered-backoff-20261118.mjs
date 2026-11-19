@@ -8,7 +8,7 @@ test('own messages and AI neutral reassessments do not reset the unanswered epis
  const f=fixture();f.proactive.observe({key,kind:'sent',isProactive:true,reason:'proactiveCheck',episodeId:'one',eventId:'s1',at:start,success:true});f.proactive.observe({key,kind:'sent',isProactive:true,reason:'proactiveCheck',episodeId:'two',eventId:'s2',at:start+30*60000,success:true});f.proactive.setWillingness({key,value:60,reason:'无新增忙闲依据，保持中性',now:start+40*60000});assert.equal(f.proactive.availability({key,now:start+80*60000}).willingness,30);
 });
 test('three unanswered contacts remain probability-controlled and long silence keeps a positive floor',()=>{
- const f=fixture();for(let i=0;i<3;i++)f.proactive.observe({key,kind:'sent',isProactive:true,reason:'proactiveCheck',episodeId:'e'+i,eventId:'s'+i,at:start+i*30*60000,success:true});assert.equal(f.proactive.plan({key,now:start+300*60000,facts:{allowed:true,budgetAllowed:true,transportReady:true,busy:false},random:()=>0}).allowed,true);assert.equal(f.proactive.allowsReason({key,reason:'timeBubble',now:start+300*60000}).allowed,true);assert.equal(f.proactive.availability({key,now:start+300*60000}).willingness,1);
+ const f=fixture();for(let i=0;i<3;i++)f.proactive.observe({key,kind:'sent',isProactive:true,reason:'proactiveCheck',episodeId:'e'+i,eventId:'s'+i,at:start+i*30*60000,success:true});assert.equal(f.proactive.plan({key,now:start+239*60000,facts:{allowed:true,budgetAllowed:true,transportReady:true,busy:false},random:()=>0}).allowed,true);assert.equal(f.proactive.allowsReason({key,reason:'timeBubble',now:start+239*60000}).allowed,true);assert.equal(f.proactive.availability({key,now:start+239*60000}).willingness,1);
 });
 test('real new private input reopens contact, but mechanical notices neither count nor reopen it',()=>{
  const f=fixture();for(let i=0;i<3;i++)f.proactive.observe({key,kind:'sent',isProactive:true,reason:'proactiveCheck',episodeId:'e'+i,eventId:'s'+i,at:start+i*60000,success:true});f.proactive.observe({key,kind:'sent',isProactive:true,reason:'thinkingAck',eventId:'mechanical',at:start+90*60000,success:true});assert(f.proactive.availability({key,now:start+90*60000}).willingness<60);f.proactive.observe({key,kind:'incoming',hasText:true,eventId:'human',at:start+100*60000});assert.equal(f.proactive.availability({key,now:start+100*60000}).willingness,60);
@@ -19,4 +19,34 @@ test('multipart contact counts once and unrelated group speech does not reset th
  f.proactive.observe({key,kind:'incoming',hasText:true,directedAtBot:false,eventId:'other-human',at:start+60000});
  const a=f.proactive.availability({key,now:start+21*60000});assert.equal(a.unansweredAttempts,1);assert.equal(a.willingness,45);
  f.proactive.observe({key,kind:'incoming',hasText:true,directedAtBot:true,eventId:'direct-human',at:start+22*60000});assert.equal(f.proactive.availability({key,now:start+22*60000}).willingness,60);
+});
+
+test('unanswered willingness returns to 100 every four hours and then decays on the original schedule',()=>{
+ const f=fixture(),at=minutes=>start+minutes*60000;
+ f.proactive.observe({key,kind:'sent',isProactive:true,reason:'proactiveCheck',eventId:'first-send',at:start,success:true});
+ const willingness=minutes=>f.proactive.availability({key,now:at(minutes)}).willingness;
+ assert.equal(willingness(239),1);
+ assert.equal(willingness(240),100);
+ assert.equal(willingness(259),100);
+ assert.equal(willingness(260),85);
+ assert.equal(willingness(320),70);
+ assert.equal(willingness(479),40);
+ assert.equal(willingness(480),100);
+ assert.equal(willingness(740),85);
+ assert.equal(f.state().proactiveByKey[key].unansweredContact.firstAt,start);
+});
+test('automatic recovery keeps its original assessment for the next real conversation',()=>{
+ const f=fixture(),at=minutes=>start+minutes*60000;
+ f.proactive.setWillingness({key,value:55,reason:'最近比较忙',now:at(-1)});
+ f.proactive.observe({key,kind:'sent',isProactive:true,reason:'proactiveCheck',eventId:'first-send',at:start,success:true});
+ const facts={allowed:true,transportReady:true,busy:false,budgetAllowed:true};
+ f.proactive.plan({key,now:at(240),facts,random:()=>0});
+ assert.equal(f.proactive.availability({key,now:at(240)}).willingness,100);
+ assert.equal(f.state().proactiveByKey[key].willingness,55);
+ f.proactive.setWillingness({key,value:50,reason:'新确认正在忙',now:at(245)});
+ assert.equal(f.proactive.availability({key,now:at(245)}).willingness,50);
+ assert.equal(f.proactive.availability({key,now:at(260)}).willingness,35);
+ assert.equal(f.proactive.availability({key,now:at(480)}).willingness,100);
+ f.proactive.observe({key,kind:'incoming',hasText:true,eventId:'human',at:at(481)});
+ assert.equal(f.proactive.availability({key,now:at(481)}).willingness,50);
 });
