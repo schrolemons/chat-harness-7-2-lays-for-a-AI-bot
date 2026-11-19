@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
+import {acquireLease} from '../scripts/web-watch-browser-session.mjs';
 import {createProcessOwnership,probeProcess as nativeProbe} from './instance-ownership.mjs';
 const fail=(code,message=code)=>Object.assign(Error(message),{code});
 const live=child=>child?.pid&&child.exitCode===null&&child.signalCode===null;
@@ -35,13 +36,26 @@ export function createOwnedMonitorBrowser({root,instanceId,nonce,executablePath,
       await fs.mkdir(dir,{recursive:true});const stat=await fs.lstat(dir);
       if(!stat.isDirectory()||stat.isSymbolicLink())throw fail('MONITOR_PROFILE_INVALID');
     }
-    // Edge forwards new launches to any process already using the same
-    // profile. Site sessions have their own checkpoints, so no browser launch
-    // needs to share a profile with an older process or launch.
-    const profile=await fs.mkdtemp(path.join(stateDir,'owned-monitor-'));
-    const args=[...(headless?['--headless=new']:[]),'--no-proxy-server','--remote-debugging-port=0','--remote-debugging-address=127.0.0.1',`--user-data-dir=${profile}`,
-      '--no-first-run','--no-default-browser-check','--disable-background-networking','about:blank'];
-    const child=spawnProcess(executablePath,args,{cwd:root,env,windowsHide:true,detached:false,stdio:['ignore','ignore','pipe']});
+    // Reserve the visible profile for browser-native preferences and sign-in.
+    // Headless launches stay disposable and use only the per-site checkpoints.
+    const profile=headless?await fs.mkdtemp(path.join(stateDir,'owned-monitor-')):path.join(stateDir,'owned-monitor-login-profile');
+    const args=[...(headless?['--headless=new','--disable-background-networking']:[]),'--no-proxy-server','--remote-debugging-port=0','--remote-debugging-address=127.0.0.1',`--user-data-dir=${profile}`,
+      '--no-first-run','--no-default-browser-check','about:blank'];
+    let releaseProfile,child;
+    try{
+      if(!headless){
+        releaseProfile=acquireLease(profile+'.lock');
+        if(!releaseProfile)throw fail('MONITOR_PROFILE_BUSY','The dedicated login profile is already in use');
+        await fs.mkdir(profile,{recursive:true});
+        const stat=await fs.lstat(profile);
+        if(!stat.isDirectory()||stat.isSymbolicLink())throw fail('MONITOR_PROFILE_INVALID');
+      }
+      child=spawnProcess(executablePath,args,{cwd:root,env,windowsHide:true,detached:false,stdio:['ignore','ignore','pipe']});
+    }catch(error){releaseProfile?.();throw error;}
+    if(releaseProfile){
+      child.once('exit',releaseProfile);
+      child.once('error',()=>{if(!child.pid)releaseProfile();});
+    }
     const entry={child,profile,headless,browser:null,endpoint:null,record:null,ownership:null};entries.push(entry);current=entry;
     entry.ownership=createProcessOwnership({instanceId,nonce,probeProcess,terminateProcess:()=>close(entry)});
     let output='';
@@ -60,7 +74,7 @@ export function createOwnedMonitorBrowser({root,instanceId,nonce,executablePath,
     // Only retire the random directory created by this launch after its
     // process has been verified stopped. Site checkpoints live separately.
     const stateDir=path.join(root,'state');
-    if(path.dirname(entry.profile)===stateDir&&path.basename(entry.profile).startsWith('owned-monitor-')){
+    if(entry.headless&&path.dirname(entry.profile)===stateDir&&path.basename(entry.profile).startsWith('owned-monitor-')){
       await fs.rm(entry.profile,{recursive:true,force:true,maxRetries:3,retryDelay:100}).catch(()=>{});
     }
   }

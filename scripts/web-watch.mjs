@@ -46,10 +46,11 @@ function skipLoginSite(url,health){
   const recovery=loginRecovery.get(url);Object.assign(health,{auth:'red',hint:recovery.phase==='paused'?'已暂停此网站监管，点击重新监管恢复':'等待登录，下次尝试前不重复访问'});return true;
 }
 async function loginReady(url){
-  const checked=loginRecovery.checkRecovered(url),entry=loginRecovery.get(url);
-  const loginReady=['waiting','needed'].includes(entry.phase)||entry.phase==='error'&&new URL(entry.url).href===new URL(url).href;
-  if(loginReady)loginRecovery.recovered(url,entry.generation);
-  if(checked.ok||loginReady)await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});
+  const entry=loginRecovery.get(url);
+  const recoveringLogin=['waiting','needed'].includes(entry.phase)||entry.phase==='error'&&new URL(entry.url).href===new URL(url).href;
+  const recoveredLogin=recoveringLogin&&loginRecovery.recovered(url,entry.generation).ok;
+  const checked=loginRecovery.checkRecovered(url);
+  if(checked.ok||recoveredLogin)await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine});
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

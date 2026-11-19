@@ -52,7 +52,18 @@ export function createLoginRecovery(root,{config={},clock=Date.now}={}){
    notice(entry,`【网页监管需要登录】${name}\n网址：${url}\n最近检测到掉线：${beijingTime(now)}\n恢复验证时间：尚未恢复\n第${entry.attempts}/${policy.loginMaxAttempts}次尝试未通过登录验证。${ending}`,'failed',now);
    return entry;
   });},
-  recovered(url,generation){const key=keyFor(url),now=clock();return update(state=>{const entry=state.sites[key];if(!entry||entry.generation!==generation||entry.phase==='paused')return {ok:false};entry.phase='ready';entry.attempts=0;entry.nextAttemptAt=0;entry.recoveredAt=now;entry.checkError='';entry.notices=[];entry.noticeError='';notice(entry,`【网页监管已恢复】${entry.name||'监控网页'}\n网址：${entry.url||url}\n最近检测到掉线：${beijingTime(entry.lastFailureAt)}\n恢复验证时间：${beijingTime(now)}\n该网站访问已验证，已恢复其独立会话的无头后台监管。`,'recovered',now);return {ok:true};});},
+  recovered(url,generation){
+   const key=keyFor(url),checkedUrl=new URL(url).href,now=clock();
+   return update(state=>{
+    const entry=state.sites[key];
+    if(!entry||entry.generation!==generation||['paused','ready'].includes(entry.phase))return {ok:false};
+    entry.phase='ready';entry.attempts=0;entry.nextAttemptAt=0;entry.recoveredAt=now;entry.checkError='';entry.notices=[];entry.noticeError='';
+    // This verification also resolves the access failure for the verified page.
+    if(state.checks)delete state.checks[checkedUrl];
+    notice(entry,`【网页监管已恢复】${entry.name||'监控网页'}\n网址：${entry.url||url}\n最近检测到掉线：${beijingTime(entry.lastFailureAt)}\n恢复验证时间：${beijingTime(now)}\n该网站访问已验证，已恢复其独立会话的无头后台监管。`,'recovered',now);
+    return {ok:true};
+   });
+  },
   retry(url,name){const key=keyFor(url);return update(state=>{const old=state.sites[key]||{};const entry=state.sites[key]={...fresh(),targets:old.targets||[],url,name:name||old.name||'监控网页',requestedUrl:url,requestedAt:clock(),lastFailureAt:['waiting','paused'].includes(old.phase)?old.lastFailureAt||0:0};return entry;});},
   checkFailed(target,error,{immediate=false}={}){
    const now=clock(),key=keyFor(target.url),url=new URL(target.url).href;

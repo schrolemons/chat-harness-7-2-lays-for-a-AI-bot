@@ -92,3 +92,28 @@ test('a failed browser launch updates scheduled targets and queues one durable a
  assert.equal(next.get(site.url).phase,'ready');
  next.checkRecovered(site.url);assert.match(next.pendingNotices()[0].text,/已恢复/);
 });
+
+test('verified login and the resumed check report one recovery for the same page',t=>{
+ const f=fixture(t),other={url:new URL('/private/b',site.url).href,name:'课程B'};
+ const pageFailure=f.recovery.checkFailed(site,'访问失败',{immediate:true});
+ const otherFailure=f.recovery.checkFailed(other,'另一页访问失败',{immediate:true});
+ f.recovery.noticeResult(pageFailure.notices[0].id,true);
+ f.recovery.noticeResult(otherFailure.notices[0].id,true);
+ const login=f.recovery.fail(site);
+ f.recovery.noticeResult(login.notices[0].id,true);
+ f.next(.2);
+
+ assert.equal(f.recovery.recovered(site.url,login.generation).ok,true);
+ const resumed=createLoginRecovery(f.root,{clock:f.now});
+ resumed.checkRecovered(site.url);
+ assert.equal(resumed.pendingNotices().length,1);
+ assert.match(resumed.pendingNotices()[0].text,/后台监管/);
+ resumed.noticeResult(resumed.pendingNotices()[0].id,true);
+ assert.equal(resumed.recovered(site.url,login.generation).ok,false);
+ assert.equal(resumed.pendingNotices().length,0);
+
+ assert.equal(resumed.status(other.url).phase,'error');
+ assert.equal(resumed.checkRecovered(other.url).ok,true);
+ assert.equal(resumed.pendingNotices().length,1);
+ assert(resumed.pendingNotices()[0].text.includes(other.url));
+});
