@@ -26,18 +26,23 @@ export function createOwnedMonitorBrowser({root,instanceId,nonce,executablePath,
   async function openNow(headless){
     if(current){
       if(!live(current.child))throw fail('MONITOR_CHILD_EXITED');
+      if(!current.browser)throw fail('OWNERSHIP_UNCERTAIN','Previous browser launch was not verified');
       if(current.headless===headless)return {browserWSEndpoint:current.endpoint};
-      await current.ownership.stop();current=null;
+      await stopEntry(current);current=null;
     }
-    const profile=path.join(root,'state','owned-monitor-profile');
-    for(const dir of [root,path.join(root,'state'),profile]){
+    const stateDir=path.join(root,'state');
+    for(const dir of [root,stateDir]){
       await fs.mkdir(dir,{recursive:true});const stat=await fs.lstat(dir);
       if(!stat.isDirectory()||stat.isSymbolicLink())throw fail('MONITOR_PROFILE_INVALID');
     }
+    // Edge forwards new launches to any process already using the same
+    // profile. Site sessions have their own checkpoints, so no browser launch
+    // needs to share a profile with an older process or launch.
+    const profile=await fs.mkdtemp(path.join(stateDir,'owned-monitor-'));
     const args=[...(headless?['--headless=new']:[]),'--no-proxy-server','--remote-debugging-port=0','--remote-debugging-address=127.0.0.1',`--user-data-dir=${profile}`,
       '--no-first-run','--no-default-browser-check','--disable-background-networking','about:blank'];
     const child=spawnProcess(executablePath,args,{cwd:root,env,windowsHide:true,detached:false,stdio:['ignore','ignore','pipe']});
-    const entry={child,headless,browser:null,endpoint:null,record:null,ownership:null};entries.push(entry);current=entry;
+    const entry={child,profile,headless,browser:null,endpoint:null,record:null,ownership:null};entries.push(entry);current=entry;
     entry.ownership=createProcessOwnership({instanceId,nonce,probeProcess,terminateProcess:()=>close(entry)});
     let output='';
     const endpoint=new Promise((resolve,reject)=>{
@@ -50,6 +55,15 @@ export function createOwnedMonitorBrowser({root,instanceId,nonce,executablePath,
     entry.browser=await bounded(connectBrowser(entry.endpoint),timeoutMs);
     return {browserWSEndpoint:entry.endpoint};
   }
+  async function stopEntry(entry){
+    await entry.ownership.stop();
+    // Only retire the random directory created by this launch after its
+    // process has been verified stopped. Site checkpoints live separately.
+    const stateDir=path.join(root,'state');
+    if(path.dirname(entry.profile)===stateDir&&path.basename(entry.profile).startsWith('owned-monitor-')){
+      await fs.rm(entry.profile,{recursive:true,force:true,maxRetries:3,retryDelay:100}).catch(()=>{});
+    }
+  }
   function open(headless){
     if(closed)return Promise.reject(fail('MONITOR_CLOSING'));
     if(typeof headless!=='boolean')return Promise.reject(fail('MONITOR_ARGUMENT_INVALID'));
@@ -60,7 +74,7 @@ export function createOwnedMonitorBrowser({root,instanceId,nonce,executablePath,
     closed=true;
     return stopping??=(async()=>{await tail;for(const entry of [...entries].reverse()){
       if(!entry.record&&live(entry.child))throw fail('OWNERSHIP_UNCERTAIN');
-      await entry.ownership.stop();
+      await stopEntry(entry);
     }uncertain=false;})()
       .catch(error=>{uncertain=true;throw error;}).finally(()=>{stopping=null;});
   }

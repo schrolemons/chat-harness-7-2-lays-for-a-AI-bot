@@ -76,3 +76,19 @@ test('persistent access failures remind again after the configured interval even
  f.next(4);f.recovery.checkFailed(site,'failure');assert.equal(f.recovery.pendingNotices().length,0);
  f.next(1);f.recovery.checkFailed(site,'failure');assert.equal(f.recovery.pendingNotices().length,1);assert.notEqual(f.recovery.pendingNotices()[0].id,first.id);
 });
+
+test('a failed browser launch updates scheduled targets and queues one durable alert immediately',t=>{
+ const f=fixture(t),other={url:'https://other.example/course',name:'课程B'};
+ const state={monitorHealth:{[site.url]:{fetch:'green',auth:'green',diff:'stable'},'https://untouched.example/':{fetch:'green'}}};
+ f.recovery.runFailed(state,[site,other],'监控浏览器启动失败');
+ assert.deepEqual(state.monitorHealth[site.url],{fetch:'red',auth:'unknown',diff:'unknown',delivery:'none',hint:'监控浏览器启动失败',checkedAt:f.now()});
+ assert.equal(state.monitorHealth[other.url].fetch,'red');
+ assert.equal(state.monitorHealth['https://untouched.example/'].fetch,'green');
+ const next=createLoginRecovery(f.root,{clock:f.now});
+ const [notice]=next.pendingNotices();assert.match(notice.text,/监控浏览器启动失败/);
+ next.noticeResult(notice.id,true);
+ f.next(1);next.runFailed(state,[site,other],'监控浏览器启动失败');
+ assert.equal(next.pendingNotices().length,0);
+ assert.equal(next.get(site.url).phase,'ready');
+ next.checkRecovered(site.url);assert.match(next.pendingNotices()[0].text,/已恢复/);
+});

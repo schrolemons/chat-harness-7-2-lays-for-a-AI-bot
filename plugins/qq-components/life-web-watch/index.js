@@ -44,7 +44,7 @@ export function createPlugin(ctx) {
         return { path: script, description, health: cfg.scriptCollabEnabled === false || !scriptPaths.includes(script) ? 'paused' : recent ? (beat.ok === false ? 'red' : beat.mode === 'fallback' ? 'fallback' : 'green') : Number(beat.at)>0 ? 'stale' : 'unknown', checkedAt: beat.at || null, hint: beat.hint || (recent ? '最近有运行心跳' : '尚未接入运行心跳') };
       });
       const sites = knownSites().map(site => ({ ...site, health: state.monitorHealth?.[site.url] || null }));
-      return { ok: true, sites:sites.map(site=>{const entry=recovery.status(site.url),health={...(site.health||{})};if(['waiting','paused'].includes(entry.phase))health.auth='red';else if(entry.phase==='needed')health.auth='unknown';else if(entry.phase==='error')Object.assign(health,{fetch:'red',auth:'unknown',checkedAt:entry.checkedAt,hint:entry.checkError});else if(entry.recoveredAt>Number(health.checkedAt||0))health.auth='green';return {...site,health,loginRecovery:{...entry,...recovery.policy}};}), scripts };
+      return { ok: true, sites:sites.map(site=>{let entry=recovery.status(site.url);const health={...(site.health||{})};if(['waiting','paused'].includes(entry.phase))health.auth='red';else if(entry.phase==='needed')health.auth='unknown';else if(entry.phase==='error')Object.assign(health,{fetch:'red',auth:'unknown',checkedAt:entry.checkedAt,hint:entry.checkError});else if(entry.recoveredAt>Number(health.checkedAt||0))health.auth='green';if(entry.phase==='ready'&&health.fetch==='red')entry={...entry,phase:'error'};return {...site,health,loginRecovery:{...entry,...recovery.policy}};}), scripts };
     }
   });
   // Admin intent travels through the existing admin-only config route, never an AI tool.
@@ -64,8 +64,8 @@ export function createPlugin(ctx) {
   }
 
   return { validateConfig,hooks: { onTick({ now = Date.now() } = {}) {
-    if(recovery.pendingNotices().length&&typeof ctx.capabilities?.sendNotificationDetailed==='function'){
-      void (async()=>{for(const item of recovery.pendingNotices()){if(!recovery.pendingNotices().some(current=>current.id===item.id))continue;try{const key='private:'+String(ctx.capabilities.getOwnerQQ?.()||'');const result=await ctx.capabilities.sendNotificationDetailed(key,item.text,{id:item.id,sourceAt:item.sourceAt,expiresAt:item.expiresAt});recovery.noticeResult(item.id,result?.ok===true,result?.reason||'');}catch(error){recovery.noticeResult(item.id,false,error.message);break;}}})().catch(error=>ctx.warn?.('登录提示处理失败：'+error.message));
+    if(recovery.pendingNotices().length&&typeof ctx.capabilities?.sendNotificationBatch==='function'){
+      void (async()=>{for(const item of recovery.pendingNotices()){if(!recovery.pendingNotices().some(current=>current.id===item.id))continue;try{const key='private:'+String(ctx.capabilities.getOwnerQQ?.()||'');const result=await ctx.capabilities.sendNotificationBatch(key,[item]);recovery.noticeResult(item.id,result?.ok===true,result?.reason||'');}catch(error){recovery.noticeResult(item.id,false,error.message);break;}}})().catch(error=>ctx.warn?.('登录提示处理失败：'+error.message));
     }
     const hasWebWork = cfg.webWatchEnabled !== false && watchUrls.some(site=>recovery.canCheck(site.url,now));
     const waiting=knownSites().find(site=>recovery.get(site.url).phase==='waiting');

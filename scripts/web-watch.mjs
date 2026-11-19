@@ -166,7 +166,8 @@ async function main() {
   const loginLock = path.join(ROOT, 'state', 'login-window.lock');
   if (leaseActive(loginLock)) { console.log('登录正在进行，暂停后台页面检查'); return; }
   if(RETRY_URL&&await resumeWaitingLogin({target:WATCH_SITES.find(site=>site.url===RETRY_URL),recovery:loginRecovery,request:requestLoginWindow}))return;
-  if (!WATCH_SITES.some(site => !RETRY_URL || site.url === RETRY_URL)) return;
+  const targets = WATCH_SITES.filter(site => (!RETRY_URL || site.url === RETRY_URL) && loginRecovery.canCheck(site.url));
+  if (!targets.length) return;
   // The PID lease prevents concurrent checks from changing the same baseline.
   const lockFile = path.join(ROOT, 'state', 'web-watch.lock');
   const release = acquireLease(lockFile);
@@ -175,6 +176,7 @@ async function main() {
   process.once('exit', releaseAtExit);
   if (leaseActive(loginLock)) { release(); return; }
   const state = readState();
+  const startedAt = Date.now();
   const changes = [];
   let browser;
   ownedCleanup=async()=>{await siteSessions?.close();siteSessions=null;await closeBrowser(browser);saveState(state);release();};
@@ -186,11 +188,15 @@ async function main() {
     if(ownedMonitor)await ownedMonitor.cleanup(()=>siteSessions.close());else await siteSessions.close();siteSessions=null;
     if(ownedMonitor)await ownedMonitor.cleanup(()=>browser.disconnect());else await closeBrowser(browser);
   } catch (error) {
-    logLine('检查失败：' + (error?.message ?? error));
-    if(RETRY_URL){const health=state.monitorHealth?.[RETRY_URL]||{};loginRecovery.checkFailed({url:RETRY_URL,name:loginRecovery.get(RETRY_URL).name},error.message);Object.assign(health,{checkedAt:Date.now(),fetch:'red',hint:error.message});(state.monitorHealth||={})[RETRY_URL]=health;await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine}).catch(()=>{});}
-    reportScriptHeartbeat(ROOT, 'scripts/web-watch.mjs', false, error?.message ?? String(error));
+    const hint = browser ? '监控检查中断' : '监控浏览器启动失败';
+    logLine(hint + '：' + (error?.message ?? error));
+    reportScriptHeartbeat(ROOT, 'scripts/web-watch.mjs', false, hint);
     stageWebChanges(state, changes);
+    const affected = browser ? targets.filter(site => Number(state.monitorHealth?.[site.url]?.checkedAt || 0) < startedAt) : targets;
+    try { loginRecovery.runFailed(state, affected, hint); }
+    catch (error) { logLine('记录监管失败状态异常：' + error.message); }
     saveState(state);
+    await flushLoginNotices({root:ROOT,recovery:loginRecovery,log:logLine}).catch(error => logLine('监管通知异常：' + error.message));
     try { await siteSessions?.close();siteSessions=null; } catch (error) { ownedMonitor?.noteCleanupFailure(error); }
     try { await closeBrowser(browser); } catch (error) { ownedMonitor?.noteCleanupFailure(error); }
     release();
@@ -257,7 +263,11 @@ async function main() {
   else if (Object.values(state.monitorHealth||{}).some(health=>health.fetch==='red'||health.auth==='red')) logLine('检查完成：部分网站检查失败或需要登录，请查看监控状态');
   else if (!changes.length) logLine('检查完成：无变化');
   else logLine('检查完成：' + new Set(changes.map(c => c.msg)).size + ' 处变化');
-  reportScriptHeartbeat(ROOT, 'scripts/web-watch.mjs', true, '最近一次检查完成');
+  const failed = targets.some(site => {
+    const health = state.monitorHealth?.[site.url];
+    return health?.checkedAt >= startedAt && (health.fetch === 'red' || health.auth === 'red');
+  });
+  reportScriptHeartbeat(ROOT, 'scripts/web-watch.mjs', !failed, failed ? '部分监管目标检查失败' : '最近一次检查完成');
   release();
 }
 

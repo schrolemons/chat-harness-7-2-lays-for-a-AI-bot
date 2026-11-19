@@ -1,5 +1,17 @@
 import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
 import {acquireLease} from '../../../scripts/web-watch-browser-session.mjs';
+
+// Update only the targets this run was meant to check. A run-level failure
+// (for example, browser acquisition) affects all of them but needs one alert.
+function recordMonitorRunFailure(state,targets,error,now){
+ const unique=new Map(targets.map(target=>[target.url,target]));
+ state.monitorHealth||={};
+ for(const target of unique.values()){
+  const health=state.monitorHealth[target.url]||={};
+  Object.assign(health,{fetch:'red',auth:'unknown',checkedAt:now,diff:'unknown',delivery:'none',hint:error});
+ }
+ return [...unique.values()];
+}
 export function loginPolicy(config={}){return {loginMaxAttempts:config.loginMaxAttempts??3,loginRetryMinutes:config.loginRetryMinutes??5};}
 export function validateLoginPolicy(config={}){const p=loginPolicy(config),errors=[];if(!Number.isInteger(p.loginMaxAttempts)||p.loginMaxAttempts<1||p.loginMaxAttempts>20)errors.push('登录尝试上限必须为1–20次');if(!Number.isInteger(p.loginRetryMinutes)||p.loginRetryMinutes<1||p.loginRetryMinutes>1440)errors.push('登录尝试／提醒间隔必须为1–1440分钟');return {ok:errors.length===0,errors};}
 export function loginOrigin(url){const value=new URL(url);if(!['http:','https:'].includes(value.protocol)||value.username||value.password)throw Error('无效监管网址');return value.origin;}
@@ -16,6 +28,11 @@ export function createLoginRecovery(root,{config={},clock=Date.now}={}){
  function notice(entry,text,kind,now){entry.notices||=[];entry.notices.push({id:'web-watch-login:'+entry.generation+':'+kind+':'+entry.attempts,text,sourceAt:now,expiresAt:now+currentPolicy().loginRetryMinutes*60000,accepted:false});entry.notices=entry.notices.slice(-22);}
  const noticeEntries=state=>[...Object.values(state.sites||{}),...Object.values(state.checks||{})];
  return {
+  runFailed(state,targets,error){
+   const failed=recordMonitorRunFailure(state,targets,error,clock());
+   const target=failed.find(site=>!['waiting','paused'].includes(get(site.url).phase));
+   if(target)this.checkFailed(target,error,{immediate:true});
+  },
   get policy(){return currentPolicy();},get,
   status(url){
    const login=get(url),check=read().checks?.[new URL(url).href];
@@ -37,7 +54,7 @@ export function createLoginRecovery(root,{config={},clock=Date.now}={}){
   });},
   recovered(url,generation){const key=keyFor(url),now=clock();return update(state=>{const entry=state.sites[key];if(!entry||entry.generation!==generation||entry.phase==='paused')return {ok:false};entry.phase='ready';entry.attempts=0;entry.nextAttemptAt=0;entry.recoveredAt=now;entry.checkError='';entry.notices=[];entry.noticeError='';notice(entry,`【网页监管已恢复】${entry.name||'监控网页'}\n网址：${entry.url||url}\n最近检测到掉线：${beijingTime(entry.lastFailureAt)}\n恢复验证时间：${beijingTime(now)}\n该网站访问已验证，已恢复其独立会话的无头后台监管。`,'recovered',now);return {ok:true};});},
   retry(url,name){const key=keyFor(url);return update(state=>{const old=state.sites[key]||{};const entry=state.sites[key]={...fresh(),targets:old.targets||[],url,name:name||old.name||'监控网页',requestedUrl:url,requestedAt:clock(),lastFailureAt:['waiting','paused'].includes(old.phase)?old.lastFailureAt||0:0};return entry;});},
-  checkFailed(target,error){
+  checkFailed(target,error,{immediate=false}={}){
    const now=clock(),key=keyFor(target.url),url=new URL(target.url).href;
    return update(state=>{
     const login=state.sites[key];if(['waiting','paused'].includes(login?.phase))return login;
@@ -49,7 +66,7 @@ export function createLoginRecovery(root,{config={},clock=Date.now}={}){
     if(!entry||entry.phase==='ready')entry=state.checks[url]={phase:'error',generation:crypto.randomUUID(),attempts:0,firstFailureAt:now,notices:[],url};
     entry.attempts++;entry.name=target.name||entry.name||'监控网页';entry.checkError=String(error).slice(0,240);entry.checkedAt=now;
     const confirmed=entry.attempts>1&&now-entry.firstFailureAt>=currentPolicy().loginRetryMinutes*60000;
-    if((manual||confirmed)&&!entry.notices.some(item=>now<item.expiresAt))notice(entry,`【网页监管访问失败】${entry.name}\n网址：${url}\n首次检测失败：${beijingTime(entry.firstFailureAt)}\n再次验证时间：${beijingTime(now)}\n${entry.checkError}\n${manual?'本次手动验证失败':'同一页面再次检查仍失败'}，未确认登录失效，不自动弹出登录窗口。持续失败按配置间隔提醒，其他网站继续检查。`,'check-error',now);
+    if((manual||confirmed||immediate)&&!entry.notices.some(item=>now<item.expiresAt))notice(entry,`【网页监管访问失败】${entry.name}\n网址：${url}\n首次检测失败：${beijingTime(entry.firstFailureAt)}\n最近检查时间：${beijingTime(now)}\n${entry.checkError}\n${manual?'本次手动验证失败':immediate?'本轮监管未能完成':'同一页面再次检查仍失败'}，请在控制台查看监管状态。`,'check-error',now);
     return entry;
    });
   },
