@@ -73,6 +73,15 @@ export function createContentUnits(ctx){
    save(s);return {ok:true,contents:out};
   },
   getContent({key,contentId}={}){const s=load(),c=s.contents[canonical(s,contentId)];return c&&c.key===key?publicContent(c):null;},
+  pendingDeliverySources({key,messages=[]}={}){
+   const s=load(),pending=new Set(Object.values(s.conversations).flatMap(e=>Object.values(e.reservations||{}).filter(r=>r.uncertain===true&&r.contentId).map(r=>canonical(s,r.contentId))));
+   const contents=[...pending].map(id=>s.contents[id]).filter(c=>c?.key===key);
+   const seqs=messages.filter(complete).filter(m=>contents.some(c=>{
+    const source=matchedKey(c,m);
+    return source&&c.sourceBodies[source]===digest(m);
+   })).map(m=>m.seq);
+   return [...new Set(seqs)].sort((a,b)=>a-b);
+  },
   confirmedReplySources({key,messages=[],finalizedOnly=false}={}){
    const s=load(),delivered=new Set(Object.values(s.conversations).flatMap(e=>(e.receipts||[]).filter(r=>r.contentId).map(r=>canonical(s,r.contentId)))),seqs=[];
    for(const message of messages.filter(complete))for(const c of Object.values(s.contents)){

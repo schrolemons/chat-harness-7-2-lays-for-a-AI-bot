@@ -78,7 +78,9 @@ export function createSendLedger(ctx,policy) {
       const admittedTask=plan?.contentId?this.getContent?.({key:plan.sourceKey||plan.key,contentId:plan.contentId})?.taskExempt:!!this.getTaskGroup({key:plan?.sourceKey||plan?.key||key,groupId:plan?.taskGroupId});
       const groupId=rateGroup(plan,plan?.contentId&&this.getContent?.({key:plan.sourceKey||plan.key,contentId:plan.contentId}));
       const admittedReply=!!groupId&&deliveries(e).some(r=>r.rateGroupId===groupId);
-      return {...c,successful:e.receipts.length,inflight:Object.keys(e.reservations).length,allowed:admittedTask||admittedReply||ordinary||burstAllowed,burstAllowed,nextAt:e.nextAt,taskCredits:(e.taskCredits||[]).length};
+      const reservations=Object.values(e.reservations);
+      const uncertain=reservations.filter(r=>r.uncertain===true).length;
+      return {...c,successful:e.receipts.length,inflight:reservations.length-uncertain,uncertain,allowed:admittedTask||admittedReply||ordinary||burstAllowed,burstAllowed,nextAt:e.nextAt,taskCredits:(e.taskCredits||[]).length};
     },
     remaining({key,plan,contentId=plan?.contentId}={}) {
       if(!plan)return 0;
@@ -91,8 +93,10 @@ export function createSendLedger(ctx,policy) {
       const content=this.getContent?.({key:plan.sourceKey||plan.key,contentId});
       if(!content)return null;
       const s=load(),successful=s.contentCounts?.[content.id]||0;
-      const uncertain=Object.values(s.conversations).flatMap(e=>Object.values(e.reservations||{})).filter(r=>r.contentId===content.id&&r.uncertain===true).length;
-      const inflight=Object.values(s.conversations).flatMap(e=>Object.values(e.reservations||{})).filter(r=>r.contentId===content.id).length;
+      const reservations=Object.values(s.conversations).flatMap(e=>Object.values(e.reservations||{})).filter(r=>r.contentId===content.id);
+      // Unknown outcomes retain a deduplication hold in reserve(), without appearing as work in flight.
+      const uncertain=reservations.filter(r=>r.uncertain===true).length;
+      const inflight=reservations.length-uncertain;
       return {contentId:content.id,seqs:content.seqs,kind:content.kind,maxParts:content.maxParts,successful,inflight,uncertain,remaining:content.taskExempt?Number.MAX_SAFE_INTEGER:Math.max(0,content.maxParts-successful-inflight),taskExempt:content.taskExempt,taskPending:content.taskPending,taskGroupAdmission:content.taskGroupAdmission};
     },
     turnProgress({plan}={}){

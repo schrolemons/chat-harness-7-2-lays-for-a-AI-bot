@@ -26,7 +26,9 @@ test('partial successes and all media share one frozen envelope and receipts',as
 test('unknown outcome never reports success and retains reservation',async()=>{
   const {transport,context,facts,svc}=fixture();
   await assert.rejects(transport.perform({key:'private:1',context,kind:'voice',send:async()=>{throw Error('timeout');}}));
-  assert.equal(facts.filter(x=>x.m==='sent').length,0);assert.equal(svc.preview({key:'private:1',now:1000}).inflight,1);
+  assert.equal(facts.filter(x=>x.m==='sent').length,0);
+  const pending=svc.preview({key:'private:1',now:1000});
+  assert.equal(pending.inflight,0);assert.equal(pending.uncertain,1);
 });
 test('async scope retains source turn across awaits and later active changes',async()=>{
   const {transport,context,facts}=fixture();

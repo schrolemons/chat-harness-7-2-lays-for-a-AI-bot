@@ -21,7 +21,7 @@ test('the current reply context refreshes real delivery progress without renewin
  assert.ok(REFRESH_MODULE_IDS.includes('ctx-chat-reply-shape'));
  assert.match(plugin.hooks.beforePrompt({key:p.key,replyPlan:p}),/已成功发送 0 条/);
  service.reserve({key:p.key,plan:p,operationId:'first',kind:'text',text:'呜，好可爱。'});
- assert.match(plugin.hooks.beforePrompt({key:p.key,replyPlan:p}),/发送中或结果待确认 1 条/);
+ assert.match(plugin.hooks.beforePrompt({key:p.key,replyPlan:p}),/发送中 1 条；投递待核对 0 条/);
  service.commit({key:p.key,operationId:'first',deliveryId:'actual-success'});
  const text=plugin.hooks.beforePrompt({key:p.key,replyPlan:p});assert.match(text,/已成功发送 1 条/);assert.match(text,/不要换说法再次发送/);
  assert.equal(service.remaining({key:p.key,plan:p}),p.maxMessages-1);

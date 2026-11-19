@@ -13,7 +13,9 @@ async function open(t,{texts=['这幅画很好看','今天天气不错','这首�
  const server=h.startConsoleServer();if(!server.listening)await new Promise(r=>server.once('listening',r));
  t.after(async()=>{server.closeAllConnections?.();await new Promise(r=>server.close(r));await h.close();});
  const request=async(path,body,contentId)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method:'POST',headers:{'x-console-token':'fixture-console-token','x-agent-token':st.agentToken,'x-agent-call':'1','content-type':'application/json',...(contentId?{'x-reply-content-id':contentId}:{})},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
- return {h,key,st,sid,messages,request};
+ const operator=async(path,body)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method:'POST',headers:{'x-console-token':'fixture-console-token','content-type':'application/json'},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
+ const read=async path=>{const r=await fetch('http://127.0.0.1:'+server.address().port+path,{headers:{'x-console-token':'fixture-console-token','x-agent-token':st.agentToken,'x-agent-call':'1'}});return {status:r.status,body:await r.json()};};
+ return {h,key,st,sid,messages,request,operator,read};
 }
 test('a real admin relay recovers after an ordinary acknowledgement and preserves one content ID',async t=>{
  const {h,key,st,sid,messages,request}=await open(t,{admin:true,texts:['你聊过很多次了，去电一下12001'],extraConfig:{allow:{private:['123','12001']}}});
@@ -109,8 +111,50 @@ test('an uncertain first bubble is retained and stops automatic delivery of late
  assert.equal(attempts,1);
  const preview=h.pluginHost.callService('replyPlan','preview',{key});
  assert.equal(preview.successful,0);
- assert.equal(preview.inflight,1);
+ assert.equal(preview.inflight,0);
+ assert.equal(preview.uncertain,1);
  assert.equal(preview.minute,1);
+});
+test('a single-part uncertain reply keeps the source pending and an independent new message can send',async t=>{
+ let attempts=0;
+ const {h,key,st,sid,messages,request,read}=await open(t,{texts:['你好'],extraFiles:{
+  'state/plugins/config/ctx-chat-reply-shape.json':{maxMessagesNormal:1,maxMessagesCasual:1,maxMessagesSerious:1,maxSendPerMinute:0,maxSendPerHour:0,intervalMinMs:0,intervalMaxMs:0,longGapProbability:0},
+ },globals:{fetch:async url=>{
+  if(/send_private_msg$/.test(String(url))&&++attempts===1)throw Error('fixture response lost');
+  return {ok:true,status:200,json:async()=>({status:'ok',retcode:0,data:{message_id:301}})};
+ }}});
+ const declared=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[messages[0].seq],kind:'chat'}]});
+ assert.equal(declared.body.ok,true,JSON.stringify(declared.body));
+ const [old]=declared.body.contents;
+ const send=(content,payload)=>request('/api/socialV2/send-message',{key,messages:payload},content.id);
+ assert.match((await send(old,'给旧消息的答复')).body.error,/fixture response lost/);
+ assert.match((await send(old,'改写旧消息的答复')).body.error,/delivery_unconfirmed/);
+ assert.equal(attempts,1);
+ await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/end',data:{turn:1,reason:{kind:'completed'}}}}});
+ const incoming=h.appendSocialV2Message(key,'甲','明天几点开始','明天几点开始',false,true,'synthetic-new',[],'123',[],undefined,false,{bodyComplete:true});
+ await h.deliverPrompt(key,'',{wakeReason:'private'});
+ await h.queueDshEnvelope({payload:{type:'session/event',sessionId:sid,event:{type:'turn/start',data:{turn:2}}}});
+ await read('/api/socialV2/unread?key='+key);
+ const next=await request('/api/socialV2/reply-contents',{key,groups:[{seqs:[incoming.seq],kind:'chat'}]});
+ assert.equal(next.body.ok,true,JSON.stringify(next.body));
+ const prompt=h.pluginHost.callService('replyPlan','pendingDeliverySources',{key,messages:st.unread});
+ assert.deepEqual(prompt,[messages[0].seq]);
+ const response=await send(next.body.contents[0],'这是新消息的独立答复');
+ assert.equal(response.body.sent,1,JSON.stringify(response.body));
+ assert.equal(attempts,2);
+ const preview=h.pluginHost.callService('replyPlan','preview',{key});
+ assert.deepEqual({successful:preview.successful,inflight:preview.inflight,uncertain:preview.uncertain},{successful:1,inflight:0,uncertain:1});
+});
+test('an operator-confirmed quoted recovery records only the recovered source',async t=>{
+ const {h,key,st,messages,operator}=await open(t);
+ const [recover,independent]=messages;
+ const result=await operator('/api/send/private',{userId:key.split(':')[1],token:st.agentToken,message:'补上原消息的答复。',replyToMessageId:recover.messageId});
+ assert.equal(result.body.sent,1,JSON.stringify(result.body));
+ const stamped=await operator('/api/socialV2/receipt-report',{key,receipts:[{seq:recover.seq,status:'replied'}]});
+ assert.equal(stamped.body.ok,true,JSON.stringify(stamped.body));
+ assert.ok(st.recentMessages.find(m=>m.seq===recover.seq)?.repliedAt);
+ assert.ok(!st.recentMessages.find(m=>m.seq===independent.seq)?.repliedAt);
+ assert.equal(h.calls.http.filter(c=>/send_private_msg$/.test(c.url)).length,1);
 });
 test('mixed task operations require a selected paid group and cannot consume a second credit for its report',async t=>{
  const {h,key,messages,request}=await open(t,{texts:['帮我查看任务报告','帮我整理工作记录','今天很开心'],rate:1});
