@@ -6,7 +6,8 @@ import {mountInstanceController} from '../src/dsh-instance-controller.mjs';impor
 import {OWNED_PRESET_SOURCES} from '../src/instance-session-policy.mjs';
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 async function port(){const s=http.createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
-test('two owned roots share current native host, retain history and isolate leases tools services and rebind',{timeout:90000},async t=>{
+// Repeated Windows process identity probes and full start/stop cycles need a longer test budget.
+test('two owned roots share current native host, retain history and isolate leases tools services and rebind',{timeout:240000},async t=>{
  const f=await nativeSessionFixture(t),{default:WebServer}=await hostImport('@deepseek-ai/dsh-host-webserver'),MCP=await hostImport('@deepseek-ai/dsh-mcp-client'),scopeApi=await hostImport('@deepseek-ai/dsh-scope');
  let web=await f.ctx.plugin(WebServer,{host:'127.0.0.1',port:0,compression:'none'});const firstOrigin=f.ctx.webServer.getOrigin();
  const calls=[],external=http.createServer(async(req,res)=>{if(req.method!=='POST'){res.writeHead(405).end();return;}let raw='';for await(const c of req)raw+=c;const q=JSON.parse(raw);if(q.id===undefined){res.writeHead(202).end();return;}let result={};if(q.method==='initialize')result={protocolVersion:q.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'synthetic',version:'1'}};if(q.method==='tools/list')result={tools:[{name:'probe',inputSchema:{type:'object'}}]};if(q.method==='tools/call'){calls.push(req.url);result={content:[{type:'text',text:req.url}]};}res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({jsonrpc:'2.0',id:q.id,result}));});
