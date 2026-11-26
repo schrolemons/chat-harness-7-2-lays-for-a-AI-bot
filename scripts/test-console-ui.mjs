@@ -13,7 +13,7 @@ import { COMPONENT_OWNERS, componentPage } from '../console/shared/components/ow
 
 const args = process.argv.slice(2);
 const artifacts = args.find(x => x.startsWith('--artifacts='))?.slice('--artifacts='.length);
-const views = ['overview','sessions','persona','social-v1','slang','alias','terms','usage','context-visual','access','operations','reference','games','codex-peer','injection-lab','v2-t','v2-e','setting-c-0','setting-c-1','setting-c-2','setting-l-0','setting-l-1','setting-l-2','setting-o-0','setting-o-1','setting-o-2','environment-chat','environment-admin','environment-presets','environment-web','images','video','layer-v','human','layer-s','registry'];
+const views = ['overview','sessions','persona','social-v1','slang','alias','terms','usage','context-visual','access','operations','reference','games','codex-peer','injection-lab','v2-t','v2-e','setting-c-0','setting-c-1','setting-c-2','setting-l-0','setting-l-1','setting-l-2','setting-o-0','setting-o-1','setting-o-2','environment-chat','environment-admin','environment-presets','environment-web','environment-watch','environment-scripts','images','video','layer-v','human','layer-s','registry'];
 if (args.some(arg=>['--original','--record-baseline'].includes(arg))) throw new Error('Legacy baseline modes have been retired; tests exercise the current modular console.');
 
 async function loadPlaywright() {
@@ -104,15 +104,16 @@ try {
     assert.deepEqual([...flags].sort(),[...new Set(Object.values(TOOL_CONFIG_FLAGS))].sort(),'Tool switches must match the MCP registration mapping');
   });
 
-  await test('Tool catalog displays actual injection evidence and separates pending and admin tools', async()=>{
+  await test('Tool catalog separates registration, injection evidence and administrator tools', async()=>{
     await navigate('reference');
     await page.waitForFunction(()=>document.getElementById('toolReferenceRoot')?.textContent.includes('qq_status'));
     assert(fixture.reads.some(read=>read.path==='/api/tools/catalog'));
     const active=await page.locator('#toolReferenceRoot').innerText();
     assert.match(active,/qq_status/);
     assert.equal(await page.locator('#toolReferenceRoot code[title="mcp__snowluma__qq_status"]').innerText(),'qq_status');
-    assert.doesNotMatch(active,/mcp__fixture__(pending|admin)/);
-    assert.match(await page.locator('#toolPendingRoot code').textContent(),/pending/);
+    assert.doesNotMatch(active,/fixture_(unregistered|admin)/);
+    assert.match(await page.locator('#toolReferenceRoot code[title="mcp__fixture__pending"]').locator('..').innerText(),/0 个聊天会话有注入记录/);
+    assert.match(await page.locator('#toolPendingRoot code').textContent(),/unregistered/);
     assert.match(await page.locator('#toolAdminRoot code').textContent(),/admin/);
     assert.match(await page.locator('#toolsCatalogStatus').innerText(),/实际注入记录/);
   });
@@ -272,8 +273,8 @@ try {
     const root=page.locator('#presetModelPolicy');
     await root.locator('[data-model-scope="global"]').waitFor();
     await root.locator('[data-model-preset="qq-chat-v2"]').waitFor();
-    assert.equal(await root.locator('[data-preset-select]').count(),8);
-    assert.equal(await page.locator('#presetOverviewRows article').count(),6);
+    assert.equal(await root.locator('[data-preset-select]').count(),9);
+    assert.deepEqual(await page.locator('#presetOverviewRows article').evaluateAll(rows=>rows.map(row=>row.dataset.modelPreset)),['qq-chat','qq-chat-v2','qq-admin','qq-learning','qq-memory-worker','campus-summary','qq-task-worker']);
     assert.match(await root.locator('[data-model-scope="global"]').innerText(),/全局默认模型/);
     assert.equal(await root.locator('[data-model-scope="global"] select').count(),3);
     assert.equal(await root.locator('[data-model-preset="qq-chat-v2"] select').count(),3);

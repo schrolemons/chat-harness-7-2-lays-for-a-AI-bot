@@ -4,6 +4,8 @@ import { bridgeHarness } from './audit-bridge-harness.mjs';
 const harness = await bridgeHarness({ config: { allow: { private: ['123'], groups: ['456'] } } });
 let server;
 try {
+  harness.pluginHost.setConfig('life-wake-reasons', { initialProbability: 0, probabilityStep: 0 });
+  await harness.pluginHost.reload('life-wake-reasons');
   const raw=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jQmcAAAAASUVORK5CYII=','base64');
   let fetched=0,release;harness.bot.getImage=async()=>{fetched++;return new Promise(resolve=>release=()=>resolve({data:raw.toString('base64')}));};
   harness.setMode('reserved2');

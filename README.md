@@ -6,7 +6,7 @@
 
 一个面向 QQ 私聊与群聊的有状态 Agent harness，以 DeepSeek Harness（DSH）为模型、会话与工具宿主，通过 SnowLuma 接入 QQ。它在消息收发之外，管理上下文装填、记忆、人物身份、发送计划、等待、主动行为和运行观测。
 
-Chat Bridge 源自 QQ Bridge，基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.5.1**，通过独立运行目录接入 DSH；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
+Chat Bridge 源自 QQ Bridge，基于 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 扩展，遵循仓库 LICENSE。当前代码版本为 **v0.5.2**，通过独立运行目录接入 DSH；二代工具驱动聊天是主路径，一代聊天保留兼容入口。
 
 在 Windows 上首次安装，请看 **[Windows 人类安装教程](#windows-安装与启停)**。
 
@@ -97,8 +97,8 @@ QQ 身份以真实 QQ 号区分，昵称相同、前缀相同或改名不合并�
 <tr><th align="left">给人类的 Windows 安装教程</th></tr>
 <tr><td>
 
-1. **在 DSH Desktop 添加插件。** **[下载 Chat Bridge 插件包（chat-bridge-0.5.1.tgz）](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/download/v0.5.1/chat-bridge-0.5.1.tgz)**。打开 DSH Desktop 的**插件管理器 → 添加插件**，填入下载包的完整本机路径，也可以复制上面的直链填入。安装后插件显示为 **Chat Bridge**。如果已装旧版 `qq-bridge-public`，请先在插件管理器中卸载旧版。
-2. **解压安装包，双击启动脚本。** **[下载 Windows 安装包（Chat-Bridge-Windows-Setup.zip）](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/download/v0.5.1/Chat-Bridge-Windows-Setup.zip)**。解压后双击 **`Install-and-Start-Chat-Bridge.cmd`**。脚本会识别 DSH 中已安装的插件，自动下载并校验 SnowLuma 2.4.0 和运行依赖。如果有多个 DSH 配置（profile），按提示选择。
+1. **在 DSH Desktop 添加插件。** **[下载 Chat Bridge 插件包（chat-bridge-0.5.2.tgz）](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/download/v0.5.2/chat-bridge-0.5.2.tgz)**。打开 DSH Desktop 的**插件管理器 → 添加插件**，填入下载包的完整本机路径，也可以复制上面的直链填入。安装后插件显示为 **Chat Bridge**。如果已装旧版 `qq-bridge-public`，请先在插件管理器中卸载旧版。
+2. **解压安装包，双击启动脚本。** **[下载 Windows 安装包（Chat-Bridge-Windows-Setup.zip）](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/download/v0.5.2/Chat-Bridge-Windows-Setup.zip)**。解压后双击 **`Install-and-Start-Chat-Bridge.cmd`**。脚本会识别 DSH 中已安装的插件，自动下载并校验 SnowLuma 2.4.0 和运行依赖。如果有多个 DSH 配置（profile），按提示选择。
 3. **配置并启动 Chat Bridge。** 在 DSH 中打开 **Chat Bridge** 面板，填写 **QQ 账号和允许名单**，点击**启动**，按提示完成 QQ 登录。以后可在同一面板**启动或停止服务**。
 
 **运行文件位置**为 DSH 数据目录下的 `bot-instances/runtime/<profile>/chat-bridge`。插件代码由对应的 DSH 配置管理。
@@ -144,7 +144,7 @@ node scripts/build-agent-preset-patches.mjs --check
 npm run privacy:check
 ```
 
-版本变更与验证记录见 [v0.5.1 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.5.1)。发行附件提供 SHA-256 校验值和打包源码清单。
+版本变更与验证记录见 [v0.5.2 Release](https://github.com/schrolemons/chat-harness-7-2-lays-for-a-AI-bot/releases/tag/v0.5.2)。发行附件提供 SHA-256 校验值和打包源码清单。
 
 测试使用临时副本、测试状态与桩 QQ/DSH；模拟通过不代表实际账号已登录、模型已完成任务或 QQ 已成功投递。真实运行核验应分别检查连接、当前加载版本与投递回执；维护操作不应以删除会话、清空历史或反复重启代替排查。
 
